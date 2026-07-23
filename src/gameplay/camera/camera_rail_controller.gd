@@ -129,6 +129,8 @@ func update_camera(delta_s: float) -> void:
 		if camera_right.is_zero_approx():
 			camera_right = camera_forward.cross(Vector3.UP).normalized()
 		camera_up = camera_forward.cross(camera_right).normalized()
+		if camera_up.dot(Vector3.UP) < 0.0:
+			camera_up = -camera_up
 		if camera_up.is_zero_approx():
 			camera_up = Vector3.UP
 		camera_origin = _context_vector(

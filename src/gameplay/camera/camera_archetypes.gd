@@ -15,7 +15,7 @@ static func wall_run_basis(
 		normal = tangent.cross(Vector3.UP).normalized()
 	if normal.is_zero_approx():
 		normal = Vector3.RIGHT
-	var surface_up := tangent.cross(normal).normalized()
+	var surface_up := _upright_surface_up(tangent, normal)
 	if surface_up.is_zero_approx():
 		surface_up = Vector3.UP
 	var camera_position := (
@@ -115,7 +115,7 @@ static func wall_run_basis_for_view(
 			)
 			* fallback
 		).orthonormalized()
-	var surface_up := tangent.cross(normal).normalized()
+	var surface_up := _upright_surface_up(tangent, normal)
 	var result := _basis_with_horizontal(view, tangent, surface_up)
 	return _orient_up(result, surface_up)
 
@@ -202,6 +202,16 @@ static func _orient_up(basis: Basis, desired_up: Vector3) -> Basis:
 	if desired_up.is_zero_approx() or basis.y.dot(desired_up) >= 0.0:
 		return basis
 	return Basis(-basis.x, -basis.y, basis.z)
+
+
+static func _upright_surface_up(
+	tangent: Vector3,
+	normal: Vector3
+) -> Vector3:
+	var surface_up := tangent.cross(normal).normalized()
+	if surface_up.dot(Vector3.UP) < 0.0:
+		surface_up = -surface_up
+	return surface_up
 
 
 static func _normalized_or(

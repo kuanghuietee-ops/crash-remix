@@ -108,6 +108,28 @@ func test_wall_run_camera_derives_its_side_from_the_surface_normal() -> void:
 	assert_gt(right_view.dot(left_view), -1.0)
 
 
+func test_wall_run_camera_stays_upright_on_both_wall_sides() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"wall_run_basis"
+	)
+	if script == null:
+		return
+
+	for normal: Vector3 in [Vector3.RIGHT, Vector3.LEFT]:
+		var basis: Basis = script.call(
+			"wall_run_basis",
+			Vector3.FORWARD,
+			normal,
+			_camera
+		)
+		assert_gt(
+			basis.y.dot(Vector3.UP),
+			0.0,
+			"alternating canyon walls must not invert the camera"
+		)
+
+
 func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
