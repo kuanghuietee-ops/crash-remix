@@ -97,21 +97,48 @@ func test_segment_transfer_surfaces_form_one_continuous_route() -> void:
 	]
 
 	for transition: Array in transitions:
-		var exit_bounds := _box_z_bounds(transition[0] as Node3D)
-		var next_bounds := _box_z_bounds(transition[1] as Node3D)
+		var exit := transition[0] as Node3D
+		var next_approach := transition[1] as Node3D
+		var next_bounds := _box_world_bounds(next_approach)
 		var respawn := transition[2] as Node3D
-		assert_gte(
-			next_bounds.y,
-			exit_bounds.x,
-			"the next approach must meet or overlap the preceding exit"
+		assert_true(
+			_transfer_surfaces_connect(exit, next_approach),
+			"adjacent surfaces must overlap laterally, meet in Z, and align in Y"
 		)
+		assert_gte(respawn.global_position.x, next_bounds.position.x)
+		assert_lte(respawn.global_position.x, next_bounds.end.x)
+		assert_gte(respawn.global_position.z, next_bounds.position.z)
+		assert_lte(respawn.global_position.z, next_bounds.end.z)
 		assert_lte(
-			next_bounds.y - exit_bounds.x,
-			1.0,
-			"segment transfer surfaces must not hide a large overlap"
+			absf(respawn.global_position.y - next_bounds.end.y),
+			1.0
 		)
-		assert_gte(respawn.global_position.z, next_bounds.x)
-		assert_lte(respawn.global_position.z, next_bounds.y)
+
+
+func test_continuity_check_rejects_lateral_and_vertical_segment_breaks() -> void:
+	var gauntlet := _instantiate(GAUNTLET_SCENE_PATH)
+	if gauntlet == null:
+		return
+	add_child_autofree(gauntlet)
+	var exit := gauntlet.get_node(
+		"WallRunCanyon/LandingPad"
+	) as Node3D
+	var next_approach := gauntlet.get_node(
+		"GrindRails/ApproachPad"
+	) as Node3D
+	var authored_position := next_approach.position
+	next_approach.position.y += 10.0
+
+	assert_false(
+		_transfer_surfaces_connect(exit, next_approach),
+		"a Z-only continuity check misses an unreachable vertical offset"
+	)
+	next_approach.position = authored_position
+	next_approach.position.x += 10.0
+	assert_false(
+		_transfer_surfaces_connect(exit, next_approach),
+		"continuity also requires lateral surface overlap"
+	)
 
 
 func test_game_loads_phase05_gauntlet_without_legacy_collision_overlap() -> void:
@@ -181,7 +208,7 @@ func _instantiate(path: String) -> Node:
 	return packed.instantiate() if packed != null else null
 
 
-func _box_z_bounds(body: Node3D) -> Vector2:
+func _box_world_bounds(body: Node3D) -> AABB:
 	var collision := body.find_child(
 		"CollisionShape3D",
 		true,
@@ -189,15 +216,37 @@ func _box_z_bounds(body: Node3D) -> Vector2:
 	) as CollisionShape3D
 	assert_not_null(collision)
 	if collision == null:
-		return Vector2.ZERO
+		return AABB()
 	var box := collision.shape as BoxShape3D
 	assert_not_null(box)
 	if box == null:
-		return Vector2.ZERO
-	var half_length := (
-		box.size.z * collision.global_basis.get_scale().z * 0.5
+		return AABB()
+	var local_bounds := AABB(
+		-box.size * 0.5,
+		box.size
 	)
-	return Vector2(
-		collision.global_position.z - half_length,
-		collision.global_position.z + half_length
+	return collision.global_transform * local_bounds
+
+
+func _transfer_surfaces_connect(
+	exit: Node3D,
+	next_approach: Node3D
+) -> bool:
+	var exit_bounds := _box_world_bounds(exit)
+	var next_bounds := _box_world_bounds(next_approach)
+	var lateral_overlap_m := (
+		minf(exit_bounds.end.x, next_bounds.end.x)
+		- maxf(exit_bounds.position.x, next_bounds.position.x)
+	)
+	var vertical_step_m := absf(
+		exit_bounds.end.y - next_bounds.end.y
+	)
+	var longitudinal_overlap_m := (
+		next_bounds.end.z - exit_bounds.position.z
+	)
+	return (
+		lateral_overlap_m > 0.0
+		and vertical_step_m <= 1.0
+		and longitudinal_overlap_m >= 0.0
+		and longitudinal_overlap_m <= 1.0
 	)
