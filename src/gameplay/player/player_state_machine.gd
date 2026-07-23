@@ -7,6 +7,9 @@ const STATE_SLIDING := &"sliding"
 const STATE_AIRBORNE := &"airborne"
 const STATE_BODY_SLAM := &"body_slam"
 const STATE_SLAM_RECOVERY := &"slam_recovery"
+const STATE_GRIND := &"grind"
+const STATE_WALL_RUN := &"wall_run"
+const STATE_SWING := &"swing"
 
 var state := STATE_AIRBORNE
 var is_spinning: bool
@@ -27,7 +30,8 @@ func step(
 	horizontal_speed_mps: float,
 	intents: InputIntentBuffer,
 	move_tuning: MoveTuning,
-	input_tuning: InputTuning
+	input_tuning: InputTuning,
+	_neighbour_available: bool
 ) -> PlayerFrameDecision:
 	var decision := PlayerFrameDecision.new()
 	decision.previous_state = state

@@ -6,6 +6,9 @@ const TUNING_PATH := "res://data/tuning/gameplay.tres"
 var _move: MoveTuning
 var _input: InputTuning
 var _depth: DepthTuning
+var _wall_run: WallRunTuning
+var _grind: GrindTuning
+var _swing: SwingTuning
 
 
 func before_all() -> void:
@@ -15,6 +18,9 @@ func before_all() -> void:
 		_move = catalog.move
 		_input = catalog.input
 		_depth = catalog.depth
+		_wall_run = catalog.wall_run
+		_grind = catalog.grind
+		_swing = catalog.swing
 
 
 func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> void:
@@ -80,7 +86,16 @@ func test_double_jump_release_uses_its_own_tap_height() -> void:
 	var buffer: InputIntentBuffer = setup["buffer"]
 	var move_variant: MoveTuning = _move.duplicate()
 	move_variant.double_jump_tap_height_m = 1.3
-	controller.call("configure", move_variant, _input, _depth, buffer)
+	controller.call(
+		"configure",
+		move_variant,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer
+	)
 	controller.call("advance_logic", 25.0, true, 0.0, Vector3.FORWARD)
 	buffer.push(InputIntent.button(&"jump", true, 25.01, &"touch"))
 	controller.call("advance_logic", 25.01, true, 0.0, Vector3.FORWARD)
@@ -349,6 +364,69 @@ func test_edge_nudge_directions_are_corridor_relative_and_bias_against_travel() 
 	assert_true(directions.has(corridor_forward.cross(Vector3.UP).normalized()))
 
 
+func test_controller_receives_every_traversal_tuning_resource() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+
+	controller.call(
+		"configure",
+		_move,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer
+	)
+
+	assert_eq(controller.get("_wall_run_tuning"), _wall_run)
+	assert_eq(controller.get("_grind_tuning"), _grind)
+	assert_eq(controller.get("_swing_tuning"), _swing)
+
+
+func test_spline_states_suppress_gravity_and_use_floating_motion() -> void:
+	for state: StringName in [&"grind", &"wall_run", &"swing"]:
+		var setup := _new_controller()
+		if setup.is_empty():
+			return
+		var controller: CharacterBody3D = setup["controller"]
+		var state_machine: RefCounted = controller.get("_state_machine")
+		state_machine.set("state", state)
+		controller.velocity = Vector3(5.0, 3.0, 2.0)
+
+		var decision: RefCounted = controller.call(
+			"advance_logic",
+			50.0,
+			false,
+			0.5,
+			Vector3.FORWARD
+		)
+
+		assert_eq(decision.get("state"), state)
+		assert_eq(controller.velocity, Vector3(0.0, 3.0, 0.0))
+		assert_eq(
+			controller.motion_mode,
+			CharacterBody3D.MOTION_MODE_FLOATING
+		)
+
+		state_machine.set("state", &"airborne")
+		controller.call(
+			"advance_logic",
+			50.1,
+			false,
+			0.0,
+			Vector3.FORWARD
+		)
+		assert_eq(
+			controller.motion_mode,
+			CharacterBody3D.MOTION_MODE_GROUNDED,
+			"leaving %s must restore the ordinary body mode" % state
+		)
+
+
 func _new_controller() -> Dictionary:
 	var script: Script = load(CONTROLLER_SCRIPT_PATH)
 	assert_not_null(script, "PlayerController implementation must exist")
@@ -389,7 +467,16 @@ func _new_controller() -> Dictionary:
 	controller.add_child(slam_area)
 	add_child_autofree(controller)
 	var buffer := InputIntentBuffer.new()
-	controller.call("configure", _move, _input, _depth, buffer)
+	controller.call(
+		"configure",
+		_move,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer
+	)
 	return {
 		"controller": controller,
 		"collision_shape": collision_shape,

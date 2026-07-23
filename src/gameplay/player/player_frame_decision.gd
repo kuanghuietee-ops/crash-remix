@@ -7,6 +7,9 @@ const IMPULSE_DOUBLE_JUMP := &"double_jump"
 const IMPULSE_HIGH_JUMP := &"high_jump"
 const IMPULSE_SLIDE_JUMP := &"slide_jump"
 const IMPULSE_BODY_SLAM := &"body_slam"
+const IMPULSE_RAIL_HOP := &"rail_hop"
+const IMPULSE_RAIL_EXIT := &"rail_exit"
+const IMPULSE_WALL_DETACH := &"wall_detach"
 
 var impulse := IMPULSE_NONE
 var previous_state := &""

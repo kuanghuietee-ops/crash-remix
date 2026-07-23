@@ -50,6 +50,9 @@ func _ready() -> void:
 		catalog.move,
 		catalog.input,
 		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
 		router.get("buffer")
 	)
 	player.call("set_spawn_transform", player.global_transform)
@@ -92,6 +95,9 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 		catalog.move,
 		catalog.input,
 		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
 		router.get("buffer")
 	)
 	player.get_node("BlobShadow").call("configure", player, catalog.depth)

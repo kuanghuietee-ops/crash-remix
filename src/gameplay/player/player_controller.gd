@@ -17,6 +17,9 @@ const ScalarMathType := preload("res://src/core/scalar_math.gd")
 var _move_tuning: MoveTuning
 var _input_tuning: InputTuning
 var _depth_tuning: DepthTuning
+var _wall_run_tuning: WallRunTuning
+var _grind_tuning: GrindTuning
+var _swing_tuning: SwingTuning
 var _intents: InputIntentBuffer
 var _state_machine: PlayerStateMachineType = PlayerStateMachineType.new()
 var _collision_shape: CollisionShape3D
@@ -32,6 +35,7 @@ var _last_spin_active: bool
 var _fall_apex_y: float
 var _respawn_due_s := -1.0
 var _active_jump_tap_height_m := 0.0
+var _traversal_neighbour_available: bool
 
 
 func _ready() -> void:
@@ -44,22 +48,30 @@ func _ready() -> void:
 	_spawn_transform = global_transform
 	_fall_apex_y = global_position.y
 	_apply_character_dimensions(_state_machine.state)
+	_apply_motion_mode(_state_machine.state)
 
 
 func configure(
 	move_tuning: MoveTuning,
 	input_tuning: InputTuning,
 	depth_tuning: DepthTuning,
+	wall_run_tuning: WallRunTuning,
+	grind_tuning: GrindTuning,
+	swing_tuning: SwingTuning,
 	intents: InputIntentBuffer
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning
 	_depth_tuning = depth_tuning
+	_wall_run_tuning = wall_run_tuning
+	_grind_tuning = grind_tuning
+	_swing_tuning = swing_tuning
 	_intents = intents
 	_active_jump_tap_height_m = _move_tuning.jump_tap_height_m
 	floor_snap_length = _move_tuning.floor_snap_length_m
 	floor_max_angle = deg_to_rad(_move_tuning.floor_max_angle_degrees)
 	_apply_character_dimensions(_state_machine.state)
+	_apply_motion_mode(_state_machine.state)
 
 
 func set_corridor_forward(forward: Vector3) -> void:
@@ -98,7 +110,8 @@ func advance_logic(
 		horizontal_speed,
 		_intents,
 		_move_tuning,
-		_input_tuning
+		_input_tuning,
+		_traversal_neighbour_available
 	)
 	var next_horizontal := PlayerMotorType.horizontal_velocity(
 		velocity,
@@ -110,6 +123,7 @@ func advance_logic(
 	)
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
+	_apply_motion_mode(decision.state)
 	_apply_vertical_physics(grounded, delta_s)
 	if decision.impulse != PlayerFrameDecisionType.IMPULSE_NONE:
 		velocity = PlayerMotorType.impulse_velocity(
@@ -193,7 +207,12 @@ static func tap_height_for_impulse(
 
 
 func try_edge_landing_nudge() -> bool:
-	if _input_tuning == null or _move_tuning == null or not is_inside_tree():
+	if (
+		_input_tuning == null
+		or _move_tuning == null
+		or not is_inside_tree()
+		or PlayerMotorType.uses_spline_motion(_state_machine.state)
+	):
 		return false
 	if not _safe_floor_probe(Vector3.ZERO).is_empty():
 		return false
@@ -221,6 +240,7 @@ func try_soft_landing_assist() -> bool:
 		_depth_tuning == null
 		or _intents == null
 		or not is_inside_tree()
+		or PlayerMotorType.uses_spline_motion(_state_machine.state)
 		or velocity.y >= 0.0
 	):
 		return false
@@ -274,6 +294,7 @@ func respawn() -> void:
 	if _intents != null:
 		_intents.clear()
 	_apply_character_dimensions(_state_machine.state)
+	_apply_motion_mode(_state_machine.state)
 	if _spin_visual_pivot != null:
 		_spin_visual_pivot.rotation.y = 0.0
 	respawned.emit()
@@ -304,7 +325,11 @@ func _physics_process(delta_s: float) -> void:
 	if advance_respawn(now_s) or is_respawning():
 		return
 	advance_logic(now_s, is_on_floor(), delta_s, _corridor_forward)
-	if not is_on_floor() and velocity.y <= 0.0:
+	if (
+		not PlayerMotorType.uses_spline_motion(_state_machine.state)
+		and not is_on_floor()
+		and velocity.y <= 0.0
+	):
 		try_soft_landing_assist()
 		try_edge_landing_nudge()
 	move_and_slide()
@@ -313,6 +338,8 @@ func _physics_process(delta_s: float) -> void:
 
 
 func _apply_vertical_physics(grounded: bool, delta_s: float) -> void:
+	if PlayerMotorType.uses_spline_motion(_state_machine.state):
+		return
 	if grounded and velocity.y < 0.0:
 		velocity.y = 0.0
 	if grounded:
@@ -325,6 +352,14 @@ func _apply_vertical_physics(grounded: bool, delta_s: float) -> void:
 	velocity.y = maxf(
 		velocity.y - gravity * delta_s,
 		-_move_tuning.maximum_fall_speed_mps
+	)
+
+
+func _apply_motion_mode(state: StringName) -> void:
+	motion_mode = (
+		MOTION_MODE_FLOATING
+		if PlayerMotorType.uses_spline_motion(state)
+		else MOTION_MODE_GROUNDED
 	)
 
 

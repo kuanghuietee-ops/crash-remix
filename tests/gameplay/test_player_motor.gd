@@ -291,6 +291,28 @@ func test_air_input_steers_without_spending_slide_jump_boost() -> void:
 	)
 
 
+func test_traversal_states_bypass_the_ground_motor() -> void:
+	var script: Script = _motor_script()
+	if script == null:
+		return
+
+	for state: StringName in [&"grind", &"wall_run", &"swing"]:
+		var velocity: Vector3 = script.call(
+			"horizontal_velocity",
+			Vector3(5.0, 3.0, 2.0),
+			Vector2.RIGHT,
+			state,
+			FRAME_DELTA_S,
+			Vector3.FORWARD,
+			_move
+		)
+		assert_eq(
+			velocity,
+			Vector3.ZERO,
+			"the spline must own motion during %s" % state
+		)
+
+
 func test_authored_jump_geometry_directly_drives_impulses() -> void:
 	var script: Script = _motor_script()
 	if script == null:

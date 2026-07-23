@@ -110,6 +110,9 @@ func test_player_phase_press_toggles_while_airborne() -> void:
 		catalog.move,
 		catalog.input,
 		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
 		intents
 	)
 	var phase_state: Node = get_node("/root/PhaseState")
@@ -160,6 +163,29 @@ func test_game_boot_and_live_tuning_both_configure_phase_state() -> void:
 		0.41,
 		0.0001
 	)
+
+
+func test_game_boot_and_live_tuning_route_every_traversal_resource() -> void:
+	var game: Node = _instance(GAME_SCENE_PATH)
+	if game == null:
+		return
+	add_child_autofree(game)
+	await wait_process_frames(1)
+	var catalog: GameplayTuning = game.get("tuning_service").get("catalog")
+	var player := game.get_node("Player") as CharacterBody3D
+
+	assert_eq(player.get("_wall_run_tuning"), catalog.wall_run)
+	assert_eq(player.get("_grind_tuning"), catalog.grind)
+	assert_eq(player.get("_swing_tuning"), catalog.swing)
+
+	catalog.wall_run = catalog.wall_run.duplicate()
+	catalog.grind = catalog.grind.duplicate()
+	catalog.swing = catalog.swing.duplicate()
+	game.call("_on_tuning_changed", &"test")
+
+	assert_eq(player.get("_wall_run_tuning"), catalog.wall_run)
+	assert_eq(player.get("_grind_tuning"), catalog.grind)
+	assert_eq(player.get("_swing_tuning"), catalog.swing)
 
 
 func _instance_phase_gauntlet() -> Node:

@@ -7,6 +7,9 @@ const STATE_AIRBORNE := &"airborne"
 const STATE_BODY_SLAM := &"body_slam"
 const STATE_CROUCHED := &"crouched"
 const STATE_SLIDING := &"sliding"
+const STATE_GRIND := &"grind"
+const STATE_WALL_RUN := &"wall_run"
+const STATE_SWING := &"swing"
 
 const IMPULSE_JUMP := &"jump"
 const IMPULSE_DOUBLE_JUMP := &"double_jump"
@@ -26,6 +29,14 @@ static func uses_airborne_momentum_model(state: StringName) -> bool:
 	return false
 
 
+static func uses_spline_motion(state: StringName) -> bool:
+	return (
+		state == STATE_GRIND
+		or state == STATE_WALL_RUN
+		or state == STATE_SWING
+	)
+
+
 static func horizontal_velocity(
 	current_velocity: Vector3,
 	input_vector: Vector2,
@@ -34,6 +45,8 @@ static func horizontal_velocity(
 	forward_axis: Vector3,
 	move_tuning: MoveTuning
 ) -> Vector3:
+	if uses_spline_motion(state):
+		return Vector3.ZERO
 	var horizontal := Vector3(current_velocity.x, 0.0, current_velocity.z)
 	var forward := Vector3(forward_axis.x, 0.0, forward_axis.z).normalized()
 	if forward.is_zero_approx():
