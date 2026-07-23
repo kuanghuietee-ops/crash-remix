@@ -18,6 +18,9 @@ const TraversalAttachSolverType := preload(
 const TraversalRailType := preload(
 	"res://src/gameplay/traversal/traversal_rail.gd"
 )
+const WallRunStripType := preload(
+	"res://src/gameplay/traversal/wall_run_strip.gd"
+)
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -48,6 +51,9 @@ var _rail_hop_target: TraversalRailType
 var _rail_attach_blocked: TraversalRailType
 var _active_rail_distance_m: float
 var _grind_speed_mps: float
+var _active_wall_strip: WallRunStripType
+var _wall_attach_blocked: WallRunStripType
+var _active_wall_sample: TraversalSample
 
 
 func _ready() -> void:
@@ -112,6 +118,7 @@ func advance_logic(
 	):
 		_rail_attach_blocked = null
 		_rail_hop_target = null
+		_wall_attach_blocked = null
 	_update_rail_neighbour_context()
 	if (
 		_intents.consume_pressed(
@@ -149,6 +156,8 @@ func advance_logic(
 			_apply_rail_hop()
 		elif decision.impulse == PlayerFrameDecisionType.IMPULSE_RAIL_EXIT:
 			_apply_rail_exit()
+		elif decision.impulse == PlayerFrameDecisionType.IMPULSE_WALL_DETACH:
+			_apply_wall_detach()
 		else:
 			velocity = PlayerMotorType.impulse_velocity(
 				decision.impulse,
@@ -163,8 +172,17 @@ func advance_logic(
 		if decision.impulse != PlayerFrameDecisionType.IMPULSE_BODY_SLAM:
 			_active_jump_tap_height_m = tap_height_m
 	_apply_jump_release(now_s)
+	if (
+		decision.previous_state == PlayerStateMachineType.STATE_WALL_RUN
+		and decision.state != PlayerStateMachineType.STATE_WALL_RUN
+		and decision.impulse != PlayerFrameDecisionType.IMPULSE_WALL_DETACH
+	):
+		_finish_wall_run()
 	if decision.state == PlayerStateMachineType.STATE_GRIND:
 		_advance_grind_motion(delta_s, now_s)
+		decision.state = _state_machine.state
+	elif decision.state == PlayerStateMachineType.STATE_WALL_RUN:
+		_advance_wall_run_motion(delta_s, now_s)
 		decision.state = _state_machine.state
 	_track_fall_apex(grounded)
 	_apply_character_dimensions(decision.state)
@@ -313,6 +331,7 @@ func respawn() -> void:
 	velocity = Vector3.ZERO
 	_respawn_due_s = -1.0
 	_clear_rail_state()
+	_clear_wall_run_state()
 	_state_machine = PlayerStateMachineType.new()
 	_last_state = &""
 	_last_spin_active = false
@@ -353,6 +372,7 @@ func _physics_process(delta_s: float) -> void:
 	if advance_respawn(now_s) or is_respawning():
 		return
 	_try_automatic_rail_attach(now_s)
+	_try_automatic_wall_attach(now_s)
 	advance_logic(now_s, is_on_floor(), delta_s, _corridor_forward)
 	if (
 		not PlayerMotorType.uses_spline_motion(_state_machine.state)
@@ -363,6 +383,7 @@ func _physics_process(delta_s: float) -> void:
 		try_edge_landing_nudge()
 	move_and_slide()
 	_reproject_active_rail()
+	_reproject_active_wall()
 	if global_position.y < _move_tuning.respawn_floor_y_m:
 		request_respawn(now_s)
 
@@ -433,6 +454,73 @@ func _try_automatic_rail_attach(now_s: float) -> void:
 	try_rail_attach(arc_points, now_s)
 
 
+func try_wall_attach(
+	strip: WallRunStripType,
+	now_s: float
+) -> bool:
+	if (
+		_wall_run_tuning == null
+		or not is_inside_tree()
+		or not is_instance_valid(strip)
+		or strip == _wall_attach_blocked
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return false
+	var sample: TraversalSample = strip.sample_at(global_position)
+	if sample == null:
+		return false
+	var held_position := (
+		sample.position
+		+ sample.normal * _wall_run_tuning.surface_stick_distance_m
+	)
+	if (
+		global_position.distance_to(held_position)
+		> _wall_run_tuning.surface_stick_distance_m
+	):
+		return false
+	if not TraversalAttachSolverType.solve_wall_attach(
+		global_position,
+		velocity,
+		sample,
+		_wall_run_tuning.attach_cone_degrees,
+		_wall_run_tuning.minimum_entry_speed_mps
+	):
+		return false
+	var vertical_speed_mps := velocity.y
+	var run_direction := _horizontal_direction(sample.tangent)
+	_active_wall_strip = strip
+	_active_wall_sample = sample
+	_wall_attach_blocked = null
+	_state_machine.enter_wall_run(
+		now_s,
+		_wall_run_tuning.maximum_duration_s
+	)
+	global_position = held_position
+	velocity = run_direction * _wall_run_tuning.run_speed_mps
+	velocity.y = vertical_speed_mps
+	_apply_motion_mode(_state_machine.state)
+	reset_physics_interpolation()
+	return true
+
+
+func _try_automatic_wall_attach(now_s: float) -> void:
+	if (
+		_wall_run_tuning == null
+		or is_on_floor()
+		or is_instance_valid(_rail_hop_target)
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return
+	for candidate: Node in get_tree().get_nodes_in_group(
+		WallRunStripType.STRIP_GROUP
+	):
+		if (
+			candidate is WallRunStripType
+			and try_wall_attach(candidate as WallRunStripType, now_s)
+		):
+			return
+
+
 func _update_rail_neighbour_context() -> void:
 	_traversal_neighbour_available = false
 	if not is_instance_valid(_active_rail) or _intents == null:
@@ -479,6 +567,71 @@ func _finish_grind(now_s: float) -> void:
 	_state_machine.enter_airborne(now_s)
 	_apply_rail_exit()
 	_apply_motion_mode(_state_machine.state)
+
+
+func _advance_wall_run_motion(delta_s: float, now_s: float) -> void:
+	if (
+		not is_instance_valid(_active_wall_strip)
+		or _wall_run_tuning == null
+		or _move_tuning == null
+	):
+		return
+	var sample: TraversalSample = _active_wall_strip.sample_at(
+		global_position
+	)
+	if sample == null:
+		_state_machine.enter_airborne(now_s)
+		_finish_wall_run()
+		_apply_motion_mode(_state_machine.state)
+		return
+	_active_wall_sample = sample
+	var run_direction := _horizontal_direction(sample.tangent)
+	velocity.x = run_direction.x * _wall_run_tuning.run_speed_mps
+	velocity.z = run_direction.z * _wall_run_tuning.run_speed_mps
+	if delta_s > 0.0:
+		velocity.y = maxf(
+			velocity.y
+			- _move_tuning.gravity_mps2
+			* _wall_run_tuning.gravity_multiplier
+			* delta_s,
+			-_move_tuning.maximum_fall_speed_mps
+		)
+
+
+func _apply_wall_detach() -> void:
+	if (
+		not is_instance_valid(_active_wall_strip)
+		or _wall_run_tuning == null
+		or _move_tuning == null
+	):
+		return
+	var departed_strip := _active_wall_strip
+	var sample := _active_wall_sample
+	if sample == null:
+		sample = departed_strip.sample_at(global_position)
+	if sample == null:
+		_finish_wall_run()
+		return
+	var run_direction := _horizontal_direction(sample.tangent)
+	var outward_direction := _horizontal_direction(sample.normal)
+	velocity = (
+		run_direction * _wall_run_tuning.run_speed_mps
+		+ outward_direction * _wall_run_tuning.detach_outward_speed_mps
+	)
+	velocity.y = JumpKinematicsType.upward_speed_for_height(
+		_wall_run_tuning.detach_height_m,
+		_move_tuning
+	)
+	_wall_attach_blocked = departed_strip
+	_active_wall_strip = null
+	_active_wall_sample = null
+
+
+func _finish_wall_run() -> void:
+	if is_instance_valid(_active_wall_strip):
+		_wall_attach_blocked = _active_wall_strip
+	_active_wall_strip = null
+	_active_wall_sample = null
 
 
 func _apply_rail_hop() -> void:
@@ -558,6 +711,31 @@ func _reproject_active_rail() -> void:
 		)
 
 
+func _reproject_active_wall() -> void:
+	if (
+		_state_machine.state != PlayerStateMachineType.STATE_WALL_RUN
+		or not is_instance_valid(_active_wall_strip)
+		or _wall_run_tuning == null
+	):
+		return
+	var sample: TraversalSample = _active_wall_strip.sample_at(
+		global_position
+	)
+	if sample == null:
+		return
+	var current_distance_m := (
+		global_position - sample.position
+	).dot(sample.normal)
+	global_position += (
+		sample.normal
+		* (
+			_wall_run_tuning.surface_stick_distance_m
+			- current_distance_m
+		)
+	)
+	_active_wall_sample = sample
+
+
 func _apply_grind_bank() -> void:
 	if _visual_root != null and _grind_tuning != null:
 		_visual_root.rotation.z = deg_to_rad(_grind_tuning.bank_degrees)
@@ -576,6 +754,12 @@ func _clear_rail_state() -> void:
 	_grind_speed_mps = 0.0
 	_traversal_neighbour_available = false
 	_reset_grind_bank()
+
+
+func _clear_wall_run_state() -> void:
+	_active_wall_strip = null
+	_wall_attach_blocked = null
+	_active_wall_sample = null
 
 
 func _lateral_direction(input_x: float) -> int:

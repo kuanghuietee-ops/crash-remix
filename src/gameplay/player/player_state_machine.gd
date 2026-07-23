@@ -18,6 +18,7 @@ var _was_grounded: bool
 var _last_grounded_s := -1.0
 var _state_entered_s := 0.0
 var _spin_ends_s := -1.0
+var _wall_run_maximum_duration_s := -1.0
 var _ground_jump_available: bool
 var _double_jump_available := true
 var _air_spin_available := true
@@ -64,6 +65,7 @@ func step(
 		intents,
 		move_tuning
 	)
+	_expire_wall_run_if_needed(now_s)
 
 	if state == STATE_GRIND:
 		_process_grind_jump(
@@ -72,6 +74,8 @@ func step(
 			input_tuning,
 			_neighbour_available
 		)
+	elif state == STATE_WALL_RUN:
+		_process_wall_run_jump(now_s, intents, input_tuning)
 	elif state != STATE_BODY_SLAM and state != STATE_SLAM_RECOVERY:
 		if effective_grounded:
 			_process_ground_actions(
@@ -104,8 +108,17 @@ func enter_grind(now_s: float) -> void:
 	_set_state(STATE_GRIND, now_s)
 
 
+func enter_wall_run(
+	now_s: float,
+	maximum_duration_s: float
+) -> void:
+	_wall_run_maximum_duration_s = maxf(maximum_duration_s, 0.0)
+	_set_state(STATE_WALL_RUN, now_s)
+
+
 func enter_airborne(now_s: float) -> void:
 	_ground_jump_available = false
+	_wall_run_maximum_duration_s = -1.0
 	_set_state(STATE_AIRBORNE, now_s)
 
 
@@ -132,6 +145,35 @@ func _process_grind_jump(
 	else:
 		_pending_impulse = PlayerFrameDecision.IMPULSE_RAIL_EXIT
 	_set_state(STATE_AIRBORNE, now_s)
+
+
+func _process_wall_run_jump(
+	now_s: float,
+	intents: InputIntentBuffer,
+	input_tuning: InputTuning
+) -> void:
+	if not intents.has_buffered_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	):
+		return
+	intents.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	)
+	_pending_impulse = PlayerFrameDecision.IMPULSE_WALL_DETACH
+	enter_airborne(now_s)
+
+
+func _expire_wall_run_if_needed(now_s: float) -> void:
+	if (
+		state == STATE_WALL_RUN
+		and _wall_run_maximum_duration_s >= 0.0
+		and now_s - _state_entered_s >= _wall_run_maximum_duration_s
+	):
+		enter_airborne(now_s)
 
 
 func _process_ground_actions(

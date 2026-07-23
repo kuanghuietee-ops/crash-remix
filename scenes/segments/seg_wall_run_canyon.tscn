@@ -1,0 +1,113 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/wall_run_strip.gd" id="1_strip"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+
+[sub_resource type="StandardMaterial3D" id="Material_strip"]
+albedo_color = Color(0.08, 0.72, 1, 1)
+roughness = 0.68
+
+[sub_resource type="BoxMesh" id="Mesh_strip"]
+material = SubResource("Material_strip")
+size = Vector3(0.08, 1.6, 16)
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.24, 0.27, 0.31, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="Mesh_wall"]
+material = SubResource("Material_wall")
+size = Vector3(1, 6, 32)
+
+[sub_resource type="BoxShape3D" id="Shape_wall"]
+size = Vector3(1, 6, 32)
+
+[sub_resource type="StandardMaterial3D" id="Material_pad"]
+albedo_color = Color(0.32, 0.35, 0.4, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_pad"]
+material = SubResource("Material_pad")
+size = Vector3(8, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_pad"]
+size = Vector3(8, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_run_region"]
+size = Vector3(12, 10, 40)
+
+[node name="WallRunCanyonSegment" type="Node3D"]
+
+[node name="ApproachPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ApproachPad"]
+mesh = SubResource("Mesh_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ApproachPad"]
+shape = SubResource("Shape_pad")
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-2.5, 2.5, -12)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("Mesh_wall")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("Shape_wall")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(2.5, 2.5, -12)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("Mesh_wall")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("Shape_wall")
+
+[node name="LeftStrip" type="Path3D" parent="."]
+position = Vector3(-2, 3, 0)
+script = ExtResource("1_strip")
+surface_normal = Vector3(1, 0, 0)
+
+[node name="Start" type="Marker3D" parent="LeftStrip"]
+
+[node name="Finish" type="Marker3D" parent="LeftStrip"]
+position = Vector3(0, 0, -16)
+
+[node name="StripMesh" type="MeshInstance3D" parent="LeftStrip"]
+position = Vector3(0, 0, -8)
+mesh = SubResource("Mesh_strip")
+
+[node name="RightStrip" type="Path3D" parent="."]
+position = Vector3(2, 3, -6)
+script = ExtResource("1_strip")
+surface_normal = Vector3(-1, 0, 0)
+
+[node name="Start" type="Marker3D" parent="RightStrip"]
+
+[node name="Finish" type="Marker3D" parent="RightStrip"]
+position = Vector3(0, 0, -16)
+
+[node name="StripMesh" type="MeshInstance3D" parent="RightStrip"]
+position = Vector3(0, 0, -8)
+mesh = SubResource("Mesh_strip")
+
+[node name="LandingPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, -28)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LandingPad"]
+mesh = SubResource("Mesh_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LandingPad"]
+shape = SubResource("Shape_pad")
+
+[node name="WallRunCameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -12)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"wall_run"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WallRunCameraRegion"]
+shape = SubResource("Shape_wall_run_region")
