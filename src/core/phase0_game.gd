@@ -58,6 +58,12 @@ func _ready() -> void:
 		catalog.swing,
 		router.get("buffer")
 	)
+	var phase_reset_callback := Callable(
+		PhaseState,
+		"reset_to_authored_set"
+	)
+	if not player.is_connected(&"respawned", phase_reset_callback):
+		player.connect(&"respawned", phase_reset_callback)
 	player.call("set_spawn_transform", player.global_transform)
 	_refresh_traversal_rails(catalog.camera)
 	_refresh_swing_anchors(catalog.swing)

@@ -188,6 +188,47 @@ func test_game_boot_and_live_tuning_route_every_traversal_resource() -> void:
 	assert_eq(player.get("_swing_tuning"), catalog.swing)
 
 
+func test_respawn_restores_a_solid_platform_under_the_player() -> void:
+	var game: Node = _instance(GAME_SCENE_PATH)
+	if game == null:
+		return
+	add_child_autofree(game)
+	await wait_physics_frames(2)
+	var phase_state: Node = get_node("/root/PhaseState")
+	var player := game.get_node("Player") as CharacterBody3D
+	var respawn_point := game.get_node(
+		"Phase05Gauntlet/DebugRespawnAfterSwing"
+	)
+	var spawn := respawn_point.get_node("Spawn") as Marker3D
+	var blue_launch := game.get_node(
+		"Phase05Gauntlet/PhaseGauntlet/BlueSet/BlueLaunch"
+	)
+	if phase_state.call("active_set") == &"orange":
+		assert_true(phase_state.call("request_toggle", 2000.0))
+	assert_true(respawn_point.call("activate_for", player))
+	assert_true(phase_state.call("request_toggle", 3000.0))
+	assert_eq(phase_state.call("active_set"), &"orange")
+	assert_false(_collision_enabled(blue_launch))
+
+	player.call("respawn")
+	var respawn_position := player.global_position
+	await wait_physics_frames(1)
+
+	assert_true(
+		respawn_position.is_equal_approx(spawn.global_position),
+		"the test must execute the real post-swing debug respawn"
+	)
+	assert_eq(
+		phase_state.call("active_set"),
+		&"blue",
+		"respawning onto a blue platform while orange is solid drops the player through it"
+	)
+	assert_true(
+		_collision_enabled(blue_launch),
+		"the actual platform under the respawn must be solid synchronously"
+	)
+
+
 func _instance_phase_gauntlet() -> Node:
 	return _instance(PHASE_GAUNTLET_PATH)
 

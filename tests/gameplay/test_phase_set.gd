@@ -60,6 +60,20 @@ func test_first_toggle_is_always_allowed() -> void:
 	assert_true(phase_set.call("can_toggle", 0.0, _phase))
 
 
+func test_reset_returns_to_the_authored_set_and_clears_the_cooldown() -> void:
+	var phase_set: RefCounted = _new_phase_set()
+	phase_set.call("try_toggle", 1.0, _phase)
+	assert_eq(phase_set.get("active_set"), &"orange")
+
+	phase_set.call("reset")
+
+	assert_eq(phase_set.get("active_set"), &"blue")
+	assert_true(
+		phase_set.call("can_toggle", 1.01, _phase),
+		"a respawn inside the cooldown must not block the first toggle back"
+	)
+
+
 func _new_phase_set() -> RefCounted:
 	var script: GDScript = load(PHASE_SET_SCRIPT_PATH)
 	assert_not_null(script)

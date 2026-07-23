@@ -37,6 +37,12 @@ func request_toggle(now_s: float) -> bool:
 	return true
 
 
+func reset_to_authored_set() -> void:
+	_phase_set.reset()
+	_apply_active_set()
+	phase_changed.emit(_phase_set.active_set)
+
+
 func active_set() -> StringName:
 	return _phase_set.active_set
 

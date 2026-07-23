@@ -23,6 +23,11 @@ func try_toggle(now_s: float, phase_tuning: PhaseTuning) -> bool:
 	return true
 
 
+func reset() -> void:
+	active_set = SET_BLUE
+	_last_toggle_s = -1.0
+
+
 func is_solid(set_name: StringName) -> bool:
 	return set_name == active_set
 
