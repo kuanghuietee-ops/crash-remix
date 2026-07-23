@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WallRunTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/wall_run_tuning.gd" id="1_wall_run"]
+
+[resource]
+script = ExtResource("1_wall_run")
+attach_cone_degrees = 25.0
+minimum_entry_speed_mps = 0.0
+surface_stick_distance_m = 0.4
+run_speed_mps = 8.0
+maximum_duration_s = 2.0
+gravity_multiplier = 0.15
+detach_outward_speed_mps = 5.0
+detach_height_m = 2.0

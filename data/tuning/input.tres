@@ -45,4 +45,7 @@ haptic_duration_ms = 10
 haptics_enabled = true
 left_handed_layout = false
 control_scale = 1.0
+phase_button_diameter_mm = 10.0
+phase_button_arc_offset_mm = 20.0
+phase_button_unlocked = true
 layout_metrics_poll_interval_s = 0.5

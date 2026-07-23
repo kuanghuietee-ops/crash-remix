@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="GrindTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/grind_tuning.gd" id="1_grind"]
+
+[resource]
+script = ExtResource("1_grind")
+attach_snap_m = 0.35
+speed_mps = 9.0
+acceleration_mps2 = 6.0
+bank_degrees = 12.0
+hop_lateral_distance_m = 2.0
+hop_height_m = 1.2
+exit_forward_speed_mps = 7.0

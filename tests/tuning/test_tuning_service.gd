@@ -24,6 +24,10 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("input")), "InputTuning")
 	assert_eq(_global_class_name(catalog.get("camera")), "CameraTuning")
 	assert_eq(_global_class_name(catalog.get("depth")), "DepthTuning")
+	assert_eq(_global_class_name(catalog.get("wall_run")), "WallRunTuning")
+	assert_eq(_global_class_name(catalog.get("grind")), "GrindTuning")
+	assert_eq(_global_class_name(catalog.get("swing")), "SwingTuning")
+	assert_eq(_global_class_name(catalog.get("phase")), "PhaseTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -60,6 +64,77 @@ func test_authored_values_form_valid_phase_zero_contract() -> void:
 		input_tuning.get("full_jump_hold_s")
 	)
 	assert_gt(input_tuning.get("layout_metrics_poll_interval_s"), 0.0)
+
+
+func test_service_catalog_exposes_traversal_sections() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var catalog: Resource = service.get("catalog")
+	var wall_run: Resource = catalog.get("wall_run")
+	var grind: Resource = catalog.get("grind")
+	var swing: Resource = catalog.get("swing")
+	var phase: Resource = catalog.get("phase")
+
+	assert_not_null(wall_run, "clone dropped wall_run — dead-wired")
+	assert_not_null(grind, "clone dropped grind — dead-wired")
+	assert_not_null(swing, "clone dropped swing — dead-wired")
+	assert_not_null(phase, "clone dropped phase — dead-wired")
+	if wall_run == null or grind == null or swing == null or phase == null:
+		return
+	assert_eq(wall_run.get("attach_cone_degrees"), 25.0)
+	assert_eq(grind.get("attach_snap_m"), 0.35)
+	assert_eq(phase.get("retoggle_cooldown_s"), 0.25)
+
+
+func test_fingerprint_moves_when_traversal_value_changes() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var before: String = service.call("fingerprint")
+	var grind: Resource = service.get("catalog").get("grind")
+	assert_not_null(grind)
+	if grind == null:
+		return
+
+	grind.set("speed_mps", 11.5)
+	var after: String = service.call("fingerprint")
+
+	assert_ne(before, after, "grind values never reach the fingerprint")
+
+
+func test_loaded_paths_include_the_traversal_resources() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var paths: PackedStringArray = service.call("get_loaded_resource_paths")
+	var joined := "|".join(paths)
+
+	assert_true(joined.contains("grind.tres"), "debug HUD will not list grind.tres")
+	assert_true(joined.contains("wall_run.tres"))
+
+
+func test_catalog_is_unusable_without_traversal_resources() -> void:
+	var service: RefCounted = _new_service()
+	var catalog: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	catalog.set("grind", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
 
 
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:

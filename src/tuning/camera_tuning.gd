@@ -12,6 +12,10 @@ extends Resource
 @export var default_offset: Vector3
 @export var close_offset: Vector3
 @export var side_on_offset: Vector3
+@export var grind_offset: Vector3
+@export var wall_run_offset: Vector3
+@export var swing_offset: Vector3
+@export var wall_run_bank_degrees: float
 
 @export_category("Readability")
 @export var minimum_jump_depression_degrees: float

@@ -50,5 +50,10 @@ extends Resource
 @export var left_handed_layout: bool
 @export var control_scale: float
 
+@export_category("Phase Button")
+@export var phase_button_diameter_mm: float
+@export var phase_button_arc_offset_mm: float
+@export var phase_button_unlocked: bool
+
 @export_category("Platform Layout")
 @export var layout_metrics_poll_interval_s: float

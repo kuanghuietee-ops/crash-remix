@@ -1,6 +1,17 @@
 class_name TuningService
 extends RefCounted
 
+const SECTION_NAMES: Array[StringName] = [
+	&"move",
+	&"input",
+	&"camera",
+	&"depth",
+	&"wall_run",
+	&"grind",
+	&"swing",
+	&"phase",
+]
+
 var catalog: GameplayTuning
 var override_active: bool
 var override_rejected: bool
@@ -58,10 +69,12 @@ func fingerprint() -> String:
 		return ""
 
 	var canonical_lines := PackedStringArray()
-	_append_fingerprint_lines(canonical_lines, "camera", catalog.camera)
-	_append_fingerprint_lines(canonical_lines, "depth", catalog.depth)
-	_append_fingerprint_lines(canonical_lines, "input", catalog.input)
-	_append_fingerprint_lines(canonical_lines, "move", catalog.move)
+	for section_name: StringName in SECTION_NAMES:
+		_append_fingerprint_lines(
+			canonical_lines,
+			String(section_name),
+			catalog.get(section_name) as Resource
+		)
 	canonical_lines.sort()
 	return "\n".join(canonical_lines).sha256_text()
 
@@ -92,21 +105,11 @@ func save_override(override_path: String) -> Error:
 ## and finite runtime math. This is stronger than a serialization-only check.
 func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	var checked := candidate if candidate != null else catalog
-	if (
-		checked == null
-		or checked.move == null
-		or checked.input == null
-		or checked.camera == null
-		or checked.depth == null
-	):
+	if checked == null:
 		return false
-	for resource: Resource in [
-		checked.move,
-		checked.input,
-		checked.camera,
-		checked.depth,
-	]:
-		if not _resource_values_are_finite(resource):
+	for section_name: StringName in SECTION_NAMES:
+		var section := checked.get(section_name) as Resource
+		if section == null or not _resource_values_are_finite(section):
 			return false
 
 	var move := checked.move
@@ -154,6 +157,8 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or input.jump_button_diameter_mm <= 0.0
 		or input.spin_button_diameter_mm <= 0.0
 		or input.down_button_diameter_mm <= 0.0
+		or input.phase_button_diameter_mm <= 0.0
+		or input.phase_button_arc_offset_mm <= 0.0
 		or input.button_hit_radius_scale <= 0.0
 		or input.jump_catchall_width_ratio <= 0.0
 		or input.jump_catchall_width_ratio > 1.0
@@ -168,6 +173,50 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or camera.rail_bake_interval_m <= 0.0
 		or camera.rail_follow_speed_mps < 0.0
 		or camera.region_blend_s < 0.0
+	):
+		return false
+
+	var wall_run := checked.wall_run
+	if (
+		wall_run.attach_cone_degrees <= 0.0
+		or wall_run.run_speed_mps <= 0.0
+		or wall_run.maximum_duration_s <= 0.0
+		or wall_run.gravity_multiplier < 0.0
+		or wall_run.minimum_entry_speed_mps < 0.0
+		or wall_run.surface_stick_distance_m <= 0.0
+		or wall_run.detach_outward_speed_mps <= 0.0
+		or wall_run.detach_height_m <= 0.0
+	):
+		return false
+
+	var grind := checked.grind
+	if (
+		grind.attach_snap_m <= 0.0
+		or grind.speed_mps <= 0.0
+		or grind.acceleration_mps2 < 0.0
+		or grind.hop_lateral_distance_m <= 0.0
+		or grind.hop_height_m <= 0.0
+		or grind.exit_forward_speed_mps <= 0.0
+	):
+		return false
+
+	var swing := checked.swing
+	if (
+		swing.catch_radius_m <= 0.0
+		or swing.rope_length_m <= 0.0
+		or swing.gravity_scale <= 0.0
+		or swing.maximum_speed_mps <= 0.0
+		or swing.release_boost_mps < 0.0
+		or swing.damping_per_s < 0.0
+	):
+		return false
+
+	var phase := checked.phase
+	if (
+		phase.retoggle_cooldown_s < 0.0
+		or phase.ghost_opacity <= 0.0
+		or phase.ghost_opacity > 1.0
+		or phase.ghost_outline_width_m <= 0.0
 	):
 		return false
 
@@ -201,10 +250,8 @@ func reset_to_authored() -> Error:
 
 func _record_authored_paths(authored: GameplayTuning, base_catalog_path: String) -> void:
 	_loaded_resource_paths.append(base_catalog_path)
-	_append_resource_path(authored.move)
-	_append_resource_path(authored.input)
-	_append_resource_path(authored.camera)
-	_append_resource_path(authored.depth)
+	for section_name: StringName in SECTION_NAMES:
+		_append_resource_path(authored.get(section_name) as Resource)
 
 
 func _append_resource_path(resource: Resource) -> void:
@@ -233,19 +280,19 @@ func _resource_values_are_finite(resource: Resource) -> bool:
 
 func _clone_catalog(source: GameplayTuning) -> GameplayTuning:
 	var clone := GameplayTuning.new()
-	clone.move = MoveTuning.new()
-	clone.input = InputTuning.new()
-	clone.camera = CameraTuning.new()
-	clone.depth = DepthTuning.new()
-	_copy_catalog_values(source, clone)
+	for section_name: StringName in SECTION_NAMES:
+		var source_section := source.get(section_name) as Resource
+		if source_section != null:
+			clone.set(section_name, source_section.duplicate(true))
 	return clone
 
 
 func _copy_catalog_values(source: GameplayTuning, target: GameplayTuning) -> void:
-	_copy_exported_values(source.move, target.move)
-	_copy_exported_values(source.input, target.input)
-	_copy_exported_values(source.camera, target.camera)
-	_copy_exported_values(source.depth, target.depth)
+	for section_name: StringName in SECTION_NAMES:
+		_copy_exported_values(
+			source.get(section_name) as Resource,
+			target.get(section_name) as Resource
+		)
 
 
 func _copy_exported_values(source: Resource, target: Resource) -> void:

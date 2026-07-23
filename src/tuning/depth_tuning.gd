@@ -18,6 +18,7 @@ extends Resource
 @export var ring_surface_offset_m: float
 @export var landable_color: Color
 @export var hazard_color: Color
+@export var rail_predicted_color: Color
 
 @export_category("Optional Landing Assist")
 @export var landing_assist_last_fall_ratio: float
