@@ -1,0 +1,58 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/props/phase_object.tscn" id="1_phase_object"]
+
+[sub_resource type="StandardMaterial3D" id="Material_blue"]
+albedo_color = Color(0.12, 0.5, 1, 1)
+roughness = 0.78
+
+[sub_resource type="BoxMesh" id="Mesh_blue"]
+material = SubResource("Material_blue")
+size = Vector3(1, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_orange"]
+albedo_color = Color(1, 0.32, 0.08, 1)
+roughness = 0.78
+
+[sub_resource type="BoxMesh" id="Mesh_orange"]
+material = SubResource("Material_orange")
+size = Vector3(1, 1, 1)
+
+[node name="PhaseGauntlet" type="Node3D"]
+
+[node name="BlueSet" type="Node3D" parent="."]
+
+[node name="BlueLaunch" parent="BlueSet" groups=["phase_blue"] instance=ExtResource("1_phase_object")]
+position = Vector3(0, -0.3, 2)
+scale = Vector3(4, 0.6, 5)
+
+[node name="MeshInstance3D" parent="BlueSet/BlueLaunch" index="0"]
+mesh = SubResource("Mesh_blue")
+
+[node name="BlueTransfer" parent="BlueSet" groups=["phase_blue"] instance=ExtResource("1_phase_object")]
+position = Vector3(0, -0.3, -9)
+scale = Vector3(3, 0.6, 3)
+
+[node name="MeshInstance3D" parent="BlueSet/BlueTransfer" index="0"]
+mesh = SubResource("Mesh_blue")
+
+[node name="OrangeSet" type="Node3D" parent="."]
+
+[node name="MidAirToggleLanding" parent="OrangeSet" groups=["phase_orange"] instance=ExtResource("1_phase_object")]
+position = Vector3(0, -0.3, -4)
+scale = Vector3(3, 0.6, 3)
+
+[node name="MeshInstance3D" parent="OrangeSet/MidAirToggleLanding" index="0"]
+mesh = SubResource("Mesh_orange")
+
+[node name="OrangeFinish" parent="OrangeSet" groups=["phase_orange"] instance=ExtResource("1_phase_object")]
+position = Vector3(0, -0.3, -15)
+scale = Vector3(5, 0.6, 5)
+
+[node name="MeshInstance3D" parent="OrangeSet/OrangeFinish" index="0"]
+mesh = SubResource("Mesh_orange")
+
+[editable path="BlueSet/BlueLaunch"]
+[editable path="BlueSet/BlueTransfer"]
+[editable path="OrangeSet/MidAirToggleLanding"]
+[editable path="OrangeSet/OrangeFinish"]

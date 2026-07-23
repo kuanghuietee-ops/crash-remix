@@ -13,6 +13,10 @@ run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 boot_splash/show_image=false
 
+[autoload]
+
+PhaseState="*res://src/gameplay/phase/phase_state.gd"
+
 [display]
 
 ; Sensor-landscape only (spec §5.2), allowing either landscape rotation.

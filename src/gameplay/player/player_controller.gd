@@ -82,6 +82,15 @@ func advance_logic(
 		return null
 
 	set_corridor_forward(forward)
+	if (
+		_intents.consume_pressed(
+			InputIntent.ACTION_PHASE,
+			now_s,
+			_input_tuning.action_buffer_s
+		)
+		!= null
+	):
+		PhaseState.request_toggle(now_s)
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
 	var decision: PlayerFrameDecisionType = _state_machine.step(
 		now_s,

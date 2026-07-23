@@ -22,6 +22,7 @@ func _ready() -> void:
 		push_error("Phase 0 tuning failed to load: " + error_string(load_error))
 		return
 	var catalog := tuning_service.catalog
+	PhaseState.configure(catalog.phase)
 	var router := get_node("Input/InputRouter")
 	var gamepad := get_node("Input/GamepadInput")
 	var touch := get_node("UI/TouchControls")
@@ -77,6 +78,7 @@ func _ready() -> void:
 
 func _on_tuning_changed(_fingerprint: String) -> void:
 	var catalog := tuning_service.catalog
+	PhaseState.configure(catalog.phase)
 	var router := get_node("Input/InputRouter")
 	var gamepad := get_node("Input/GamepadInput")
 	var touch := get_node("UI/TouchControls")

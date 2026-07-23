@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_phase"]
+albedo_color = Color(0.18, 0.55, 0.95, 1)
+roughness = 0.82
+
+[sub_resource type="BoxMesh" id="Mesh_phase"]
+material = SubResource("Material_phase")
+size = Vector3(1, 1, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_phase"]
+size = Vector3(1, 1, 1)
+
+[node name="PhaseObject" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 1
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_phase")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_phase")
