@@ -133,11 +133,7 @@ func update_camera(delta_s: float) -> void:
 			camera_up = -camera_up
 		if camera_up.is_zero_approx():
 			camera_up = Vector3.UP
-		camera_origin = _context_vector(
-			context,
-			&"position",
-			rail_position
-		)
+		camera_origin = _player.global_position
 	elif basis_mode == CameraRegionType.MODE_SWING:
 		camera_forward = context_tangent.normalized()
 		camera_right = context_normal.slide(camera_forward).normalized()
@@ -173,12 +169,21 @@ func update_camera(delta_s: float) -> void:
 		_blend_elapsed_s,
 		_camera_tuning
 	)
-	var desired_position := (
-		camera_origin
-		+ camera_right * _current_offset.x
-		+ camera_up * _current_offset.y
-		- camera_forward * _current_offset.z
-	)
+	var desired_position: Vector3
+	if basis_mode == CameraRegionType.MODE_WALL_RUN:
+		desired_position = (
+			camera_origin
+			+ camera_right * _current_offset.z
+			+ camera_up * _current_offset.y
+			- camera_forward * _current_offset.x
+		)
+	else:
+		desired_position = (
+			camera_origin
+			+ camera_right * _current_offset.x
+			+ camera_up * _current_offset.y
+			- camera_forward * _current_offset.z
+		)
 	if _initialized:
 		_camera.global_position = _camera.global_position.move_toward(
 			desired_position,

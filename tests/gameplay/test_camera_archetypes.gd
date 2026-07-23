@@ -15,11 +15,17 @@ const BLOB_SHADOW_SCRIPT_PATH := (
 const PLAYER_SCRIPT_PATH := (
 	"res://src/gameplay/player/player_controller.gd"
 )
+const PLAYER_SCENE_PATH := "res://scenes/player/player.tscn"
+const WALL_RUN_SEGMENT_PATH := (
+	"res://scenes/segments/seg_wall_run_canyon.tscn"
+)
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
 const FRAME_DELTA_S := 1.0 / 60.0
 const SCREEN_TOLERANCE := 0.02
 const BASIS_TOLERANCE := 0.0001
+const NONZERO_ATTACH_DISTANCE_M := 4.0
 
+var _catalog: GameplayTuning
 var _camera: CameraTuning
 var _depth: DepthTuning
 
@@ -51,6 +57,7 @@ func before_all() -> void:
 	var catalog: GameplayTuning = load(TUNING_PATH)
 	assert_not_null(catalog)
 	if catalog != null:
+		_catalog = catalog
 		_camera = catalog.camera
 		_depth = catalog.depth
 
@@ -127,6 +134,101 @@ func test_wall_run_camera_stays_upright_on_both_wall_sides() -> void:
 			basis.y.dot(Vector3.UP),
 			0.0,
 			"alternating canyon walls must not invert the camera"
+		)
+
+
+func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
+	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
+	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
+	var controller_script := _load_script_with_method(
+		CAMERA_CONTROLLER_SCRIPT_PATH,
+		&"update_camera"
+	)
+	assert_not_null(segment_packed)
+	assert_not_null(player_packed)
+	if (
+		segment_packed == null
+		or player_packed == null
+		or controller_script == null
+	):
+		return
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var segment := segment_packed.instantiate() as Node3D
+	root.add_child(segment)
+	await wait_physics_frames(2)
+	var region := segment.get_node("WallRunCameraRegion") as Area3D
+
+	for strip_name: String in ["LeftStrip", "RightStrip"]:
+		var strip := segment.get_node(strip_name) as Path3D
+		var player := player_packed.instantiate() as CharacterBody3D
+		root.add_child(player)
+		var buffer := InputIntentBuffer.new()
+		player.call(
+			"configure",
+			_catalog.move,
+			_catalog.input,
+			_catalog.depth,
+			_catalog.wall_run,
+			_catalog.grind,
+			_catalog.swing,
+			buffer
+		)
+		var sample: TraversalSample = strip.call(
+			"sample_at_distance",
+			NONZERO_ATTACH_DISTANCE_M
+		)
+		assert_not_null(sample)
+		if sample == null:
+			continue
+		assert_gt(sample.distance_along_m, 0.0)
+		player.global_position = (
+			sample.position
+			+ sample.normal
+			* _catalog.wall_run.surface_stick_distance_m
+		)
+		player.velocity = sample.tangent * 6.0
+		assert_true(
+			player.call(
+				"try_wall_attach",
+				strip,
+				10.0 + float(root.get_child_count())
+			)
+		)
+		var rail := Path3D.new()
+		var curve := Curve3D.new()
+		curve.add_point(Vector3(0.0, 0.0, 8.0))
+		curve.add_point(Vector3(0.0, 0.0, -40.0))
+		rail.curve = curve
+		root.add_child(rail)
+		var controller: Node3D = controller_script.new()
+		root.add_child(controller)
+		var camera := Camera3D.new()
+		controller.add_child(camera)
+		controller.call(
+			"configure",
+			player,
+			rail,
+			camera,
+			_camera,
+			[region]
+		)
+		controller.call("_on_region_body_entered", player, region)
+		controller.call("update_camera", 1.0)
+		var query := PhysicsRayQueryParameters3D.create(
+			camera.global_position,
+			player.global_position
+		)
+		query.exclude = [player.get_rid()]
+		query.collide_with_areas = false
+		var hit: Dictionary = (
+			root.get_world_3d().direct_space_state.intersect_ray(query)
+		)
+
+		assert_true(
+			hit.is_empty(),
+			"%s camera sightline is blocked by %s"
+			% [strip_name, hit.get("collider")]
 		)
 
 

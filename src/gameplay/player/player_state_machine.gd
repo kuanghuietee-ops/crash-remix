@@ -65,7 +65,6 @@ func step(
 		intents,
 		move_tuning
 	)
-	_expire_wall_run_if_needed(now_s)
 
 	if state == STATE_GRIND:
 		_process_grind_jump(
@@ -91,6 +90,7 @@ func step(
 			_process_jump(now_s, false, intents, input_tuning)
 			_process_air_down(now_s, intents, input_tuning)
 		_process_spin(now_s, intents, move_tuning, input_tuning, decision)
+	_expire_wall_run_if_needed(now_s)
 
 	decision.impulse = _pending_impulse
 	_pending_impulse = PlayerFrameDecision.IMPULSE_NONE
@@ -179,6 +179,7 @@ func _expire_wall_run_if_needed(now_s: float) -> void:
 		and _wall_run_maximum_duration_s >= 0.0
 		and now_s - _state_entered_s >= _wall_run_maximum_duration_s
 	):
+		_pending_impulse = PlayerFrameDecision.IMPULSE_WALL_DETACH
 		enter_airborne(now_s)
 
 

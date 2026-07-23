@@ -6,6 +6,11 @@ const WALL_RUN_SEGMENT_PATH := "res://scenes/segments/seg_wall_run_canyon.tscn"
 const FSM_SCRIPT_PATH := "res://src/gameplay/player/player_state_machine.gd"
 const BUFFER_SCRIPT_PATH := "res://src/gameplay/input/input_intent_buffer.gd"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
+const NONZERO_ATTACH_DISTANCE_M := 4.0
+const TEST_TOLERANCE := 0.0001
+const LANDING_PAD_MIN_Z := -32.0
+const LANDING_PAD_MAX_Z := -24.0
+const MAX_LANDING_FRAMES := 300
 
 var _catalog: GameplayTuning
 var _move: MoveTuning
@@ -216,6 +221,113 @@ func test_wall_run_expires_at_the_exact_maximum_duration() -> void:
 	)
 
 
+func test_expiry_frame_jump_detaches_from_a_nonzero_strip_distance() -> void:
+	var strip: Path3D = _new_strip(
+		&"ExpiryJumpStrip",
+		Vector3(0.0, 1.0, 0.0),
+		Vector3(0.0, 0.0, -12.0),
+		Vector3.RIGHT
+	)
+	var setup := _new_controller_with_strip(strip)
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var entered_s := 20.0
+	var sample := _attach_at_distance(
+		player,
+		strip,
+		NONZERO_ATTACH_DISTANCE_M,
+		entered_s
+	)
+	if sample == null:
+		return
+	var expiry_s := entered_s + _wall_run.maximum_duration_s
+	_press(
+		buffer,
+		&"jump",
+		expiry_s - _input.jump_buffer_s * 0.5
+	)
+
+	var decision: RefCounted = player.call(
+		"advance_logic",
+		expiry_s,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(decision.get("impulse"), &"wall_detach")
+	assert_ne(decision.get("impulse"), &"double_jump")
+	assert_eq(decision.get("state"), &"airborne")
+
+
+func test_strip_end_exits_with_tuned_velocity_from_a_nonzero_attach() -> void:
+	var strip: Path3D = _new_strip(
+		&"EndStrip",
+		Vector3(0.0, 1.0, 0.0),
+		Vector3(0.0, 0.0, -12.0),
+		Vector3.RIGHT
+	)
+	var setup := _new_controller_with_strip(strip)
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var entered_s := 30.0
+	var attached_sample := _attach_at_distance(
+		player,
+		strip,
+		NONZERO_ATTACH_DISTANCE_M,
+		entered_s
+	)
+	if attached_sample == null:
+		return
+	var near_end_sample: TraversalSample = strip.call(
+		"sample_at_distance",
+		strip.call("length_m") - _wall_run.run_speed_mps * 0.05
+	)
+	assert_not_null(near_end_sample)
+	if near_end_sample == null:
+		return
+	player.global_position = (
+		near_end_sample.position
+		+ near_end_sample.normal * _wall_run.surface_stick_distance_m
+	)
+
+	var decision: RefCounted = player.call(
+		"advance_logic",
+		entered_s + 0.1,
+		false,
+		0.1,
+		Vector3.FORWARD
+	)
+
+	assert_eq(
+		decision.get("state"),
+		&"airborne",
+		"the run must end at the authored strip end, not its infinite extension"
+	)
+	assert_null(player.get("_active_wall_strip"))
+	assert_almost_eq(
+		player.velocity.dot(near_end_sample.tangent),
+		_wall_run.run_speed_mps,
+		TEST_TOLERANCE
+	)
+	assert_almost_eq(
+		player.velocity.dot(near_end_sample.normal),
+		_wall_run.detach_outward_speed_mps,
+		TEST_TOLERANCE
+	)
+	assert_almost_eq(
+		player.velocity.y,
+		JumpKinematics.upward_speed_for_height(
+			_wall_run.detach_height_m,
+			_move
+		),
+		TEST_TOLERANCE
+	)
+
+
 func test_buffered_jump_detaches_on_the_tuned_outward_arc() -> void:
 	var strip: Path3D = _new_strip(
 		&"DetachStrip",
@@ -380,13 +492,14 @@ func test_timeout_clears_the_active_strip_and_restores_grounded_motion() -> void
 		assert_true(false, "controller must expose deterministic wall attach")
 		return
 	var entered_s := 7.0
-	player.global_position = Vector3(
-		_wall_run.surface_stick_distance_m,
-		1.0,
-		0.0
+	var sample := _attach_at_distance(
+		player,
+		strip,
+		NONZERO_ATTACH_DISTANCE_M,
+		entered_s
 	)
-	player.velocity = Vector3.FORWARD * 6.0
-	assert_true(player.call("try_wall_attach", strip, entered_s))
+	if sample == null:
+		return
 
 	var decision: RefCounted = player.call(
 		"advance_logic",
@@ -397,11 +510,82 @@ func test_timeout_clears_the_active_strip_and_restores_grounded_motion() -> void
 	)
 
 	assert_eq(decision.get("state"), &"airborne")
+	assert_eq(decision.get("impulse"), &"wall_detach")
 	assert_null(player.get("_active_wall_strip"))
 	assert_eq(player.get("_wall_attach_blocked"), strip)
+	assert_almost_eq(
+		player.velocity.dot(sample.tangent),
+		_wall_run.run_speed_mps,
+		TEST_TOLERANCE
+	)
+	assert_almost_eq(
+		player.velocity.dot(sample.normal),
+		_wall_run.detach_outward_speed_mps,
+		TEST_TOLERANCE
+	)
+	assert_almost_eq(
+		player.velocity.y,
+		JumpKinematics.upward_speed_for_height(
+			_wall_run.detach_height_m,
+			_move
+		),
+		TEST_TOLERANCE
+	)
 	assert_eq(
 		player.motion_mode,
 		CharacterBody3D.MOTION_MODE_GROUNDED
+	)
+
+
+func test_mid_strip_attach_reaches_the_authored_landing_pad() -> void:
+	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
+	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
+	assert_not_null(segment_packed)
+	assert_not_null(player_packed)
+	if segment_packed == null or player_packed == null:
+		return
+	var segment := segment_packed.instantiate() as Node3D
+	var player := player_packed.instantiate() as CharacterBody3D
+	add_child_autofree(segment)
+	add_child_autofree(player)
+	var buffer := InputIntentBuffer.new()
+	player.call(
+		"configure",
+		_catalog.move,
+		_catalog.input,
+		_catalog.depth,
+		_catalog.wall_run,
+		_catalog.grind,
+		_catalog.swing,
+		buffer
+	)
+	var strip := segment.get_node("LeftStrip") as Path3D
+	var entered_s := MonotonicClock.now_s()
+	var sample := _attach_at_distance(
+		player,
+		strip,
+		NONZERO_ATTACH_DISTANCE_M,
+		entered_s
+	)
+	if sample == null:
+		return
+	var reached_pad := false
+
+	for _frame: int in range(MAX_LANDING_FRAMES):
+		await wait_physics_frames(1)
+		if (
+			player.is_on_floor()
+			and player.global_position.z >= LANDING_PAD_MIN_Z
+			and player.global_position.z <= LANDING_PAD_MAX_Z
+		):
+			reached_pad = true
+			break
+		if player.call("is_respawning"):
+			break
+
+	assert_true(
+		reached_pad,
+		"a real player attaching 4 m along the strip must reach LandingPad"
 	)
 
 
@@ -516,6 +700,33 @@ func _press(
 	timestamp_s: float
 ) -> void:
 	buffer.push(InputIntent.button(action, true, timestamp_s, &"test"))
+
+
+func _attach_at_distance(
+	player: CharacterBody3D,
+	strip: Path3D,
+	distance_along_m: float,
+	now_s: float
+) -> TraversalSample:
+	var sample: TraversalSample = strip.call(
+		"sample_at_distance",
+		distance_along_m
+	)
+	assert_not_null(sample)
+	if sample == null:
+		return null
+	assert_gt(
+		sample.distance_along_m,
+		0.0,
+		"fresh-eyes wall-run coverage must never attach at strip distance 0"
+	)
+	player.global_position = (
+		sample.position
+		+ sample.normal * _wall_run.surface_stick_distance_m
+	)
+	player.velocity = sample.tangent * 6.0
+	assert_true(player.call("try_wall_attach", strip, now_s))
+	return sample
 
 
 func _new_strip(

@@ -737,6 +737,26 @@ func _advance_wall_run_motion(delta_s: float, now_s: float) -> void:
 		_apply_motion_mode(_state_machine.state)
 		return
 	_active_wall_sample = sample
+	var strip_length_m := _active_wall_strip.length_m()
+	var step_distance_m := (
+		_wall_run_tuning.run_speed_mps * maxf(delta_s, 0.0)
+	)
+	if sample.distance_along_m + step_distance_m >= strip_length_m:
+		var end_sample: TraversalSample = (
+			_active_wall_strip.sample_at_distance(strip_length_m)
+		)
+		if end_sample != null:
+			_active_wall_sample = end_sample
+			global_position = (
+				end_sample.position
+				+ end_sample.normal
+				* _wall_run_tuning.surface_stick_distance_m
+			)
+			reset_physics_interpolation()
+		_state_machine.enter_airborne(now_s)
+		_apply_wall_detach()
+		_apply_motion_mode(_state_machine.state)
+		return
 	var run_direction := _horizontal_direction(sample.tangent)
 	velocity.x = run_direction.x * _wall_run_tuning.run_speed_mps
 	velocity.z = run_direction.z * _wall_run_tuning.run_speed_mps
