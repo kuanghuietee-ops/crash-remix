@@ -11,6 +11,17 @@ const SECTION_NAMES: Array[StringName] = [
 	&"swing",
 	&"phase",
 ]
+# ResourceSaver omits default-valued fields, so migrate version-defining
+# cohorts atomically instead of treating every zero as a missing value.
+const LEGACY_FIELD_GROUPS_BY_SECTION := {
+	&"input": [
+		[
+			&"phase_button_diameter_mm",
+			&"phase_button_arc_offset_mm",
+			&"phase_button_unlocked",
+		],
+	],
+}
 
 var catalog: GameplayTuning
 var override_active: bool
@@ -300,11 +311,49 @@ func _backfill_missing_sections(
 	authored: GameplayTuning
 ) -> void:
 	for section_name: StringName in SECTION_NAMES:
-		if target.get(section_name) != null:
-			continue
 		var authored_section := authored.get(section_name) as Resource
-		if authored_section != null:
+		if authored_section == null:
+			continue
+		var target_section := target.get(section_name) as Resource
+		if target_section == null:
 			target.set(section_name, authored_section.duplicate(true))
+			continue
+		_backfill_legacy_field_groups(
+			section_name,
+			target_section,
+			authored_section
+		)
+
+
+func _backfill_legacy_field_groups(
+	section_name: StringName,
+	target: Resource,
+	authored: Resource
+) -> void:
+	if not LEGACY_FIELD_GROUPS_BY_SECTION.has(section_name):
+		return
+	var target_script := target.get_script() as Script
+	if target_script == null:
+		return
+	var defaults := target_script.new() as Resource
+	if defaults == null:
+		return
+	var target_properties := _exported_property_names(target)
+	for field_group: Array in LEGACY_FIELD_GROUPS_BY_SECTION[section_name]:
+		var group_is_legacy := true
+		for property_name: StringName in field_group:
+			if (
+				not target_properties.has(property_name)
+				or target.get(property_name) != defaults.get(property_name)
+			):
+				group_is_legacy = false
+				break
+		if not group_is_legacy:
+			continue
+		for property_name: StringName in field_group:
+			var authored_value: Variant = authored.get(property_name)
+			if authored_value != defaults.get(property_name):
+				target.set(property_name, authored_value)
 
 
 func _copy_exported_values(source: Resource, target: Resource) -> void:

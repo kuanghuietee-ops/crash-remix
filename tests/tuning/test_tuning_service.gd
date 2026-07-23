@@ -3,6 +3,9 @@ extends GutTest
 const BASE_CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const SERVICE_SCRIPT_PATH := "res://src/tuning/tuning_service.gd"
 const TEST_OVERRIDE_PATH := "user://test_sandbox/tuning_override.tres"
+const PHASE0_INPUT_OVERRIDE_PATH := (
+	"res://tests/fixtures/phase0_input_override_all_sections.tres"
+)
 
 
 func before_each() -> void:
@@ -166,6 +169,48 @@ func test_old_shape_override_is_migrated_not_rejected() -> void:
 	assert_not_null(service.get("catalog").get("grind"))
 	assert_not_null(service.get("catalog").get("swing"))
 	assert_not_null(service.get("catalog").get("phase"))
+
+
+func test_phase_zero_input_fields_backfill_without_losing_operator_values() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			PHASE0_INPUT_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(
+		service.get("override_rejected"),
+		"an override with a Phase-0-shaped input section must migrate"
+	)
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	assert_eq(
+		migrated.input.fallback_dpi,
+		177.0,
+		"migration must preserve the operator's existing field edits"
+	)
+	assert_eq(
+		migrated.input.phase_button_diameter_mm,
+		authored.input.phase_button_diameter_mm
+	)
+	assert_eq(
+		migrated.input.phase_button_arc_offset_mm,
+		authored.input.phase_button_arc_offset_mm
+	)
+	assert_eq(
+		migrated.input.phase_button_unlocked,
+		authored.input.phase_button_unlocked
+	)
 
 
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:
