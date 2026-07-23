@@ -10,6 +10,7 @@ const IMPULSE_BODY_SLAM := &"body_slam"
 const IMPULSE_RAIL_HOP := &"rail_hop"
 const IMPULSE_RAIL_EXIT := &"rail_exit"
 const IMPULSE_WALL_DETACH := &"wall_detach"
+const IMPULSE_SWING_RELEASE := &"swing_release"
 
 var impulse := IMPULSE_NONE
 var previous_state := &""

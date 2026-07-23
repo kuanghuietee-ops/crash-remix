@@ -21,6 +21,12 @@ const TraversalRailType := preload(
 const WallRunStripType := preload(
 	"res://src/gameplay/traversal/wall_run_strip.gd"
 )
+const SwingPendulumType := preload(
+	"res://src/gameplay/traversal/swing_pendulum.gd"
+)
+const SwingAnchorType := preload(
+	"res://src/gameplay/traversal/swing_anchor.gd"
+)
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -54,6 +60,10 @@ var _grind_speed_mps: float
 var _active_wall_strip: WallRunStripType
 var _wall_attach_blocked: WallRunStripType
 var _active_wall_sample: TraversalSample
+var _active_swing_anchor: SwingAnchorType
+var _swing_attach_blocked: SwingAnchorType
+var _swing_angle_rad: float
+var _swing_angular_velocity: float
 
 
 func _ready() -> void:
@@ -84,6 +94,8 @@ func configure(
 	_wall_run_tuning = wall_run_tuning
 	_grind_tuning = grind_tuning
 	_swing_tuning = swing_tuning
+	if is_instance_valid(_active_swing_anchor):
+		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
 	_active_jump_tap_height_m = _move_tuning.jump_tap_height_m
 	floor_snap_length = _move_tuning.floor_snap_length_m
@@ -119,6 +131,7 @@ func advance_logic(
 		_rail_attach_blocked = null
 		_rail_hop_target = null
 		_wall_attach_blocked = null
+		_swing_attach_blocked = null
 	_update_rail_neighbour_context()
 	if (
 		_intents.consume_pressed(
@@ -158,6 +171,8 @@ func advance_logic(
 			_apply_rail_exit()
 		elif decision.impulse == PlayerFrameDecisionType.IMPULSE_WALL_DETACH:
 			_apply_wall_detach()
+		elif decision.impulse == PlayerFrameDecisionType.IMPULSE_SWING_RELEASE:
+			_apply_swing_release()
 		else:
 			velocity = PlayerMotorType.impulse_velocity(
 				decision.impulse,
@@ -184,6 +199,8 @@ func advance_logic(
 	elif decision.state == PlayerStateMachineType.STATE_WALL_RUN:
 		_advance_wall_run_motion(delta_s, now_s)
 		decision.state = _state_machine.state
+	elif decision.state == PlayerStateMachineType.STATE_SWING:
+		_advance_swing_motion(delta_s)
 	_track_fall_apex(grounded)
 	_apply_character_dimensions(decision.state)
 	_apply_spin_visual(delta_s)
@@ -332,6 +349,7 @@ func respawn() -> void:
 	_respawn_due_s = -1.0
 	_clear_rail_state()
 	_clear_wall_run_state()
+	_clear_swing_state()
 	_state_machine = PlayerStateMachineType.new()
 	_last_state = &""
 	_last_spin_active = false
@@ -373,6 +391,7 @@ func _physics_process(delta_s: float) -> void:
 		return
 	_try_automatic_rail_attach(now_s)
 	_try_automatic_wall_attach(now_s)
+	_try_automatic_swing_catch(now_s)
 	advance_logic(now_s, is_on_floor(), delta_s, _corridor_forward)
 	if (
 		not PlayerMotorType.uses_spline_motion(_state_machine.state)
@@ -384,6 +403,7 @@ func _physics_process(delta_s: float) -> void:
 	move_and_slide()
 	_reproject_active_rail()
 	_reproject_active_wall()
+	_reproject_active_swing()
 	if global_position.y < _move_tuning.respawn_floor_y_m:
 		request_respawn(now_s)
 
@@ -521,6 +541,67 @@ func _try_automatic_wall_attach(now_s: float) -> void:
 			return
 
 
+func try_swing_catch(
+	anchor: SwingAnchorType,
+	now_s: float
+) -> bool:
+	if (
+		_swing_tuning == null
+		or _swing_tuning.rope_length_m <= 0.0
+		or not is_inside_tree()
+		or not is_instance_valid(anchor)
+		or anchor == _swing_attach_blocked
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return false
+	anchor.refresh_tuning(_swing_tuning)
+	if not anchor.can_catch(global_position, _swing_tuning):
+		return false
+	var angle_rad := anchor.angle_for(global_position)
+	var maximum_angular_speed := (
+		_swing_tuning.maximum_speed_mps
+		/ _swing_tuning.rope_length_m
+	)
+	var angular_velocity := clampf(
+		anchor.angular_velocity_for(
+			velocity,
+			angle_rad,
+			_swing_tuning
+		),
+		-maximum_angular_speed,
+		maximum_angular_speed
+	)
+	_active_swing_anchor = anchor
+	_swing_attach_blocked = null
+	_swing_angle_rad = angle_rad
+	_swing_angular_velocity = angular_velocity
+	_state_machine.enter_swing(now_s)
+	global_position = anchor.position_for(angle_rad, _swing_tuning)
+	velocity = Vector3.ZERO
+	anchor.set_rope_angle(angle_rad)
+	_apply_motion_mode(_state_machine.state)
+	reset_physics_interpolation()
+	return true
+
+
+func _try_automatic_swing_catch(now_s: float) -> void:
+	if (
+		_swing_tuning == null
+		or is_on_floor()
+		or is_instance_valid(_rail_hop_target)
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return
+	for candidate: Node in get_tree().get_nodes_in_group(
+		SwingAnchorType.ANCHOR_GROUP
+	):
+		if (
+			candidate is SwingAnchorType
+			and try_swing_catch(candidate as SwingAnchorType, now_s)
+		):
+			return
+
+
 func _update_rail_neighbour_context() -> void:
 	_traversal_neighbour_available = false
 	if not is_instance_valid(_active_rail) or _intents == null:
@@ -634,6 +715,52 @@ func _finish_wall_run() -> void:
 	_active_wall_sample = null
 
 
+func _advance_swing_motion(delta_s: float) -> void:
+	if (
+		not is_instance_valid(_active_swing_anchor)
+		or _swing_tuning == null
+		or _move_tuning == null
+		or delta_s <= 0.0
+	):
+		return
+	_active_swing_anchor.refresh_tuning(_swing_tuning)
+	var next_state := SwingPendulumType.step(
+		_swing_angle_rad,
+		_swing_angular_velocity,
+		delta_s,
+		_swing_tuning,
+		_move_tuning.gravity_mps2
+	)
+	_swing_angle_rad = next_state["angle_rad"]
+	_swing_angular_velocity = next_state["angular_velocity"]
+	var target_position := _active_swing_anchor.position_for(
+		_swing_angle_rad,
+		_swing_tuning
+	)
+	velocity = (target_position - global_position) / delta_s
+	_active_swing_anchor.set_rope_angle(_swing_angle_rad)
+
+
+func _apply_swing_release() -> void:
+	if (
+		not is_instance_valid(_active_swing_anchor)
+		or _swing_tuning == null
+	):
+		return
+	var departed_anchor := _active_swing_anchor
+	var local_velocity := SwingPendulumType.release_velocity(
+		_swing_angle_rad,
+		_swing_angular_velocity,
+		_swing_tuning
+	)
+	velocity = departed_anchor.world_velocity(local_velocity)
+	departed_anchor.reset_rope_visual()
+	_swing_attach_blocked = departed_anchor
+	_active_swing_anchor = null
+	_swing_angle_rad = 0.0
+	_swing_angular_velocity = 0.0
+
+
 func _apply_rail_hop() -> void:
 	if not is_instance_valid(_active_rail):
 		return
@@ -736,6 +863,18 @@ func _reproject_active_wall() -> void:
 	_active_wall_sample = sample
 
 
+func _reproject_active_swing() -> void:
+	if (
+		_state_machine.state == PlayerStateMachineType.STATE_SWING
+		and is_instance_valid(_active_swing_anchor)
+		and _swing_tuning != null
+	):
+		global_position = _active_swing_anchor.position_for(
+			_swing_angle_rad,
+			_swing_tuning
+		)
+
+
 func _apply_grind_bank() -> void:
 	if _visual_root != null and _grind_tuning != null:
 		_visual_root.rotation.z = deg_to_rad(_grind_tuning.bank_degrees)
@@ -760,6 +899,15 @@ func _clear_wall_run_state() -> void:
 	_active_wall_strip = null
 	_wall_attach_blocked = null
 	_active_wall_sample = null
+
+
+func _clear_swing_state() -> void:
+	if is_instance_valid(_active_swing_anchor):
+		_active_swing_anchor.reset_rope_visual()
+	_active_swing_anchor = null
+	_swing_attach_blocked = null
+	_swing_angle_rad = 0.0
+	_swing_angular_velocity = 0.0
 
 
 func _lateral_direction(input_x: float) -> int:

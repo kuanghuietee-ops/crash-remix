@@ -76,6 +76,8 @@ func step(
 		)
 	elif state == STATE_WALL_RUN:
 		_process_wall_run_jump(now_s, intents, input_tuning)
+	elif state == STATE_SWING:
+		_process_swing_jump(now_s, intents, input_tuning)
 	elif state != STATE_BODY_SLAM and state != STATE_SLAM_RECOVERY:
 		if effective_grounded:
 			_process_ground_actions(
@@ -114,6 +116,10 @@ func enter_wall_run(
 ) -> void:
 	_wall_run_maximum_duration_s = maxf(maximum_duration_s, 0.0)
 	_set_state(STATE_WALL_RUN, now_s)
+
+
+func enter_swing(now_s: float) -> void:
+	_set_state(STATE_SWING, now_s)
 
 
 func enter_airborne(now_s: float) -> void:
@@ -174,6 +180,26 @@ func _expire_wall_run_if_needed(now_s: float) -> void:
 		and now_s - _state_entered_s >= _wall_run_maximum_duration_s
 	):
 		enter_airborne(now_s)
+
+
+func _process_swing_jump(
+	now_s: float,
+	intents: InputIntentBuffer,
+	input_tuning: InputTuning
+) -> void:
+	if not intents.has_buffered_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	):
+		return
+	intents.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	)
+	_pending_impulse = PlayerFrameDecision.IMPULSE_SWING_RELEASE
+	enter_airborne(now_s)
 
 
 func _process_ground_actions(

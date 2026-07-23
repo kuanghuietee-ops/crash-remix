@@ -1,0 +1,140 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/swing_anchor.gd" id="1_anchor"]
+[ext_resource type="Resource" path="res://data/tuning/swing.tres" id="2_swing"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="3_region"]
+
+[sub_resource type="StandardMaterial3D" id="Material_rope"]
+albedo_color = Color(0.85, 0.62, 0.2, 1)
+roughness = 0.86
+
+[sub_resource type="CylinderMesh" id="Mesh_rope"]
+material = SubResource("Material_rope")
+top_radius = 0.04
+bottom_radius = 0.04
+height = 1.0
+radial_segments = 8
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Material_anchor"]
+albedo_color = Color(1, 0.38, 0.12, 1)
+roughness = 0.72
+
+[sub_resource type="SphereMesh" id="Mesh_anchor"]
+material = SubResource("Material_anchor")
+radius = 0.24
+height = 0.48
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Material_pad"]
+albedo_color = Color(0.3, 0.34, 0.39, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_pad"]
+material = SubResource("Material_pad")
+size = Vector3(8, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_pad"]
+size = Vector3(8, 1, 8)
+
+[sub_resource type="StandardMaterial3D" id="Material_pit"]
+albedo_color = Color(0.08, 0.09, 0.12, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="Mesh_pit"]
+material = SubResource("Material_pit")
+size = Vector3(10, 1, 22)
+
+[sub_resource type="BoxShape3D" id="Shape_pit"]
+size = Vector3(10, 1, 22)
+
+[sub_resource type="BoxShape3D" id="Shape_swing_region"]
+size = Vector3(14, 14, 26)
+
+[node name="SwingChainSegment" type="Node3D"]
+
+[node name="ApproachPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ApproachPad"]
+mesh = SubResource("Mesh_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ApproachPad"]
+shape = SubResource("Shape_pad")
+
+[node name="PitFloor" type="StaticBody3D" parent="."]
+position = Vector3(0, -9.5, -4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PitFloor"]
+mesh = SubResource("Mesh_pit")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PitFloor"]
+shape = SubResource("Shape_pit")
+
+[node name="FirstAnchor" type="Node3D" parent="."]
+position = Vector3(0, 6, -2)
+script = ExtResource("1_anchor")
+swing_tuning = ExtResource("2_swing")
+
+[node name="PivotMesh" type="MeshInstance3D" parent="FirstAnchor"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="RopePivot" type="Node3D" parent="FirstAnchor"]
+
+[node name="RopeMesh" type="MeshInstance3D" parent="FirstAnchor/RopePivot"]
+mesh = SubResource("Mesh_rope")
+
+[node name="Handle" type="MeshInstance3D" parent="FirstAnchor/RopePivot"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="SecondAnchor" type="Node3D" parent="."]
+position = Vector3(0, 6, -6)
+script = ExtResource("1_anchor")
+swing_tuning = ExtResource("2_swing")
+
+[node name="PivotMesh" type="MeshInstance3D" parent="SecondAnchor"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="RopePivot" type="Node3D" parent="SecondAnchor"]
+
+[node name="RopeMesh" type="MeshInstance3D" parent="SecondAnchor/RopePivot"]
+mesh = SubResource("Mesh_rope")
+
+[node name="Handle" type="MeshInstance3D" parent="SecondAnchor/RopePivot"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="ThirdAnchor" type="Node3D" parent="."]
+position = Vector3(0, 6, -10)
+script = ExtResource("1_anchor")
+swing_tuning = ExtResource("2_swing")
+
+[node name="PivotMesh" type="MeshInstance3D" parent="ThirdAnchor"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="RopePivot" type="Node3D" parent="ThirdAnchor"]
+
+[node name="RopeMesh" type="MeshInstance3D" parent="ThirdAnchor/RopePivot"]
+mesh = SubResource("Mesh_rope")
+
+[node name="Handle" type="MeshInstance3D" parent="ThirdAnchor/RopePivot"]
+mesh = SubResource("Mesh_anchor")
+
+[node name="LandingPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, -16)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LandingPad"]
+mesh = SubResource("Mesh_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LandingPad"]
+shape = SubResource("Shape_pad")
+
+[node name="SwingCameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -5)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("3_region")
+camera_mode = &"swing"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SwingCameraRegion"]
+shape = SubResource("Shape_swing_region")
