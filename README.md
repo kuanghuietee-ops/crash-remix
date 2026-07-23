@@ -65,9 +65,9 @@ does not depend on a per-machine Asset Library installation. The repository-owne
 pre-commit hook runs the numeric lint, the Phase 1 content vocabulary tripwire, and
 the traversal-authoring lint before Python tests.
 `lint_traversal_authoring.py` parses the `.tscn` authoring data without launching
-Godot: wall strips must be enclosed by wall-run camera regions, their tangents must
-remain horizontal and upright on screen, detach targets must enter the camera
-frustum, and rails need grind-region coverage plus symmetric neighbour links.
+Godot: wall strips must be enclosed by wall-run camera regions, their cameras must
+keep an upright horizon, detach targets must enter the camera frustum, and rails
+need grind-region coverage plus symmetric neighbour links.
 `verify_exported_tuning.sh` separately exports and boots the packed runtime,
 catching resource-loader differences that editor-mode tests cannot see. The
 vocabulary check examines identifiers, scene-node names, and paths while ignoring

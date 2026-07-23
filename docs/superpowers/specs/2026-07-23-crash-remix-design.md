@@ -163,6 +163,8 @@ The v0.1 corridor premise — authored camera regions, the ≥15° rule — was 
 
 **Operator decision, 2026-07-23:** for wall-run the down-the-slot shot is authoritative. The side-on 3/4 wording describes the alternative considered and not taken. Readability for the slot shot is guaranteed by detach-target visibility, not by tangent-horizontal.
 
+**Operator camera decision, 2026-07-23:** keep the down-the-slot position, but reject the wall-as-floor roll after device feedback found it disorienting. The wall-run camera keeps a stable world-up horizon through attach, run, and detach; a small authored bank remains optional only inside the camera comfort band.
+
 - **Rope swings** get side-on cameras (they are 2D pendulums; filming them side-on is just correct) and exist mostly in chain set-pieces.
 - **The grammar consequence.** v0.1's segment types (chase-behind, side-on 2.5D, toward-camera, room, branch loop, vertical shaft) gain three entries: *grind*, *wall-run*, *swing-chain*. A designer who wants a wall-run buys it with a camera region, the lint enforces readability, and everywhere else the original corridor rules hold untouched. If this hybrid had failed conceptually, the fallback would have been a Crash-4-style soft-follow camera with all its touch problems — it isn't needed, and I'd argue against it even if asked.
 

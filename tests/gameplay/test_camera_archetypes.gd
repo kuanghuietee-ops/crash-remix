@@ -24,6 +24,7 @@ const FRAME_DELTA_S := 1.0 / 60.0
 const SCREEN_TOLERANCE := 0.02
 const BASIS_TOLERANCE := 0.0001
 const NONZERO_ATTACH_DISTANCE_M := 4.0
+const MAXIMUM_COMFORT_ROLL_DEGREES := 10.0
 
 var _catalog: GameplayTuning
 var _camera: CameraTuning
@@ -63,7 +64,7 @@ func before_all() -> void:
 		_depth = catalog.depth
 
 
-func test_wall_run_camera_holds_the_surface_tangent_horizontal() -> void:
+func test_wall_run_camera_keeps_a_level_down_the_slot_horizon() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
 		&"wall_run_basis_for_view"
@@ -88,10 +89,10 @@ func test_wall_run_camera_holds_the_surface_tangent_horizontal() -> void:
 		var tangent_on_screen := basis.inverse() * Vector3.BACK
 
 		assert_almost_eq(
-			tangent_on_screen.y,
+			basis.x.dot(Vector3.UP),
 			0.0,
 			SCREEN_TOLERANCE,
-			"the live run surface must read as ground"
+			"the down-the-slot shot must keep a level world horizon"
 		)
 		assert_gt(
 			absf(tangent_on_screen.z),
@@ -101,6 +102,46 @@ func test_wall_run_camera_holds_the_surface_tangent_horizontal() -> void:
 		)
 		assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
 		assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
+
+
+func test_wall_run_bank_tuning_reaches_the_live_camera_basis() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"wall_run_basis_for_view"
+	)
+	if script == null:
+		return
+	var view_direction := _settled_live_view_direction(
+		&"wall_run",
+		Vector3.ZERO,
+		Vector3.BACK,
+		Vector3.RIGHT
+	)
+	var level_tuning: CameraTuning = _camera.duplicate()
+	level_tuning.wall_run_bank_degrees = 0.0
+	var banked_tuning: CameraTuning = _camera.duplicate()
+	banked_tuning.wall_run_bank_degrees = 7.0
+	var level_basis: Basis = script.call(
+		"wall_run_basis_for_view",
+		Vector3.BACK,
+		Vector3.RIGHT,
+		view_direction,
+		level_tuning
+	)
+	var banked_basis: Basis = script.call(
+		"wall_run_basis_for_view",
+		Vector3.BACK,
+		Vector3.RIGHT,
+		view_direction,
+		banked_tuning
+	)
+
+	assert_almost_eq(
+		level_basis.y.angle_to(banked_basis.y),
+		deg_to_rad(banked_tuning.wall_run_bank_degrees),
+		BASIS_TOLERANCE,
+		"wall_run_bank_degrees must reach the live camera behavior"
+	)
 
 
 func test_wall_run_camera_derives_its_side_from_the_surface_normal() -> void:
@@ -190,6 +231,23 @@ func test_live_wall_run_camera_is_upright_and_right_handed_on_both_walls() -> vo
 			1.0,
 			BASIS_TOLERANCE,
 			"%s live camera must remain right-handed"
+			% frame[&"strip_name"]
+		)
+
+
+func test_live_wall_run_camera_keeps_the_horizon_inside_the_comfort_band() -> void:
+	var frames: Array[Dictionary] = await _live_wall_run_camera_frames()
+	assert_eq(frames.size(), 2)
+	var minimum_up_alignment := cos(
+		deg_to_rad(MAXIMUM_COMFORT_ROLL_DEGREES)
+	)
+
+	for frame: Dictionary in frames:
+		var basis: Basis = frame[&"basis"]
+		assert_gte(
+			basis.y.dot(Vector3.UP),
+			minimum_up_alignment,
+			"%s wall-run camera exceeds the device comfort roll"
 			% frame[&"strip_name"]
 		)
 
@@ -656,7 +714,7 @@ func test_blob_shadow_runtime_uses_the_wall_context_channel() -> void:
 	assert_gt(blob.global_basis.y.dot(Vector3.RIGHT), 0.99)
 
 
-func test_rig_blends_into_wall_basis_instead_of_snapping() -> void:
+func test_rig_blends_through_wall_attach_and_detach_without_roll() -> void:
 	var controller_script := _load_script_with_method(
 		CAMERA_CONTROLLER_SCRIPT_PATH,
 		&"update_camera"
@@ -701,30 +759,46 @@ func test_rig_blends_into_wall_basis_instead_of_snapping() -> void:
 	player.traversal_normal = Vector3.RIGHT
 	controller.call("_on_region_body_entered", player, region)
 
-	controller.call("update_camera", FRAME_DELTA_S)
-	var partial_basis := camera.global_basis
-	controller.call(
-		"update_camera",
-		_camera.region_blend_s - FRAME_DELTA_S
+	var maximum_roll_sine := sin(
+		deg_to_rad(MAXIMUM_COMFORT_ROLL_DEGREES)
 	)
-	var complete_basis := camera.global_basis
-	var initial_error := absf(
-		(initial_basis.inverse() * player.traversal_tangent).y
+	var partial_basis := initial_basis
+	var blend_frame_count := ceili(
+		_camera.region_blend_s / FRAME_DELTA_S
 	)
-	var partial_error := absf(
-		(partial_basis.inverse() * player.traversal_tangent).y
-	)
-	var complete_error := absf(
-		(complete_basis.inverse() * player.traversal_tangent).y
-	)
+	for frame_index: int in range(blend_frame_count):
+		controller.call("update_camera", FRAME_DELTA_S)
+		partial_basis = camera.global_basis
+		assert_lte(
+			absf(partial_basis.x.dot(Vector3.UP)),
+			maximum_roll_sine,
+			"wall camera exceeds the comfort roll during blend frame %d"
+			% frame_index
+		)
 
-	assert_gt(initial_error, SCREEN_TOLERANCE)
-	assert_gt(partial_error, SCREEN_TOLERANCE)
 	assert_false(
 		partial_basis.is_equal_approx(initial_basis),
-		"the first scaled frame must begin orientation progress"
+		"the scaled frames must make orientation progress"
 	)
-	assert_almost_eq(complete_error, 0.0, SCREEN_TOLERANCE)
+	assert_almost_eq(
+		partial_basis.x.dot(Vector3.UP),
+		0.0,
+		SCREEN_TOLERANCE,
+		"the completed wall shot must settle on a level horizon"
+	)
+
+	player.traversal_state = &"airborne"
+	player.traversal_tangent = Vector3.ZERO
+	player.traversal_normal = Vector3.ZERO
+	controller.call("_on_region_body_exited", player, region)
+	for frame_index: int in range(blend_frame_count):
+		controller.call("update_camera", FRAME_DELTA_S)
+		assert_lte(
+			absf(camera.global_basis.x.dot(Vector3.UP)),
+			maximum_roll_sine,
+			"camera exceeds the comfort roll during detach frame %d"
+			% frame_index
+		)
 
 
 func _live_wall_run_camera_frames() -> Array[Dictionary]:

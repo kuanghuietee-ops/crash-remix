@@ -14,7 +14,7 @@ FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures"
 
 
 class TraversalAuthoringLintTests(unittest.TestCase):
-    def test_wall_run_fixture_fails_only_the_horizontal_tangent_rule(self) -> None:
+    def test_wall_run_fixture_fails_only_the_wall_camera_rule(self) -> None:
         findings = find_authoring_violations(
             FIXTURE_ROOT / "traversal_wall_camera_bad.tscn"
         )

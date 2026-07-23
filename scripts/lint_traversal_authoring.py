@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-WALL_CAMERA_RULE = "wall_run_tangent_horizontal"
+WALL_CAMERA_RULE = "wall_run_horizon_stable"
 DETACH_VISIBILITY_RULE = "wall_run_detach_target_visible"
 RAIL_READABILITY_RULE = "rail_readability"
 
@@ -40,6 +40,7 @@ HEADER_ATTRIBUTE_PATTERN = re.compile(
 )
 PROPERTY_PATTERN = re.compile(r"^([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
 SCREEN_TOLERANCE = 0.02
+MAXIMUM_COMFORT_ROLL_DEGREES = 10.0
 VISIBILITY_SAMPLES = 9
 VISIBILITY_MARGIN = 1.05
 
@@ -178,17 +179,17 @@ def _wall_run_findings(
                 )
             )
             continue
-        _, _, _, screen_up = frame
-        tangent_screen_y = _dot(screen_up, tangent)
+        _, _, screen_right, screen_up = frame
         if (
-            abs(tangent_screen_y) > SCREEN_TOLERANCE
+            abs(_dot(screen_right, UP))
+            > math.sin(math.radians(MAXIMUM_COMFORT_ROLL_DEGREES))
             or _dot(screen_up, UP) <= 0.0
         ):
             findings.append(
                 AuthoringViolation(
                     scene_path,
                     WALL_CAMERA_RULE,
-                    f"{strip.path} tangent is not horizontal and upright on screen",
+                    f"{strip.path} wall camera exceeds the upright horizon band",
                 )
             )
             continue
@@ -356,10 +357,10 @@ def _wall_camera_frame(
     normal = _normalize(_slide(normal, tangent))
     if _is_zero(tangent) or _is_zero(normal):
         return None
-    surface_up = _normalize(_cross(tangent, normal))
-    if _dot(surface_up, UP) < 0.0:
-        surface_up = _multiply(surface_up, -1.0)
-    if _is_zero(surface_up):
+    camera_up = _normalize(_cross(tangent, normal))
+    if _dot(camera_up, UP) < 0.0:
+        camera_up = _multiply(camera_up, -1.0)
+    if _is_zero(camera_up):
         return None
     offset = camera.wall_run_offset
     camera_position = _add(
@@ -367,7 +368,7 @@ def _wall_camera_frame(
         _add(
             _multiply(normal, offset[0]),
             _add(
-                _multiply(surface_up, offset[1]),
+                _multiply(camera_up, offset[1]),
                 _multiply(tangent, -offset[2]),
             ),
         ),
@@ -376,18 +377,15 @@ def _wall_camera_frame(
         position,
         _add(
             _multiply(tangent, camera.look_ahead_m),
-            _multiply(surface_up, camera.look_at_height_m),
+            _multiply(camera_up, camera.look_at_height_m),
         ),
     )
     view = _normalize(_subtract(look_target, camera_position))
-    screen_right = _normalize(_slide(tangent, view))
     camera_back = _multiply(view, -1.0)
+    screen_right = _normalize(_cross(UP, camera_back))
     screen_up = _normalize(_cross(camera_back, screen_right))
     if _is_zero(view) or _is_zero(screen_right) or _is_zero(screen_up):
         return None
-    if _dot(screen_up, surface_up) < 0.0:
-        screen_right = _multiply(screen_right, -1.0)
-        screen_up = _multiply(screen_up, -1.0)
     return camera_position, view, screen_right, screen_up
 
 

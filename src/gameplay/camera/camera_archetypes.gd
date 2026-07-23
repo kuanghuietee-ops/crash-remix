@@ -13,20 +13,19 @@ static func wall_run_basis_for_view(
 	var view := _normalized_or(view_direction, -normal)
 	if view.is_zero_approx():
 		view = Vector3.FORWARD
-	if normal.is_zero_approx():
-		var fallback := _look_basis(view, Vector3.UP)
-		if camera_tuning == null:
-			return fallback
-		return (
-			Basis(
-				view,
-				deg_to_rad(camera_tuning.wall_run_bank_degrees)
-			)
-			* fallback
-		).orthonormalized()
-	var surface_up := _upright_surface_up(tangent, normal)
-	var result := _basis_with_horizontal(view, tangent, surface_up)
-	return _orient_up(result, surface_up)
+	var upright := _look_basis(view, Vector3.UP)
+	if camera_tuning == null:
+		return upright
+	var bank_degrees := camera_tuning.wall_run_bank_degrees
+	if is_zero_approx(bank_degrees):
+		return upright
+	var bank_sign := 1.0
+	if not normal.is_zero_approx() and normal.dot(upright.x) < 0.0:
+		bank_sign = -1.0
+	return (
+		Basis(view, deg_to_rad(bank_degrees * bank_sign))
+		* upright
+	).orthonormalized()
 
 
 static func grind_basis_for_view(
@@ -111,16 +110,6 @@ static func _orient_up(basis: Basis, desired_up: Vector3) -> Basis:
 	if desired_up.is_zero_approx() or basis.y.dot(desired_up) >= 0.0:
 		return basis
 	return Basis(-basis.x, -basis.y, basis.z)
-
-
-static func _upright_surface_up(
-	tangent: Vector3,
-	normal: Vector3
-) -> Vector3:
-	var surface_up := tangent.cross(normal).normalized()
-	if surface_up.dot(Vector3.UP) < 0.0:
-		surface_up = -surface_up
-	return surface_up
 
 
 static func _normalized_or(
