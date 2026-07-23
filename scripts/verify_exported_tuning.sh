@@ -34,15 +34,15 @@ GODOT_SILENCE_ROOT_WARNING=1 "$godot_bin" \
     --main-pack "$pack_path" \
     --quit-after 3 2>&1 | tee "$runtime_log"
 
-if rg -q "No loader found|Phase 0 tuning failed to load" "$runtime_log"; then
+if grep -qE "No loader found|Phase 0 tuning failed to load" "$runtime_log"; then
     echo "Exported build failed to load authored tuning resources" >&2
     exit 1
 fi
 
-rg -q '^TUNING FINGERPRINT$' "$runtime_log"
-rg -q '^[0-9a-f]{64}$' "$runtime_log"
+grep -qE '^TUNING FINGERPRINT$' "$runtime_log"
+grep -qE '^[0-9a-f]{64}$' "$runtime_log"
 for tuning_path in gameplay move input camera depth wall_run grind swing phase; do
-    rg -q "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
+    grep -qE "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
 done
 
 echo "Exported tuning smoke passed"

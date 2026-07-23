@@ -5,8 +5,11 @@ Python: **20 tests passing**.
 
 Lints green: gameplay-numbers / content-vocabulary / traversal-authoring.
 
-Export tuning check: **passed** — confirms all four traversal `.tres` resources
-load in the packed build.
+Correction (2026-07-23): the export tuning command originally returned **127**
+because `rg` was absent, so the earlier “passed” claim was vacuous. R1 replaced
+that undeclared dependency with `grep -qE`; the repaired verifier now exits
+**0** and confirms all nine authored tuning paths, including the four traversal
+`.tres` resources, load in the packed build.
 
 On-device drawer implementation: lists `wall_run` / `grind` / `swing` / `phase`
 sections. This remains covered by automation; it was not manually rechecked on a
