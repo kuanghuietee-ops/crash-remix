@@ -218,6 +218,75 @@ func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
 		)
 
 
+func test_wall_region_keeps_preattach_approach_camera_inside_the_canyon() -> void:
+	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
+	var controller_script := _load_script_with_method(
+		CAMERA_CONTROLLER_SCRIPT_PATH,
+		&"update_camera"
+	)
+	assert_not_null(segment_packed)
+	if segment_packed == null or controller_script == null:
+		return
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var segment := segment_packed.instantiate() as Node3D
+	root.add_child(segment)
+	var player := FakeTraversalPlayer.new()
+	player.position = Vector3(0.0, 0.05, 3.0)
+	root.add_child(player)
+	var rail := Path3D.new()
+	var curve := Curve3D.new()
+	curve.add_point(Vector3(0.0, 0.0, 8.0))
+	curve.add_point(Vector3(0.0, 0.0, -40.0))
+	rail.curve = curve
+	root.add_child(rail)
+	var controller: Node3D = controller_script.new()
+	root.add_child(controller)
+	var camera := Camera3D.new()
+	controller.add_child(camera)
+	var region := segment.get_node("WallRunCameraRegion") as Area3D
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		_camera,
+		[region]
+	)
+	var initial_lateral_distance := absf(
+		camera.global_position.x - player.global_position.x
+	)
+	controller.call("_on_region_body_entered", player, region)
+	controller.call("update_camera", FRAME_DELTA_S)
+	assert_lte(
+		absf(camera.global_position.x - player.global_position.x),
+		initial_lateral_distance,
+		"opening wall blend must move inward from its default camera lane"
+	)
+	controller.call("update_camera", 1.0)
+	await wait_physics_frames(1)
+	var query := PhysicsRayQueryParameters3D.create(
+		camera.global_position,
+		player.global_position
+	)
+	query.exclude = [player.get_rid()]
+	query.collide_with_areas = false
+	var hit: Dictionary = (
+		root.get_world_3d().direct_space_state.intersect_ray(query)
+	)
+
+	assert_almost_eq(
+		camera.global_position.x,
+		player.global_position.x,
+		BASIS_TOLERANCE,
+		"wall offset x is trail distance before attach, not lateral distance"
+	)
+	assert_true(
+		hit.is_empty(),
+		"opening camera sightline is blocked by %s" % hit.get("collider")
+	)
+
+
 func test_wall_run_detach_target_is_visible_before_detach_on_both_walls() -> void:
 	var frames: Array[Dictionary] = await _live_wall_run_camera_frames()
 	assert_eq(frames.size(), 2)

@@ -153,7 +153,16 @@ func update_camera(delta_s: float) -> void:
 		camera_right = Vector3.RIGHT
 	var region_offsets: Array[Vector3] = []
 	for region: CameraRegionType in _active_regions:
-		region_offsets.append(region.offset_for(_camera_tuning))
+		var region_offset := region.offset_for(_camera_tuning)
+		# Position blending uses lateral/up/trail axes. Wall authoring stores
+		# trail/up/lateral so its down-the-slot distance remains tuning-visible.
+		if region.camera_mode == CameraRegionType.MODE_WALL_RUN:
+			region_offset = Vector3(
+				region_offset.z,
+				region_offset.y,
+				region_offset.x
+			)
+		region_offsets.append(region_offset)
 	var target_offset := CameraBlendType.resolve_offset(
 		_camera_tuning.default_offset,
 		region_offsets
@@ -169,21 +178,12 @@ func update_camera(delta_s: float) -> void:
 		_blend_elapsed_s,
 		_camera_tuning
 	)
-	var desired_position: Vector3
-	if basis_mode == CameraRegionType.MODE_WALL_RUN:
-		desired_position = (
-			camera_origin
-			+ camera_right * _current_offset.z
-			+ camera_up * _current_offset.y
-			- camera_forward * _current_offset.x
-		)
-	else:
-		desired_position = (
-			camera_origin
-			+ camera_right * _current_offset.x
-			+ camera_up * _current_offset.y
-			- camera_forward * _current_offset.z
-		)
+	var desired_position := (
+		camera_origin
+		+ camera_right * _current_offset.x
+		+ camera_up * _current_offset.y
+		- camera_forward * _current_offset.z
+	)
 	if _initialized:
 		_camera.global_position = _camera.global_position.move_toward(
 			desired_position,

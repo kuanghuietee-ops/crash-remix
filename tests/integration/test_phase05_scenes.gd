@@ -177,15 +177,23 @@ func test_game_registers_nested_gauntlet_camera_regions() -> void:
 		return
 	add_child_autofree(game)
 	await wait_physics_frames(2)
-	var regions: Array = game.get_node("CameraRig").get("_regions")
+	var camera_rig := game.get_node("CameraRig")
+	var regions: Array = camera_rig.get("_regions")
 	var region_names: Array[StringName] = []
 	for region: Node in regions:
 		region_names.append(region.name)
+	var active_region_names: Array[StringName] = []
+	for region: Node in camera_rig.get("_active_regions"):
+		active_region_names.append(region.name)
 
 	assert_true(region_names.has(&"WallRunCameraRegion"))
 	assert_true(region_names.has(&"GrindCameraRegion"))
 	assert_true(region_names.has(&"SwingCameraRegion"))
 	assert_true(region_names.has(&"PhaseCameraRegion"))
+	assert_true(
+		active_region_names.has(&"WallRunCameraRegion"),
+		"the authored spawn must activate its opening camera region"
+	)
 
 
 func test_camera_rail_reaches_the_end_of_the_phase_gauntlet() -> void:
