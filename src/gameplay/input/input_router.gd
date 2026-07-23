@@ -11,6 +11,7 @@ var buffer: InputIntentBuffer = InputIntentBuffer.new()
 
 var _input_tuning: InputTuning
 var _corridor_axis := Vector2.UP
+var _gesture_corridor_axis := Vector2.UP
 var _screen_movement := Vector2.ZERO
 var _movement_timestamp_s: float
 var _movement_source := &""
@@ -31,6 +32,14 @@ func push_intent(intent: InputIntent) -> void:
 
 
 func push_move(value: Vector2, timestamp_s: float, source: StringName) -> void:
+	if (
+		not value.is_zero_approx()
+		and (
+			_screen_movement.is_zero_approx()
+			or source != _movement_source
+		)
+	):
+		_gesture_corridor_axis = _corridor_axis
 	_screen_movement = value
 	_movement_timestamp_s = timestamp_s
 	_movement_source = source
@@ -53,7 +62,6 @@ func set_corridor_axis(axis: Vector2) -> void:
 	if next_axis.is_equal_approx(_corridor_axis):
 		return
 	_corridor_axis = next_axis
-	_route_screen_movement()
 
 
 func corridor_axis() -> Vector2:
@@ -71,13 +79,13 @@ func _route_screen_movement() -> void:
 	if _input_tuning != null:
 		filtered = InputVectorFilterType.apply_corridor_magnet(
 			_screen_movement,
-			_corridor_axis,
+			_gesture_corridor_axis,
 			_input_tuning,
 			_movement_source == InputIntent.SOURCE_GAMEPAD
 		)
 	var corridor_input := InputVectorFilterType.to_corridor_input(
 		filtered,
-		_corridor_axis
+		_gesture_corridor_axis
 	)
 	push_intent(InputIntent.move(
 		corridor_input,

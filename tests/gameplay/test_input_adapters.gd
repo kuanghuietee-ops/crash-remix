@@ -83,7 +83,7 @@ func test_screen_corridor_axis_is_converted_to_motor_relative_input() -> void:
 		)
 
 
-func test_router_reprojects_held_stick_when_camera_axis_changes() -> void:
+func test_router_keeps_held_stick_stable_when_camera_axis_changes() -> void:
 	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
 	if router == null:
 		return
@@ -102,19 +102,36 @@ func test_router_reprojects_held_stick_when_camera_axis_changes() -> void:
 
 	assert_eq(
 		router.get("buffer").call("movement"),
-		Vector2.LEFT,
-		"a held screen-up stick must be remapped as the camera turns side-on"
+		Vector2.UP,
+		"camera motion alone must never rotate a held movement command"
 	)
 	router.call(
 		"push_move",
-		Vector2.RIGHT,
+		Vector2.UP,
 		2.0,
 		InputIntent.SOURCE_TOUCH
 	)
 	assert_eq(
 		router.get("buffer").call("movement"),
 		Vector2.UP,
-		"screen-right becomes route-forward in the rope side-on shot"
+		"drag updates must keep the axis captured at gesture start"
+	)
+	router.call(
+		"push_move",
+		Vector2.ZERO,
+		3.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	router.call(
+		"push_move",
+		Vector2.RIGHT,
+		4.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.UP,
+		"a new gesture may adopt the camera's settled side-on axis"
 	)
 
 
