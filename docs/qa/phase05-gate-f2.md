@@ -75,9 +75,12 @@ First clean attempt: ___. Result: **PASS / FAIL / NOT RUN**
 ## 3. Phase toggle in mid-jump
 
 Reach the phase gauntlet through the swing chain and activate the debug respawn before
-the phase platforms. Score ten consecutive required mid-air transfers. A transfer
-succeeds only when PHASE is pressed after takeoff and the player lands safely on the
-next platform that the toggle makes solid.
+the phase platforms. One **attempt** is one required mid-air transfer, scored
+individually. It succeeds only when PHASE is pressed after takeoff and the player
+lands safely on the next platform that the toggle makes solid. A fall ends that
+attempt; the next attempt begins from the debug respawn. Accumulate ten attempts
+across as many runs as needed. Here, "consecutive" means ten scored attempts recorded
+in sequence, not ten transfers completed without dying.
 
 | Attempt | Success / fail | Observation |
 |---:|---|---|
