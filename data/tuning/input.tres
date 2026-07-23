@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="InputTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/input_tuning.gd" id="1_input"]
+
+[resource]
+script = ExtResource("1_input")
+jump_buffer_s = 0.12
+coyote_time_s = 0.14
+action_buffer_s = 0.15
+minimum_hop_release_s = 0.09
+full_jump_hold_s = 0.22
+edge_landing_nudge_m = 0.12
+bounce_timing_s = 0.1
+touch_response_target_s = 0.085
+touch_response_hard_fail_s = 0.1
+millimeters_per_inch = 25.4
+fallback_dpi = 160.0
+stick_region_width_ratio = 0.42
+stick_region_top_exclusion_ratio = 0.25
+stick_ring_diameter_mm = 22.0
+stick_knob_diameter_mm = 11.0
+stick_opacity = 0.35
+stick_dead_zone_mm = 1.5
+stick_full_run_mm = 4.0
+corridor_magnet_cone_degrees = 15.0
+corridor_magnet_strength = 0.5
+gamepad_magnet_disable_magnitude = 0.6
+gamepad_dead_zone = 0.15
+jump_button_diameter_mm = 14.0
+spin_button_diameter_mm = 12.0
+down_button_diameter_mm = 12.0
+jump_button_edge_x_mm = 12.0
+jump_button_edge_y_mm = 12.0
+spin_button_edge_x_mm = 26.0
+down_button_above_jump_mm = 17.0
+button_hit_radius_scale = 1.35
+jump_catchall_width_ratio = 0.5
+jump_catchall_top_ratio = 0.5
+button_opacity = 0.55
+button_label_height_mm = 3.0
+control_outline_width_mm = 0.4
+control_color = Color(1, 1, 1, 1)
+control_label_color = Color(0.055, 0.075, 0.11, 1)
+haptic_duration_ms = 10
+haptics_enabled = true
+left_handed_layout = false
+control_scale = 1.0
+layout_metrics_poll_interval_s = 0.5

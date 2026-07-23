@@ -1,0 +1,322 @@
+extends GutTest
+
+const FILTER_SCRIPT_PATH := "res://src/gameplay/input/input_vector_filter.gd"
+const ROUTER_SCRIPT_PATH := "res://src/gameplay/input/input_router.gd"
+const GAMEPAD_SCRIPT_PATH := "res://src/gameplay/input/gamepad_input.gd"
+const TOUCH_SCRIPT_PATH := "res://src/ui/touch_controls.gd"
+const LAYOUT_SCRIPT_PATH := "res://src/ui/touch_control_layout.gd"
+const TUNING_PATH := "res://data/tuning/gameplay.tres"
+
+var _input_tuning: Resource
+
+
+func before_all() -> void:
+	var catalog: Resource = load(TUNING_PATH)
+	assert_not_null(catalog)
+	if catalog != null:
+		_input_tuning = catalog.get("input").duplicate()
+		_input_tuning.set("haptics_enabled", false)
+
+
+func test_corridor_magnet_aligns_inside_cone_but_not_outside() -> void:
+	var script: Script = load(FILTER_SCRIPT_PATH)
+	assert_not_null(script, "InputVectorFilter implementation must exist")
+	if script == null:
+		return
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("corridor_magnet_strength", 1.0)
+	var inside := Vector2.UP.rotated(deg_to_rad(10.0))
+	var outside := Vector2.UP.rotated(deg_to_rad(20.0))
+
+	var aligned: Vector2 = script.call(
+		"apply_corridor_magnet", inside, Vector2.UP, tuning, false
+	)
+	var untouched: Vector2 = script.call(
+		"apply_corridor_magnet", outside, Vector2.UP, tuning, false
+	)
+
+	assert_almost_eq(aligned.angle_to(Vector2.UP), 0.0, 0.0001)
+	assert_almost_eq(untouched.angle_to(outside), 0.0, 0.0001)
+
+
+func test_gamepad_disables_magnet_above_configured_magnitude() -> void:
+	var script: Script = load(FILTER_SCRIPT_PATH)
+	assert_not_null(script, "InputVectorFilter implementation must exist")
+	if script == null:
+		return
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("corridor_magnet_strength", 1.0)
+	var direction := Vector2.UP.rotated(deg_to_rad(10.0))
+	var strong_input := direction * 0.8
+
+	var filtered: Vector2 = script.call(
+		"apply_corridor_magnet", strong_input, Vector2.UP, tuning, true
+	)
+
+	assert_almost_eq(filtered.angle_to(strong_input), 0.0, 0.0001)
+
+
+func test_touch_layout_uses_physical_millimeters_and_mirrors() -> void:
+	var script: Script = load(LAYOUT_SCRIPT_PATH)
+	assert_not_null(script, "TouchControlLayout implementation must exist")
+	if script == null:
+		return
+	var safe_rect := Rect2(0.0, 0.0, 1920.0, 1080.0)
+	var layout: Dictionary = script.call("calculate", safe_rect, 254.0, _input_tuning)
+	var mirrored_tuning: Resource = _input_tuning.duplicate()
+	mirrored_tuning.set("left_handed_layout", true)
+	var mirrored: Dictionary = script.call(
+		"calculate", safe_rect, 254.0, mirrored_tuning
+	)
+
+	assert_eq(layout["jump_radius"], 70.0)
+	assert_eq(layout["stick_ring_radius"], 110.0)
+	assert_eq(layout["jump_center"], Vector2(1800.0, 960.0))
+	assert_eq(mirrored["jump_center"], Vector2(120.0, 960.0))
+	assert_true(layout["stick_region"].has_point(Vector2(200.0, 600.0)))
+	assert_true(mirrored["stick_region"].has_point(Vector2(1720.0, 600.0)))
+
+
+func test_jump_catchall_width_is_driven_by_input_tuning() -> void:
+	var script: Script = load(LAYOUT_SCRIPT_PATH)
+	assert_not_null(script, "TouchControlLayout implementation must exist")
+	if script == null:
+		return
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("jump_catchall_width_ratio", 0.4)
+
+	var layout: Dictionary = script.call(
+		"calculate",
+		Rect2(0.0, 0.0, 1920.0, 1080.0),
+		254.0,
+		tuning
+	)
+
+	assert_almost_eq(
+		(layout["jump_catchall_region"] as Rect2).size.x,
+		768.0,
+		0.0001
+	)
+
+
+func test_gamepad_buttons_and_axis_emit_unified_intents() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
+	if router == null or gamepad == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(gamepad)
+	router.call("configure", _input_tuning)
+	gamepad.call("configure", router, _input_tuning)
+
+	var axis_event := InputEventJoypadMotion.new()
+	axis_event.axis = JOY_AXIS_LEFT_X
+	axis_event.axis_value = 0.8
+	gamepad.call("handle_input", axis_event)
+	var jump_event := InputEventJoypadButton.new()
+	jump_event.button_index = JOY_BUTTON_A
+	jump_event.pressed = true
+	gamepad.call("handle_input", jump_event)
+
+	var buffer: RefCounted = router.get("buffer")
+	assert_gt(buffer.call("movement").x, 0.0)
+	assert_true(buffer.call("is_action_pressed", &"jump"))
+	assert_eq(buffer.call("active_source"), &"gamepad")
+
+
+func test_gamepad_dpad_emits_discrete_movement_intents() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
+	if router == null or gamepad == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(gamepad)
+	router.call("configure", _input_tuning)
+	gamepad.call("configure", router, _input_tuning)
+	var up_event := InputEventJoypadButton.new()
+	up_event.button_index = JOY_BUTTON_DPAD_UP
+	up_event.pressed = true
+
+	gamepad.call("handle_input", up_event)
+
+	var buffer: RefCounted = router.get("buffer")
+	assert_eq(buffer.call("movement"), Vector2.UP)
+	assert_eq(buffer.call("active_source"), InputIntent.SOURCE_GAMEPAD)
+
+
+func test_gamepad_dpad_is_not_overridden_by_analog_drift() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
+	if router == null or gamepad == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(gamepad)
+	router.call("configure", _input_tuning)
+	gamepad.call("configure", router, _input_tuning)
+	var right_event := InputEventJoypadButton.new()
+	right_event.button_index = JOY_BUTTON_DPAD_RIGHT
+	right_event.pressed = true
+	gamepad.call("handle_input", right_event)
+	var drift_event := InputEventJoypadMotion.new()
+	drift_event.axis = JOY_AXIS_LEFT_X
+	drift_event.axis_value = _input_tuning.gamepad_dead_zone * 0.5
+
+	gamepad.call("handle_input", drift_event)
+
+	var buffer: RefCounted = router.get("buffer")
+	assert_eq(buffer.call("movement"), Vector2.RIGHT)
+	assert_eq(buffer.call("active_source"), InputIntent.SOURCE_GAMEPAD)
+
+
+func test_touch_stick_and_button_remain_independent_multitouch() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	var layout: Dictionary = touch.call("current_layout")
+
+	var stick_press := InputEventScreenTouch.new()
+	stick_press.index = 0
+	stick_press.position = Vector2(300.0, 700.0)
+	stick_press.pressed = true
+	touch.call("handle_touch_event", stick_press)
+	var stick_drag := InputEventScreenDrag.new()
+	stick_drag.index = 0
+	stick_drag.position = Vector2(340.0, 650.0)
+	touch.call("handle_touch_event", stick_drag)
+	var jump_press := InputEventScreenTouch.new()
+	jump_press.index = 1
+	jump_press.position = layout["jump_center"]
+	jump_press.pressed = true
+	touch.call("handle_touch_event", jump_press)
+
+	var buffer: RefCounted = router.get("buffer")
+	assert_gt(buffer.call("movement").length(), 0.0)
+	assert_true(buffer.call("is_action_pressed", &"jump"))
+	assert_eq(touch.call("stick_touch_index"), 0)
+
+
+func test_touch_button_flashes_only_while_its_finger_is_held() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	var layout: Dictionary = touch.call("current_layout")
+	var jump_touch := InputEventScreenTouch.new()
+	jump_touch.index = 7
+	jump_touch.position = layout["jump_center"]
+	jump_touch.pressed = true
+
+	touch.call("handle_touch_event", jump_touch)
+	assert_true(touch.call("is_action_flashing", InputIntent.ACTION_JUMP))
+	assert_false(touch.call("is_action_flashing", InputIntent.ACTION_SPIN))
+
+	jump_touch.pressed = false
+	touch.call("handle_touch_event", jump_touch)
+	assert_false(touch.call("is_action_flashing", InputIntent.ACTION_JUMP))
+
+
+func test_touch_ignores_new_contacts_inside_visible_debug_overlays() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	var drawer := Control.new()
+	drawer.position = Vector2(18.0, 246.0)
+	drawer.size = Vector2(922.0, 816.0)
+	add_child_autofree(drawer)
+	var hud := Control.new()
+	hud.position = Vector2(8.0, 8.0)
+	hud.size = Vector2(480.0, 190.0)
+	add_child_autofree(hud)
+	touch.call("set_touch_exclusion_controls", [hud, drawer])
+	var drawer_press := InputEventScreenTouch.new()
+	drawer_press.index = 8
+	drawer_press.position = Vector2(300.0, 700.0)
+	drawer_press.pressed = true
+	var hud_press := InputEventScreenTouch.new()
+	hud_press.index = 9
+	hud_press.position = Vector2(100.0, 100.0)
+	hud_press.pressed = true
+
+	touch.call("handle_touch_event", drawer_press)
+	touch.call("handle_touch_event", hud_press)
+
+	assert_eq(touch.call("stick_touch_index"), -1)
+	assert_eq(router.get("buffer").call("movement"), Vector2.ZERO)
+
+
+func test_touch_overlap_chooses_nearest_button_with_jump_winning_ambiguity() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	var overlap_press := InputEventScreenTouch.new()
+	overlap_press.index = 9
+	overlap_press.position = Vector2(1735.0, 960.0)
+	overlap_press.pressed = true
+
+	touch.call("handle_touch_event", overlap_press)
+
+	var buffer: RefCounted = router.get("buffer")
+	assert_true(buffer.call("is_action_pressed", InputIntent.ACTION_JUMP))
+	assert_false(buffer.call("is_action_pressed", InputIntent.ACTION_SPIN))
+
+
+func test_touch_recalculates_layout_when_viewport_size_changes() -> void:
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if touch == null:
+		return
+	add_child_autofree(touch)
+	var callback := Callable(touch, "_on_viewport_size_changed")
+
+	assert_true(get_viewport().size_changed.is_connected(callback))
+	assert_true(touch.is_processing())
+
+
+func test_touch_layout_metrics_are_polled_only_at_configured_interval() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("layout_metrics_poll_interval_s", 0.5)
+	router.call("configure", tuning)
+	touch.call("configure", router, tuning)
+	touch.set_process(false)
+	var initial_count: int = touch.call("layout_metrics_poll_count")
+
+	touch.call("_process", 0.49)
+	var before_interval: int = touch.call("layout_metrics_poll_count")
+	touch.call("_process", 0.01)
+
+	assert_eq(before_interval, initial_count)
+	assert_eq(touch.call("layout_metrics_poll_count"), initial_count + 1)
+
+
+func _new_node(script_path: String) -> Variant:
+	var script: Script = load(script_path)
+	assert_not_null(script, script_path + " implementation must exist")
+	return script.new() if script != null else null

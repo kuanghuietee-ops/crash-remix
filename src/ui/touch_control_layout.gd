@@ -1,0 +1,56 @@
+class_name TouchControlLayout
+extends RefCounted
+
+
+static func calculate(
+	safe_rect: Rect2,
+	dpi: float,
+	input_tuning: InputTuning
+) -> Dictionary:
+	var resolved_dpi := dpi if dpi > 0.0 else input_tuning.fallback_dpi
+	var pixels_per_mm := (
+		resolved_dpi / input_tuning.millimeters_per_inch * input_tuning.control_scale
+	)
+	var safe_end := safe_rect.end
+	var actions_on_left := input_tuning.left_handed_layout
+	var jump_edge_x := input_tuning.jump_button_edge_x_mm * pixels_per_mm
+	var jump_edge_y := input_tuning.jump_button_edge_y_mm * pixels_per_mm
+	var spin_edge_x := input_tuning.spin_button_edge_x_mm * pixels_per_mm
+	var jump_x := safe_rect.position.x + jump_edge_x if actions_on_left else safe_end.x - jump_edge_x
+	var spin_x := safe_rect.position.x + spin_edge_x if actions_on_left else safe_end.x - spin_edge_x
+	var button_y := safe_end.y - jump_edge_y
+	var jump_center := Vector2(jump_x, button_y)
+	var spin_center := Vector2(spin_x, button_y)
+	var down_center := jump_center + Vector2.UP * input_tuning.down_button_above_jump_mm * pixels_per_mm
+
+	var stick_width := safe_rect.size.x * input_tuning.stick_region_width_ratio
+	var stick_top := safe_rect.position.y + safe_rect.size.y * input_tuning.stick_region_top_exclusion_ratio
+	var stick_x := safe_end.x - stick_width if actions_on_left else safe_rect.position.x
+	var stick_region := Rect2(
+		Vector2(stick_x, stick_top),
+		Vector2(stick_width, safe_end.y - stick_top)
+	)
+	var catchall_width := (
+		safe_rect.size.x * input_tuning.jump_catchall_width_ratio
+	)
+	var catchall_x := safe_rect.position.x if actions_on_left else safe_end.x - catchall_width
+	var catchall_top := safe_rect.position.y + safe_rect.size.y * input_tuning.jump_catchall_top_ratio
+
+	return {
+		"safe_rect": safe_rect,
+		"pixels_per_mm": pixels_per_mm,
+		"stick_region": stick_region,
+		"stick_ring_radius": input_tuning.stick_ring_diameter_mm * pixels_per_mm * 0.5,
+		"stick_knob_radius": input_tuning.stick_knob_diameter_mm * pixels_per_mm * 0.5,
+		"jump_center": jump_center,
+		"jump_radius": input_tuning.jump_button_diameter_mm * pixels_per_mm * 0.5,
+		"spin_center": spin_center,
+		"spin_radius": input_tuning.spin_button_diameter_mm * pixels_per_mm * 0.5,
+		"down_center": down_center,
+		"down_radius": input_tuning.down_button_diameter_mm * pixels_per_mm * 0.5,
+		"button_hit_radius_scale": input_tuning.button_hit_radius_scale,
+		"jump_catchall_region": Rect2(
+			Vector2(catchall_x, catchall_top),
+			Vector2(catchall_width, safe_end.y - catchall_top)
+		),
+	}

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="DepthTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/depth_tuning.gd" id="1_depth"]
+
+[resource]
+script = ExtResource("1_depth")
+shadow_diameter_m = 0.8
+shadow_opacity = 0.72
+shadow_ray_length_m = 12.0
+shadow_ray_origin_offset_m = 0.2
+shadow_surface_offset_m = 0.025
+prediction_step_s = 0.04
+prediction_horizon_s = 3.0
+collision_probe_radius_m = 0.14
+collision_probe_stride = 3
+ring_outer_radius_m = 0.42
+ring_inner_radius_m = 0.3
+ring_surface_offset_m = 0.03
+landable_color = Color(0.2, 1, 0.3, 0.9)
+hazard_color = Color(1, 0.16, 0.12, 0.9)
+landing_assist_last_fall_ratio = 0.3
+landing_assist_edge_distance_m = 0.4
+landing_assist_probe_depth_m = 4.0
+landing_assist_touch_strength = 0.5
+landing_assist_gamepad_strength = 0.0

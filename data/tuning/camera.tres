@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="CameraTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/camera_tuning.gd" id="1_camera"]
+
+[resource]
+script = ExtResource("1_camera")
+field_of_view_degrees = 58.0
+rail_bake_interval_m = 0.2
+rail_follow_speed_mps = 16.0
+region_blend_s = 0.35
+look_ahead_m = 2.0
+look_at_height_m = 0.65
+player_screen_left_bias_m = 0.45
+default_offset = Vector3(3.6, 4.8, 8.5)
+close_offset = Vector3(2.8, 3.6, 6.4)
+side_on_offset = Vector3(9.5, 4.2, 0.8)
+minimum_jump_depression_degrees = 15.0

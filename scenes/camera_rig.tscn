@@ -1,0 +1,57 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="1_rail"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+
+[sub_resource type="BoxShape3D" id="Box_close"]
+size = Vector3(12, 6, 38)
+
+[sub_resource type="BoxShape3D" id="Box_side"]
+size = Vector3(16, 6, 34)
+
+[node name="CameraRig" type="Node3D"]
+script = ExtResource("1_rail")
+
+[node name="Rail" type="Path3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, 14)
+
+[node name="Approach" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, -18)
+
+[node name="Tunnel" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, -38)
+
+[node name="LongGaps" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, -70)
+
+[node name="Finish" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, -92)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
+current = true
+fov = 58.0
+
+[node name="Regions" type="Node3D" parent="."]
+
+[node name="CloseRegion" type="Area3D" parent="Regions"]
+position = Vector3(0, 2, -25)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"close"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Regions/CloseRegion"]
+shape = SubResource("Box_close")
+
+[node name="SideOnRegion" type="Area3D" parent="Regions"]
+position = Vector3(0, 2, -52)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"side_on"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Regions/SideOnRegion"]
+shape = SubResource("Box_side")

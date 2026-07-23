@@ -1,8 +1,6 @@
 ; Godot 4 project configuration — crash-remix
 ;
-; Minimal starting config that encodes the locked decisions from the design doc (§11).
-; Open once in the pinned Godot version and let the editor validate/complete it.
-; Treat this file as intent, not as a verified-complete config.
+; Phase 0 config validated with the pinned Godot 4.7.1 editor/exporter.
 
 config_version=5
 
@@ -10,18 +8,17 @@ config_version=5
 
 config/name="Crash Remix"
 config/description="Trilogy greatest-hits 3D platformer for Android. Personal fan project, sideload only."
-; main_scene does not exist yet — Codex creates scenes/game.tscn in Phase 0.
+config/icon="res://assets/icon.svg"
 run/main_scene="res://scenes/game.tscn"
-config/features=PackedStringArray("4.4", "Mobile")
+config/features=PackedStringArray("4.7", "Mobile")
 boot_splash/show_image=false
 
 [display]
 
-; Landscape only (spec §5.2). VERIFY the orientation key/enum against the pinned
-; Godot version before relying on it — set it in the editor if this form is stale.
+; Sensor-landscape only (spec §5.2), allowing either landscape rotation.
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-window/handheld/orientation="sensor_landscape"
+window/handheld/orientation=4
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

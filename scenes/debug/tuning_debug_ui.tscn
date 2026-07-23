@@ -1,0 +1,135 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/debug/tuning_debug_ui.gd" id="1_debug"]
+
+[sub_resource type="StyleBoxFlat" id="Panel_hud"]
+bg_color = Color(0.025, 0.035, 0.055, 0.88)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.75, 0.92, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="Panel_drawer"]
+bg_color = Color(0.025, 0.035, 0.055, 0.96)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.25, 0.75, 0.92, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[node name="TuningDebugUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_debug")
+
+[node name="HUD" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 18.0
+offset_right = 800.0
+offset_bottom = 232.0
+theme_override_styles/panel = SubResource("Panel_hud")
+
+[node name="Margin" type="MarginContainer" parent="HUD"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="HUD/Margin"]
+layout_mode = 2
+
+[node name="Header" type="HBoxContainer" parent="HUD/Margin/VBox"]
+layout_mode = 2
+
+[node name="Open" type="Button" parent="HUD/Margin/VBox/Header"]
+layout_mode = 2
+text = "TUNE"
+
+[node name="Title" type="Label" parent="HUD/Margin/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "LIVE TUNING"
+
+[node name="OverrideActive" type="Label" parent="HUD/Margin/VBox/Header"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.12, 0.08, 1)
+theme_override_font_sizes/font_size = 20
+text = "OVERRIDE ACTIVE"
+
+[node name="Summary" type="Label" parent="HUD/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "Tuning not loaded"
+
+[node name="Drawer" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 18.0
+offset_top = 246.0
+offset_right = 940.0
+offset_bottom = 1062.0
+theme_override_styles/panel = SubResource("Panel_drawer")
+
+[node name="Margin" type="MarginContainer" parent="Drawer"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="Drawer/Margin"]
+layout_mode = 2
+
+[node name="Heading" type="Label" parent="Drawer/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "PHASE 0 LIVE TUNING"
+
+[node name="Scroll" type="ScrollContainer" parent="Drawer/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="Drawer/Margin/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="Footer" type="HBoxContainer" parent="Drawer/Margin/VBox"]
+layout_mode = 2
+
+[node name="Save" type="Button" parent="Drawer/Margin/VBox/Footer"]
+layout_mode = 2
+text = "SAVE OVERRIDE"
+
+[node name="Reset" type="Button" parent="Drawer/Margin/VBox/Footer"]
+layout_mode = 2
+text = "RESET TO AUTHORED"
+
+[node name="Close" type="Button" parent="Drawer/Margin/VBox/Footer"]
+layout_mode = 2
+text = "CLOSE"
+
+[node name="Status" type="Label" parent="Drawer/Margin/VBox/Footer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Live values are unsaved"

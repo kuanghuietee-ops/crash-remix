@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="MoveTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/move_tuning.gd" id="1_move"]
+
+[resource]
+script = ExtResource("1_move")
+player_height_m = 1.1
+collision_radius_m = 0.32
+floor_snap_length_m = 0.2
+floor_max_angle_degrees = 46.0
+crouch_hurtbox_height_ratio = 0.45
+hurtbox_visual_ratio = 0.725
+attack_visual_ratio = 1.2
+run_speed_mps = 7.0
+run_time_to_speed_s = 0.08
+stop_time_s = 0.04
+crawl_speed_mps = 2.2
+gravity_mps2 = 24.0
+jump_full_height_m = 2.2
+jump_tap_height_m = 0.9
+double_jump_height_m = 1.8
+double_jump_tap_height_m = 0.9
+high_jump_height_m = 2.9
+fall_gravity_multiplier = 1.6
+apex_gravity_multiplier = 0.85
+apex_velocity_threshold_mps = 1.0
+maximum_fall_speed_mps = 30.0
+spin_radius_m = 1.2
+spin_active_s = 0.45
+air_spin_gravity_multiplier = 0.4
+slide_distance_m = 2.8
+slide_duration_s = 0.35
+slide_minimum_speed_mps = 1.0
+slide_jump_distance_m = 5.5
+slide_jump_height_m = 1.4
+body_slam_speed_mps = 22.0
+body_slam_shockwave_radius_m = 0.5
+body_slam_recovery_s = 0.1
+respawn_delay_s = 0.35
+respawn_floor_y_m = -8.0

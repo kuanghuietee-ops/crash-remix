@@ -1,8 +1,10 @@
 # Godot 4
 .godot/
-/android/
-export_presets.cfg
+/android/*
+!/android/.gdignore
 *.translation
+__pycache__/
+*.py[cod]
 
 # Godot build artifacts
 build/

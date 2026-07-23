@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="GameplayTuning" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/gameplay_tuning.gd" id="1_catalog"]
+[ext_resource type="Resource" path="res://data/tuning/move.tres" id="2_move"]
+[ext_resource type="Resource" path="res://data/tuning/input.tres" id="3_input"]
+[ext_resource type="Resource" path="res://data/tuning/camera.tres" id="4_camera"]
+[ext_resource type="Resource" path="res://data/tuning/depth.tres" id="5_depth"]
+
+[resource]
+script = ExtResource("1_catalog")
+move = ExtResource("2_move")
+input = ExtResource("3_input")
+camera = ExtResource("4_camera")
+depth = ExtResource("5_depth")
