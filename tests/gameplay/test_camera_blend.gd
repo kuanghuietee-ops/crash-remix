@@ -149,21 +149,20 @@ func test_required_jump_archetypes_clear_depth_readability_rule() -> void:
 		)
 
 
-func test_wall_run_and_swing_deliberately_use_section_5_5_substitutes() -> void:
+func test_wall_run_deliberately_uses_section_5_4_exemption() -> void:
 	var script: Script = load(BLEND_SCRIPT_PATH)
 	assert_not_null(script, "CameraBlend implementation must exist")
 	if script == null:
 		return
 
-	# Design §5.5 deliberately suspends the ≥15° rule for wall-run and swing.
-	# Wall-run instead holds the surface tangent horizontal; swing films side-on.
-	for offset: Vector3 in [
-		_camera.wall_run_offset,
-		_camera.swing_offset,
-	]:
-		var depression: float = script.call("depression_degrees", offset)
-		assert_lt(
-			depression,
-			_camera.minimum_jump_depression_degrees,
-			"these authored offsets are exemptions, not values to silently retune"
-		)
+	# Design §5.4 exempts wall-runs alone from the ≥15° rule; §5.5 replaces
+	# that cue by requiring the wall surface tangent to stay horizontal.
+	var depression: float = script.call(
+		"depression_degrees",
+		_camera.wall_run_offset
+	)
+	assert_lt(
+		depression,
+		_camera.minimum_jump_depression_degrees,
+		"wall-run is exempt from the depression rule, not a value to retune"
+	)
