@@ -92,6 +92,12 @@ func test_wall_run_camera_holds_the_surface_tangent_horizontal() -> void:
 			SCREEN_TOLERANCE,
 			"the live run surface must read as ground"
 		)
+		assert_gt(
+			absf(tangent_on_screen.z),
+			absf(tangent_on_screen.x),
+			"wall-run ships the §5.5 down-the-slot shot; "
+			+ "a side-on camera here is a spec change, not a tuning tweak"
+		)
 		assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
 		assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
 
@@ -212,6 +218,33 @@ func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
 		)
 
 
+func test_wall_run_detach_target_is_visible_before_detach_on_both_walls() -> void:
+	var frames: Array[Dictionary] = await _live_wall_run_camera_frames()
+	assert_eq(frames.size(), 2)
+
+	for frame: Dictionary in frames:
+		var player: CharacterBody3D = frame[&"player"]
+		var camera: Camera3D = frame[&"camera"]
+		var detach_target: Vector3 = frame[&"detach_target"]
+
+		assert_eq(
+			player.call("current_state"),
+			&"wall_run",
+			"%s visibility must be established before detaching"
+			% frame[&"strip_name"]
+		)
+		assert_almost_eq(
+			frame[&"attach_distance_m"],
+			NONZERO_ATTACH_DISTANCE_M,
+			BASIS_TOLERANCE
+		)
+		assert_true(
+			camera.is_position_in_frustum(detach_target),
+			"%s must frame the authored detach target at a non-zero attach"
+			% frame[&"strip_name"]
+		)
+
+
 func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
@@ -240,6 +273,12 @@ func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 		0.0,
 		SCREEN_TOLERANCE
 	)
+	assert_gt(
+		absf(tangent_on_screen.z),
+		absf(tangent_on_screen.x),
+		"grind ships along the rail depth axis; "
+		+ "a side-on camera here changes the authored shot"
+	)
 	assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
 	assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
 
@@ -264,7 +303,19 @@ func test_swing_camera_is_side_on_to_the_pendulum_plane() -> void:
 		Vector3.RIGHT,
 		view_direction
 	)
+	var tangent_on_screen := basis.inverse() * Vector3.FORWARD
 
+	assert_almost_eq(
+		tangent_on_screen.y,
+		0.0,
+		SCREEN_TOLERANCE
+	)
+	assert_gt(
+		absf(tangent_on_screen.x),
+		absf(tangent_on_screen.z),
+		"swing ships side-on to its pendulum plane; "
+		+ "a depth-axis camera here changes the authored shot"
+	)
 	assert_almost_eq(
 		view_direction.dot(Vector3.FORWARD),
 		0.0,
@@ -578,6 +629,10 @@ func _live_wall_run_camera_frames() -> Array[Dictionary]:
 			&"player": player,
 			&"camera": camera,
 			&"basis": camera.global_basis,
+			&"attach_distance_m": sample.distance_along_m,
+			&"detach_target": (
+				segment.get_node("LandingPad") as Node3D
+			).global_position,
 			&"view_direction": _settled_live_view_direction(
 				&"wall_run",
 				player.global_position,
