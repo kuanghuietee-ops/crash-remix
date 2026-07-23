@@ -48,7 +48,8 @@ static func resolve_colour(
 	rail_samples: Array[TraversalSample],
 	surface_is_landable: bool,
 	depth_tuning: DepthTuning,
-	rail_attach_snap_m := -1.0
+	rail_attach_snap_m := -1.0,
+	known_rail_index: Variant = null
 ) -> Color:
 	if depth_tuning == null:
 		return Color.TRANSPARENT
@@ -57,14 +58,16 @@ static func resolve_colour(
 	var resolved_snap_m := rail_attach_snap_m
 	if resolved_snap_m < 0.0:
 		resolved_snap_m = depth_tuning.ring_outer_radius_m
-	if (
-		DepthPredictionType.first_rail_contact_index(
+	var rail_index := (
+		int(known_rail_index)
+		if known_rail_index != null
+		else DepthPredictionType.first_rail_contact_index(
 			arc_points,
 			rail_samples,
 			resolved_snap_m
 		)
-		>= 0
-	):
+	)
+	if rail_index >= 0:
 		return depth_tuning.rail_predicted_color
 	return depth_tuning.landable_color
 
@@ -110,7 +113,8 @@ func _physics_process(_delta_s: float) -> void:
 		rail_samples,
 		surface_is_landable,
 		_depth_tuning,
-		rail_snap_m
+		rail_snap_m,
+		rail_index
 	)
 	if not surface_is_landable and not hit.is_empty():
 		_show_hit(hit, color)

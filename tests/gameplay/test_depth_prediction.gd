@@ -320,6 +320,43 @@ func test_ring_runtime_snap_matches_grind_attach_not_visual_radius() -> void:
 	)
 
 
+func test_ring_colour_reuses_the_contact_already_resolved_for_position() -> void:
+	var script := _load_script_with_method(
+		LANDING_RING_SCRIPT_PATH,
+		&"resolve_colour"
+	)
+	if script == null:
+		return
+	var empty_arc := PackedVector3Array()
+	var empty_samples: Array[TraversalSample] = []
+
+	var rail_colour: Variant = script.call(
+		"resolve_colour",
+		empty_arc,
+		empty_samples,
+		true,
+		_depth,
+		_grind.attach_snap_m,
+		0
+	)
+	var floor_colour: Variant = script.call(
+		"resolve_colour",
+		empty_arc,
+		empty_samples,
+		true,
+		_depth,
+		_grind.attach_snap_m,
+		-1
+	)
+
+	assert_eq(
+		rail_colour,
+		_depth.rail_predicted_color,
+		"runtime must reuse its known rail hit instead of solving the arc twice"
+	)
+	assert_eq(floor_colour, _depth.landable_color)
+
+
 func test_player_prediction_context_uses_the_exact_wall_detach_arc() -> void:
 	var script := _load_script_with_method(
 		PLAYER_SCRIPT_PATH,

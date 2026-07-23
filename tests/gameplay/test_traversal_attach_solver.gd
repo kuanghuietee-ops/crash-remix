@@ -135,6 +135,63 @@ func test_rail_attach_boundary_is_inclusive() -> void:
 	)
 
 
+func test_rail_attach_broadphase_preserves_contact_and_rejects_distant_samples() -> void:
+	var script: Script = load(
+		"res://src/gameplay/traversal/traversal_attach_solver.gd"
+	)
+	var has_broadphase := false
+	for method: Dictionary in script.get_script_method_list():
+		if StringName(method.get("name", &"")) == &"rail_attach_candidate_indices":
+			has_broadphase = true
+			break
+	assert_true(
+		has_broadphase,
+		"airborne attach needs a one-pass broadphase before the arc/sample solver"
+	)
+	if not has_broadphase:
+		return
+	var samples: Array[TraversalSample] = _straight_rail(
+		Vector3(50.0, 0.0, 100.0),
+		Vector3.FORWARD,
+		200.0,
+		0.5
+	)
+	var expected_contact_index := samples.size()
+	samples.append(_sample(
+		Vector3(0.0, 1.5, 2.0),
+		Vector3.BACK,
+		Vector3.UP
+	))
+	var arc := PackedVector3Array([
+		Vector3(0.0, 3.0, 0.0),
+		Vector3(0.0, 1.5, 2.0),
+		Vector3(0.0, 0.0, 4.0),
+	])
+
+	var candidate_value: Variant = script.call(
+		"rail_attach_candidate_indices",
+		arc,
+		samples,
+		0.35
+	)
+	assert_true(candidate_value is PackedInt32Array)
+	if not candidate_value is PackedInt32Array:
+		return
+	var candidates := candidate_value as PackedInt32Array
+
+	assert_eq(candidates, PackedInt32Array([expected_contact_index]))
+	assert_lt(
+		candidates.size(),
+		samples.size() / 10,
+		"distant authored rails must not enter every airborne segment scan"
+	)
+	assert_eq(
+		TraversalAttachSolverType.solve_rail_attach(arc, samples, 0.35),
+		expected_contact_index,
+		"broadphase reduction must preserve the original sample index"
+	)
+
+
 func test_nearest_sample_index_handles_present_and_empty_samples() -> void:
 	var samples: Array[TraversalSample] = _straight_rail(
 		Vector3.ZERO,
