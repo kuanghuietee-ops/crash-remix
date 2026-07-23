@@ -10,6 +10,8 @@ const BUFFER_SCRIPT_PATH := "res://src/gameplay/input/input_intent_buffer.gd"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
 const EXPECTED_MINIMUM_CATCH_SPEED_MPS := 6.5
 const WORST_CATCH_SWING_FRAMES := 15
+const ASSISTED_EARLY_RELEASE_FRAMES := 10
+const ASSISTED_LATE_RELEASE_FRAMES := 20
 const MAX_ESCAPE_FRAMES := 60
 
 var _catalog: GameplayTuning
@@ -367,6 +369,80 @@ func test_slowest_authored_catch_reaches_the_next_real_anchor() -> void:
 	)
 
 
+func test_first_to_second_rope_accepts_an_early_human_release() -> void:
+	assert_true(
+		await _first_transfer_catches_after(
+			ASSISTED_EARLY_RELEASE_FRAMES
+		),
+		"the second rope needs release tolerance before the reference timing"
+	)
+
+
+func test_first_to_second_rope_accepts_a_late_human_release() -> void:
+	assert_true(
+		await _first_transfer_catches_after(
+			ASSISTED_LATE_RELEASE_FRAMES
+		),
+		"the second rope needs release tolerance after the reference timing"
+	)
+
+
+func test_chain_transfer_assist_restores_a_safe_escape_speed() -> void:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	var second_anchor := segment.get_node("SecondAnchor") as Node3D
+	var assisted_offset_m := (
+		_swing.catch_radius_m
+		+ _swing.transfer_catch_radius_m
+	) * 0.5
+	player.global_position = (
+		second_anchor.call("catch_position", _swing)
+		+ Vector3.RIGHT * assisted_offset_m
+	)
+	player.velocity = (
+		Vector3.FORWARD
+		* _swing.transfer_minimum_catch_speed_mps
+	)
+	player.set("_swing_attach_blocked", first_anchor)
+
+	assert_true(
+		player.call("try_swing_catch", second_anchor, 2.75),
+		"a real chain transfer must use its authored spatial and speed assist"
+	)
+	assert_almost_eq(
+		absf(player.get("_swing_angular_velocity"))
+		* _swing.rope_length_m,
+		_swing.minimum_catch_speed_mps,
+		0.0001,
+		"an assisted catch must leave enough momentum for the next rope"
+	)
+
+
+func test_chain_transfer_still_rejects_below_its_assist_floor() -> void:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	var second_anchor := segment.get_node("SecondAnchor") as Node3D
+	player.global_position = second_anchor.call("catch_position", _swing)
+	player.velocity = (
+		Vector3.FORWARD
+		* (_swing.transfer_minimum_catch_speed_mps - 0.01)
+	)
+	player.set("_swing_attach_blocked", first_anchor)
+
+	assert_false(
+		player.call("try_swing_catch", second_anchor, 2.76),
+		"transfer forgiveness must remain bounded by live tuning"
+	)
+
+
 func test_a_caught_rope_never_releases_with_zero_velocity() -> void:
 	var setup := _new_authored_swing_setup()
 	if setup.is_empty():
@@ -708,6 +784,36 @@ func _new_fsm() -> RefCounted:
 	var script: Script = load(FSM_SCRIPT_PATH)
 	assert_not_null(script)
 	return script.new() if script != null else null
+
+
+func _first_transfer_catches_after(release_frames: int) -> bool:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return false
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	var second_anchor := segment.get_node("SecondAnchor") as Node3D
+	player.global_position = first_anchor.call("catch_position", _swing)
+	player.velocity = (
+		Vector3.FORWARD * _swing.minimum_catch_speed_mps
+	)
+	var caught_s := float(Time.get_ticks_usec()) / 1_000_000.0
+	if not player.call("try_swing_catch", first_anchor, caught_s):
+		return false
+
+	await wait_physics_frames(release_frames)
+
+	var release_s := float(Time.get_ticks_usec()) / 1_000_000.0
+	_press(buffer, &"jump", release_s)
+	for _frame: int in range(MAX_ESCAPE_FRAMES):
+		await wait_physics_frames(1)
+		if player.get("_active_swing_anchor") == second_anchor:
+			return true
+		if player.call("is_respawning"):
+			return false
+	return false
 
 
 func _new_buffer() -> InputIntentBuffer:

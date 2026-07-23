@@ -368,7 +368,7 @@ func test_phase_zero_input_fields_backfill_without_losing_operator_values() -> v
 	)
 
 
-func test_old_swing_override_backfills_the_catch_speed_floor() -> void:
+func test_old_swing_override_backfills_the_chain_catch_assist() -> void:
 	var service: RefCounted = _new_service()
 	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
 	assert_not_null(service)
@@ -401,6 +401,14 @@ func test_old_swing_override_backfills_the_catch_speed_floor() -> void:
 	assert_eq(
 		migrated.swing.minimum_catch_speed_mps,
 		authored.swing.minimum_catch_speed_mps
+	)
+	assert_eq(
+		migrated.swing.transfer_catch_radius_m,
+		authored.swing.transfer_catch_radius_m
+	)
+	assert_eq(
+		migrated.swing.transfer_minimum_catch_speed_mps,
+		authored.swing.transfer_minimum_catch_speed_mps
 	)
 	assert_eq(
 		migrated.swing.release_boost_mps,
@@ -636,6 +644,10 @@ func test_unusable_swing_escape_speeds_are_rejected() -> void:
 		return
 	var swing: SwingTuning = service.get("catalog").get("swing")
 	var authored_minimum := swing.minimum_catch_speed_mps
+	var authored_transfer_radius := swing.transfer_catch_radius_m
+	var authored_transfer_minimum := (
+		swing.transfer_minimum_catch_speed_mps
+	)
 	var authored_boost := swing.release_boost_mps
 
 	swing.minimum_catch_speed_mps = 0.0
@@ -643,6 +655,16 @@ func test_unusable_swing_escape_speeds_are_rejected() -> void:
 	swing.minimum_catch_speed_mps = swing.maximum_speed_mps + 0.01
 	assert_false(service.call("catalog_is_usable"))
 	swing.minimum_catch_speed_mps = authored_minimum
+	swing.transfer_catch_radius_m = swing.catch_radius_m - 0.01
+	assert_false(service.call("catalog_is_usable"))
+	swing.transfer_catch_radius_m = authored_transfer_radius
+	swing.transfer_minimum_catch_speed_mps = 0.0
+	assert_false(service.call("catalog_is_usable"))
+	swing.transfer_minimum_catch_speed_mps = (
+		swing.minimum_catch_speed_mps + 0.01
+	)
+	assert_false(service.call("catalog_is_usable"))
+	swing.transfer_minimum_catch_speed_mps = authored_transfer_minimum
 	swing.release_boost_mps = 0.0
 	assert_false(service.call("catalog_is_usable"))
 	swing.release_boost_mps = authored_boost

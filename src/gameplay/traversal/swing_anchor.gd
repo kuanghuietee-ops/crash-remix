@@ -34,13 +34,14 @@ func refresh_tuning(next_swing_tuning: SwingTuning) -> void:
 
 func can_catch(
 	world_position: Vector3,
+	catch_radius_m: float,
 	active_tuning: SwingTuning
 ) -> bool:
-	if active_tuning == null:
+	if active_tuning == null or catch_radius_m <= 0.0:
 		return false
 	return (
 		world_position.distance_to(catch_position(active_tuning))
-		<= active_tuning.catch_radius_m
+		<= catch_radius_m
 	)
 
 

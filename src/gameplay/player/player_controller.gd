@@ -627,7 +627,17 @@ func try_swing_catch(
 	):
 		return false
 	anchor.refresh_tuning(_swing_tuning)
-	if not anchor.can_catch(global_position, _swing_tuning):
+	var is_chain_transfer := is_instance_valid(_swing_attach_blocked)
+	var catch_radius_m := (
+		_swing_tuning.transfer_catch_radius_m
+		if is_chain_transfer
+		else _swing_tuning.catch_radius_m
+	)
+	if not anchor.can_catch(
+		global_position,
+		catch_radius_m,
+		_swing_tuning
+	):
 		return false
 	var angle_rad := anchor.angle_for(global_position)
 	var maximum_angular_speed := (
@@ -647,7 +657,17 @@ func try_swing_catch(
 		absf(angular_velocity) * _swing_tuning.rope_length_m
 	)
 	if catch_speed_mps < _swing_tuning.minimum_catch_speed_mps:
-		return false
+		if (
+			not is_chain_transfer
+			or catch_speed_mps
+			< _swing_tuning.transfer_minimum_catch_speed_mps
+		):
+			return false
+		angular_velocity = (
+			signf(angular_velocity)
+			* _swing_tuning.minimum_catch_speed_mps
+			/ _swing_tuning.rope_length_m
+		)
 	_active_swing_anchor = anchor
 	_swing_attach_blocked = null
 	_swing_angle_rad = angle_rad

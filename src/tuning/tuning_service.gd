@@ -25,6 +25,10 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"minimum_catch_speed_mps",
 		],
+		[
+			&"transfer_catch_radius_m",
+			&"transfer_minimum_catch_speed_mps",
+		],
 	],
 }
 
@@ -220,8 +224,12 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	var swing := checked.swing
 	if (
 		swing.catch_radius_m <= 0.0
+		or swing.transfer_catch_radius_m < swing.catch_radius_m
 		or swing.rope_length_m <= 0.0
 		or swing.minimum_catch_speed_mps <= 0.0
+		or swing.transfer_minimum_catch_speed_mps <= 0.0
+		or swing.transfer_minimum_catch_speed_mps
+		> swing.minimum_catch_speed_mps
 		or swing.gravity_scale <= 0.0
 		or swing.maximum_speed_mps <= 0.0
 		or swing.minimum_catch_speed_mps > swing.maximum_speed_mps

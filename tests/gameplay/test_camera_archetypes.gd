@@ -443,10 +443,18 @@ func test_swing_camera_holds_the_rope_frame_while_player_crosses_the_arc() -> vo
 	var initial_player_screen := camera.unproject_position(
 		player.global_position
 	)
+	var swing_angle_rad := TAU / 5.0
+	var rope_start_offset := (
+		Vector3.DOWN * _catalog.swing.rope_length_m
+	)
+	var rope_arc_offset := (
+		Vector3.DOWN * cos(swing_angle_rad)
+		+ Vector3.FORWARD * sin(swing_angle_rad)
+	) * _catalog.swing.rope_length_m
 	player.global_position = (
 		frame_center
-		+ Vector3.FORWARD * 3.0
-		+ Vector3.UP * 2.0
+		+ rope_arc_offset
+		- rope_start_offset
 	)
 
 	controller.call("update_camera", 1.0)
