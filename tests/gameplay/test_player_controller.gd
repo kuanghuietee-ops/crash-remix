@@ -239,6 +239,47 @@ func test_controller_applies_global_fair_hitbox_ratios() -> void:
 	)
 
 
+func test_spin_rotates_visual_pivot_and_resets_at_authored_end_time() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var spin_pivot: Node3D = setup["spin_pivot"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var spin_started_s := 35.01
+	controller.call("advance_logic", 35.0, true, 0.0, Vector3.FORWARD)
+	buffer.push(
+		InputIntent.button(
+			InputIntent.ACTION_SPIN,
+			true,
+			spin_started_s,
+			&"touch"
+		)
+	)
+
+	controller.call(
+		"advance_logic",
+		spin_started_s,
+		true,
+		_move.spin_active_s * 0.5,
+		Vector3.FORWARD
+	)
+
+	assert_true(controller.call("is_spinning"))
+	assert_ne(spin_pivot.rotation.y, 0.0)
+
+	controller.call(
+		"advance_logic",
+		spin_started_s + _move.spin_active_s,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_false(controller.call("is_spinning"))
+	assert_almost_eq(spin_pivot.rotation.y, 0.0, 0.0001)
+
+
 func test_respawn_waits_for_authored_delay_and_accepts_exact_boundary() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():
@@ -320,6 +361,9 @@ func _new_controller() -> Dictionary:
 	controller.add_child(collision_shape)
 	var visual := Node3D.new()
 	visual.name = "Visual"
+	var spin_pivot := Node3D.new()
+	spin_pivot.name = "SpinPivot"
+	visual.add_child(spin_pivot)
 	controller.add_child(visual)
 	var hurtbox := Area3D.new()
 	hurtbox.name = "Hurtbox"
@@ -354,5 +398,6 @@ func _new_controller() -> Dictionary:
 		"slam_area": slam_area,
 		"slam_shape": slam_shape,
 		"visual": visual,
+		"spin_pivot": spin_pivot,
 		"buffer": buffer,
 	}

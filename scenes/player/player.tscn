@@ -70,10 +70,12 @@ shape = SubResource("Cylinder_hurtbox")
 [node name="Visual" type="Node3D" parent="."]
 position = Vector3(0, 0.55, 0)
 
-[node name="Body" type="MeshInstance3D" parent="Visual"]
+[node name="SpinPivot" type="Node3D" parent="Visual"]
+
+[node name="Body" type="MeshInstance3D" parent="Visual/SpinPivot"]
 mesh = SubResource("Mesh_player")
 
-[node name="ForwardMarker" type="MeshInstance3D" parent="Visual"]
+[node name="ForwardMarker" type="MeshInstance3D" parent="Visual/SpinPivot"]
 position = Vector3(0, 0, -0.32)
 scale = Vector3(0.22, 0.22, 0.22)
 mesh = SubResource("Mesh_player")

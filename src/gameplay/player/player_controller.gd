@@ -22,6 +22,7 @@ var _state_machine: PlayerStateMachineType = PlayerStateMachineType.new()
 var _collision_shape: CollisionShape3D
 var _hurtbox_area: Area3D
 var _visual_root: Node3D
+var _spin_visual_pivot: Node3D
 var _spin_area: Area3D
 var _slam_area: Area3D
 var _corridor_forward := Vector3.FORWARD
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_collision_shape = get_node_or_null("CollisionShape3D") as CollisionShape3D
 	_hurtbox_area = get_node_or_null("Hurtbox") as Area3D
 	_visual_root = get_node_or_null("Visual") as Node3D
+	_spin_visual_pivot = get_node_or_null("Visual/SpinPivot") as Node3D
 	_spin_area = get_node_or_null("SpinArea") as Area3D
 	_slam_area = get_node_or_null("SlamArea") as Area3D
 	_spawn_transform = global_transform
@@ -116,6 +118,7 @@ func advance_logic(
 	_apply_jump_release(now_s)
 	_track_fall_apex(grounded)
 	_apply_character_dimensions(decision.state)
+	_apply_spin_visual(delta_s)
 	_apply_body_slam_attack(decision)
 	_emit_state_changes(decision.state, _state_machine.is_spinning)
 	return decision
@@ -262,6 +265,8 @@ func respawn() -> void:
 	if _intents != null:
 		_intents.clear()
 	_apply_character_dimensions(_state_machine.state)
+	if _spin_visual_pivot != null:
+		_spin_visual_pivot.rotation.y = 0.0
 	respawned.emit()
 
 
@@ -396,6 +401,18 @@ func _apply_body_slam_attack(decision: PlayerFrameDecisionType) -> void:
 		body_slam_impacted.emit()
 
 
+func _apply_spin_visual(delta_s: float) -> void:
+	if (
+		_spin_visual_pivot == null
+		or not _state_machine.is_spinning
+		or _move_tuning.spin_active_s <= 0.0
+	):
+		return
+	_spin_visual_pivot.rotate_y(
+		TAU * maxf(delta_s, 0.0) / _move_tuning.spin_active_s
+	)
+
+
 func _emit_state_changes(state: StringName, spinning: bool) -> void:
 	if state != _last_state:
 		state_changed.emit(_last_state, state)
@@ -403,6 +420,8 @@ func _emit_state_changes(state: StringName, spinning: bool) -> void:
 	if spinning != _last_spin_active:
 		spin_changed.emit(spinning)
 		_last_spin_active = spinning
+		if not spinning and _spin_visual_pivot != null:
+			_spin_visual_pivot.rotation.y = 0.0
 		if _spin_area != null:
 			_spin_area.set_deferred("monitoring", spinning)
 

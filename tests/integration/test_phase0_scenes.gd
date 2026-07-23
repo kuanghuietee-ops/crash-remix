@@ -262,6 +262,35 @@ func test_live_tuning_reaches_cached_camera_and_touch_consumers() -> void:
 	assert_gt(touch.call("current_layout")["jump_radius"], old_radius)
 
 
+func test_touch_spin_reaches_player_and_rotates_visible_pivot() -> void:
+	var game := _instantiate(GAME_SCENE_PATH)
+	if game == null:
+		return
+	add_child_autofree(game)
+	await wait_physics_frames(4)
+	var player := game.get_node("Player") as CharacterBody3D
+	var touch := game.get_node("UI/TouchControls") as Control
+	var spin_area := player.get_node("SpinArea") as Area3D
+	assert_true(player.has_node("Visual/SpinPivot"))
+	if not player.has_node("Visual/SpinPivot"):
+		return
+	var spin_pivot := player.get_node("Visual/SpinPivot") as Node3D
+	var rotation_before := spin_pivot.rotation.y
+	var spin_press := InputEventScreenTouch.new()
+	spin_press.index = 12
+	spin_press.position = touch.call("current_layout")["spin_center"]
+	spin_press.pressed = true
+
+	touch.call("handle_touch_event", spin_press)
+	await wait_physics_frames(2)
+
+	assert_true(player.call("is_spinning"))
+	assert_true(spin_area.monitoring)
+	assert_ne(spin_pivot.rotation.y, rotation_before)
+	spin_press.pressed = false
+	touch.call("handle_touch_event", spin_press)
+
+
 func _instantiate(path: String) -> Node:
 	var packed: PackedScene = load(path)
 	assert_not_null(packed, path + " must load")
