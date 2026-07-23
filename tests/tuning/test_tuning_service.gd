@@ -6,6 +6,161 @@ const TEST_OVERRIDE_PATH := "user://test_sandbox/tuning_override.tres"
 const PHASE0_INPUT_OVERRIDE_PATH := (
 	"res://tests/fixtures/phase0_input_override_all_sections.tres"
 )
+# Frozen at the field shape understood when cohort migration was introduced.
+# A later field belongs in LEGACY_FIELD_GROUPS_BY_SECTION, not in this baseline.
+const PHASE0_BASELINE_FIELDS_BY_SECTION := {
+	&"move": [
+		&"player_height_m",
+		&"collision_radius_m",
+		&"floor_snap_length_m",
+		&"floor_max_angle_degrees",
+		&"crouch_hurtbox_height_ratio",
+		&"hurtbox_visual_ratio",
+		&"attack_visual_ratio",
+		&"run_speed_mps",
+		&"run_time_to_speed_s",
+		&"stop_time_s",
+		&"crawl_speed_mps",
+		&"gravity_mps2",
+		&"jump_full_height_m",
+		&"jump_tap_height_m",
+		&"double_jump_height_m",
+		&"double_jump_tap_height_m",
+		&"high_jump_height_m",
+		&"fall_gravity_multiplier",
+		&"apex_gravity_multiplier",
+		&"apex_velocity_threshold_mps",
+		&"maximum_fall_speed_mps",
+		&"spin_radius_m",
+		&"spin_active_s",
+		&"air_spin_gravity_multiplier",
+		&"slide_distance_m",
+		&"slide_duration_s",
+		&"slide_minimum_speed_mps",
+		&"slide_jump_distance_m",
+		&"slide_jump_height_m",
+		&"body_slam_speed_mps",
+		&"body_slam_shockwave_radius_m",
+		&"body_slam_recovery_s",
+		&"respawn_delay_s",
+		&"respawn_floor_y_m",
+	],
+	&"input": [
+		&"jump_buffer_s",
+		&"coyote_time_s",
+		&"action_buffer_s",
+		&"minimum_hop_release_s",
+		&"full_jump_hold_s",
+		&"edge_landing_nudge_m",
+		&"bounce_timing_s",
+		&"touch_response_target_s",
+		&"touch_response_hard_fail_s",
+		&"millimeters_per_inch",
+		&"fallback_dpi",
+		&"stick_region_width_ratio",
+		&"stick_region_top_exclusion_ratio",
+		&"stick_ring_diameter_mm",
+		&"stick_knob_diameter_mm",
+		&"stick_opacity",
+		&"stick_dead_zone_mm",
+		&"stick_full_run_mm",
+		&"corridor_magnet_cone_degrees",
+		&"corridor_magnet_strength",
+		&"gamepad_magnet_disable_magnitude",
+		&"gamepad_dead_zone",
+		&"jump_button_diameter_mm",
+		&"spin_button_diameter_mm",
+		&"down_button_diameter_mm",
+		&"jump_button_edge_x_mm",
+		&"jump_button_edge_y_mm",
+		&"spin_button_edge_x_mm",
+		&"down_button_above_jump_mm",
+		&"button_hit_radius_scale",
+		&"jump_catchall_width_ratio",
+		&"jump_catchall_top_ratio",
+		&"button_opacity",
+		&"button_label_height_mm",
+		&"control_outline_width_mm",
+		&"control_color",
+		&"control_label_color",
+		&"haptic_duration_ms",
+		&"haptics_enabled",
+		&"left_handed_layout",
+		&"control_scale",
+		&"layout_metrics_poll_interval_s",
+	],
+	&"camera": [
+		&"field_of_view_degrees",
+		&"rail_bake_interval_m",
+		&"rail_follow_speed_mps",
+		&"region_blend_s",
+		&"look_ahead_m",
+		&"look_at_height_m",
+		&"player_screen_left_bias_m",
+		&"default_offset",
+		&"close_offset",
+		&"side_on_offset",
+		&"grind_offset",
+		&"wall_run_offset",
+		&"swing_offset",
+		&"wall_run_bank_degrees",
+		&"minimum_jump_depression_degrees",
+	],
+	&"depth": [
+		&"shadow_diameter_m",
+		&"shadow_opacity",
+		&"shadow_ray_length_m",
+		&"shadow_ray_origin_offset_m",
+		&"shadow_surface_offset_m",
+		&"prediction_step_s",
+		&"prediction_horizon_s",
+		&"collision_probe_radius_m",
+		&"collision_probe_stride",
+		&"ring_outer_radius_m",
+		&"ring_inner_radius_m",
+		&"ring_surface_offset_m",
+		&"landable_color",
+		&"hazard_color",
+		&"rail_predicted_color",
+		&"landing_assist_last_fall_ratio",
+		&"landing_assist_edge_distance_m",
+		&"landing_assist_probe_depth_m",
+		&"landing_assist_touch_strength",
+		&"landing_assist_gamepad_strength",
+	],
+	&"wall_run": [
+		&"attach_cone_degrees",
+		&"minimum_entry_speed_mps",
+		&"surface_stick_distance_m",
+		&"run_speed_mps",
+		&"maximum_duration_s",
+		&"gravity_multiplier",
+		&"detach_outward_speed_mps",
+		&"detach_height_m",
+	],
+	&"grind": [
+		&"attach_snap_m",
+		&"speed_mps",
+		&"acceleration_mps2",
+		&"bank_degrees",
+		&"hop_lateral_distance_m",
+		&"hop_height_m",
+		&"exit_forward_speed_mps",
+	],
+	&"swing": [
+		&"catch_radius_m",
+		&"rope_length_m",
+		&"gravity_scale",
+		&"maximum_speed_mps",
+		&"damping_per_s",
+		&"release_boost_mps",
+	],
+	&"phase": [
+		&"retoggle_cooldown_s",
+		&"ghost_opacity",
+		&"ghost_outline_width_m",
+	],
+}
 
 
 func before_each() -> void:
@@ -213,6 +368,80 @@ func test_phase_zero_input_fields_backfill_without_losing_operator_values() -> v
 	)
 
 
+func test_every_exported_field_has_override_migration_coverage() -> void:
+	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
+	var service_script := load(SERVICE_SCRIPT_PATH) as Script
+	assert_not_null(catalog)
+	assert_not_null(service_script)
+	if catalog == null or service_script == null:
+		return
+	var constants := service_script.get_script_constant_map()
+	var section_names: Array = constants.get("SECTION_NAMES", [])
+	var legacy_groups: Dictionary = constants.get(
+		"LEGACY_FIELD_GROUPS_BY_SECTION",
+		{}
+	)
+	assert_eq(
+		section_names.size(),
+		PHASE0_BASELINE_FIELDS_BY_SECTION.size(),
+		"every catalog section needs a frozen migration baseline"
+	)
+
+	for section_value: Variant in section_names:
+		var section_name := StringName(section_value)
+		var section := catalog.get(section_name) as Resource
+		assert_not_null(section, "%s section must load" % section_name)
+		assert_true(
+			PHASE0_BASELINE_FIELDS_BY_SECTION.has(section_name),
+			"%s has no migration baseline" % section_name
+		)
+		if (
+			section == null
+			or not PHASE0_BASELINE_FIELDS_BY_SECTION.has(section_name)
+		):
+			continue
+		var exported_fields := _exported_property_names(section)
+		var covered_fields := {}
+		for baseline_field: StringName in (
+			PHASE0_BASELINE_FIELDS_BY_SECTION[section_name]
+		):
+			assert_true(
+				exported_fields.has(baseline_field),
+				"%s.%s is stale in the migration baseline"
+				% [section_name, baseline_field]
+			)
+			assert_false(covered_fields.has(baseline_field))
+			covered_fields[baseline_field] = &"phase0"
+		if legacy_groups.has(section_name):
+			for field_group: Array in legacy_groups[section_name]:
+				for legacy_field: StringName in field_group:
+					assert_true(
+						exported_fields.has(legacy_field),
+						"%s.%s is stale in the legacy cohort registry"
+						% [section_name, legacy_field]
+					)
+					assert_false(
+						covered_fields.has(legacy_field),
+						"%s.%s cannot be both baseline and legacy"
+						% [section_name, legacy_field]
+					)
+					covered_fields[legacy_field] = &"legacy"
+		for exported_field: StringName in exported_fields:
+			assert_true(
+				covered_fields.has(exported_field),
+				(
+					"%s.%s is covered by neither the Phase 0 baseline "
+					+ "nor a legacy migration cohort"
+				) % [section_name, exported_field]
+			)
+		assert_eq(
+			covered_fields.size(),
+			exported_fields.size(),
+			"%s migration coverage must exactly match its exports"
+			% section_name
+		)
+
+
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:
 	var service: RefCounted = _new_service()
 	assert_not_null(service)
@@ -402,6 +631,15 @@ func _global_class_name(resource: Resource) -> String:
 	if resource == null or resource.get_script() == null:
 		return ""
 	return resource.get_script().get_global_name()
+
+
+func _exported_property_names(resource: Resource) -> Array[StringName]:
+	var names: Array[StringName] = []
+	for property_info: Dictionary in resource.get_property_list():
+		var usage: int = property_info["usage"]
+		if usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			names.append(StringName(property_info["name"]))
+	return names
 
 
 func _remove_test_override() -> void:
