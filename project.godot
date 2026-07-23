@@ -1,0 +1,49 @@
+; Godot 4 project configuration — crash-remix
+;
+; Minimal starting config that encodes the locked decisions from the design doc (§11).
+; Open once in the pinned Godot version and let the editor validate/complete it.
+; Treat this file as intent, not as a verified-complete config.
+
+config_version=5
+
+[application]
+
+config/name="Crash Remix"
+config/description="Trilogy greatest-hits 3D platformer for Android. Personal fan project, sideload only."
+; main_scene does not exist yet — Codex creates scenes/game.tscn in Phase 0.
+run/main_scene="res://scenes/game.tscn"
+config/features=PackedStringArray("4.4", "Mobile")
+boot_splash/show_image=false
+
+[display]
+
+; Landscape only (spec §5.2). VERIFY the orientation key/enum against the pinned
+; Godot version before relying on it — set it in the editor if this form is stale.
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/handheld/orientation="sensor_landscape"
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[input_devices]
+
+; Multitouch must be fully independent: the stick never captures right-zone touches
+; and a JUMP pressed mid-stick-reposition must register (spec §5.2).
+pointing/emulate_mouse_from_touch=false
+pointing/emulate_touch_from_mouse=false
+
+[physics]
+
+; 60Hz physics with interpolation (spec §11.6). Gravity and jump arcs are hand-integrated
+; in the character controller; physics only resolves collision.
+common/physics_ticks_per_second=60
+common/physics_interpolation=true
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+; Mobile renderer (Vulkan). NOT Forward+, NOT Compatibility (spec §11.2).
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=1

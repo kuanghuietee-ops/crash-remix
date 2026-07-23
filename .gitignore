@@ -1,0 +1,28 @@
+# Godot 4
+.godot/
+/android/
+export_presets.cfg
+*.translation
+
+# Godot build artifacts
+build/
+*.apk
+*.aab
+*.idsig
+
+# Blender / art working files (keep source .blend out of git until an LFS decision is made)
+*.blend1
+*.blend2
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Local overrides written by the on-device tuning panel (never authoritative)
+override.tres
+override.cfg
+/logs/
