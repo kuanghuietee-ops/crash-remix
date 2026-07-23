@@ -77,6 +77,78 @@ func test_touch_layout_uses_physical_millimeters_and_mirrors() -> void:
 	assert_true(mirrored["stick_region"].has_point(Vector2(1720.0, 600.0)))
 
 
+func test_native_safe_areas_map_into_tall_and_short_logical_viewports() -> void:
+	var touch_script: Script = load(TOUCH_SCRIPT_PATH)
+	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
+	assert_not_null(touch_script)
+	assert_not_null(layout_script)
+	if touch_script == null or layout_script == null:
+		return
+	var exposes_conversion := false
+	for method: Dictionary in touch_script.get_script_method_list():
+		if method["name"] == &"layout_metrics_in_logical_space":
+			exposes_conversion = true
+			break
+	assert_true(
+		exposes_conversion,
+		"touch controls must convert native display metrics into logical space"
+	)
+	if not exposes_conversion:
+		return
+	var configurations: Array[Dictionary] = [
+		{
+			"native_safe_rect": Rect2(80.0, 0.0, 3040.0, 1440.0),
+			"native_display_size": Vector2(3200.0, 1440.0),
+			"native_dpi": 400.0,
+			"logical_viewport": Rect2(0.0, 0.0, 2400.0, 1080.0),
+			"expected_safe_rect": Rect2(60.0, 0.0, 2280.0, 1080.0),
+			"expected_dpi": 300.0,
+		},
+		{
+			"native_safe_rect": Rect2(40.0, 0.0, 1200.0, 720.0),
+			"native_display_size": Vector2(1280.0, 720.0),
+			"native_dpi": 320.0,
+			"logical_viewport": Rect2(0.0, 0.0, 1920.0, 1080.0),
+			"expected_safe_rect": Rect2(60.0, 0.0, 1800.0, 1080.0),
+			"expected_dpi": 480.0,
+		},
+	]
+
+	for configuration: Dictionary in configurations:
+		var metrics: Dictionary = touch_script.call(
+			"layout_metrics_in_logical_space",
+			configuration["native_safe_rect"],
+			configuration["native_display_size"],
+			configuration["native_dpi"],
+			configuration["logical_viewport"]
+		)
+		assert_eq(metrics["safe_rect"], configuration["expected_safe_rect"])
+		assert_almost_eq(
+			metrics["dpi"],
+			configuration["expected_dpi"],
+			0.0001
+		)
+		var layout: Dictionary = layout_script.call(
+			"calculate",
+			metrics["safe_rect"],
+			metrics["dpi"],
+			_input_tuning
+		)
+		for center_name: String in [
+			"jump_center",
+			"spin_center",
+			"down_center",
+			"phase_center",
+		]:
+			assert_true(
+				(configuration["logical_viewport"] as Rect2).has_point(
+					layout[center_name]
+				),
+				"%s must stay inside %s logical viewport"
+				% [center_name, configuration["native_display_size"].y]
+			)
+
+
 func test_jump_catchall_width_is_driven_by_input_tuning() -> void:
 	var script: Script = load(LAYOUT_SCRIPT_PATH)
 	assert_not_null(script, "TouchControlLayout implementation must exist")

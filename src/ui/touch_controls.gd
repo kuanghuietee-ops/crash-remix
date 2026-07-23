@@ -84,6 +84,41 @@ func layout_metrics_poll_count() -> int:
 	return _layout_metrics_poll_count
 
 
+static func layout_metrics_in_logical_space(
+	native_safe_rect: Rect2,
+	native_display_size: Vector2,
+	native_dpi: float,
+	logical_viewport_rect: Rect2
+) -> Dictionary:
+	var native_to_logical_scale := Vector2.ONE
+	if (
+		native_display_size.x > 0.0
+		and native_display_size.y > 0.0
+		and logical_viewport_rect.size.x > 0.0
+		and logical_viewport_rect.size.y > 0.0
+	):
+		native_to_logical_scale = (
+			logical_viewport_rect.size / native_display_size
+		)
+	var logical_safe_rect := logical_viewport_rect
+	if not native_safe_rect.size.is_zero_approx():
+		logical_safe_rect = Rect2(
+			logical_viewport_rect.position
+			+ native_safe_rect.position * native_to_logical_scale,
+			native_safe_rect.size * native_to_logical_scale
+		)
+	var logical_dpi := native_dpi
+	if native_dpi > 0.0:
+		logical_dpi *= minf(
+			native_to_logical_scale.x,
+			native_to_logical_scale.y
+		)
+	return {
+		"safe_rect": logical_safe_rect,
+		"dpi": logical_dpi,
+	}
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch or event is InputEventScreenDrag:
 		handle_touch_event(event)
@@ -110,8 +145,9 @@ func _process(delta_s: float) -> void:
 		return
 	_layout_metrics_poll_elapsed_s = fmod(_layout_metrics_poll_elapsed_s, interval_s)
 	_layout_metrics_poll_count += 1
-	var safe_rect := _viewport_safe_rect()
-	var dpi := DisplayServer.screen_get_dpi()
+	var metrics := _viewport_layout_metrics()
+	var safe_rect: Rect2 = metrics["safe_rect"]
+	var dpi: float = metrics["dpi"]
 	if safe_rect != _last_safe_rect or not is_equal_approx(dpi, _last_dpi):
 		_recalculate_layout()
 
@@ -224,19 +260,30 @@ func _action_at(position: Vector2) -> StringName:
 func _recalculate_layout() -> void:
 	if _input_tuning == null:
 		return
-	var safe_rect: Rect2 = _layout_override_rect if _has_layout_override else _viewport_safe_rect()
-	var dpi: float = _layout_override_dpi if _has_layout_override else DisplayServer.screen_get_dpi()
+	var safe_rect := _layout_override_rect
+	var dpi := _layout_override_dpi
+	if not _has_layout_override:
+		var metrics := _viewport_layout_metrics()
+		safe_rect = metrics["safe_rect"]
+		dpi = metrics["dpi"]
 	_layout = TouchControlLayoutType.calculate(safe_rect, dpi, _input_tuning)
 	_last_safe_rect = safe_rect
 	_last_dpi = dpi
 	queue_redraw()
 
 
-func _viewport_safe_rect() -> Rect2:
-	var safe_rect := Rect2(DisplayServer.get_display_safe_area())
-	if safe_rect.size.is_zero_approx():
-		return get_viewport_rect()
-	return safe_rect
+func _viewport_layout_metrics() -> Dictionary:
+	var screen_index := DisplayServer.window_get_current_screen()
+	var native_safe_rect := Rect2(DisplayServer.get_display_safe_area())
+	native_safe_rect.position -= Vector2(
+		DisplayServer.screen_get_position(screen_index)
+	)
+	return layout_metrics_in_logical_space(
+		native_safe_rect,
+		Vector2(DisplayServer.screen_get_size(screen_index)),
+		DisplayServer.screen_get_dpi(screen_index),
+		get_viewport_rect()
+	)
 
 
 func _touch_exclusion_contains(position: Vector2) -> bool:
