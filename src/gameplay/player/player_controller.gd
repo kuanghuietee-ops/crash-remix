@@ -213,6 +213,53 @@ func current_state() -> StringName:
 	return _state_machine.state
 
 
+func traversal_camera_context() -> Dictionary:
+	var context_position := (
+		global_position
+		if is_inside_tree()
+		else position
+	)
+	var context := {
+		&"state": _state_machine.state,
+		&"tangent": Vector3.ZERO,
+		&"normal": Vector3.ZERO,
+		&"position": context_position,
+	}
+	if (
+		_state_machine.state == PlayerStateMachineType.STATE_GRIND
+		and is_instance_valid(_active_rail)
+	):
+		var rail_sample: TraversalSample = _active_rail.sample_at_distance(
+			_active_rail_distance_m
+		)
+		if rail_sample != null:
+			context[&"tangent"] = rail_sample.tangent
+			context[&"normal"] = rail_sample.normal
+			context[&"position"] = rail_sample.position
+	elif (
+		_state_machine.state == PlayerStateMachineType.STATE_WALL_RUN
+		and _active_wall_sample != null
+	):
+		context[&"tangent"] = _active_wall_sample.tangent
+		context[&"normal"] = _active_wall_sample.normal
+		context[&"position"] = _active_wall_sample.position
+	elif (
+		_state_machine.state == PlayerStateMachineType.STATE_SWING
+		and is_instance_valid(_active_swing_anchor)
+	):
+		var anchor_basis := (
+			_active_swing_anchor.global_basis.orthonormalized()
+		)
+		context[&"tangent"] = (
+			anchor_basis * Vector3.FORWARD
+		).normalized()
+		context[&"normal"] = (
+			anchor_basis * Vector3.RIGHT
+		).normalized()
+		context[&"position"] = context_position
+	return context
+
+
 func is_spinning() -> bool:
 	return _state_machine.is_spinning
 

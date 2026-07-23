@@ -29,21 +29,55 @@ func configure(target: Node3D, depth_tuning: DepthTuning) -> void:
 
 static func ray_origin(
 	target_position: Vector3,
-	depth_tuning: DepthTuning
+	depth_tuning: DepthTuning,
+	projection_direction_value := Vector3.DOWN
 ) -> Vector3:
+	var direction := projection_direction_value.normalized()
+	if direction.is_zero_approx():
+		direction = Vector3.DOWN
 	return (
 		target_position
-		+ Vector3.UP * depth_tuning.shadow_ray_origin_offset_m
+		- direction * depth_tuning.shadow_ray_origin_offset_m
 	)
+
+
+static func projection_direction(
+	state: StringName,
+	surface_normal: Vector3
+) -> Vector3:
+	if state == &"wall_run" and not surface_normal.is_zero_approx():
+		return -surface_normal.normalized()
+	return Vector3.DOWN
 
 
 func _physics_process(_delta_s: float) -> void:
 	if _target == null or _depth_tuning == null or not is_inside_tree():
 		visible = false
 		return
+	var traversal_state := &""
+	var surface_normal := Vector3.ZERO
+	if _target.has_method("traversal_camera_context"):
+		var context: Dictionary = _target.call(
+			"traversal_camera_context"
+		)
+		traversal_state = context.get(&"state", &"")
+		var normal_value: Variant = context.get(
+			&"normal",
+			Vector3.ZERO
+		)
+		if normal_value is Vector3:
+			surface_normal = normal_value as Vector3
+	var direction := projection_direction(
+		traversal_state,
+		surface_normal
+	)
 	var space_state := get_world_3d().direct_space_state
-	var from := ray_origin(_target.global_position, _depth_tuning)
-	var to := from + Vector3.DOWN * _depth_tuning.shadow_ray_length_m
+	var from := ray_origin(
+		_target.global_position,
+		_depth_tuning,
+		direction
+	)
+	var to := from + direction * _depth_tuning.shadow_ray_length_m
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	if _target is CollisionObject3D:
 		query.exclude = [(_target as CollisionObject3D).get_rid()]
@@ -53,12 +87,12 @@ func _physics_process(_delta_s: float) -> void:
 	if hit.is_empty():
 		return
 	var surface_position: Vector3 = hit["position"]
-	var surface_normal: Vector3 = hit["normal"]
+	var hit_normal: Vector3 = hit["normal"]
 	global_position = (
 		surface_position
-		+ surface_normal * _depth_tuning.shadow_surface_offset_m
+		+ hit_normal * _depth_tuning.shadow_surface_offset_m
 	)
-	_align_to_normal(surface_normal)
+	_align_to_normal(hit_normal)
 
 
 func _align_to_normal(surface_normal: Vector3) -> void:

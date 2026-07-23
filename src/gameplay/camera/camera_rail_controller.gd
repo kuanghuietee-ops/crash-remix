@@ -2,6 +2,9 @@ class_name CameraRailController
 extends Node3D
 
 const CameraBlendType := preload("res://src/gameplay/camera/camera_blend.gd")
+const CameraArchetypesType := preload(
+	"res://src/gameplay/camera/camera_archetypes.gd"
+)
 const CameraRegionType := preload("res://src/gameplay/camera/camera_region.gd")
 
 var _player: CharacterBody3D
@@ -16,6 +19,11 @@ var _blend_origin := Vector3.ZERO
 var _blend_target := Vector3.ZERO
 var _blend_elapsed_s: float
 var _corridor_forward := Vector3.FORWARD
+var _current_basis := Basis.IDENTITY
+var _basis_blend_origin := Basis.IDENTITY
+var _basis_blend_elapsed_s: float
+var _basis_mode := CameraRegionType.MODE_DEFAULT
+var _basis_initialized: bool
 var _initialized: bool
 
 
@@ -53,6 +61,9 @@ func configure(
 	_blend_origin = _current_offset
 	_blend_target = _current_offset
 	_blend_elapsed_s = _camera_tuning.region_blend_s
+	_basis_blend_elapsed_s = _camera_tuning.region_blend_s
+	_basis_mode = CameraRegionType.MODE_DEFAULT
+	_basis_initialized = false
 	_camera.fov = _camera_tuning.field_of_view_degrees
 	_initialized = false
 	update_camera(0.0)
@@ -93,7 +104,55 @@ func update_camera(delta_s: float) -> void:
 		forward = (rail_position - behind).normalized()
 	if not forward.is_zero_approx():
 		_corridor_forward = Vector3(forward.x, 0.0, forward.z).normalized()
-	var right := _corridor_forward.cross(Vector3.UP).normalized()
+	var context := _traversal_camera_context()
+	var basis_mode := _basis_mode_for(context)
+	var camera_forward := _corridor_forward
+	var camera_up := Vector3.UP
+	var camera_right := camera_forward.cross(camera_up).normalized()
+	var camera_origin := rail_position
+	var context_tangent := _context_vector(context, &"tangent")
+	var context_normal := _context_vector(context, &"normal")
+	if basis_mode == CameraRegionType.MODE_GRIND:
+		camera_forward = context_tangent.normalized()
+		camera_up = context_normal.slide(camera_forward).normalized()
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		camera_right = camera_forward.cross(camera_up).normalized()
+		camera_origin = _context_vector(
+			context,
+			&"position",
+			rail_position
+		)
+	elif basis_mode == CameraRegionType.MODE_WALL_RUN:
+		camera_forward = context_tangent.normalized()
+		camera_right = context_normal.slide(camera_forward).normalized()
+		if camera_right.is_zero_approx():
+			camera_right = camera_forward.cross(Vector3.UP).normalized()
+		camera_up = camera_forward.cross(camera_right).normalized()
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		camera_origin = _context_vector(
+			context,
+			&"position",
+			rail_position
+		)
+	elif basis_mode == CameraRegionType.MODE_SWING:
+		camera_forward = context_tangent.normalized()
+		camera_right = context_normal.slide(camera_forward).normalized()
+		if camera_right.is_zero_approx():
+			camera_right = camera_forward.cross(Vector3.UP).normalized()
+		camera_up = camera_right.cross(camera_forward).normalized()
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		camera_origin = _context_vector(
+			context,
+			&"position",
+			_player.global_position
+		)
+	if camera_right.is_zero_approx():
+		camera_right = _corridor_forward.cross(Vector3.UP).normalized()
+	if camera_right.is_zero_approx():
+		camera_right = Vector3.RIGHT
 	var region_offsets: Array[Vector3] = []
 	for region: CameraRegionType in _active_regions:
 		region_offsets.append(region.offset_for(_camera_tuning))
@@ -113,10 +172,10 @@ func update_camera(delta_s: float) -> void:
 		_camera_tuning
 	)
 	var desired_position := (
-		rail_position
-		+ right * _current_offset.x
-		+ Vector3.UP * _current_offset.y
-		- _corridor_forward * _current_offset.z
+		camera_origin
+		+ camera_right * _current_offset.x
+		+ camera_up * _current_offset.y
+		- camera_forward * _current_offset.z
 	)
 	if _initialized:
 		_camera.global_position = _camera.global_position.move_toward(
@@ -126,13 +185,40 @@ func update_camera(delta_s: float) -> void:
 	else:
 		_camera.global_position = desired_position
 		_initialized = true
+	var look_forward := camera_forward
+	if basis_mode == CameraRegionType.MODE_SWING:
+		look_forward = Vector3.ZERO
 	var look_target := (
 		_player.global_position
-		+ _corridor_forward * _camera_tuning.look_ahead_m
-		+ Vector3.UP * _camera_tuning.look_at_height_m
-		+ right * _camera_tuning.player_screen_left_bias_m
+		+ look_forward * _camera_tuning.look_ahead_m
+		+ camera_up * _camera_tuning.look_at_height_m
+		+ camera_right * _camera_tuning.player_screen_left_bias_m
 	)
-	_camera.look_at(look_target, Vector3.UP)
+	var view_direction := look_target - _camera.global_position
+	var target_basis := CameraArchetypesType.look_basis(
+		view_direction,
+		camera_up
+	)
+	if basis_mode == CameraRegionType.MODE_GRIND:
+		target_basis = CameraArchetypesType.grind_basis_for_view(
+			camera_forward,
+			camera_up,
+			view_direction
+		)
+	elif basis_mode == CameraRegionType.MODE_WALL_RUN:
+		target_basis = CameraArchetypesType.wall_run_basis_for_view(
+			camera_forward,
+			context_normal,
+			view_direction,
+			_camera_tuning
+		)
+	elif basis_mode == CameraRegionType.MODE_SWING:
+		target_basis = CameraArchetypesType.swing_basis_for_view(
+			camera_forward,
+			camera_right,
+			view_direction
+		)
+	_apply_basis_blend(target_basis, basis_mode, delta_s)
 	if _player.has_method("set_corridor_forward"):
 		_player.call("set_corridor_forward", _corridor_forward)
 	_update_input_corridor_axis()
@@ -164,6 +250,79 @@ func _update_input_corridor_axis() -> void:
 		_player.global_position + _corridor_forward
 	)
 	_input_router.set_corridor_axis(screen_forward - screen_origin)
+
+
+func _traversal_camera_context() -> Dictionary:
+	if _player.has_method("traversal_camera_context"):
+		var value: Variant = _player.call("traversal_camera_context")
+		if value is Dictionary:
+			return value as Dictionary
+	var state := &""
+	if _player.has_method("current_state"):
+		var state_value: Variant = _player.call("current_state")
+		if state_value is StringName:
+			state = state_value as StringName
+	return {
+		&"state": state,
+		&"tangent": Vector3.ZERO,
+		&"normal": Vector3.ZERO,
+		&"position": _player.global_position,
+	}
+
+
+func _basis_mode_for(context: Dictionary) -> StringName:
+	var state_value: Variant = context.get(&"state", &"")
+	var state := (
+		state_value as StringName
+		if state_value is StringName
+		else StringName(str(state_value))
+	)
+	var tangent := _context_vector(context, &"tangent")
+	if tangent.is_zero_approx():
+		return CameraRegionType.MODE_DEFAULT
+	if (
+		state == CameraRegionType.MODE_GRIND
+		or state == CameraRegionType.MODE_WALL_RUN
+		or state == CameraRegionType.MODE_SWING
+	):
+		return state
+	return CameraRegionType.MODE_DEFAULT
+
+
+func _context_vector(
+	context: Dictionary,
+	key: StringName,
+	fallback := Vector3.ZERO
+) -> Vector3:
+	var value: Variant = context.get(key, fallback)
+	if value is Vector3:
+		return value as Vector3
+	return fallback
+
+
+func _apply_basis_blend(
+	target_basis: Basis,
+	mode: StringName,
+	delta_s: float
+) -> void:
+	if not _basis_initialized:
+		_current_basis = target_basis
+		_basis_blend_origin = target_basis
+		_basis_blend_elapsed_s = _camera_tuning.region_blend_s
+		_basis_mode = mode
+		_basis_initialized = true
+	elif mode != _basis_mode:
+		_basis_blend_origin = _camera.global_basis.orthonormalized()
+		_basis_blend_elapsed_s = 0.0
+		_basis_mode = mode
+	_basis_blend_elapsed_s += maxf(delta_s, 0.0)
+	_current_basis = CameraBlendType.basis_at_elapsed(
+		_basis_blend_origin,
+		target_basis,
+		_basis_blend_elapsed_s,
+		_camera_tuning
+	)
+	_camera.global_basis = _current_basis
 
 
 func _on_region_body_entered(body: Node3D, region: CameraRegionType) -> void:

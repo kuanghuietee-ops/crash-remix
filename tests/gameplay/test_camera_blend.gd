@@ -81,7 +81,55 @@ func test_region_blend_reaches_target_at_authored_duration() -> void:
 	assert_eq(complete, target)
 
 
-func test_every_phase_zero_camera_offset_clears_depth_readability_rule() -> void:
+func test_archetype_basis_blend_is_partial_then_exact_at_authored_duration() -> void:
+	var script: Script = load(BLEND_SCRIPT_PATH)
+	assert_not_null(script, "CameraBlend implementation must exist")
+	if script == null:
+		return
+	var has_method := false
+	for method: Dictionary in script.get_script_method_list():
+		if method.get("name") == "basis_at_elapsed":
+			has_method = true
+			break
+	assert_true(
+		has_method,
+		"camera orientation needs an explicit time-scaled blend channel"
+	)
+	if not has_method:
+		return
+	var origin := Basis.IDENTITY
+	var target := Basis(Vector3.UP, PI)
+
+	var partial: Basis = script.call(
+		"basis_at_elapsed",
+		origin,
+		target,
+		FRAME_DELTA_S,
+		_camera
+	)
+	var complete: Basis = script.call(
+		"basis_at_elapsed",
+		origin,
+		target,
+		_camera.region_blend_s,
+		_camera
+	)
+	var partial_angle := origin.get_rotation_quaternion().angle_to(
+		partial.get_rotation_quaternion()
+	)
+	var target_angle := origin.get_rotation_quaternion().angle_to(
+		target.get_rotation_quaternion()
+	)
+
+	assert_gt(partial_angle, 0.0)
+	assert_lt(partial_angle, target_angle)
+	assert_true(
+		complete.is_equal_approx(target),
+		"orientation must arrive exactly when the authored blend completes"
+	)
+
+
+func test_required_jump_archetypes_clear_depth_readability_rule() -> void:
 	var script: Script = load(BLEND_SCRIPT_PATH)
 	assert_not_null(script, "CameraBlend implementation must exist")
 	if script == null:
@@ -90,6 +138,7 @@ func test_every_phase_zero_camera_offset_clears_depth_readability_rule() -> void
 		_camera.default_offset,
 		_camera.close_offset,
 		_camera.side_on_offset,
+		_camera.grind_offset,
 	]
 	for offset: Vector3 in offsets:
 		var depression: float = script.call("depression_degrees", offset)
@@ -97,4 +146,24 @@ func test_every_phase_zero_camera_offset_clears_depth_readability_rule() -> void
 			depression,
 			_camera.minimum_jump_depression_degrees,
 			"Every required-jump camera archetype must keep landings readable"
+		)
+
+
+func test_wall_run_and_swing_deliberately_use_section_5_5_substitutes() -> void:
+	var script: Script = load(BLEND_SCRIPT_PATH)
+	assert_not_null(script, "CameraBlend implementation must exist")
+	if script == null:
+		return
+
+	# Design §5.5 deliberately suspends the ≥15° rule for wall-run and swing.
+	# Wall-run instead holds the surface tangent horizontal; swing films side-on.
+	for offset: Vector3 in [
+		_camera.wall_run_offset,
+		_camera.swing_offset,
+	]:
+		var depression: float = script.call("depression_degrees", offset)
+		assert_lt(
+			depression,
+			_camera.minimum_jump_depression_degrees,
+			"these authored offsets are exemptions, not values to silently retune"
 		)
