@@ -260,6 +260,30 @@ func traversal_camera_context() -> Dictionary:
 	return context
 
 
+func landing_prediction_context() -> Dictionary:
+	var context_position := (
+		global_position
+		if is_inside_tree()
+		else position
+	)
+	var prediction_velocity := velocity
+	if (
+		_state_machine.state == PlayerStateMachineType.STATE_WALL_RUN
+		and _active_wall_sample != null
+	):
+		prediction_velocity = _wall_detach_velocity_for(
+			_active_wall_sample
+		)
+	elif _state_machine.state == PlayerStateMachineType.STATE_SWING:
+		prediction_velocity = _current_swing_release_velocity()
+	return {
+		&"state": _state_machine.state,
+		&"origin": context_position,
+		&"velocity": prediction_velocity,
+		&"spinning": _state_machine.is_spinning,
+	}
+
+
 func is_spinning() -> bool:
 	return _state_machine.is_spinning
 
@@ -740,19 +764,30 @@ func _apply_wall_detach() -> void:
 	if sample == null:
 		_finish_wall_run()
 		return
-	var run_direction := _horizontal_direction(sample.tangent)
-	var outward_direction := _horizontal_direction(sample.normal)
-	velocity = (
-		run_direction * _wall_run_tuning.run_speed_mps
-		+ outward_direction * _wall_run_tuning.detach_outward_speed_mps
-	)
-	velocity.y = JumpKinematicsType.upward_speed_for_height(
-		_wall_run_tuning.detach_height_m,
-		_move_tuning
-	)
+	velocity = _wall_detach_velocity_for(sample)
 	_wall_attach_blocked = departed_strip
 	_active_wall_strip = null
 	_active_wall_sample = null
+
+
+func _wall_detach_velocity_for(sample: TraversalSample) -> Vector3:
+	if (
+		sample == null
+		or _wall_run_tuning == null
+		or _move_tuning == null
+	):
+		return velocity
+	var run_direction := _horizontal_direction(sample.tangent)
+	var outward_direction := _horizontal_direction(sample.normal)
+	var detach_velocity := (
+		run_direction * _wall_run_tuning.run_speed_mps
+		+ outward_direction * _wall_run_tuning.detach_outward_speed_mps
+	)
+	detach_velocity.y = JumpKinematicsType.upward_speed_for_height(
+		_wall_run_tuning.detach_height_m,
+		_move_tuning
+	)
+	return detach_velocity
 
 
 func _finish_wall_run() -> void:
@@ -795,17 +830,26 @@ func _apply_swing_release() -> void:
 	):
 		return
 	var departed_anchor := _active_swing_anchor
-	var local_velocity := SwingPendulumType.release_velocity(
-		_swing_angle_rad,
-		_swing_angular_velocity,
-		_swing_tuning
-	)
-	velocity = departed_anchor.world_velocity(local_velocity)
+	velocity = _current_swing_release_velocity()
 	departed_anchor.reset_rope_visual()
 	_swing_attach_blocked = departed_anchor
 	_active_swing_anchor = null
 	_swing_angle_rad = 0.0
 	_swing_angular_velocity = 0.0
+
+
+func _current_swing_release_velocity() -> Vector3:
+	if (
+		not is_instance_valid(_active_swing_anchor)
+		or _swing_tuning == null
+	):
+		return velocity
+	var local_velocity := SwingPendulumType.release_velocity(
+		_swing_angle_rad,
+		_swing_angular_velocity,
+		_swing_tuning
+	)
+	return _active_swing_anchor.world_velocity(local_velocity)
 
 
 func _apply_rail_hop() -> void:

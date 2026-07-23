@@ -2,6 +2,9 @@ class_name DepthPrediction
 extends RefCounted
 
 const JumpKinematicsType := preload("res://src/gameplay/player/jump_kinematics.gd")
+const TraversalAttachSolverType := preload(
+	"res://src/gameplay/traversal/traversal_attach_solver.gd"
+)
 
 
 static func trajectory_points(
@@ -29,6 +32,36 @@ static func trajectory_points(
 		points.append(position)
 		elapsed_s += depth_tuning.prediction_step_s
 	return points
+
+
+static func trajectory_points_for_context(
+	context: Dictionary,
+	move_tuning: MoveTuning,
+	depth_tuning: DepthTuning
+) -> PackedVector3Array:
+	var origin_value: Variant = context.get(&"origin", Vector3.ZERO)
+	var velocity_value: Variant = context.get(&"velocity", Vector3.ZERO)
+	if not origin_value is Vector3 or not velocity_value is Vector3:
+		return PackedVector3Array()
+	return trajectory_points(
+		origin_value as Vector3,
+		velocity_value as Vector3,
+		bool(context.get(&"spinning", false)),
+		move_tuning,
+		depth_tuning
+	)
+
+
+static func first_rail_contact_index(
+	arc_points: PackedVector3Array,
+	rail_samples: Array[TraversalSample],
+	attach_snap_m: float
+) -> int:
+	return TraversalAttachSolverType.solve_rail_attach(
+		arc_points,
+		rail_samples,
+		attach_snap_m
+	)
 
 
 static func first_plane_crossing(

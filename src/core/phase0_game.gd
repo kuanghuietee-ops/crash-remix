@@ -63,7 +63,9 @@ func _ready() -> void:
 		"configure",
 		player,
 		catalog.move,
-		catalog.depth
+		catalog.depth,
+		catalog.grind,
+		_traversal_rails_for_prediction()
 	)
 	camera_rig.call(
 		"configure",
@@ -109,7 +111,9 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 		"configure",
 		player,
 		catalog.move,
-		catalog.depth
+		catalog.depth,
+		catalog.grind,
+		_traversal_rails_for_prediction()
 	)
 	camera_rig.call("refresh_tuning", catalog.camera)
 
@@ -124,3 +128,13 @@ func _refresh_swing_anchors(swing_tuning: SwingTuning) -> void:
 	for candidate: Node in get_tree().get_nodes_in_group(&"swing_anchor"):
 		if is_ancestor_of(candidate) and candidate.has_method("refresh_tuning"):
 			candidate.call("refresh_tuning", swing_tuning)
+
+
+func _traversal_rails_for_prediction() -> Array:
+	var result: Array = []
+	for candidate: Node in get_tree().get_nodes_in_group(
+		&"traversal_rail"
+	):
+		if is_ancestor_of(candidate) and candidate.has_method("samples"):
+			result.append(candidate)
+	return result
