@@ -39,9 +39,9 @@ Manual device checks live under `docs/qa/`.
 
 `project.godot` and the Android export preset have been validated with Godot 4.7.1.
 
-## Phase 0 commands
+## Development commands
 
-Run the graybox toybox:
+Run the Phase 0.5 traversal toybox:
 
 ```bash
 /root/.local/share/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64 --path /root/crash-remix
@@ -89,11 +89,17 @@ reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, stop and preserve
 
 ## Status
 
-Phase 0's automated implementation is built: graybox gauntlet, unified touch/gamepad
-input, base movement kit, camera rail/regions, depth aids, live typed tuning, debug
-drawer, and Android debug export. The required real-phone tuning acceptance test is
-still pending; follow [the Phase 0 device procedure](docs/qa/phase0-device-acceptance.md).
-Gate F has not been attempted and can only be judged by the operator on a phone.
+Phase 0.5's automated implementation is built. The playable graybox route chains a
+wall-run canyon, three grind rails, a swing chain, and a mid-air phase-toggle
+gauntlet, with traversal-specific camera regions and bare debug respawns between
+segments. The base movement kit, unified touch/gamepad input, depth aids, live typed
+tuning, debug drawer, and Android debug export remain in place.
+
+Gate F is only partially attested; its latency, thermal-soak, and
+three-separate-days criteria remain open. Gate F2 has not been attempted or inferred.
+Only the operator on a real phone by thumb, plus the designated blind-transfer friend
+for its camera check, can judge it. Follow the
+[Phase 0.5 Gate F2 procedure](docs/qa/phase05-gate-f2.md).
 
 The archived earlier draft — an original-mascot version of the same design, before the
 decision to use the real character — is at

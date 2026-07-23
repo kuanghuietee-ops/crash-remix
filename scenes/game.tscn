@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://src/core/phase0_game.gd" id="1_game"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_player"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
 [ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
 [ext_resource type="PackedScene" path="res://scenes/debug/tuning_debug_ui.tscn" id="8_debug"]
+[ext_resource type="PackedScene" path="res://scenes/levels/phase05_gauntlet.tscn" id="9_gauntlet"]
 
 [sub_resource type="Environment" id="Environment_graybox"]
 background_mode = 1
@@ -30,6 +31,7 @@ light_energy = 1.25
 shadow_enabled = true
 
 [node name="Graybox" type="Node3D" parent="."]
+position = Vector3(100, 0, 0)
 
 [node name="StartRun" parent="Graybox" instance=ExtResource("4_platform")]
 position = Vector3(0, -0.5, 5)
@@ -97,8 +99,10 @@ position = Vector3(-3.2, 1.3, -86)
 size = Vector3(2.5, 2.6, 4)
 color = Color(0.52, 0.5, 0.22, 1)
 
+[node name="Phase05Gauntlet" parent="." instance=ExtResource("9_gauntlet")]
+
 [node name="Player" parent="." instance=ExtResource("2_player")]
-position = Vector3(0, 0.05, 10)
+position = Vector3(0, 0.05, 7)
 
 [node name="CameraRig" parent="." instance=ExtResource("3_camera")]
 

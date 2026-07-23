@@ -1,6 +1,7 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/props/phase_object.tscn" id="1_phase_object"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 
 [sub_resource type="StandardMaterial3D" id="Material_blue"]
 albedo_color = Color(0.12, 0.5, 1, 1)
@@ -17,6 +18,9 @@ roughness = 0.78
 [sub_resource type="BoxMesh" id="Mesh_orange"]
 material = SubResource("Material_orange")
 size = Vector3(1, 1, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_phase_region"]
+size = Vector3(12, 8, 24)
 
 [node name="PhaseGauntlet" type="Node3D"]
 
@@ -51,6 +55,16 @@ scale = Vector3(5, 0.6, 5)
 
 [node name="MeshInstance3D" parent="OrangeSet/OrangeFinish" index="0"]
 mesh = SubResource("Mesh_orange")
+
+[node name="PhaseCameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -6.5)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PhaseCameraRegion"]
+shape = SubResource("Shape_phase_region")
 
 [editable path="BlueSet/BlueLaunch"]
 [editable path="BlueSet/BlueTransfer"]

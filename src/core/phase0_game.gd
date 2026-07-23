@@ -2,6 +2,9 @@ class_name PhaseZeroGame
 extends Node3D
 
 const TuningServiceType := preload("res://src/tuning/tuning_service.gd")
+const CameraRegionType := preload(
+	"res://src/gameplay/camera/camera_region.gd"
+)
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 
@@ -73,7 +76,7 @@ func _ready() -> void:
 		camera_rig.get_node("Rail"),
 		camera_rig.get_node("Camera3D"),
 		catalog.camera,
-		camera_rig.get_node("Regions").get_children(),
+		_camera_regions(),
 		router
 	)
 	if debug_tools_enabled:
@@ -136,5 +139,13 @@ func _traversal_rails_for_prediction() -> Array:
 		&"traversal_rail"
 	):
 		if is_ancestor_of(candidate) and candidate.has_method("samples"):
+			result.append(candidate)
+	return result
+
+
+func _camera_regions() -> Array:
+	var result: Array = []
+	for candidate: Node in find_children("*", "Area3D", true, false):
+		if candidate is CameraRegionType:
 			result.append(candidate)
 	return result

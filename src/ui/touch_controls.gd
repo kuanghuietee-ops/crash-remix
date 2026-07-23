@@ -57,6 +57,21 @@ func current_layout() -> Dictionary:
 	return _layout.duplicate(true)
 
 
+func has_action(action: StringName) -> bool:
+	if _layout.is_empty():
+		_recalculate_layout()
+	match action:
+		InputIntent.ACTION_JUMP:
+			return _layout.has("jump_center")
+		InputIntent.ACTION_SPIN:
+			return _layout.has("spin_center")
+		InputIntent.ACTION_DOWN:
+			return _layout.has("down_center")
+		InputIntent.ACTION_PHASE:
+			return _layout.has("phase_center")
+	return false
+
+
 func stick_touch_index() -> int:
 	return _stick_touch
 

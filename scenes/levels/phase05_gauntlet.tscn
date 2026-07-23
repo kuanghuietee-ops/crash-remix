@@ -1,0 +1,85 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/seg_wall_run_canyon.tscn" id="1_wall"]
+[ext_resource type="PackedScene" path="res://scenes/segments/seg_grind_rails.tscn" id="2_grind"]
+[ext_resource type="PackedScene" path="res://scenes/segments/seg_swing_chain.tscn" id="3_swing"]
+[ext_resource type="PackedScene" path="res://scenes/segments/seg_phase_gauntlet.tscn" id="4_phase"]
+[ext_resource type="Script" path="res://src/debug/gauntlet_respawn_point.gd" id="5_respawn"]
+
+[sub_resource type="StandardMaterial3D" id="Material_respawn"]
+shading_mode = 0
+albedo_color = Color(0.15, 1, 0.62, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_respawn"]
+material = SubResource("Material_respawn")
+size = Vector3(8, 0.06, 0.35)
+
+[sub_resource type="BoxShape3D" id="Shape_respawn"]
+size = Vector3(8, 3, 2)
+
+[node name="Phase05Gauntlet" type="Node3D"]
+
+[node name="WallRunCanyon" parent="." instance=ExtResource("1_wall")]
+
+[node name="GrindRails" parent="." instance=ExtResource("2_grind")]
+position = Vector3(0, 0, -40)
+
+[node name="SwingChain" parent="." instance=ExtResource("3_swing")]
+position = Vector3(0, 0, -88)
+
+[node name="PhaseGauntlet" parent="." instance=ExtResource("4_phase")]
+position = Vector3(0, 0, -112)
+
+[node name="DebugRespawnAfterWall" type="Area3D" parent="."]
+position = Vector3(0, 0, -35)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("5_respawn")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DebugRespawnAfterWall"]
+position = Vector3(0, 1, 0)
+shape = SubResource("Shape_respawn")
+
+[node name="Marker" type="MeshInstance3D" parent="DebugRespawnAfterWall"]
+position = Vector3(0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_respawn")
+
+[node name="Spawn" type="Marker3D" parent="DebugRespawnAfterWall"]
+position = Vector3(0, 0.05, 1)
+
+[node name="DebugRespawnAfterGrind" type="Area3D" parent="."]
+position = Vector3(0, 0, -83)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("5_respawn")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DebugRespawnAfterGrind"]
+position = Vector3(0, 1, 0)
+shape = SubResource("Shape_respawn")
+
+[node name="Marker" type="MeshInstance3D" parent="DebugRespawnAfterGrind"]
+position = Vector3(0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_respawn")
+
+[node name="Spawn" type="Marker3D" parent="DebugRespawnAfterGrind"]
+position = Vector3(0, 0.05, 1)
+
+[node name="DebugRespawnAfterSwing" type="Area3D" parent="."]
+position = Vector3(0, 0, -110)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("5_respawn")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DebugRespawnAfterSwing"]
+position = Vector3(0, 1, 0)
+shape = SubResource("Shape_respawn")
+
+[node name="Marker" type="MeshInstance3D" parent="DebugRespawnAfterSwing"]
+position = Vector3(0, 0.03, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_respawn")
+
+[node name="Spawn" type="Marker3D" parent="DebugRespawnAfterSwing"]
+position = Vector3(0, 0.05, 1)
