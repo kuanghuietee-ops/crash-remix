@@ -499,8 +499,6 @@ func try_rail_attach(
 		var rail := candidate as TraversalRailType
 		if rail == _rail_attach_blocked:
 			continue
-		if is_instance_valid(_rail_hop_target) and rail != _rail_hop_target:
-			continue
 		for sample: TraversalSample in rail.samples():
 			merged_samples.append(sample)
 			sample_rails.append(rail)
@@ -598,7 +596,6 @@ func _try_automatic_wall_attach(now_s: float) -> void:
 	if (
 		_wall_run_tuning == null
 		or is_on_floor()
-		or is_instance_valid(_rail_hop_target)
 		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
 	):
 		return
@@ -664,7 +661,6 @@ func _try_automatic_swing_catch(now_s: float) -> void:
 	if (
 		_swing_tuning == null
 		or is_on_floor()
-		or is_instance_valid(_rail_hop_target)
 		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
 	):
 		return

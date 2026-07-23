@@ -4,15 +4,22 @@ const RAIL_SCRIPT_PATH := "res://src/gameplay/traversal/traversal_rail.gd"
 const PLAYER_SCENE_PATH := "res://scenes/player/player.tscn"
 const GAME_SCENE_PATH := "res://scenes/game.tscn"
 const GRIND_SEGMENT_PATH := "res://scenes/segments/seg_grind_rails.tscn"
+const WALL_SEGMENT_PATH := "res://scenes/segments/seg_wall_run_canyon.tscn"
+const SWING_SEGMENT_PATH := "res://scenes/segments/seg_swing_chain.tscn"
 const FSM_SCRIPT_PATH := "res://src/gameplay/player/player_state_machine.gd"
 const BUFFER_SCRIPT_PATH := "res://src/gameplay/input/input_intent_buffer.gd"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
+const MISSED_HOP_ENTRY_DISTANCE_M := 31.0
+const MISSED_HOP_START_DISTANCE_M := 30.8
+const SCENARIO_START_S := 8.0
 
 var _catalog: GameplayTuning
 var _move: MoveTuning
 var _input: InputTuning
 var _camera: CameraTuning
 var _grind: GrindTuning
+var _wall_run: WallRunTuning
+var _swing: SwingTuning
 
 
 func before_all() -> void:
@@ -23,6 +30,8 @@ func before_all() -> void:
 		_input = _catalog.input
 		_camera = _catalog.camera
 		_grind = _catalog.grind
+		_wall_run = _catalog.wall_run
+		_swing = _catalog.swing
 
 
 func test_stick_and_jump_hops_to_the_parallel_rail() -> void:
@@ -575,6 +584,100 @@ func test_stick_jump_targets_and_reacquires_the_parallel_rail() -> void:
 	assert_eq(player.call("current_state"), &"grind")
 
 
+func test_missed_authored_hop_still_allows_reachable_wall_attach() -> void:
+	var setup := _new_authored_missed_hop_setup()
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var wall_segment: Node3D = setup["wall_segment"]
+	var strip := wall_segment.get_node("LeftStrip") as Path3D
+	var sample: TraversalSample = strip.call("sample_at_distance", 4.0)
+	assert_not_null(sample)
+	if sample == null:
+		return
+	player.global_position = (
+		sample.position
+		+ sample.normal * _wall_run.surface_stick_distance_m
+	)
+	player.velocity = sample.tangent * _wall_run.run_speed_mps
+
+	player.call("_try_automatic_wall_attach", SCENARIO_START_S + 0.03)
+
+	assert_eq(player.call("current_state"), &"wall_run")
+	assert_eq(player.get("_active_wall_strip"), strip)
+
+
+func test_missed_authored_hop_still_allows_reachable_swing_catch() -> void:
+	var setup := _new_authored_missed_hop_setup()
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var swing_segment: Node3D = setup["swing_segment"]
+	var anchor := swing_segment.get_node("FirstAnchor") as Node3D
+	player.global_position = anchor.call("catch_position", _swing)
+	player.velocity = (
+		anchor.global_basis
+		* Vector3.FORWARD
+		* _swing.minimum_catch_speed_mps
+	)
+
+	player.call("_try_automatic_swing_catch", SCENARIO_START_S + 0.03)
+
+	assert_eq(player.call("current_state"), &"swing")
+	assert_eq(player.get("_active_swing_anchor"), anchor)
+
+
+func test_missed_authored_hop_still_allows_third_authored_rail_attach() -> void:
+	var setup := _new_authored_missed_hop_setup()
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var third_rail: Path3D = setup["third_rail"]
+	var sample: TraversalSample = third_rail.call(
+		"sample_at_distance",
+		MISSED_HOP_START_DISTANCE_M
+	)
+	assert_not_null(sample)
+	if sample == null:
+		return
+	player.global_position = sample.position
+	player.velocity = sample.tangent * _grind.speed_mps
+
+	assert_true(player.call(
+		"try_rail_attach",
+		PackedVector3Array([sample.position]),
+		SCENARIO_START_S + 0.03
+	))
+	assert_eq(player.call("current_state"), &"grind")
+	assert_eq(player.get("_active_rail"), third_rail)
+
+
+func test_missed_authored_hop_keeps_departed_rail_blocked() -> void:
+	var setup := _new_authored_missed_hop_setup()
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var departed_rail: Path3D = setup["departed_rail"]
+	var sample: TraversalSample = departed_rail.call(
+		"sample_at_distance",
+		MISSED_HOP_START_DISTANCE_M
+	)
+	assert_not_null(sample)
+	if sample == null:
+		return
+	player.global_position = sample.position
+	player.velocity = sample.tangent * _grind.speed_mps
+
+	assert_false(player.call(
+		"try_rail_attach",
+		PackedVector3Array([sample.position]),
+		SCENARIO_START_S + 0.03
+	))
+	assert_eq(player.call("current_state"), &"airborne")
+	assert_null(player.get("_active_rail"))
+	assert_eq(player.get("_rail_attach_blocked"), departed_rail)
+
+
 func test_grind_segment_has_three_symmetric_noncolliding_rails() -> void:
 	var packed: PackedScene = load(GRIND_SEGMENT_PATH)
 	assert_not_null(packed, "the grind graybox segment must exist")
@@ -684,4 +787,113 @@ func _new_controller_with_rail_root(rail_root: Node3D) -> Dictionary:
 	return {
 		"player": player,
 		"buffer": buffer,
+	}
+
+
+func _new_authored_missed_hop_setup() -> Dictionary:
+	var grind_packed: PackedScene = load(GRIND_SEGMENT_PATH)
+	var wall_packed: PackedScene = load(WALL_SEGMENT_PATH)
+	var swing_packed: PackedScene = load(SWING_SEGMENT_PATH)
+	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
+	assert_not_null(grind_packed)
+	assert_not_null(wall_packed)
+	assert_not_null(swing_packed)
+	assert_not_null(player_packed)
+	if (
+		grind_packed == null
+		or wall_packed == null
+		or swing_packed == null
+		or player_packed == null
+	):
+		return {}
+
+	var grind_segment := grind_packed.instantiate() as Node3D
+	var wall_segment := wall_packed.instantiate() as Node3D
+	var swing_segment := swing_packed.instantiate() as Node3D
+	var player := player_packed.instantiate() as CharacterBody3D
+	add_child_autofree(grind_segment)
+	add_child_autofree(wall_segment)
+	add_child_autofree(swing_segment)
+	add_child_autofree(player)
+	var buffer := InputIntentBuffer.new()
+	player.call(
+		"configure",
+		_catalog.move,
+		_catalog.input,
+		_catalog.depth,
+		_catalog.wall_run,
+		_catalog.grind,
+		_catalog.swing,
+		buffer
+	)
+
+	var departed_rail := grind_segment.get_node("CenterRail") as Path3D
+	var target_rail := grind_segment.get_node("RightRail") as Path3D
+	var third_rail := grind_segment.get_node("LeftRail") as Path3D
+	var start_sample: TraversalSample = departed_rail.call(
+		"sample_at_distance",
+		MISSED_HOP_ENTRY_DISTANCE_M
+	)
+	assert_not_null(start_sample)
+	if start_sample == null:
+		return {}
+	player.global_position = start_sample.position
+	player.velocity = start_sample.tangent * _grind.speed_mps
+	assert_true(player.call(
+		"try_rail_attach",
+		PackedVector3Array([start_sample.position]),
+		SCENARIO_START_S
+	))
+	assert_almost_eq(
+		player.get("_active_rail_distance_m"),
+		MISSED_HOP_START_DISTANCE_M,
+		0.0001
+	)
+	buffer.push(InputIntent.move(
+		Vector2.RIGHT,
+		SCENARIO_START_S + 0.01,
+		&"test"
+	))
+	_press(buffer, &"jump", SCENARIO_START_S + 0.01)
+
+	var hop: RefCounted = player.call(
+		"advance_logic",
+		SCENARIO_START_S + 0.01,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+	assert_eq(hop.get("impulse"), &"rail_hop")
+	assert_eq(player.call("current_state"), &"airborne")
+	assert_eq(player.get("_rail_hop_target"), target_rail)
+	assert_eq(player.get("_rail_attach_blocked"), departed_rail)
+	assert_null(player.get("_active_rail"))
+
+	var missed_arc := DepthPrediction.trajectory_points(
+		player.global_position,
+		player.velocity,
+		false,
+		_move,
+		_catalog.depth
+	)
+	assert_eq(
+		DepthPrediction.first_rail_contact_index(
+			missed_arc,
+			target_rail.call("samples"),
+			_grind.attach_snap_m
+		),
+		-1,
+		"the authored neighbour must be beyond this late hop's reach"
+	)
+	player.call("_try_automatic_rail_attach", SCENARIO_START_S + 0.02)
+	assert_eq(player.call("current_state"), &"airborne")
+	assert_null(player.get("_active_rail"))
+
+	return {
+		"player": player,
+		"wall_segment": wall_segment,
+		"swing_segment": swing_segment,
+		"departed_rail": departed_rail,
+		"target_rail": target_rail,
+		"third_rail": third_rail,
 	}
