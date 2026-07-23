@@ -24,3 +24,20 @@ static func apply_corridor_magnet(
 	var strength := clampf(input_tuning.corridor_magnet_strength, 0.0, 1.0)
 	var filtered_direction := direction.slerp(target_axis, strength).normalized()
 	return filtered_direction * magnitude
+
+
+static func to_corridor_input(
+	screen_input: Vector2,
+	corridor_axis: Vector2
+) -> Vector2:
+	if screen_input.is_zero_approx() or corridor_axis.is_zero_approx():
+		return screen_input
+	var screen_forward := corridor_axis.normalized()
+	var screen_right := Vector2(
+		-screen_forward.y,
+		screen_forward.x
+	)
+	return Vector2(
+		screen_input.dot(screen_right),
+		-screen_input.dot(screen_forward)
+	)

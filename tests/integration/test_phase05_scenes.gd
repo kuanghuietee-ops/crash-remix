@@ -196,6 +196,38 @@ func test_game_registers_nested_gauntlet_camera_regions() -> void:
 	)
 
 
+func test_camera_regions_cover_every_segment_handoff_without_reframing() -> void:
+	var game := _instantiate(GAME_SCENE_PATH)
+	if game == null:
+		return
+	add_child_autofree(game)
+	await wait_physics_frames(2)
+	var regions: Array[Node3D] = [
+		game.get_node(
+			"Phase05Gauntlet/WallRunCanyon/WallRunCameraRegion"
+		),
+		game.get_node(
+			"Phase05Gauntlet/GrindRails/GrindCameraRegion"
+		),
+		game.get_node(
+			"Phase05Gauntlet/SwingChain/SwingCameraRegion"
+		),
+		game.get_node(
+			"Phase05Gauntlet/PhaseGauntlet/PhaseCameraRegion"
+		),
+	]
+
+	for index: int in range(regions.size() - 1):
+		var current_bounds := _box_world_bounds(regions[index])
+		var next_bounds := _box_world_bounds(regions[index + 1])
+		assert_gte(
+			next_bounds.end.z,
+			current_bounds.position.z,
+			"%s → %s leaves a default-camera gap"
+			% [regions[index].name, regions[index + 1].name]
+		)
+
+
 func test_camera_rail_reaches_the_end_of_the_phase_gauntlet() -> void:
 	var game := _instantiate(GAME_SCENE_PATH)
 	if game == null:

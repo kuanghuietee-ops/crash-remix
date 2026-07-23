@@ -2,7 +2,6 @@ class_name GamepadInput
 extends Node
 
 const InputRouterType := preload("res://src/gameplay/input/input_router.gd")
-const InputVectorFilterType := preload("res://src/gameplay/input/input_vector_filter.gd")
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 
 var _router: InputRouterType
@@ -46,12 +45,6 @@ func _handle_motion(event: InputEventJoypadMotion) -> void:
 		)
 		return
 	var movement := _apply_dead_zone(_left_stick)
-	movement = InputVectorFilterType.apply_corridor_magnet(
-		movement,
-		_router.corridor_axis(),
-		_input_tuning,
-		true
-	)
 	_router.push_move(movement, MonotonicClockType.now_s(), InputIntent.SOURCE_GAMEPAD)
 
 

@@ -192,11 +192,13 @@ func update_camera(delta_s: float) -> void:
 	else:
 		_camera.global_position = desired_position
 		_initialized = true
+	var look_origin := _player.global_position
 	var look_forward := camera_forward
 	if basis_mode == CameraRegionType.MODE_SWING:
+		look_origin = camera_origin
 		look_forward = Vector3.ZERO
 	var look_target := (
-		_player.global_position
+		look_origin
 		+ look_forward * _camera_tuning.look_ahead_m
 		+ camera_up * _camera_tuning.look_at_height_m
 		+ camera_right * _camera_tuning.player_screen_left_bias_m

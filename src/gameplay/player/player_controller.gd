@@ -256,7 +256,11 @@ func traversal_camera_context() -> Dictionary:
 		context[&"normal"] = (
 			anchor_basis * Vector3.RIGHT
 		).normalized()
-		context[&"position"] = context_position
+		context[&"position"] = (
+			_active_swing_anchor.catch_position(_swing_tuning)
+			if _swing_tuning != null
+			else _active_swing_anchor.global_position
+		)
 	return context
 
 

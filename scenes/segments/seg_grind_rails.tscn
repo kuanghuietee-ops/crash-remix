@@ -28,7 +28,7 @@ size = Vector3(10, 1, 8)
 size = Vector3(10, 1, 8)
 
 [sub_resource type="BoxShape3D" id="Shape_grind_region"]
-size = Vector3(12, 8, 40)
+size = Vector3(12, 8, 44)
 
 [node name="GrindRailsSegment" type="Node3D"]
 
@@ -100,7 +100,7 @@ mesh = SubResource("Mesh_platform")
 shape = SubResource("Shape_platform")
 
 [node name="GrindCameraRegion" type="Area3D" parent="."]
-position = Vector3(0, 2, -16)
+position = Vector3(0, 2, -14)
 collision_layer = 0
 collision_mask = 1
 script = ExtResource("3_region")

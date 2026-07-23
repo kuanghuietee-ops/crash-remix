@@ -39,6 +39,85 @@ func test_corridor_magnet_aligns_inside_cone_but_not_outside() -> void:
 	assert_almost_eq(untouched.angle_to(outside), 0.0, 0.0001)
 
 
+func test_screen_corridor_axis_is_converted_to_motor_relative_input() -> void:
+	var script: Script = load(FILTER_SCRIPT_PATH)
+	assert_not_null(script, "InputVectorFilter implementation must exist")
+	if script == null:
+		return
+	var exposes_conversion := false
+	for method: Dictionary in script.get_script_method_list():
+		if StringName(method.get("name", &"")) == &"to_corridor_input":
+			exposes_conversion = true
+			break
+	assert_true(
+		exposes_conversion,
+		"camera-relative stick input needs a named corridor conversion"
+	)
+	if not exposes_conversion:
+		return
+	for corridor_axis: Vector2 in [
+		Vector2.UP,
+		Vector2.RIGHT,
+		Vector2(1.0, -1.0).normalized(),
+	]:
+		var screen_right := Vector2(
+			-corridor_axis.y,
+			corridor_axis.x
+		)
+		assert_eq(
+			script.call(
+				"to_corridor_input",
+				corridor_axis * 0.75,
+				corridor_axis
+			),
+			Vector2.UP * 0.75,
+			"stick toward the on-screen route must always drive world-forward"
+		)
+		assert_eq(
+			script.call(
+				"to_corridor_input",
+				screen_right * 0.75,
+				corridor_axis
+			),
+			Vector2.RIGHT * 0.75
+		)
+
+
+func test_router_reprojects_held_stick_when_camera_axis_changes() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	if router == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	router.call("set_corridor_axis", Vector2.UP)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		1.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(router.get("buffer").call("movement"), Vector2.UP)
+
+	router.call("set_corridor_axis", Vector2.RIGHT)
+
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.LEFT,
+		"a held screen-up stick must be remapped as the camera turns side-on"
+	)
+	router.call(
+		"push_move",
+		Vector2.RIGHT,
+		2.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.UP,
+		"screen-right becomes route-forward in the rope side-on shot"
+	)
+
+
 func test_gamepad_disables_magnet_above_configured_magnitude() -> void:
 	var script: Script = load(FILTER_SCRIPT_PATH)
 	assert_not_null(script, "InputVectorFilter implementation must exist")

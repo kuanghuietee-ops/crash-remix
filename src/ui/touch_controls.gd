@@ -2,7 +2,6 @@ class_name TouchControls
 extends Control
 
 const InputRouterType := preload("res://src/gameplay/input/input_router.gd")
-const InputVectorFilterType := preload("res://src/gameplay/input/input_vector_filter.gd")
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 const TouchControlLayoutType := preload("res://src/ui/touch_control_layout.gd")
 
@@ -185,12 +184,6 @@ func _handle_screen_drag(event: InputEventScreenDrag) -> void:
 		return
 	_stick_position = event.position
 	var movement := _stick_value(event.position - _stick_center)
-	movement = InputVectorFilterType.apply_corridor_magnet(
-		movement,
-		_router.corridor_axis(),
-		_input_tuning,
-		false
-	)
 	_router.push_move(movement, MonotonicClockType.now_s(), InputIntent.SOURCE_TOUCH)
 	queue_redraw()
 

@@ -36,6 +36,7 @@ class FakeTraversalPlayer:
 	var traversal_state := &"airborne"
 	var traversal_tangent := Vector3.ZERO
 	var traversal_normal := Vector3.ZERO
+	var traversal_position := Vector3.ZERO
 	var corridor_forward := Vector3.FORWARD
 
 	func current_state() -> StringName:
@@ -46,7 +47,7 @@ class FakeTraversalPlayer:
 			&"state": traversal_state,
 			&"tangent": traversal_tangent,
 			&"normal": traversal_normal,
-			&"position": global_position,
+			&"position": traversal_position,
 		}
 
 	func set_corridor_forward(value: Vector3) -> void:
@@ -394,6 +395,77 @@ func test_swing_camera_is_side_on_to_the_pendulum_plane() -> void:
 	assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
 
 
+func test_swing_camera_holds_the_rope_frame_while_player_crosses_the_arc() -> void:
+	var controller_script := _load_script_with_method(
+		CAMERA_CONTROLLER_SCRIPT_PATH,
+		&"update_camera"
+	)
+	var region_script := _load_script_with_method(
+		CAMERA_REGION_SCRIPT_PATH,
+		&"offset_for"
+	)
+	if controller_script == null or region_script == null:
+		return
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var frame_center := Vector3(0.0, 2.0, -5.0)
+	var player := FakeTraversalPlayer.new()
+	player.position = frame_center
+	player.traversal_state = &"swing"
+	player.traversal_tangent = Vector3.FORWARD
+	player.traversal_normal = Vector3.RIGHT
+	player.traversal_position = frame_center
+	root.add_child(player)
+	var rail := Path3D.new()
+	var curve := Curve3D.new()
+	curve.add_point(Vector3(0.0, 0.0, 10.0))
+	curve.add_point(Vector3(0.0, 0.0, -20.0))
+	rail.curve = curve
+	root.add_child(rail)
+	var controller: Node3D = controller_script.new()
+	root.add_child(controller)
+	var camera := Camera3D.new()
+	controller.add_child(camera)
+	var region: Area3D = region_script.new()
+	region.set("camera_mode", &"swing")
+	root.add_child(region)
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		_camera,
+		[region]
+	)
+	controller.call("_on_region_body_entered", player, region)
+	controller.call("update_camera", 1.0)
+	var initial_camera_transform := camera.global_transform
+	var initial_player_screen := camera.unproject_position(
+		player.global_position
+	)
+	player.global_position = (
+		frame_center
+		+ Vector3.FORWARD * 3.0
+		+ Vector3.UP * 2.0
+	)
+
+	controller.call("update_camera", 1.0)
+	var moved_player_screen := camera.unproject_position(
+		player.global_position
+	)
+
+	assert_true(
+		camera.global_transform.is_equal_approx(initial_camera_transform),
+		"the rope shot must frame the pendulum instead of chasing its player"
+	)
+	assert_gt(
+		moved_player_screen.distance_to(initial_player_screen),
+		get_viewport().get_visible_rect().size.x * 0.1,
+		"the swing arc must remain visible as motion across the screen"
+	)
+	assert_true(camera.is_position_in_frustum(player.global_position))
+
+
 func test_camera_archetypes_expose_only_the_live_basis_entry_points() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
@@ -504,6 +576,44 @@ func test_player_context_reports_the_live_wall_sample() -> void:
 	assert_eq(context.get(&"tangent"), sample.tangent)
 	assert_eq(context.get(&"normal"), sample.normal)
 	player.free()
+
+
+func test_player_context_reports_the_fixed_swing_frame_center() -> void:
+	var script := _load_script_with_method(
+		PLAYER_SCRIPT_PATH,
+		&"traversal_camera_context"
+	)
+	if script == null:
+		return
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var player: CharacterBody3D = script.new()
+	root.add_child(player)
+	player.call(
+		"configure",
+		_catalog.move,
+		_catalog.input,
+		_catalog.depth,
+		_catalog.wall_run,
+		_catalog.grind,
+		_catalog.swing,
+		InputIntentBuffer.new()
+	)
+	var anchor := SwingAnchor.new()
+	anchor.swing_tuning = _catalog.swing
+	anchor.position = Vector3(0.0, 6.0, -2.0)
+	root.add_child(anchor)
+	player.position = Vector3(0.0, 3.0, -4.0)
+	player.get("_state_machine").set("state", &"swing")
+	player.set("_active_swing_anchor", anchor)
+
+	var context: Dictionary = player.call("traversal_camera_context")
+
+	assert_eq(
+		context.get(&"position"),
+		anchor.call("catch_position", _catalog.swing),
+		"camera frame belongs to the rope, not the moving player"
+	)
 
 
 func test_blob_shadow_runtime_uses_the_wall_context_channel() -> void:
