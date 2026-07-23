@@ -5,6 +5,14 @@ const PLAYER_SCENE_PATH := "res://scenes/player/player.tscn"
 const GAME_SCENE_PATH := "res://scenes/game.tscn"
 const BASE_CATALOG_PATH := "res://data/tuning/gameplay.tres"
 
+var _test_clock_s := 0.0
+
+
+func after_each() -> void:
+	var phase_state := get_node_or_null("/root/PhaseState")
+	if phase_state != null:
+		phase_state.call("reset_to_authored_set")
+
 
 func test_ghost_set_has_collision_disabled_and_solid_set_enabled() -> void:
 	var scene: Node = _instance_phase_gauntlet()
@@ -30,7 +38,7 @@ func test_ghost_set_has_collision_disabled_and_solid_set_enabled() -> void:
 			),
 		Object.CONNECT_ONE_SHOT
 	)
-	assert_true(phase_state.call("request_toggle", 10.0))
+	assert_true(phase_state.call("request_toggle", _next_test_time_s()))
 
 	# Same frame — yielding here would hide incoherent signal-time state.
 	var active: StringName = phase_state.call("active_set")
@@ -118,7 +126,7 @@ func test_player_phase_press_toggles_while_airborne() -> void:
 	var phase_state: Node = get_node("/root/PhaseState")
 	phase_state.call("configure", catalog.phase)
 	var before: StringName = phase_state.call("active_set")
-	var now_s := 1000.0
+	var now_s := _next_test_time_s()
 	intents.push(InputIntent.button(
 		InputIntent.ACTION_PHASE,
 		true,
@@ -203,10 +211,8 @@ func test_respawn_restores_a_solid_platform_under_the_player() -> void:
 	var blue_launch := game.get_node(
 		"Phase05Gauntlet/PhaseGauntlet/BlueSet/BlueLaunch"
 	)
-	if phase_state.call("active_set") == &"orange":
-		assert_true(phase_state.call("request_toggle", 2000.0))
 	assert_true(respawn_point.call("activate_for", player))
-	assert_true(phase_state.call("request_toggle", 3000.0))
+	assert_true(phase_state.call("request_toggle", _next_test_time_s()))
 	assert_eq(phase_state.call("active_set"), &"orange")
 	assert_false(_collision_enabled(blue_launch))
 
@@ -231,6 +237,11 @@ func test_respawn_restores_a_solid_platform_under_the_player() -> void:
 
 func _instance_phase_gauntlet() -> Node:
 	return _instance(PHASE_GAUNTLET_PATH)
+
+
+func _next_test_time_s() -> float:
+	_test_clock_s += 1.0
+	return _test_clock_s
 
 
 func _instance(path: String) -> Node:
