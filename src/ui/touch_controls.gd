@@ -177,6 +177,12 @@ func _action_at(position: Vector2) -> StringName:
 			"radius": _layout["down_radius"],
 		},
 	]
+	if _layout.has("phase_center"):
+		candidates.append({
+			"action": InputIntent.ACTION_PHASE,
+			"center": _layout["phase_center"],
+			"radius": _layout["phase_radius"],
+		})
 	var nearest_action := &""
 	var nearest_distance := 0.0
 	var nearest_radius := 0.0
@@ -264,6 +270,13 @@ func _draw() -> void:
 		"DOWN",
 		_button_color(InputIntent.ACTION_DOWN, button_color)
 	)
+	if _layout.has("phase_center"):
+		_draw_button(
+			_layout["phase_center"],
+			_layout["phase_radius"],
+			"PHASE",
+			_button_color(InputIntent.ACTION_PHASE, button_color)
+		)
 	if _stick_touch >= 0:
 		var outline_width: float = (
 			_input_tuning.control_outline_width_mm * _layout["pixels_per_mm"]

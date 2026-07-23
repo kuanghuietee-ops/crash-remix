@@ -22,6 +22,14 @@ static func calculate(
 	var jump_center := Vector2(jump_x, button_y)
 	var spin_center := Vector2(spin_x, button_y)
 	var down_center := jump_center + Vector2.UP * input_tuning.down_button_above_jump_mm * pixels_per_mm
+	var phase_horizontal := Vector2.RIGHT if actions_on_left else Vector2.LEFT
+	var phase_direction := (phase_horizontal + Vector2.UP).normalized()
+	var phase_center := (
+		jump_center
+		+ phase_direction
+		* input_tuning.phase_button_arc_offset_mm
+		* pixels_per_mm
+	)
 
 	var stick_width := safe_rect.size.x * input_tuning.stick_region_width_ratio
 	var stick_top := safe_rect.position.y + safe_rect.size.y * input_tuning.stick_region_top_exclusion_ratio
@@ -36,7 +44,7 @@ static func calculate(
 	var catchall_x := safe_rect.position.x if actions_on_left else safe_end.x - catchall_width
 	var catchall_top := safe_rect.position.y + safe_rect.size.y * input_tuning.jump_catchall_top_ratio
 
-	return {
+	var layout := {
 		"safe_rect": safe_rect,
 		"pixels_per_mm": pixels_per_mm,
 		"stick_region": stick_region,
@@ -54,3 +62,9 @@ static func calculate(
 			Vector2(catchall_width, safe_end.y - catchall_top)
 		),
 	}
+	if input_tuning.phase_button_unlocked:
+		layout["phase_center"] = phase_center
+		layout["phase_radius"] = (
+			input_tuning.phase_button_diameter_mm * pixels_per_mm * 0.5
+		)
+	return layout

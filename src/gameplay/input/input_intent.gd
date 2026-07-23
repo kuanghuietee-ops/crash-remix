@@ -5,6 +5,7 @@ const ACTION_MOVE := &"move"
 const ACTION_JUMP := &"jump"
 const ACTION_SPIN := &"spin"
 const ACTION_DOWN := &"down"
+const ACTION_PHASE := &"phase"
 
 const SOURCE_TOUCH := &"touch"
 const SOURCE_GAMEPAD := &"gamepad"

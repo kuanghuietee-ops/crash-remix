@@ -108,6 +108,8 @@ func _action_for_button(button_index: JoyButton) -> StringName:
 			return InputIntent.ACTION_JUMP
 		JOY_BUTTON_X:
 			return InputIntent.ACTION_SPIN
+		JOY_BUTTON_Y:
+			return InputIntent.ACTION_PHASE
 		JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER:
 			return InputIntent.ACTION_DOWN
 	return &""

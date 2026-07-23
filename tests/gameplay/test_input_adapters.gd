@@ -124,6 +124,118 @@ func test_gamepad_buttons_and_axis_emit_unified_intents() -> void:
 	assert_eq(buffer.call("active_source"), &"gamepad")
 
 
+func test_gamepad_y_emits_phase_intent() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
+	if router == null or gamepad == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(gamepad)
+	router.call("configure", _input_tuning)
+	gamepad.call("configure", router, _input_tuning)
+	var event := InputEventJoypadButton.new()
+	event.button_index = JOY_BUTTON_Y
+	event.pressed = true
+
+	gamepad.call("handle_input", event)
+
+	assert_true(router.get("buffer").call("is_action_pressed", &"phase"))
+
+
+func test_phase_button_absent_until_unlocked() -> void:
+	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
+	input_tuning.set("phase_button_unlocked", false)
+	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
+
+	var layout: Dictionary = layout_script.call(
+		"calculate",
+		Rect2(0.0, 0.0, 2400.0, 1080.0),
+		400.0,
+		input_tuning
+	)
+
+	assert_false(layout.has("phase_center"), "PHASE must not exist before unlock")
+	assert_false(layout.has("phase_radius"), "locked PHASE must expose no hit target")
+
+
+func test_phase_button_sits_on_the_outer_arc_when_unlocked() -> void:
+	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
+	input_tuning.set("phase_button_unlocked", true)
+	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
+
+	var layout: Dictionary = layout_script.call(
+		"calculate",
+		Rect2(0.0, 0.0, 2400.0, 1080.0),
+		400.0,
+		input_tuning
+	)
+
+	assert_true(layout.has("phase_center"))
+	if not layout.has("phase_center"):
+		return
+	assert_lt(layout["phase_center"].x, layout["jump_center"].x, "PHASE sits left of JUMP")
+	assert_lt(layout["phase_center"].y, layout["jump_center"].y, "PHASE sits above JUMP")
+	assert_almost_eq(
+		layout["phase_center"].distance_to(layout["jump_center"]),
+		input_tuning.get("phase_button_arc_offset_mm") * layout["pixels_per_mm"],
+		0.0001
+	)
+	assert_almost_eq(
+		layout["phase_radius"],
+		input_tuning.get("phase_button_diameter_mm") * layout["pixels_per_mm"] * 0.5,
+		0.0001
+	)
+
+	input_tuning.set("left_handed_layout", true)
+	var mirrored: Dictionary = layout_script.call(
+		"calculate",
+		Rect2(0.0, 0.0, 2400.0, 1080.0),
+		400.0,
+		input_tuning
+	)
+	assert_gt(
+		mirrored["phase_center"].x,
+		mirrored["jump_center"].x,
+		"left-handed PHASE mirrors to the right of JUMP"
+	)
+	assert_lt(
+		mirrored["phase_center"].y,
+		mirrored["jump_center"].y,
+		"mirrored PHASE remains above JUMP"
+	)
+
+
+func test_unlocked_phase_touch_emits_phase_intent() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	var input_tuning: Resource = _input_tuning.duplicate(true)
+	input_tuning.set("phase_button_unlocked", true)
+	router.call("configure", input_tuning)
+	touch.call("configure", router, input_tuning)
+	touch.call(
+		"set_layout_override",
+		Rect2(0.0, 0.0, 1920.0, 1080.0),
+		254.0
+	)
+	var layout: Dictionary = touch.call("current_layout")
+	assert_true(layout.has("phase_center"))
+	if not layout.has("phase_center"):
+		return
+	var phase_press := InputEventScreenTouch.new()
+	phase_press.index = 12
+	phase_press.position = layout["phase_center"]
+	phase_press.pressed = true
+
+	touch.call("handle_touch_event", phase_press)
+
+	assert_true(router.get("buffer").call("is_action_pressed", &"phase"))
+	assert_true(touch.call("is_action_flashing", &"phase"))
+
+
 func test_gamepad_dpad_emits_discrete_movement_intents() -> void:
 	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
 	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
