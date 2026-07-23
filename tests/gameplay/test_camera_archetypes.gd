@@ -65,69 +65,99 @@ func before_all() -> void:
 func test_wall_run_camera_holds_the_surface_tangent_horizontal() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
-		&"wall_run_basis"
-	)
-	if script == null:
-		return
-
-	var basis: Basis = script.call(
-		"wall_run_basis",
-		Vector3.BACK,
-		Vector3.RIGHT,
-		_camera
-	)
-	var tangent_on_screen := basis.inverse() * Vector3.BACK
-
-	assert_almost_eq(
-		tangent_on_screen.y,
-		0.0,
-		SCREEN_TOLERANCE,
-		"the run surface must read as ground — tangent horizontal on screen"
-	)
-	assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
-
-
-func test_wall_run_camera_derives_its_side_from_the_surface_normal() -> void:
-	var script := _load_script_with_method(
-		ARCHETYPES_SCRIPT_PATH,
-		&"wall_run_basis"
-	)
-	if script == null:
-		return
-
-	var right_wall: Basis = script.call(
-		"wall_run_basis",
-		Vector3.BACK,
-		Vector3.RIGHT,
-		_camera
-	)
-	var left_wall: Basis = script.call(
-		"wall_run_basis",
-		Vector3.BACK,
-		Vector3.LEFT,
-		_camera
-	)
-	var right_view := -right_wall.z
-	var left_view := -left_wall.z
-
-	assert_lt(right_view.dot(Vector3.RIGHT), 0.0)
-	assert_lt(left_view.dot(Vector3.LEFT), 0.0)
-	assert_gt(right_view.dot(left_view), -1.0)
-
-
-func test_wall_run_camera_stays_upright_on_both_wall_sides() -> void:
-	var script := _load_script_with_method(
-		ARCHETYPES_SCRIPT_PATH,
-		&"wall_run_basis"
+		&"wall_run_basis_for_view"
 	)
 	if script == null:
 		return
 
 	for normal: Vector3 in [Vector3.RIGHT, Vector3.LEFT]:
+		var view_direction := _settled_live_view_direction(
+			&"wall_run",
+			Vector3.ZERO,
+			Vector3.BACK,
+			normal
+		)
 		var basis: Basis = script.call(
-			"wall_run_basis",
+			"wall_run_basis_for_view",
+			Vector3.BACK,
+			normal,
+			view_direction,
+			_camera
+		)
+		var tangent_on_screen := basis.inverse() * Vector3.BACK
+
+		assert_almost_eq(
+			tangent_on_screen.y,
+			0.0,
+			SCREEN_TOLERANCE,
+			"the live run surface must read as ground"
+		)
+		assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
+		assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
+
+
+func test_wall_run_camera_derives_its_side_from_the_surface_normal() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"wall_run_basis_for_view"
+	)
+	if script == null:
+		return
+
+	var right_view_direction := _settled_live_view_direction(
+		&"wall_run",
+		Vector3.ZERO,
+		Vector3.BACK,
+		Vector3.RIGHT
+	)
+	var left_view_direction := _settled_live_view_direction(
+		&"wall_run",
+		Vector3.ZERO,
+		Vector3.BACK,
+		Vector3.LEFT
+	)
+
+	assert_gt(right_view_direction.dot(Vector3.RIGHT), 0.0)
+	assert_gt(left_view_direction.dot(Vector3.LEFT), 0.0)
+	assert_almost_eq(
+		right_view_direction.x,
+		-left_view_direction.x,
+		BASIS_TOLERANCE
+	)
+	for wall: Array in [
+		[Vector3.RIGHT, right_view_direction],
+		[Vector3.LEFT, left_view_direction],
+	]:
+		var basis: Basis = script.call(
+			"wall_run_basis_for_view",
+			Vector3.BACK,
+			wall[0],
+			wall[1],
+			_camera
+		)
+		assert_gt((-basis.z).dot((wall[1] as Vector3).normalized()), 0.999)
+
+
+func test_wall_run_camera_stays_upright_on_both_wall_sides() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"wall_run_basis_for_view"
+	)
+	if script == null:
+		return
+
+	for normal: Vector3 in [Vector3.RIGHT, Vector3.LEFT]:
+		var view_direction := _settled_live_view_direction(
+			&"wall_run",
+			Vector3.ZERO,
+			Vector3.FORWARD,
+			normal
+		)
+		var basis: Basis = script.call(
+			"wall_run_basis_for_view",
 			Vector3.FORWARD,
 			normal,
+			view_direction,
 			_camera
 		)
 		assert_gt(
@@ -137,84 +167,34 @@ func test_wall_run_camera_stays_upright_on_both_wall_sides() -> void:
 		)
 
 
-func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
-	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
-	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
-	var controller_script := _load_script_with_method(
-		CAMERA_CONTROLLER_SCRIPT_PATH,
-		&"update_camera"
-	)
-	assert_not_null(segment_packed)
-	assert_not_null(player_packed)
-	if (
-		segment_packed == null
-		or player_packed == null
-		or controller_script == null
-	):
-		return
-	var root := Node3D.new()
-	add_child_autofree(root)
-	var segment := segment_packed.instantiate() as Node3D
-	root.add_child(segment)
-	await wait_physics_frames(2)
-	var region := segment.get_node("WallRunCameraRegion") as Area3D
+func test_live_wall_run_camera_is_upright_and_right_handed_on_both_walls() -> void:
+	var frames: Array[Dictionary] = await _live_wall_run_camera_frames()
+	assert_eq(frames.size(), 2)
 
-	for strip_name: String in ["LeftStrip", "RightStrip"]:
-		var strip := segment.get_node(strip_name) as Path3D
-		var player := player_packed.instantiate() as CharacterBody3D
-		root.add_child(player)
-		var buffer := InputIntentBuffer.new()
-		player.call(
-			"configure",
-			_catalog.move,
-			_catalog.input,
-			_catalog.depth,
-			_catalog.wall_run,
-			_catalog.grind,
-			_catalog.swing,
-			buffer
+	for frame: Dictionary in frames:
+		var basis: Basis = frame[&"basis"]
+		assert_gt(
+			basis.y.dot(Vector3.UP),
+			0.0,
+			"%s live camera must remain upright" % frame[&"strip_name"]
 		)
-		var sample: TraversalSample = strip.call(
-			"sample_at_distance",
-			NONZERO_ATTACH_DISTANCE_M
+		assert_almost_eq(
+			basis.determinant(),
+			1.0,
+			BASIS_TOLERANCE,
+			"%s live camera must remain right-handed"
+			% frame[&"strip_name"]
 		)
-		assert_not_null(sample)
-		if sample == null:
-			continue
-		assert_gt(sample.distance_along_m, 0.0)
-		player.global_position = (
-			sample.position
-			+ sample.normal
-			* _catalog.wall_run.surface_stick_distance_m
-		)
-		player.velocity = sample.tangent * 6.0
-		assert_true(
-			player.call(
-				"try_wall_attach",
-				strip,
-				10.0 + float(root.get_child_count())
-			)
-		)
-		var rail := Path3D.new()
-		var curve := Curve3D.new()
-		curve.add_point(Vector3(0.0, 0.0, 8.0))
-		curve.add_point(Vector3(0.0, 0.0, -40.0))
-		rail.curve = curve
-		root.add_child(rail)
-		var controller: Node3D = controller_script.new()
-		root.add_child(controller)
-		var camera := Camera3D.new()
-		controller.add_child(camera)
-		controller.call(
-			"configure",
-			player,
-			rail,
-			camera,
-			_camera,
-			[region]
-		)
-		controller.call("_on_region_body_entered", player, region)
-		controller.call("update_camera", 1.0)
+
+
+func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
+	var frames: Array[Dictionary] = await _live_wall_run_camera_frames()
+	assert_eq(frames.size(), 2)
+
+	for frame: Dictionary in frames:
+		var root: Node3D = frame[&"root"]
+		var player: CharacterBody3D = frame[&"player"]
+		var camera: Camera3D = frame[&"camera"]
 		var query := PhysicsRayQueryParameters3D.create(
 			camera.global_position,
 			player.global_position
@@ -228,20 +208,31 @@ func test_wall_run_camera_is_unoccluded_on_both_real_canyon_walls() -> void:
 		assert_true(
 			hit.is_empty(),
 			"%s camera sightline is blocked by %s"
-			% [strip_name, hit.get("collider")]
+			% [frame[&"strip_name"], hit.get("collider")]
 		)
 
 
 func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
-		&"grind_basis"
+		&"grind_basis_for_view"
 	)
 	if script == null:
 		return
 
 	var tangent := Vector3(1.0, 0.0, 1.0).normalized()
-	var basis: Basis = script.call("grind_basis", tangent, _camera)
+	var view_direction := _settled_live_view_direction(
+		&"grind",
+		Vector3.ZERO,
+		tangent,
+		Vector3.UP
+	)
+	var basis: Basis = script.call(
+		"grind_basis_for_view",
+		tangent,
+		Vector3.UP,
+		view_direction
+	)
 	var tangent_on_screen := basis.inverse() * tangent
 
 	assert_almost_eq(
@@ -249,24 +240,30 @@ func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 		0.0,
 		SCREEN_TOLERANCE
 	)
+	assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
 	assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
 
 
 func test_swing_camera_is_side_on_to_the_pendulum_plane() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
-		&"swing_basis"
+		&"swing_basis_for_view"
 	)
 	if script == null:
 		return
 
+	var view_direction := _settled_live_view_direction(
+		&"swing",
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		Vector3.RIGHT
+	)
 	var basis: Basis = script.call(
-		"swing_basis",
+		"swing_basis_for_view",
 		Vector3.FORWARD,
 		Vector3.RIGHT,
-		_camera
+		view_direction
 	)
-	var view_direction := -basis.z
 
 	assert_almost_eq(
 		view_direction.dot(Vector3.FORWARD),
@@ -274,6 +271,26 @@ func test_swing_camera_is_side_on_to_the_pendulum_plane() -> void:
 		SCREEN_TOLERANCE
 	)
 	assert_lt(view_direction.dot(Vector3.RIGHT), 0.0)
+	assert_gt((-basis.z).dot(view_direction.normalized()), 0.999)
+
+
+func test_camera_archetypes_expose_only_the_live_basis_entry_points() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"wall_run_basis_for_view"
+	)
+	if script == null:
+		return
+
+	for dead_method: StringName in [
+		&"wall_run_basis",
+		&"grind_basis",
+		&"swing_basis",
+	]:
+		assert_false(
+			_script_has_method(script, dead_method),
+			"%s duplicates the controller's live basis path" % dead_method
+		)
 
 
 func test_camera_regions_resolve_all_traversal_offsets() -> void:
@@ -472,6 +489,178 @@ func test_rig_blends_into_wall_basis_instead_of_snapping() -> void:
 	assert_almost_eq(complete_error, 0.0, SCREEN_TOLERANCE)
 
 
+func _live_wall_run_camera_frames() -> Array[Dictionary]:
+	var frames: Array[Dictionary] = []
+	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
+	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
+	var controller_script := _load_script_with_method(
+		CAMERA_CONTROLLER_SCRIPT_PATH,
+		&"update_camera"
+	)
+	assert_not_null(segment_packed)
+	assert_not_null(player_packed)
+	if (
+		segment_packed == null
+		or player_packed == null
+		or controller_script == null
+	):
+		return frames
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var segment := segment_packed.instantiate() as Node3D
+	root.add_child(segment)
+	await wait_physics_frames(2)
+	var region := segment.get_node("WallRunCameraRegion") as Area3D
+
+	for strip_name: String in ["LeftStrip", "RightStrip"]:
+		var strip := segment.get_node(strip_name) as Path3D
+		var player := player_packed.instantiate() as CharacterBody3D
+		root.add_child(player)
+		var buffer := InputIntentBuffer.new()
+		player.call(
+			"configure",
+			_catalog.move,
+			_catalog.input,
+			_catalog.depth,
+			_catalog.wall_run,
+			_catalog.grind,
+			_catalog.swing,
+			buffer
+		)
+		var sample: TraversalSample = strip.call(
+			"sample_at_distance",
+			NONZERO_ATTACH_DISTANCE_M
+		)
+		assert_not_null(sample)
+		if sample == null:
+			continue
+		assert_almost_eq(
+			sample.distance_along_m,
+			NONZERO_ATTACH_DISTANCE_M,
+			BASIS_TOLERANCE
+		)
+		player.global_position = (
+			sample.position
+			+ sample.normal
+			* _catalog.wall_run.surface_stick_distance_m
+		)
+		player.velocity = sample.tangent * 6.0
+		assert_true(
+			player.call(
+				"try_wall_attach",
+				strip,
+				10.0 + float(root.get_child_count())
+			)
+		)
+		var rail := Path3D.new()
+		var curve := Curve3D.new()
+		curve.add_point(Vector3(0.0, 0.0, 8.0))
+		curve.add_point(Vector3(0.0, 0.0, -40.0))
+		rail.curve = curve
+		root.add_child(rail)
+		var controller: Node3D = controller_script.new()
+		root.add_child(controller)
+		var camera := Camera3D.new()
+		controller.add_child(camera)
+		controller.call(
+			"configure",
+			player,
+			rail,
+			camera,
+			_camera,
+			[region]
+		)
+		controller.call("_on_region_body_entered", player, region)
+		controller.call("update_camera", 1.0)
+		frames.append({
+			&"root": root,
+			&"strip_name": strip_name,
+			&"player": player,
+			&"camera": camera,
+			&"basis": camera.global_basis,
+			&"view_direction": _settled_live_view_direction(
+				&"wall_run",
+				player.global_position,
+				sample.tangent,
+				sample.normal
+			),
+		})
+	return frames
+
+
+# Mirrors CameraRailController.update_camera after its position/region blends
+# have settled, so conformance tests exercise the view the live path receives.
+func _settled_live_view_direction(
+	mode: StringName,
+	player_position: Vector3,
+	context_tangent: Vector3,
+	context_normal: Vector3
+) -> Vector3:
+	var camera_forward := context_tangent.normalized()
+	var camera_up := Vector3.UP
+	var camera_right := camera_forward.cross(camera_up).normalized()
+	var offset := _camera.default_offset
+	if mode == &"grind":
+		camera_up = context_normal.slide(camera_forward).normalized()
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		camera_right = camera_forward.cross(camera_up).normalized()
+		offset = _camera.grind_offset
+	elif mode == &"wall_run":
+		camera_right = context_normal.slide(camera_forward).normalized()
+		if camera_right.is_zero_approx():
+			camera_right = camera_forward.cross(Vector3.UP).normalized()
+		camera_up = camera_forward.cross(camera_right).normalized()
+		if camera_up.dot(Vector3.UP) < 0.0:
+			camera_up = -camera_up
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		offset = _camera.wall_run_offset
+	elif mode == &"swing":
+		camera_right = context_normal.slide(camera_forward).normalized()
+		if camera_right.is_zero_approx():
+			camera_right = camera_forward.cross(Vector3.UP).normalized()
+		camera_up = camera_right.cross(camera_forward).normalized()
+		if camera_up.is_zero_approx():
+			camera_up = Vector3.UP
+		offset = _camera.swing_offset
+	if camera_right.is_zero_approx():
+		camera_right = Vector3.RIGHT
+
+	var camera_position: Vector3
+	if mode == &"wall_run":
+		camera_position = (
+			player_position
+			+ camera_right * offset.z
+			+ camera_up * offset.y
+			- camera_forward * offset.x
+		)
+	else:
+		camera_position = (
+			player_position
+			+ camera_right * offset.x
+			+ camera_up * offset.y
+			- camera_forward * offset.z
+		)
+	var look_forward := camera_forward
+	if mode == &"swing":
+		look_forward = Vector3.ZERO
+	var look_target := (
+		player_position
+		+ look_forward * _camera.look_ahead_m
+		+ camera_up * _camera.look_at_height_m
+		+ camera_right * _camera.player_screen_left_bias_m
+	)
+	return look_target - camera_position
+
+
+func _script_has_method(script: Script, method_name: StringName) -> bool:
+	for method: Dictionary in script.get_script_method_list():
+		if StringName(method.get("name", &"")) == method_name:
+			return true
+	return false
+
+
 func _load_script_with_method(
 	path: String,
 	method_name: StringName
@@ -483,11 +672,7 @@ func _load_script_with_method(
 	assert_not_null(script)
 	if script == null:
 		return null
-	var has_method := false
-	for method: Dictionary in script.get_script_method_list():
-		if StringName(method.get("name", &"")) == method_name:
-			has_method = true
-			break
+	var has_method := _script_has_method(script, method_name)
 	assert_true(
 		has_method,
 		"%s must expose %s" % [path, method_name]
