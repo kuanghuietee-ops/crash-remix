@@ -1,0 +1,45 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/traversal_rail.gd" id="1_rail"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+
+[sub_resource type="BoxShape3D" id="Shape_region"]
+size = Vector3(12, 8, 30)
+
+[node name="BadRailReadabilityFixture" type="Node3D"]
+
+[node name="RailA" type="Path3D" parent="."]
+position = Vector3(-2, 2, 0)
+script = ExtResource("1_rail")
+right_neighbor_path = NodePath("../RailB")
+
+[node name="Start" type="Marker3D" parent="RailA"]
+
+[node name="Finish" type="Marker3D" parent="RailA"]
+position = Vector3(0, 0, -20)
+
+[node name="RailB" type="Path3D" parent="."]
+position = Vector3(0, 2, 0)
+script = ExtResource("1_rail")
+
+[node name="Start" type="Marker3D" parent="RailB"]
+
+[node name="Finish" type="Marker3D" parent="RailB"]
+position = Vector3(0, 0, -20)
+
+[node name="RailOutsideRegion" type="Path3D" parent="."]
+position = Vector3(20, 2, 0)
+script = ExtResource("1_rail")
+
+[node name="Start" type="Marker3D" parent="RailOutsideRegion"]
+
+[node name="Finish" type="Marker3D" parent="RailOutsideRegion"]
+position = Vector3(0, 0, -20)
+
+[node name="GrindCameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 2, -10)
+script = ExtResource("2_region")
+camera_mode = &"grind"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GrindCameraRegion"]
+shape = SubResource("Shape_region")
