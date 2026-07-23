@@ -368,6 +368,47 @@ func test_phase_zero_input_fields_backfill_without_losing_operator_values() -> v
 	)
 
 
+func test_old_swing_override_backfills_the_catch_speed_floor() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var stale: GameplayTuning = authored.duplicate(true)
+	var legacy_swing := SwingTuning.new()
+	legacy_swing.catch_radius_m = authored.swing.catch_radius_m
+	legacy_swing.rope_length_m = authored.swing.rope_length_m
+	legacy_swing.gravity_scale = authored.swing.gravity_scale
+	legacy_swing.maximum_speed_mps = authored.swing.maximum_speed_mps
+	legacy_swing.damping_per_s = authored.swing.damping_per_s
+	legacy_swing.release_boost_mps = 1.75
+	stale.swing = legacy_swing
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	assert_eq(
+		migrated.swing.minimum_catch_speed_mps,
+		authored.swing.minimum_catch_speed_mps
+	)
+	assert_eq(
+		migrated.swing.release_boost_mps,
+		1.75,
+		"migration must preserve existing swing edits"
+	)
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script
@@ -585,6 +626,26 @@ func test_zero_run_speed_and_action_buffers_are_rejected() -> void:
 			"%s must reject zero" % property_name
 		)
 		resource.set(property_name, original_value)
+
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_unusable_swing_escape_speeds_are_rejected() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var swing: SwingTuning = service.get("catalog").get("swing")
+	var authored_minimum := swing.minimum_catch_speed_mps
+	var authored_boost := swing.release_boost_mps
+
+	swing.minimum_catch_speed_mps = 0.0
+	assert_false(service.call("catalog_is_usable"))
+	swing.minimum_catch_speed_mps = swing.maximum_speed_mps + 0.01
+	assert_false(service.call("catalog_is_usable"))
+	swing.minimum_catch_speed_mps = authored_minimum
+	swing.release_boost_mps = 0.0
+	assert_false(service.call("catalog_is_usable"))
+	swing.release_boost_mps = authored_boost
 
 	assert_true(service.call("catalog_is_usable"))
 

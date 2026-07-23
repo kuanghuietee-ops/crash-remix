@@ -57,9 +57,7 @@ static func release_velocity(
 		-maxf(swing_tuning.maximum_speed_mps, 0.0),
 		maxf(swing_tuning.maximum_speed_mps, 0.0)
 	)
-	if is_zero_approx(linear_speed_mps):
-		return Vector3.ZERO
-	var boost_direction := 1.0 if linear_speed_mps > 0.0 else -1.0
+	var boost_direction := -1.0 if linear_speed_mps < 0.0 else 1.0
 	var tangent := (
 		Vector3.UP * sin(angle_rad)
 		+ Vector3.FORWARD * cos(angle_rad)

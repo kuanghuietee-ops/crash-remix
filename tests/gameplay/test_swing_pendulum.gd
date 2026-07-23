@@ -8,6 +8,9 @@ const SWING_SEGMENT_PATH := "res://scenes/segments/seg_swing_chain.tscn"
 const FSM_SCRIPT_PATH := "res://src/gameplay/player/player_state_machine.gd"
 const BUFFER_SCRIPT_PATH := "res://src/gameplay/input/input_intent_buffer.gd"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
+const EXPECTED_MINIMUM_CATCH_SPEED_MPS := 6.5
+const WORST_CATCH_SWING_FRAMES := 15
+const MAX_ESCAPE_FRAMES := 60
 
 var _catalog: GameplayTuning
 var _move: MoveTuning
@@ -258,6 +261,143 @@ func test_physics_loop_auto_catches_the_hanging_handle() -> void:
 
 	assert_eq(player.call("current_state"), &"swing")
 	assert_eq(player.get("_active_swing_anchor"), anchor)
+
+
+func test_authored_rope_refuses_a_zero_speed_catch() -> void:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	player.global_position = first_anchor.call("catch_position", _swing)
+	player.velocity = Vector3.ZERO
+
+	assert_false(
+		player.call("try_swing_catch", first_anchor, 2.6),
+		"a motionless player must fall past instead of entering a fixed point"
+	)
+	assert_eq(player.call("current_state"), &"airborne")
+
+
+func test_authored_rope_catch_uses_the_minimum_speed_boundary() -> void:
+	assert_almost_eq(
+		_swing.minimum_catch_speed_mps,
+		EXPECTED_MINIMUM_CATCH_SPEED_MPS,
+		0.0001,
+		"the escape-tested boundary must come from live tuning"
+	)
+	var below_setup := _new_authored_swing_setup()
+	var boundary_setup := _new_authored_swing_setup()
+	if below_setup.is_empty() or boundary_setup.is_empty():
+		return
+	var below_segment: Node3D = below_setup["segment"]
+	var below_player: CharacterBody3D = below_setup["player"]
+	var below_anchor := below_segment.get_node("FirstAnchor") as Node3D
+	below_player.global_position = below_anchor.call(
+		"catch_position",
+		_swing
+	)
+	below_player.velocity = (
+		Vector3.FORWARD
+		* (_swing.minimum_catch_speed_mps - 0.01)
+	)
+
+	assert_false(
+		below_player.call("try_swing_catch", below_anchor, 2.7),
+		"a sub-boundary arrival cannot enter an inescapable swing"
+	)
+
+	var boundary_segment: Node3D = boundary_setup["segment"]
+	var boundary_player: CharacterBody3D = boundary_setup["player"]
+	var boundary_anchor := boundary_segment.get_node(
+		"FirstAnchor"
+	) as Node3D
+	boundary_player.global_position = boundary_anchor.call(
+		"catch_position",
+		_swing
+	)
+	boundary_player.velocity = (
+		Vector3.FORWARD * _swing.minimum_catch_speed_mps
+	)
+
+	assert_true(
+		boundary_player.call(
+			"try_swing_catch",
+			boundary_anchor,
+			2.7
+		),
+		"the exact authored boundary must remain inclusive"
+	)
+	assert_eq(boundary_player.call("current_state"), &"swing")
+
+
+func test_slowest_authored_catch_reaches_the_next_real_anchor() -> void:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	var second_anchor := segment.get_node("SecondAnchor") as Node3D
+	player.global_position = first_anchor.call("catch_position", _swing)
+	player.velocity = (
+		Vector3.FORWARD * _swing.minimum_catch_speed_mps
+	)
+	var caught_s := float(Time.get_ticks_usec()) / 1_000_000.0
+	assert_true(player.call("try_swing_catch", first_anchor, caught_s))
+
+	await wait_physics_frames(WORST_CATCH_SWING_FRAMES)
+
+	var release_s := float(Time.get_ticks_usec()) / 1_000_000.0
+	_press(buffer, &"jump", release_s)
+	var reached_next_anchor := false
+	for _frame: int in range(MAX_ESCAPE_FRAMES):
+		await wait_physics_frames(1)
+		if player.get("_active_swing_anchor") == second_anchor:
+			reached_next_anchor = true
+			break
+		if player.call("is_respawning"):
+			break
+
+	assert_true(
+		reached_next_anchor,
+		"the slowest permitted catch must reach SecondAnchor in the real chain"
+	)
+
+
+func test_a_caught_rope_never_releases_with_zero_velocity() -> void:
+	var setup := _new_authored_swing_setup()
+	if setup.is_empty():
+		return
+	var segment: Node3D = setup["segment"]
+	var player: CharacterBody3D = setup["player"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var first_anchor := segment.get_node("FirstAnchor") as Node3D
+	player.global_position = first_anchor.call("catch_position", _swing)
+	player.velocity = (
+		Vector3.FORWARD * _swing.minimum_catch_speed_mps
+	)
+	assert_true(player.call("try_swing_catch", first_anchor, 2.8))
+	player.set("_swing_angle_rad", 0.0)
+	player.set("_swing_angular_velocity", 0.0)
+	_press(buffer, &"jump", 2.9)
+
+	var decision: RefCounted = player.call(
+		"advance_logic",
+		2.9,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(decision.get("impulse"), &"swing_release")
+	assert_false(
+		player.velocity.is_zero_approx(),
+		"an already-caught rope must always provide a release direction"
+	)
+	assert_gt(player.velocity.dot(Vector3.FORWARD), 0.0)
 
 
 func test_real_physics_keeps_the_player_at_rope_length() -> void:
@@ -530,6 +670,35 @@ func _new_controller_with_anchor(anchor: Node3D) -> Dictionary:
 		buffer
 	)
 	return {
+		"player": player,
+		"buffer": buffer,
+	}
+
+
+func _new_authored_swing_setup() -> Dictionary:
+	var segment_packed: PackedScene = load(SWING_SEGMENT_PATH)
+	var player_packed: PackedScene = load(PLAYER_SCENE_PATH)
+	assert_not_null(segment_packed)
+	assert_not_null(player_packed)
+	if segment_packed == null or player_packed == null:
+		return {}
+	var segment := segment_packed.instantiate() as Node3D
+	var player := player_packed.instantiate() as CharacterBody3D
+	add_child_autofree(segment)
+	add_child_autofree(player)
+	var buffer := InputIntentBuffer.new()
+	player.call(
+		"configure",
+		_catalog.move,
+		_catalog.input,
+		_catalog.depth,
+		_catalog.wall_run,
+		_catalog.grind,
+		_catalog.swing,
+		buffer
+	)
+	return {
+		"segment": segment,
 		"player": player,
 		"buffer": buffer,
 	}

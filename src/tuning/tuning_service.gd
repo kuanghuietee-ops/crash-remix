@@ -21,6 +21,11 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"phase_button_unlocked",
 		],
 	],
+	&"swing": [
+		[
+			&"minimum_catch_speed_mps",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -216,9 +221,11 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	if (
 		swing.catch_radius_m <= 0.0
 		or swing.rope_length_m <= 0.0
+		or swing.minimum_catch_speed_mps <= 0.0
 		or swing.gravity_scale <= 0.0
 		or swing.maximum_speed_mps <= 0.0
-		or swing.release_boost_mps < 0.0
+		or swing.minimum_catch_speed_mps > swing.maximum_speed_mps
+		or swing.release_boost_mps <= 0.0
 		or swing.damping_per_s < 0.0
 	):
 		return false

@@ -642,6 +642,11 @@ func try_swing_catch(
 		-maximum_angular_speed,
 		maximum_angular_speed
 	)
+	var catch_speed_mps := (
+		absf(angular_velocity) * _swing_tuning.rope_length_m
+	)
+	if catch_speed_mps < _swing_tuning.minimum_catch_speed_mps:
+		return false
 	_active_swing_anchor = anchor
 	_swing_attach_blocked = null
 	_swing_angle_rad = angle_rad
