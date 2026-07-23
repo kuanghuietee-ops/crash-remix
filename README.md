@@ -54,14 +54,14 @@ Run the automated suite and gameplay-number lint:
   --headless --path /root/crash-remix \
   -s addons/gut/gut_cmdln.gd -gexit
 python3 scripts/lint_gameplay_numbers.py
-python3 scripts/check_phase0_vocabulary.py
+python3 scripts/check_content_vocabulary.py
 python3 -m unittest discover -s tests -p 'test_*.py'
 scripts/verify_exported_tuning.sh
 ```
 
 GUT 9.7.1 is intentionally vendored under `addons/gut/` so the pinned test suite
 does not depend on a per-machine Asset Library installation. The repository-owned
-pre-commit hook runs the numeric lint, the Phase 0.5 vocabulary tripwire, and
+pre-commit hook runs the numeric lint, the Phase 1 content vocabulary tripwire, and
 Python tests. `verify_exported_tuning.sh` separately exports and boots the packed
 runtime, catching resource-loader differences that editor-mode tests cannot see.
 The vocabulary check examines identifiers, scene-node names, and paths while

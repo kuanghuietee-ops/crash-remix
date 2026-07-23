@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lexical tripwire for post-Gate-F vocabulary; not structural scope proof."""
+"""Lexical tripwire for Phase 1 content vocabulary; not structural scope proof."""
 
 from __future__ import annotations
 
@@ -20,10 +20,6 @@ SCANNED_SUFFIXES = frozenset({".gd", ".gdshader", ".tscn", ".tres"})
 PROHIBITED_VOCABULARY = (
     ("enemy", re.compile(r"(?<![a-z0-9])enemy(?![a-z0-9])")),
     ("crate", re.compile(r"(?<![a-z0-9])crate(?![a-z0-9])")),
-    ("wall-run", re.compile(r"wall[_ -]?run")),
-    ("grind", re.compile(r"(?<![a-z0-9])grind(?![a-z0-9])")),
-    ("swing", re.compile(r"(?<![a-z0-9])swing(?![a-z0-9])")),
-    ("phase-shift", re.compile(r"phase[_ -]?shift")),
 )
 IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
@@ -173,16 +169,16 @@ def main() -> int:
     findings = find_prohibited_vocabulary(repo_root)
     for finding in findings:
         print(
-            f"{finding.path}:{finding.line}: prohibited Phase 0.5 vocabulary "
+            f"{finding.path}:{finding.line}: prohibited Phase 1 content vocabulary "
             f"{finding.term!r}"
         )
     if findings:
         print(
-            "Phase 0.5 vocabulary tripwire failed: "
+            "Phase 1 content vocabulary tripwire failed: "
             f"{len(findings)} finding(s)."
         )
         return 1
-    print("Phase 0.5 vocabulary tripwire passed.")
+    print("Phase 1 content vocabulary tripwire passed.")
     return 0
 
 
