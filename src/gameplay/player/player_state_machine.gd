@@ -41,9 +41,10 @@ func step(
 		maxf(input_tuning.jump_buffer_s, input_tuning.action_buffer_s)
 	)
 
-	var just_landed := grounded and not _was_grounded
+	var effective_grounded := grounded and not _is_traversal_state(state)
+	var just_landed := effective_grounded and not _was_grounded
 	decision.landed = just_landed
-	if grounded:
+	if effective_grounded:
 		_last_grounded_s = now_s
 		if just_landed:
 			_ground_jump_available = true
@@ -56,11 +57,23 @@ func step(
 	elif _was_grounded and _is_ground_state(state):
 		_set_state(STATE_AIRBORNE, now_s)
 
-	_expire_coyote_if_needed(now_s, grounded, input_tuning)
-	_update_timed_ground_states(now_s, grounded, intents, move_tuning)
+	_expire_coyote_if_needed(now_s, effective_grounded, input_tuning)
+	_update_timed_ground_states(
+		now_s,
+		effective_grounded,
+		intents,
+		move_tuning
+	)
 
-	if state != STATE_BODY_SLAM and state != STATE_SLAM_RECOVERY:
-		if grounded:
+	if state == STATE_GRIND:
+		_process_grind_jump(
+			now_s,
+			intents,
+			input_tuning,
+			_neighbour_available
+		)
+	elif state != STATE_BODY_SLAM and state != STATE_SLAM_RECOVERY:
+		if effective_grounded:
 			_process_ground_actions(
 				now_s,
 				horizontal_speed_mps,
@@ -76,11 +89,49 @@ func step(
 	decision.impulse = _pending_impulse
 	_pending_impulse = PlayerFrameDecision.IMPULSE_NONE
 	decision.state = state
-	_was_grounded = grounded
+	_was_grounded = effective_grounded
 	return decision
 
 
 var _pending_impulse := PlayerFrameDecision.IMPULSE_NONE
+
+
+func enter_grind(now_s: float) -> void:
+	# A rail is a new traversal contact, so it starts a fresh airtime.
+	_ground_jump_available = false
+	_double_jump_available = true
+	_air_spin_available = true
+	_set_state(STATE_GRIND, now_s)
+
+
+func enter_airborne(now_s: float) -> void:
+	_ground_jump_available = false
+	_set_state(STATE_AIRBORNE, now_s)
+
+
+func _process_grind_jump(
+	now_s: float,
+	intents: InputIntentBuffer,
+	input_tuning: InputTuning,
+	neighbour_available: bool
+) -> void:
+	if not intents.has_buffered_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	):
+		return
+	intents.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	)
+	var lateral_input := intents.movement().x
+	if not is_zero_approx(lateral_input) and neighbour_available:
+		_pending_impulse = PlayerFrameDecision.IMPULSE_RAIL_HOP
+	else:
+		_pending_impulse = PlayerFrameDecision.IMPULSE_RAIL_EXIT
+	_set_state(STATE_AIRBORNE, now_s)
 
 
 func _process_ground_actions(
@@ -280,6 +331,14 @@ func _is_ground_state(candidate: StringName) -> bool:
 		or candidate == STATE_CROUCHED
 		or candidate == STATE_SLIDING
 		or candidate == STATE_SLAM_RECOVERY
+	)
+
+
+func _is_traversal_state(candidate: StringName) -> bool:
+	return (
+		candidate == STATE_GRIND
+		or candidate == STATE_WALL_RUN
+		or candidate == STATE_SWING
 	)
 
 

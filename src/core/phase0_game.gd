@@ -56,6 +56,7 @@ func _ready() -> void:
 		router.get("buffer")
 	)
 	player.call("set_spawn_transform", player.global_transform)
+	_refresh_traversal_rails(catalog.camera)
 	player.get_node("BlobShadow").call("configure", player, catalog.depth)
 	player.get_node("LandingRing").call(
 		"configure",
@@ -100,6 +101,7 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 		catalog.swing,
 		router.get("buffer")
 	)
+	_refresh_traversal_rails(catalog.camera)
 	player.get_node("BlobShadow").call("configure", player, catalog.depth)
 	player.get_node("LandingRing").call(
 		"configure",
@@ -108,3 +110,9 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 		catalog.depth
 	)
 	camera_rig.call("refresh_tuning", catalog.camera)
+
+
+func _refresh_traversal_rails(camera_tuning: CameraTuning) -> void:
+	for candidate: Node in get_tree().get_nodes_in_group(&"traversal_rail"):
+		if is_ancestor_of(candidate) and candidate.has_method("refresh_tuning"):
+			candidate.call("refresh_tuning", camera_tuning)

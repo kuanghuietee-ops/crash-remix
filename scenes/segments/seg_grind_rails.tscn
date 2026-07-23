@@ -1,0 +1,110 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/traversal_rail.gd" id="1_rail"]
+[ext_resource type="Resource" path="res://data/tuning/camera.tres" id="2_camera"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="3_region"]
+
+[sub_resource type="StandardMaterial3D" id="Material_rail"]
+albedo_color = Color(1, 0.42, 0.08, 1)
+roughness = 0.72
+
+[sub_resource type="CylinderMesh" id="Mesh_rail"]
+material = SubResource("Material_rail")
+top_radius = 0.12
+bottom_radius = 0.12
+height = 32.0
+radial_segments = 10
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Material_platform"]
+albedo_color = Color(0.28, 0.3, 0.34, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_platform"]
+material = SubResource("Material_platform")
+size = Vector3(10, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_platform"]
+size = Vector3(10, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_grind_region"]
+size = Vector3(12, 8, 40)
+
+[node name="GrindRailsSegment" type="Node3D"]
+
+[node name="ApproachPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ApproachPad"]
+mesh = SubResource("Mesh_platform")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ApproachPad"]
+shape = SubResource("Shape_platform")
+
+[node name="LeftRail" type="Path3D" parent="."]
+position = Vector3(-2, 2, 0)
+script = ExtResource("1_rail")
+camera_tuning = ExtResource("2_camera")
+right_neighbor_path = NodePath("../CenterRail")
+
+[node name="Start" type="Marker3D" parent="LeftRail"]
+
+[node name="Finish" type="Marker3D" parent="LeftRail"]
+position = Vector3(0, 0, -32)
+
+[node name="RailMesh" type="MeshInstance3D" parent="LeftRail"]
+position = Vector3(0, 0, -16)
+rotation = Vector3(1.570796, 0, 0)
+mesh = SubResource("Mesh_rail")
+
+[node name="CenterRail" type="Path3D" parent="."]
+position = Vector3(0, 2, 0)
+script = ExtResource("1_rail")
+camera_tuning = ExtResource("2_camera")
+left_neighbor_path = NodePath("../LeftRail")
+right_neighbor_path = NodePath("../RightRail")
+
+[node name="Start" type="Marker3D" parent="CenterRail"]
+
+[node name="Finish" type="Marker3D" parent="CenterRail"]
+position = Vector3(0, 0, -32)
+
+[node name="RailMesh" type="MeshInstance3D" parent="CenterRail"]
+position = Vector3(0, 0, -16)
+rotation = Vector3(1.570796, 0, 0)
+mesh = SubResource("Mesh_rail")
+
+[node name="RightRail" type="Path3D" parent="."]
+position = Vector3(2, 2, 0)
+script = ExtResource("1_rail")
+camera_tuning = ExtResource("2_camera")
+left_neighbor_path = NodePath("../CenterRail")
+
+[node name="Start" type="Marker3D" parent="RightRail"]
+
+[node name="Finish" type="Marker3D" parent="RightRail"]
+position = Vector3(0, 0, -32)
+
+[node name="RailMesh" type="MeshInstance3D" parent="RightRail"]
+position = Vector3(0, 0, -16)
+rotation = Vector3(1.570796, 0, 0)
+mesh = SubResource("Mesh_rail")
+
+[node name="LandingPad" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, -36)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LandingPad"]
+mesh = SubResource("Mesh_platform")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LandingPad"]
+shape = SubResource("Shape_platform")
+
+[node name="GrindCameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 2, -16)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("3_region")
+camera_mode = &"grind"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GrindCameraRegion"]
+shape = SubResource("Shape_grind_region")

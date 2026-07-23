@@ -11,6 +11,13 @@ const PlayerFrameDecisionType := preload("res://src/gameplay/player/player_frame
 const PlayerMotorType := preload("res://src/gameplay/player/player_motor.gd")
 const JumpKinematicsType := preload("res://src/gameplay/player/jump_kinematics.gd")
 const LandingAssistType := preload("res://src/gameplay/depth/landing_assist.gd")
+const DepthPredictionType := preload("res://src/gameplay/depth/depth_prediction.gd")
+const TraversalAttachSolverType := preload(
+	"res://src/gameplay/traversal/traversal_attach_solver.gd"
+)
+const TraversalRailType := preload(
+	"res://src/gameplay/traversal/traversal_rail.gd"
+)
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -36,6 +43,11 @@ var _fall_apex_y: float
 var _respawn_due_s := -1.0
 var _active_jump_tap_height_m := 0.0
 var _traversal_neighbour_available: bool
+var _active_rail: TraversalRailType
+var _rail_hop_target: TraversalRailType
+var _rail_attach_blocked: TraversalRailType
+var _active_rail_distance_m: float
+var _grind_speed_mps: float
 
 
 func _ready() -> void:
@@ -95,6 +107,13 @@ func advance_logic(
 
 	set_corridor_forward(forward)
 	if (
+		grounded
+		and not PlayerMotorType.uses_spline_motion(_state_machine.state)
+	):
+		_rail_attach_blocked = null
+		_rail_hop_target = null
+	_update_rail_neighbour_context()
+	if (
 		_intents.consume_pressed(
 			InputIntent.ACTION_PHASE,
 			now_s,
@@ -126,12 +145,17 @@ func advance_logic(
 	_apply_motion_mode(decision.state)
 	_apply_vertical_physics(grounded, delta_s)
 	if decision.impulse != PlayerFrameDecisionType.IMPULSE_NONE:
-		velocity = PlayerMotorType.impulse_velocity(
-			decision.impulse,
-			velocity,
-			_corridor_forward,
-			_move_tuning
-		)
+		if decision.impulse == PlayerFrameDecisionType.IMPULSE_RAIL_HOP:
+			_apply_rail_hop()
+		elif decision.impulse == PlayerFrameDecisionType.IMPULSE_RAIL_EXIT:
+			_apply_rail_exit()
+		else:
+			velocity = PlayerMotorType.impulse_velocity(
+				decision.impulse,
+				velocity,
+				_corridor_forward,
+				_move_tuning
+			)
 		var tap_height_m := tap_height_for_impulse(
 			decision.impulse,
 			_move_tuning
@@ -139,6 +163,9 @@ func advance_logic(
 		if decision.impulse != PlayerFrameDecisionType.IMPULSE_BODY_SLAM:
 			_active_jump_tap_height_m = tap_height_m
 	_apply_jump_release(now_s)
+	if decision.state == PlayerStateMachineType.STATE_GRIND:
+		_advance_grind_motion(delta_s, now_s)
+		decision.state = _state_machine.state
 	_track_fall_apex(grounded)
 	_apply_character_dimensions(decision.state)
 	_apply_spin_visual(delta_s)
@@ -285,6 +312,7 @@ func respawn() -> void:
 	reset_physics_interpolation()
 	velocity = Vector3.ZERO
 	_respawn_due_s = -1.0
+	_clear_rail_state()
 	_state_machine = PlayerStateMachineType.new()
 	_last_state = &""
 	_last_spin_active = false
@@ -324,6 +352,7 @@ func _physics_process(delta_s: float) -> void:
 	var now_s := MonotonicClockType.now_s()
 	if advance_respawn(now_s) or is_respawning():
 		return
+	_try_automatic_rail_attach(now_s)
 	advance_logic(now_s, is_on_floor(), delta_s, _corridor_forward)
 	if (
 		not PlayerMotorType.uses_spline_motion(_state_machine.state)
@@ -333,8 +362,237 @@ func _physics_process(delta_s: float) -> void:
 		try_soft_landing_assist()
 		try_edge_landing_nudge()
 	move_and_slide()
+	_reproject_active_rail()
 	if global_position.y < _move_tuning.respawn_floor_y_m:
 		request_respawn(now_s)
+
+
+func try_rail_attach(
+	arc_points: PackedVector3Array,
+	now_s: float
+) -> bool:
+	if (
+		_grind_tuning == null
+		or not is_inside_tree()
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return false
+	var merged_samples: Array[TraversalSample] = []
+	var sample_rails: Array[TraversalRailType] = []
+	for candidate: Node in get_tree().get_nodes_in_group(
+		TraversalRailType.RAIL_GROUP
+	):
+		if not candidate is TraversalRailType:
+			continue
+		var rail := candidate as TraversalRailType
+		if rail == _rail_attach_blocked:
+			continue
+		if is_instance_valid(_rail_hop_target) and rail != _rail_hop_target:
+			continue
+		for sample: TraversalSample in rail.samples():
+			merged_samples.append(sample)
+			sample_rails.append(rail)
+	var sample_index := TraversalAttachSolverType.solve_rail_attach(
+		arc_points,
+		merged_samples,
+		_grind_tuning.attach_snap_m
+	)
+	if sample_index < 0:
+		return false
+	var sample := merged_samples[sample_index]
+	var rail := sample_rails[sample_index]
+	_active_rail = rail
+	_active_rail_distance_m = sample.distance_along_m
+	_grind_speed_mps = maxf(velocity.dot(sample.tangent), 0.0)
+	_rail_hop_target = null
+	_rail_attach_blocked = null
+	_state_machine.enter_grind(now_s)
+	global_position = sample.position
+	velocity = Vector3.ZERO
+	_apply_grind_bank()
+	_apply_motion_mode(_state_machine.state)
+	reset_physics_interpolation()
+	return true
+
+
+func _try_automatic_rail_attach(now_s: float) -> void:
+	if (
+		_move_tuning == null
+		or _depth_tuning == null
+		or is_on_floor()
+		or _state_machine.state != PlayerStateMachineType.STATE_AIRBORNE
+	):
+		return
+	var arc_points := DepthPredictionType.trajectory_points(
+		global_position,
+		velocity,
+		_state_machine.is_spinning,
+		_move_tuning,
+		_depth_tuning
+	)
+	try_rail_attach(arc_points, now_s)
+
+
+func _update_rail_neighbour_context() -> void:
+	_traversal_neighbour_available = false
+	if not is_instance_valid(_active_rail) or _intents == null:
+		return
+	var direction := _lateral_direction(_intents.movement().x)
+	if direction == 0:
+		return
+	_traversal_neighbour_available = (
+		_active_rail.parallel_neighbor(direction) != null
+	)
+
+
+func _advance_grind_motion(delta_s: float, now_s: float) -> void:
+	if (
+		not is_instance_valid(_active_rail)
+		or _grind_tuning == null
+		or delta_s <= 0.0
+	):
+		return
+	var rail_length_m := _active_rail.length_m()
+	if _active_rail_distance_m >= rail_length_m:
+		_finish_grind(now_s)
+		return
+	_grind_speed_mps = move_toward(
+		_grind_speed_mps,
+		_grind_tuning.speed_mps,
+		_grind_tuning.acceleration_mps2 * delta_s
+	)
+	_active_rail_distance_m = minf(
+		_active_rail_distance_m + _grind_speed_mps * delta_s,
+		rail_length_m
+	)
+	var target_sample: TraversalSample = _active_rail.sample_at_distance(
+		_active_rail_distance_m
+	)
+	if target_sample == null:
+		_finish_grind(now_s)
+		return
+	velocity = (target_sample.position - global_position) / delta_s
+	_apply_grind_bank()
+
+
+func _finish_grind(now_s: float) -> void:
+	_state_machine.enter_airborne(now_s)
+	_apply_rail_exit()
+	_apply_motion_mode(_state_machine.state)
+
+
+func _apply_rail_hop() -> void:
+	if not is_instance_valid(_active_rail):
+		return
+	var departed_rail := _active_rail
+	var direction := _lateral_direction(_intents.movement().x)
+	var neighbor := departed_rail.parallel_neighbor(direction)
+	if neighbor == null:
+		_apply_rail_exit()
+		return
+	var current_sample: TraversalSample = departed_rail.sample_at_distance(
+		_active_rail_distance_m
+	)
+	var neighbor_sample: TraversalSample = neighbor.sample_at_distance(
+		minf(_active_rail_distance_m, neighbor.length_m())
+	)
+	if current_sample == null or neighbor_sample == null:
+		_apply_rail_exit()
+		return
+	var forward := _horizontal_direction(current_sample.tangent)
+	var lateral := neighbor_sample.position - current_sample.position
+	lateral.y = 0.0
+	lateral -= forward * lateral.dot(forward)
+	if lateral.is_zero_approx():
+		lateral = _corridor_right() * float(direction)
+	var lateral_speed_mps := JumpKinematicsType.horizontal_speed_for_jump(
+		_grind_tuning.hop_lateral_distance_m,
+		_grind_tuning.hop_height_m,
+		_move_tuning
+	)
+	velocity = (
+		forward * _grind_speed_mps
+		+ lateral.normalized() * lateral_speed_mps
+	)
+	velocity.y = JumpKinematicsType.upward_speed_for_height(
+		_grind_tuning.hop_height_m,
+		_move_tuning
+	)
+	_rail_hop_target = neighbor
+	_rail_attach_blocked = departed_rail
+	_active_rail = null
+	_reset_grind_bank()
+	reset_physics_interpolation()
+
+
+func _apply_rail_exit() -> void:
+	if not is_instance_valid(_active_rail):
+		return
+	var departed_rail := _active_rail
+	var sample: TraversalSample = departed_rail.sample_at_distance(
+		_active_rail_distance_m
+	)
+	var forward := (
+		_horizontal_direction(sample.tangent)
+		if sample != null
+		else _horizontal_direction(_corridor_forward)
+	)
+	velocity = forward * _grind_tuning.exit_forward_speed_mps
+	velocity.y = JumpKinematicsType.upward_speed_for_height(
+		_grind_tuning.hop_height_m,
+		_move_tuning
+	)
+	_rail_attach_blocked = departed_rail
+	_rail_hop_target = null
+	_active_rail = null
+	_reset_grind_bank()
+
+
+func _reproject_active_rail() -> void:
+	if (
+		_state_machine.state == PlayerStateMachineType.STATE_GRIND
+		and is_instance_valid(_active_rail)
+	):
+		_active_rail_distance_m = _active_rail.closest_distance_m(
+			global_position
+		)
+
+
+func _apply_grind_bank() -> void:
+	if _visual_root != null and _grind_tuning != null:
+		_visual_root.rotation.z = deg_to_rad(_grind_tuning.bank_degrees)
+
+
+func _reset_grind_bank() -> void:
+	if _visual_root != null:
+		_visual_root.rotation.z = 0.0
+
+
+func _clear_rail_state() -> void:
+	_active_rail = null
+	_rail_hop_target = null
+	_rail_attach_blocked = null
+	_active_rail_distance_m = 0.0
+	_grind_speed_mps = 0.0
+	_traversal_neighbour_available = false
+	_reset_grind_bank()
+
+
+func _lateral_direction(input_x: float) -> int:
+	if input_x < 0.0:
+		return -1
+	if input_x > 0.0:
+		return 1
+	return 0
+
+
+func _horizontal_direction(direction: Vector3) -> Vector3:
+	var horizontal := Vector3(direction.x, 0.0, direction.z).normalized()
+	return horizontal if not horizontal.is_zero_approx() else _corridor_forward
+
+
+func _corridor_right() -> Vector3:
+	return _horizontal_direction(_corridor_forward).cross(Vector3.UP).normalized()
 
 
 func _apply_vertical_physics(grounded: bool, delta_s: float) -> void:
