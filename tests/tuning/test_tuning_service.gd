@@ -335,6 +335,31 @@ func test_playability_critical_soft_brick_values_are_rejected() -> void:
 	assert_true(service.call("catalog_is_usable"))
 
 
+func test_zero_run_speed_and_action_buffers_are_rejected() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog: GameplayTuning = service.get("catalog")
+	var guarded_fields: Array[Array] = [
+		[catalog.move, &"run_speed_mps"],
+		[catalog.input, &"jump_buffer_s"],
+		[catalog.input, &"action_buffer_s"],
+	]
+
+	for guarded_field: Array in guarded_fields:
+		var resource := guarded_field[0] as Resource
+		var property_name := guarded_field[1] as StringName
+		var original_value: Variant = resource.get(property_name)
+		resource.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"%s must reject zero" % property_name
+		)
+		resource.set(property_name, original_value)
+
+	assert_true(service.call("catalog_is_usable"))
+
+
 func test_reset_to_authored_deletes_override_and_restores_baseline() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

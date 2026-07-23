@@ -127,6 +127,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	if (
 		move.player_height_m <= 0.0
 		or move.collision_radius_m <= 0.0
+		or move.run_speed_mps <= 0.0
 		or move.run_time_to_speed_s <= 0.0
 		or move.stop_time_s <= 0.0
 		or move.gravity_mps2 <= 0.0
@@ -150,9 +151,9 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 
 	var input := checked.input
 	if (
-		input.jump_buffer_s < 0.0
+		input.jump_buffer_s <= 0.0
 		or input.coyote_time_s < 0.0
-		or input.action_buffer_s < 0.0
+		or input.action_buffer_s <= 0.0
 		or input.minimum_hop_release_s < 0.0
 		or input.full_jump_hold_s < input.minimum_hop_release_s
 		or input.millimeters_per_inch <= 0.0
