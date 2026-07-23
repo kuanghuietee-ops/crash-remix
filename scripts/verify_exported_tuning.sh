@@ -41,7 +41,7 @@ fi
 
 rg -q '^TUNING FINGERPRINT$' "$runtime_log"
 rg -q '^[0-9a-f]{64}$' "$runtime_log"
-for tuning_path in gameplay move input camera depth; do
+for tuning_path in gameplay move input camera depth wall_run grind swing phase; do
     rg -q "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
 done
 

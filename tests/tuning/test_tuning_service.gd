@@ -137,6 +137,37 @@ func test_catalog_is_unusable_without_traversal_resources() -> void:
 	assert_false(service.call("catalog_is_usable", catalog))
 
 
+func test_old_shape_override_is_migrated_not_rejected() -> void:
+	var service: RefCounted = _new_service()
+	var stale: GameplayTuning = load(BASE_CATALOG_PATH).duplicate(true)
+	stale.move.gravity_mps2 = 31.0
+	stale.wall_run = null
+	stale.grind = null
+	stale.swing = null
+	stale.phase = null
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	service.call("load_from_paths", BASE_CATALOG_PATH, TEST_OVERRIDE_PATH)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a Phase 0 override must migrate, not reset the operator's tuning"
+	)
+	assert_true(service.get("override_active"))
+	assert_eq(
+		service.get("catalog").get("move").get("gravity_mps2"),
+		31.0,
+		"migration must preserve the operator's Phase 0 edits"
+	)
+	assert_not_null(
+		service.get("catalog").get("wall_run"),
+		"missing sections must backfill from authored"
+	)
+	assert_not_null(service.get("catalog").get("grind"))
+	assert_not_null(service.get("catalog").get("swing"))
+	assert_not_null(service.get("catalog").get("phase"))
+
+
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:
 	var service: RefCounted = _new_service()
 	assert_not_null(service)

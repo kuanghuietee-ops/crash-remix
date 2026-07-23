@@ -1,6 +1,7 @@
 extends GutTest
 
 const SERVICE_SCRIPT_PATH := "res://src/tuning/tuning_service.gd"
+const TUNING_DEBUG_UI_SCRIPT_PATH := "res://src/debug/tuning_debug_ui.gd"
 const DEBUG_SCENE_PATH := "res://scenes/debug/tuning_debug_ui.tscn"
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const TEST_OVERRIDE_PATH := "user://test_sandbox/debug_ui_override.tres"
@@ -27,6 +28,16 @@ func test_hud_dumps_full_fingerprint_and_every_authored_path() -> void:
 		assert_string_contains(summary, path)
 	assert_false(ui.call("override_watermark_visible"))
 	assert_gt(ui.call("drawer_property_count"), 20)
+
+
+func test_debug_drawer_lists_traversal_sections() -> void:
+	var debug_script: Script = load(TUNING_DEBUG_UI_SCRIPT_PATH)
+	var sections: Array = debug_script.get("SECTION_NAMES")
+
+	assert_true(sections.has(&"wall_run"), "operator cannot tune wall-run at Gate F2")
+	assert_true(sections.has(&"grind"))
+	assert_true(sections.has(&"swing"))
+	assert_true(sections.has(&"phase"))
 
 
 func test_live_edit_moves_fingerprint_and_override_survives_reload() -> void:

@@ -38,11 +38,11 @@ func load_from_paths(base_catalog_path: String, override_path: String) -> Error:
 		return OK
 
 	var override_resource := _load_catalog_resource(override_path)
-	if (
-		override_resource == null
-		or not override_resource is GameplayTuning
-		or not catalog_is_usable(override_resource)
-	):
+	if override_resource == null or not override_resource is GameplayTuning:
+		override_rejected = true
+		return OK
+	_backfill_missing_sections(override_resource, authored)
+	if not catalog_is_usable(override_resource):
 		override_rejected = true
 		return OK
 
@@ -293,6 +293,18 @@ func _copy_catalog_values(source: GameplayTuning, target: GameplayTuning) -> voi
 			source.get(section_name) as Resource,
 			target.get(section_name) as Resource
 		)
+
+
+func _backfill_missing_sections(
+	target: GameplayTuning,
+	authored: GameplayTuning
+) -> void:
+	for section_name: StringName in SECTION_NAMES:
+		if target.get(section_name) != null:
+			continue
+		var authored_section := authored.get(section_name) as Resource
+		if authored_section != null:
+			target.set(section_name, authored_section.duplicate(true))
 
 
 func _copy_exported_values(source: Resource, target: Resource) -> void:

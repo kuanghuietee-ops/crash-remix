@@ -4,12 +4,7 @@ extends Control
 signal tuning_changed(fingerprint: String)
 
 const TuningServiceType := preload("res://src/tuning/tuning_service.gd")
-const SECTION_NAMES: Array[StringName] = [
-	&"move",
-	&"input",
-	&"camera",
-	&"depth",
-]
+const SECTION_NAMES: Array[StringName] = TuningServiceType.SECTION_NAMES
 const EXCLUDED_DRAWER_PROPERTIES: Dictionary = {
 	&"input": [
 		&"bounce_timing_s",
