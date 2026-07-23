@@ -56,14 +56,17 @@ Run the automated suite and gameplay-number lint:
 python3 scripts/lint_gameplay_numbers.py
 python3 scripts/check_phase0_vocabulary.py
 python3 -m unittest discover -s tests -p 'test_*.py'
+scripts/verify_exported_tuning.sh
 ```
 
 GUT 9.7.1 is intentionally vendored under `addons/gut/` so the pinned test suite
 does not depend on a per-machine Asset Library installation. The repository-owned
 pre-commit hook runs the numeric lint, the Phase 0.5 vocabulary tripwire, and
-Python tests. The vocabulary check examines identifiers, scene-node names, and
-paths while ignoring comments and prose strings; it is an early-warning check,
-not proof of structural scope. Code/design review establishes that boundary.
+Python tests. `verify_exported_tuning.sh` separately exports and boots the packed
+runtime, catching resource-loader differences that editor-mode tests cannot see.
+The vocabulary check examines identifiers, scene-node names, and paths while
+ignoring comments and prose strings; it is an early-warning check, not proof of
+structural scope. Code/design review establishes that boundary.
 
 Build, install, and launch on the single attached authorized Android device:
 

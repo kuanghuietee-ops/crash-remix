@@ -17,11 +17,7 @@ func load_from_paths(base_catalog_path: String, override_path: String) -> Error:
 	_base_catalog_path = base_catalog_path
 	_override_path = override_path
 
-	var authored := ResourceLoader.load(
-		base_catalog_path,
-		"GameplayTuning",
-		ResourceLoader.CACHE_MODE_IGNORE
-	)
+	var authored := _load_catalog_resource(base_catalog_path)
 	if authored == null or not authored is GameplayTuning:
 		return ERR_INVALID_DATA
 
@@ -30,11 +26,7 @@ func load_from_paths(base_catalog_path: String, override_path: String) -> Error:
 	if not FileAccess.file_exists(override_path):
 		return OK
 
-	var override_resource := ResourceLoader.load(
-		override_path,
-		"GameplayTuning",
-		ResourceLoader.CACHE_MODE_IGNORE
-	)
+	var override_resource := _load_catalog_resource(override_path)
 	if (
 		override_resource == null
 		or not override_resource is GameplayTuning
@@ -47,6 +39,14 @@ func load_from_paths(base_catalog_path: String, override_path: String) -> Error:
 	_loaded_resource_paths.append(override_path)
 	override_active = true
 	return OK
+
+
+func _load_catalog_resource(path: String) -> Resource:
+	# Exported scripted resources are stored as compiled .res files. Filtering by
+	# the script's global class name prevents Godot's binary resource loader from
+	# being selected, so load generically and enforce GameplayTuning immediately
+	# after the load instead.
+	return ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 
 
 func get_loaded_resource_paths() -> PackedStringArray:
