@@ -32,13 +32,12 @@ fi
 zipinfo -1 "$pack_path" >"$temp_dir/pack.list"
 for level_meta_path in "$repo_root"/data/tuning/levels/*.tres; do
     grep -qFx "${level_meta_path#"$repo_root"/}.remap" "$temp_dir/pack.list"
-    echo "res://${level_meta_path#"$repo_root"/}"
 done
 
-GODOT_SILENCE_ROOT_WARNING=1 "$godot_bin" \
+GODOT_SILENCE_ROOT_WARNING=1 XDG_DATA_HOME="$temp_dir/user" "$godot_bin" \
     --headless \
     --main-pack "$pack_path" \
-    --quit-after 3 2>&1 | tee "$runtime_log"
+    -s res://src/debug/export_level_meta_smoke.gd 2>&1 | tee "$runtime_log"
 
 if grep -qE "No loader found|Phase 0 tuning failed to load" "$runtime_log"; then
     echo "Exported build failed to load authored tuning resources" >&2
@@ -50,5 +49,9 @@ grep -qE '^[0-9a-f]{64}$' "$runtime_log"
 for tuning_path in gameplay move input camera depth wall_run grind swing phase economy; do
     grep -qE "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
 done
+grep -qE '^LEVEL META$' "$runtime_log"
+grep -qE '^res://data/tuning/levels/n_sanity_beach\.tres$' "$runtime_log"
+grep -qE '^FINGERPRINT [0-9a-f]{12}$' "$runtime_log"
+grep -qE '^EXPORTED LEVEL META SMOKE READY$' "$runtime_log"
 
 echo "Exported tuning smoke passed"
