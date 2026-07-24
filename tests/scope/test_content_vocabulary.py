@@ -8,21 +8,36 @@ from scripts.check_content_vocabulary import find_prohibited_vocabulary
 
 
 class ContentVocabularyTests(unittest.TestCase):
-    def test_detects_phase_one_content_vocabulary(self) -> None:
+    def test_detects_phase_two_content_vocabulary(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             source = root / "src" / "gameplay" / "bad_actor.gd"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "class_name BadActor\nfunc spawn_enemy() -> void:\n\tpass\n",
+                "class_name BadActor\nfunc spawn_nitro_crate() -> void:\n\tpass\n",
                 encoding="utf-8",
             )
 
             findings = find_prohibited_vocabulary(root)
 
         self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].term, "enemy")
+        self.assertEqual(findings[0].term, "nitro")
         self.assertEqual(findings[0].path, "src/gameplay/bad_actor.gd")
+
+    def test_allows_phase_one_content_vocabulary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "src" / "gameplay" / "island_slice.gd"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "func collect_crate_from_enemy() -> void:\n"
+                "\tvar gem := relic + wumpa\n",
+                encoding="utf-8",
+            )
+
+            findings = find_prohibited_vocabulary(root)
+
+        self.assertEqual(findings, [])
 
     def test_ignores_comments_and_prose_strings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -46,14 +61,14 @@ class ContentVocabularyTests(unittest.TestCase):
             scene = root / "scenes" / "test.tscn"
             scene.parent.mkdir(parents=True)
             scene.write_text(
-                '[node name="EnemySpawner" type="Node3D"]\n',
+                '[node name="NitroSpawner" type="Node3D"]\n',
                 encoding="utf-8",
             )
 
             findings = find_prohibited_vocabulary(root)
 
         self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].term, "enemy")
+        self.assertEqual(findings[0].term, "nitro")
 
     def test_allows_phase_zero_five_traversal_vocabulary(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
