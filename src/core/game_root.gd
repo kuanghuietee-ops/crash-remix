@@ -120,10 +120,19 @@ func _ready() -> void:
 		return
 	var saved_session := session_snapshot.load(save_dir)
 	if not saved_session.is_empty():
-		boot_error = dispatch({
-			"type": GameFlow.EVENT_SESSION_RESUME_AVAILABLE,
-			"snapshot": saved_session,
-		})
+		var saved_level_id := StringName(
+			saved_session.get("level_id", &"")
+		)
+		if (
+			_LEVEL_SCENE_PATHS.has(saved_level_id)
+			and _level_meta(saved_level_id) != null
+		):
+			boot_error = dispatch({
+				"type": GameFlow.EVENT_SESSION_RESUME_AVAILABLE,
+				"snapshot": saved_session,
+			})
+		else:
+			last_snapshot_error = session_snapshot.delete(save_dir)
 
 
 func _exit_tree() -> void:
@@ -710,6 +719,10 @@ func _configure_authored_level(
 		catalog.move,
 		catalog.input
 	)
+	if flow.has_resume_decision():
+		var saved := flow.consume_resume_snapshot()
+		if not session.restore_snapshot(saved):
+			last_snapshot_error = session_snapshot.delete(save_dir)
 	var segment_map := _crate_segment_map(level)
 	_apply_replay_ghost_markers(
 		level,

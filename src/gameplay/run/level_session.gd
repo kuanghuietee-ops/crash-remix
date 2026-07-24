@@ -170,6 +170,43 @@ func refresh_tuning(
 			)
 
 
+func restore_snapshot(saved: Dictionary) -> bool:
+	if run_state.meta == null or _economy == null:
+		return false
+	var current_authored_ids: Array[int] = (
+		run_state.authored_crate_ids.duplicate()
+	)
+	var restored := LevelRunState.restore(saved, run_state.meta)
+	if not restored.run_active:
+		return false
+	if (
+		restored.checkpoint_id != LevelRunState.START_CHECKPOINT
+		and not _checkpoint_transforms.has(restored.checkpoint_id)
+	):
+		return false
+	var restored_broken_ids: Array[int] = (
+		restored.broken_crate_ids.duplicate()
+	)
+	restored.register_authored_crate_ids(current_authored_ids)
+	restored.broken_crate_ids.clear()
+	for crate_id: int in restored_broken_ids:
+		if crate_id in current_authored_ids:
+			restored.broken_crate_ids.append(crate_id)
+
+	var restored_mask_count := restored.masks
+	run_state = restored
+	_sync_crate_visuals(true)
+	_set_player_spawn(run_state.checkpoint_id)
+	if _player != null and _player.has_method("clear_masks"):
+		_player.call("clear_masks")
+	for _mask_index: int in range(restored_mask_count):
+		_grant_mask(MonotonicClockType.now_s())
+	if _player != null and _player.has_method("respawn"):
+		_death_recorded_pending_respawn = true
+		_player.call("respawn")
+	return true
+
+
 func _physics_process(delta_s: float) -> void:
 	if not run_state.run_active or _economy == null:
 		return

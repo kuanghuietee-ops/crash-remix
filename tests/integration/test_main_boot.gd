@@ -139,7 +139,7 @@ func test_project_boots_the_new_main_scene() -> void:
 	)
 
 
-func test_boot_surfaces_valid_session_as_flow_resume_decision() -> void:
+func test_boot_consumes_valid_session_into_the_authored_level() -> void:
 	var snapshot := _normal_snapshot()
 	snapshot["timestamp_unix_s"] = Time.get_unix_time_from_system()
 	_write_text(
@@ -152,14 +152,18 @@ func test_boot_surfaces_valid_session_as_flow_resume_decision() -> void:
 	await wait_process_frames(1)
 
 	var flow: Variant = root.get("flow")
-	var resume_snapshot: Variant = flow.get("resume_snapshot")
-	assert_eq(root.call("state_name"), &"warp_room")
-	assert_true(resume_snapshot is Dictionary)
-	if resume_snapshot is Dictionary:
-		assert_eq(
-			resume_snapshot.get("level_id"),
-			&"wr1_n_sanity_beach"
-		)
+	assert_eq(root.call("state_name"), &"level")
+	var level := await _wait_for_authored_level(root)
+	if level == null:
+		return
+	assert_eq(level.run_state.broken_crate_ids, [1])
+	assert_eq(level.run_state.wumpa_run, 1)
+	assert_eq(
+		level.run_state.authored_crate_ids.size(),
+		level.run_state.meta.crate_count,
+		"the live scene catalog must override stale snapshot crate ids"
+	)
+	assert_true(flow.get("resume_snapshot").is_empty())
 
 
 func test_corrupt_session_is_discarded_while_profile_still_loads() -> void:
@@ -576,6 +580,10 @@ func _enter_authored_level(root: Node) -> LevelSession:
 		),
 		OK
 	)
+	return await _wait_for_authored_level(root)
+
+
+func _wait_for_authored_level(root: Node) -> LevelSession:
 	for _poll_index: int in range(120):
 		var level := root.get_node_or_null(
 			"Content/NSanityBeach"

@@ -348,24 +348,166 @@ func test_island_slice_full_loop() -> void:
 	)
 
 
+func test_process_killed_relaunch_restores_real_run_at_checkpoint() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var first_crate := _crate(level, 1)
+	var aku_crate := _crate(level, 11)
+	var checkpoint := _crate(level, 14)
+	assert_not_null(first_crate)
+	assert_not_null(aku_crate)
+	assert_not_null(checkpoint)
+	if (
+		first_crate == null
+		or aku_crate == null
+		or checkpoint == null
+	):
+		return
+	var spin_area := player.get_node("SpinArea") as Area3D
+
+	spin_area.emit_signal(&"body_entered", first_crate)
+	spin_area.emit_signal(&"body_entered", checkpoint)
+	await wait_process_frames(1)
+	assert_eq(level.run_state.broken_crate_ids, [1, 14])
+	assert_eq(level.run_state.checkpoint_id, 14)
+	var checkpoint_spawn: Transform3D = player.get(
+		"_spawn_transform"
+	)
+
+	player.global_position = Vector3(4.5, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if player.is_on_floor():
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		player.is_on_floor(),
+		"the relaunch scenario must begin on the real entry floor"
+	)
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2.RIGHT,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var physically_fell := false
+	for _physics_index: int in range(300):
+		physically_fell = (
+			physically_fell
+			or player.global_position.y < 0.0
+		)
+		if player.call("is_respawning"):
+			router.push_intent(
+				InputIntent.move(
+					Vector2.ZERO,
+					0.0,
+					InputIntent.SOURCE_KEYBOARD
+				)
+			)
+		if level.run_state.deaths_at_checkpoint == 1:
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		physically_fell,
+		"the real player must fall off the authored route"
+	)
+	assert_eq(
+		level.run_state.deaths_at_checkpoint,
+		1,
+		"the real respawn signal must record the death"
+	)
+	for _physics_index: int in range(120):
+		if player.is_on_floor() and not player.call("is_respawning"):
+			break
+		await wait_physics_frames(1)
+	assert_true(player.is_on_floor())
+
+	spin_area.emit_signal(&"body_entered", aku_crate)
+	await wait_process_frames(1)
+	assert_eq(level.run_state.broken_crate_ids, [1, 11, 14])
+	assert_eq(level.run_state.masks, 1)
+	assert_eq(player.call("mask_count"), 1)
+	var played_snapshot := level.run_state.snapshot()
+	assert_false(played_snapshot.get("flawless"))
+	assert_eq(played_snapshot.get("deaths_at_checkpoint"), 1)
+	assert_gt(int(played_snapshot.get("wumpa_run")), 0)
+
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(root.call("state_name"), &"paused")
+	assert_true(
+		FileAccess.file_exists(
+			TEST_SAVE_DIR.path_join("session.json")
+		)
+	)
+	root.queue_free()
+	await wait_process_frames(2)
+	assert_false(
+		get_tree().paused,
+		"destroying the paused process root must release tree pause"
+	)
+
+	var resumed_root := _instantiate_main()
+	if resumed_root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		resumed_root.call("state_name"),
+		&"level",
+		"boot must consume a valid tier-2 snapshot"
+	)
+	if resumed_root.call("state_name") != &"level":
+		return
+	var resumed_level := await _wait_for_authored_level(resumed_root)
+	if resumed_level == null:
+		return
+	var resumed_player := (
+		resumed_level.get_node("Player") as CharacterBody3D
+	)
+
+	assert_eq(
+		resumed_level.run_state.snapshot(),
+		played_snapshot,
+		"the real session must restore the complete played run state"
+	)
+	assert_eq(resumed_player.call("mask_count"), 1)
+	assert_true(
+		Vector2(
+			resumed_player.global_position.x,
+			resumed_player.global_position.z
+		).is_equal_approx(
+			Vector2(
+				checkpoint_spawn.origin.x,
+				checkpoint_spawn.origin.z
+			)
+		),
+		"tier-2 resume must place the player at the checkpoint"
+	)
+	for crate_id: int in [1, 11, 14]:
+		var restored_crate := _crate(resumed_level, crate_id)
+		assert_true(restored_crate.call("is_broken"))
+		assert_false(restored_crate.get_node("Mesh").visible)
+	assert_true(
+		resumed_root.get("flow").get("resume_snapshot").is_empty(),
+		"the in-memory resume decision must be consumed once"
+	)
+
+
 func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	var root := _instantiate_main()
 	if root == null:
 		return
 	await wait_process_frames(1)
-	root.call(
-		"dispatch",
-		{
-			"type": &"portal_enter",
-			"level_id": LEVEL_ID,
-		}
-	)
-	await wait_process_frames(2)
-	var level := root.get_node_or_null(
-		"Content/NSanityBeach"
-	) as LevelSession
+	var level := await _enter_authored_level(root)
 	if level == null:
-		assert_not_null(level)
 		return
 	var player := level.get_node("Player") as CharacterBody3D
 	var bounce := _crate(level, 8)
@@ -412,19 +554,8 @@ func test_replay_marks_only_the_previous_runs_missed_crates() -> void:
 	if root == null:
 		return
 	await wait_process_frames(1)
-	root.call(
-		"dispatch",
-		{
-			"type": &"portal_enter",
-			"level_id": LEVEL_ID,
-		}
-	)
-	await wait_process_frames(2)
-	var level := root.get_node_or_null(
-		"Content/NSanityBeach"
-	) as LevelSession
+	var level := await _enter_authored_level(root)
 	if level == null:
-		assert_not_null(level)
 		return
 	var missed_one := _crate(level, 1)
 	var missed_two := _crate(level, 2)
@@ -453,19 +584,8 @@ func test_authored_level_touch_spin_remains_live_under_the_hud() -> void:
 	if root == null:
 		return
 	await wait_process_frames(1)
-	root.call(
-		"dispatch",
-		{
-			"type": &"portal_enter",
-			"level_id": LEVEL_ID,
-		}
-	)
-	await wait_physics_frames(3)
-	var level := root.get_node_or_null(
-		"Content/NSanityBeach"
-	) as LevelSession
+	var level := await _enter_authored_level(root)
 	if level == null:
-		assert_not_null(level)
 		return
 	var player := level.get_node("Player") as CharacterBody3D
 	var touch := level.get_node("UI/TouchControls") as Control
@@ -506,6 +626,10 @@ func _enter_authored_level(root: Node) -> LevelSession:
 		),
 		OK
 	)
+	return await _wait_for_authored_level(root)
+
+
+func _wait_for_authored_level(root: Node) -> LevelSession:
 	for _poll_index: int in range(120):
 		var level := root.get_node_or_null(
 			"Content/NSanityBeach"

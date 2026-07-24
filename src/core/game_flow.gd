@@ -31,7 +31,7 @@ const TRANSITIONS: Dictionary = {
 	},
 	State.WARP_ROOM: {
 		EVENT_PORTAL_ENTER: State.LEVEL,
-		EVENT_SESSION_RESUME_AVAILABLE: State.WARP_ROOM,
+		EVENT_SESSION_RESUME_AVAILABLE: State.LEVEL,
 	},
 	State.LEVEL: {
 		EVENT_LEVEL_COMPLETE: State.RESULTS,
@@ -91,6 +91,20 @@ func dispatch(event: Dictionary) -> Error:
 			and typeof(resume_level_id) != TYPE_STRING_NAME
 		):
 			return ERR_INVALID_DATA
+		var requested_level := StringName(resume_level_id)
+		if requested_level.is_empty():
+			return ERR_INVALID_DATA
+		var mode_value: Variant = snapshot.get("mode")
+		if (
+			typeof(mode_value) != TYPE_STRING
+			and typeof(mode_value) != TYPE_STRING_NAME
+		):
+			return ERR_INVALID_DATA
+		var requested_mode := StringName(mode_value)
+		if requested_mode not in LEVEL_MODES:
+			return ERR_INVALID_DATA
+		active_level_id = requested_level
+		active_level_mode = requested_mode
 		resume_snapshot = snapshot.duplicate(true)
 
 	if event_type == EVENT_PORTAL_ENTER:
@@ -144,3 +158,9 @@ func state_name() -> StringName:
 
 func has_resume_decision() -> bool:
 	return not resume_snapshot.is_empty()
+
+
+func consume_resume_snapshot() -> Dictionary:
+	var snapshot := resume_snapshot.duplicate(true)
+	resume_snapshot.clear()
+	return snapshot
