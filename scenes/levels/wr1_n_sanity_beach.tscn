@@ -72,7 +72,7 @@ position = Vector3(0, 0, -480)
 position = Vector3(0, 0, -576)
 
 [node name="Player" parent="." instance=ExtResource("3_player")]
-position = Vector3(0, 0.05, 6)
+position = Vector3(0, 0.05, 0)
 
 [node name="RelicOnly" type="Node3D" parent="."]
 

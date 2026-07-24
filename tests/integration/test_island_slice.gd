@@ -14,6 +14,29 @@ func after_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
 
 
+func test_real_scene_spawn_stays_on_authored_floor_without_death() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+
+	await wait_physics_frames(120)
+
+	assert_true(
+		player.is_on_floor(),
+		"the real player must settle on authored floor without input"
+	)
+	assert_true(
+		level.run_state.flawless,
+		"falling from the authored spawn must not record a player death"
+	)
+	assert_eq(level.run_state.deaths_at_checkpoint, 0)
+
+
 func test_island_slice_full_loop() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -303,6 +326,28 @@ func _instantiate_main() -> Node:
 	root.set("save_dir", TEST_SAVE_DIR)
 	add_child_autofree(root)
 	return root
+
+
+func _enter_authored_level(root: Node) -> LevelSession:
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": LEVEL_ID,
+			}
+		),
+		OK
+	)
+	for _poll_index: int in range(120):
+		var level := root.get_node_or_null(
+			"Content/NSanityBeach"
+		) as LevelSession
+		if level != null:
+			return level
+		await wait_process_frames(1)
+	assert_true(false, "the authored level must finish threaded loading")
+	return null
 
 
 func _crate(level: Node, crate_id: int) -> Node:
