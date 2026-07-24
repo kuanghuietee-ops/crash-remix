@@ -90,6 +90,14 @@ func configure(session: Node, meta: LevelMeta) -> void:
 	_refresh()
 
 
+func set_run_display_visible(run_display_visible: bool) -> void:
+	$SafeArea/Stats.visible = run_display_visible
+	if run_display_visible:
+		return
+	_relic_label.visible = false
+	_mercy_panel.visible = false
+
+
 func set_relic_time(elapsed_s: float, active: bool) -> void:
 	_relic_elapsed_s = maxf(elapsed_s, 0.0)
 	_relic_label.visible = active

@@ -9,20 +9,38 @@ const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 
 var tuning_service: TuningServiceType = TuningServiceType.new()
+var _uses_external_tuning_service: bool = false
+var _external_touch_exclusions: Array = []
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
 	return is_debug_build
 
 
+func configure_embedded(
+	service: TuningServiceType,
+	touch_exclusions: Array
+) -> void:
+	tuning_service = service
+	_uses_external_tuning_service = true
+	_external_touch_exclusions = touch_exclusions.duplicate()
+
+
 func _ready() -> void:
 	Input.set_use_accumulated_input(false)
-	var load_error := tuning_service.load_from_paths(
-		BASE_TUNING_PATH,
-		OVERRIDE_TUNING_PATH
-	)
-	if load_error != OK:
-		push_error("Phase 0 tuning failed to load: " + error_string(load_error))
+	if not _uses_external_tuning_service:
+		var load_error := tuning_service.load_from_paths(
+			BASE_TUNING_PATH,
+			OVERRIDE_TUNING_PATH
+		)
+		if load_error != OK:
+			push_error(
+				"Phase 0 tuning failed to load: "
+				+ error_string(load_error)
+			)
+			return
+	elif tuning_service == null or tuning_service.catalog == null:
+		push_error("Embedded toybox tuning owner is not configured.")
 		return
 	var catalog := tuning_service.catalog
 	PhaseState.configure(catalog.phase)
@@ -35,7 +53,10 @@ func _ready() -> void:
 	router.call("configure", catalog.input)
 	gamepad.call("configure", router, catalog.input)
 	touch.call("configure", router, catalog.input, true)
-	var debug_tools_enabled := should_enable_debug_tools(OS.is_debug_build())
+	var debug_tools_enabled := (
+		should_enable_debug_tools(OS.is_debug_build())
+		and not _uses_external_tuning_service
+	)
 	tuning_debug.visible = debug_tools_enabled
 	if debug_tools_enabled:
 		tuning_debug.call("configure", tuning_service, OVERRIDE_TUNING_PATH)
@@ -47,7 +68,10 @@ func _ready() -> void:
 			]
 		)
 	else:
-		touch.call("set_touch_exclusion_controls", [])
+		touch.call(
+			"set_touch_exclusion_controls",
+			_external_touch_exclusions
+		)
 	player.call(
 		"configure",
 		catalog.move,
@@ -95,6 +119,10 @@ func _ready() -> void:
 
 
 func _on_tuning_changed(_fingerprint: String) -> void:
+	refresh_tuning()
+
+
+func refresh_tuning() -> void:
 	var catalog := tuning_service.catalog
 	PhaseState.configure(catalog.phase)
 	var router := get_node("Input/InputRouter")

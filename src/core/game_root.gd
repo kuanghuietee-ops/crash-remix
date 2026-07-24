@@ -497,7 +497,13 @@ func _render_state(previous_state: int = flow.state) -> void:
 		flow.state == GameFlow.State.LEVEL
 		and flow.active_level_id == DEBUG_TOYBOX_LEVEL_ID
 	):
-		_content.add_child(TOYBOX_SCENE.instantiate())
+		var toybox := TOYBOX_SCENE.instantiate()
+		toybox.call(
+			"configure_embedded",
+			tuning_service,
+			_level_touch_exclusions()
+		)
+		_content.add_child(toybox)
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -765,6 +771,14 @@ func _configure_authored_level(
 
 func _refresh_active_level_tuning() -> void:
 	if (
+		flow.state == GameFlow.State.LEVEL
+		and flow.active_level_id == DEBUG_TOYBOX_LEVEL_ID
+	):
+		var toybox := _content.get_node_or_null("Game")
+		if toybox != null:
+			toybox.call("refresh_tuning")
+		return
+	if (
 		active_level_session == null
 		or not is_instance_valid(active_level_session)
 		or not active_level_session is LevelSession
@@ -1002,6 +1016,10 @@ func _sync_ui_visibility() -> void:
 		_results_screen.visible = (
 			flow.state == GameFlow.State.RESULTS
 		)
+	_hud.call(
+		"set_run_display_visible",
+		flow.active_level_id != DEBUG_TOYBOX_LEVEL_ID
+	)
 	_pause_overlay.visible = (
 		flow.state == GameFlow.State.PAUSED
 		and not _level_list_open

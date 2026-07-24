@@ -391,6 +391,92 @@ func test_real_level_entry_reports_level_meta_to_live_tuning_hud() -> void:
 	)
 
 
+func test_real_level_list_opens_toybox_with_one_tuning_owner() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	assert_true(
+		overlay.visible,
+		"the shipped warp-room button must open the real level list"
+	)
+	var toybox_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Toybox"
+	) as Button
+	assert_true(
+		toybox_button.visible,
+		"debug builds must expose the toybox through the real list"
+	)
+
+	toybox_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"level")
+	var toybox := root.get_node_or_null("Content/Game")
+	assert_not_null(
+		toybox,
+		"the real toybox request must instantiate its shipped scene"
+	)
+	if toybox == null:
+		return
+	var root_debug := root.get_node("UI/TuningDebug") as TuningDebugUI
+	var toybox_debug := toybox.get_node(
+		"UI/TuningDebug"
+	) as TuningDebugUI
+	var visible_tuning_drawers := 0
+	for candidate: Node in root.find_children(
+		"*",
+		"TuningDebugUI",
+		true,
+		false
+	):
+		if (candidate as Control).visible:
+			visible_tuning_drawers += 1
+	assert_eq(
+		visible_tuning_drawers,
+		1,
+		"the nested toybox must not create a second live drawer"
+	)
+	assert_true(root_debug.visible)
+	assert_false(toybox_debug.visible)
+	assert_same(
+		toybox.get("tuning_service"),
+		root.get("tuning_service"),
+		"the root drawer and toybox must share one tuning owner"
+	)
+	var camera := toybox.get_node("CameraRig/Camera3D") as Camera3D
+	assert_eq(
+		root_debug.call(
+			"set_live_value",
+			&"camera",
+			&"field_of_view_degrees",
+			71.0
+		),
+		OK
+	)
+	await wait_process_frames(1)
+	assert_eq(
+		camera.fov,
+		71.0,
+		"the sole root drawer must refresh the embedded toybox"
+	)
+	var hud := root.get_node("UI/HUD")
+	assert_true(hud.visible)
+	assert_false(
+		hud.get_node("SafeArea/Stats").visible,
+		"toybox entry must not show false CRATES 0 / 0 run stats"
+	)
+	assert_true(
+		hud.get_node("SafeArea/Pause").visible,
+		"the toybox must retain its touch-reachable escape route"
+	)
+
+
 func test_project_boots_the_new_main_scene() -> void:
 	assert_eq(
 		ProjectSettings.get_setting("application/run/main_scene"),
