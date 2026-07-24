@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Resource" path="res://data/tuning/levels/n_sanity_beach.tres" id="1_meta"]
+
+[node name="CheckpointGapBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -400)

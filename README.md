@@ -56,6 +56,7 @@ Run the automated suite and gameplay-number lint:
 python3 scripts/lint_gameplay_numbers.py
 python3 scripts/check_content_vocabulary.py
 python3 scripts/lint_traversal_authoring.py
+python3 scripts/lint_level_authoring.py
 python3 -m unittest discover -s tests -p 'test_*.py'
 scripts/verify_exported_tuning.sh
 ```
@@ -63,11 +64,16 @@ scripts/verify_exported_tuning.sh
 GUT 9.7.1 is intentionally vendored under `addons/gut/` so the pinned test suite
 does not depend on a per-machine Asset Library installation. The repository-owned
 pre-commit hook runs the numeric lint, the Phase 1 content vocabulary tripwire, and
-the traversal-authoring lint before Python tests.
+both authoring lints before Python tests.
 `lint_traversal_authoring.py` parses the `.tscn` authoring data without launching
 Godot: wall strips must be enclosed by wall-run camera regions, their cameras must
 keep an upright horizon, detach targets must enter the camera frustum, and rails
 need grind-region coverage plus symmetric neighbour links.
+`lint_level_authoring.py` recursively resolves level, segment, and inherited crate
+scenes. It reads the limits from `EconomyTuning`, `CameraTuning`, and each
+`LevelMeta`, then checks checkpoint spacing along the authored Spine, normal crate
+totals and segment membership, stable crate IDs, required-jump camera depression,
+and relic-only time-crate placement.
 `verify_exported_tuning.sh` separately exports and boots the packed runtime,
 catching resource-loader differences that editor-mode tests cannot see. The
 vocabulary check examines identifiers, scene-node names, and paths while ignoring

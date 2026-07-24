@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="1_crate"]
+
+[node name="NestedSegment" type="Node3D"]
+
+[node name="Crate01" parent="." instance=ExtResource("1_crate")]
+position = Vector3(0, 0.5, -5)
+crate_id = 1
+segment_group = &"Nested Segment"
