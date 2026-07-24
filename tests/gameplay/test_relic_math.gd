@@ -51,6 +51,50 @@ func test_timer_arms_only_at_stopwatch_pickup() -> void:
 	)
 
 
+func test_real_relic_scene_does_not_tick_before_stopwatch_contact() -> void:
+	var packed := load(LEVEL_SCENE) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var level := packed.instantiate() as LevelSession
+	var stopwatch := level.get_node(
+		"RelicOnly/Stopwatch"
+	) as Area3D
+	stopwatch.position.z = -20.0
+	add_child_autofree(level)
+	var player := level.get_node("Player") as CharacterBody3D
+	assert_true(level.configure(
+		_meta,
+		LevelRunState.MODE_RELIC,
+		_economy,
+		player,
+		_catalog.move,
+		_catalog.input
+	))
+
+	await wait_physics_frames(
+		_economy.mercy_mask_death_threshold
+	)
+
+	assert_false(level.run_state.relic_timer_armed)
+	assert_eq(
+		level.run_state.relic_timer_raw_s,
+		0.0,
+		"physics frames before real stopwatch contact must not accrue time"
+	)
+	stopwatch.global_position = (
+		player.global_position + Vector3.UP
+	)
+	stopwatch.reset_physics_interpolation()
+	await wait_physics_frames(2)
+
+	assert_true(
+		level.run_state.relic_timer_armed,
+		"the actual stopwatch Area3D must arm the timer"
+	)
+	assert_gt(level.run_state.relic_timer_raw_s, 0.0)
+
+
 func test_time_crates_subtract_all_tuned_values_and_preserve_credit() -> void:
 	var state := _new_relic_state()
 	state.call("pickup_relic_stopwatch")
