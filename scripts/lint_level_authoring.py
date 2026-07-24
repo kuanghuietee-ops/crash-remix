@@ -24,6 +24,9 @@ BREAKABLE_CRATE_SCRIPT = (
 CAMERA_REGION_SCRIPT = (
     "res://src/gameplay/camera/camera_region.gd"
 )
+CAMERA_RAIL_CONTROLLER_SCRIPT = (
+    "res://src/gameplay/camera/camera_rail_controller.gd"
+)
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
 LEVEL_META_EXEMPT_SCENES = {
     "phase05_gauntlet.tscn",
@@ -154,6 +157,7 @@ class LevelMetaValues:
 class AuthoringTuning:
     checkpoint_spacing_limit_s: float
     minimum_jump_depression_degrees: float
+    camera_look_ahead_m: float
     camera_offsets: dict[str, Vector3]
 
 
@@ -421,6 +425,7 @@ def _required_jump_findings(
         for node in nodes
         if node.script_path == CAMERA_REGION_SCRIPT
     ]
+    camera_rails = _camera_rail_polylines(nodes)
     findings: list[AuthoringViolation] = []
     for required_jump in nodes:
         if (
@@ -477,6 +482,24 @@ def _required_jump_findings(
                 )
             )
             continue
+        camera_frame = _camera_frame_at(
+            takeoff.world_position,
+            camera_rails,
+            tuning.camera_look_ahead_m,
+        )
+        if camera_frame is None:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    REQUIRED_JUMP_RULE,
+                    (
+                        f"{required_jump.path} has no usable "
+                        "CameraRailController Rail"
+                    ),
+                )
+            )
+            continue
+        rail_position, corridor_forward = camera_frame
         passes = False
         observed: list[float] = []
         for region in matching_regions:
@@ -486,14 +509,14 @@ def _required_jump_findings(
                 )
                 or "default"
             )
-            offset = tuning.camera_offsets.get(
-                mode,
-                tuning.camera_offsets["default"],
+            camera_position = _camera_position(
+                rail_position,
+                corridor_forward,
+                _runtime_camera_offset(mode, tuning),
             )
             depression = _jump_depression_degrees(
-                takeoff.world_position,
+                camera_position,
                 landing.world_position,
-                offset,
             )
             observed.append(depression)
             if (
@@ -776,30 +799,135 @@ def _collision_bounds(
     return None
 
 
-def _jump_depression_degrees(
-    takeoff: Vector3,
-    landing: Vector3,
-    camera_offset: Vector3,
-) -> float:
-    horizontal_travel = (
-        landing[0] - takeoff[0],
-        0.0,
-        landing[2] - takeoff[2],
+def _camera_rail_polylines(
+    nodes: list[FlatNode],
+) -> list[list[Vector3]]:
+    nodes_by_path = {node.path: node for node in nodes}
+    polylines: list[list[Vector3]] = []
+    for rail in nodes:
+        controller = nodes_by_path.get(rail.parent)
+        if (
+            rail.node_type != "Path3D"
+            or controller is None
+            or controller.script_path
+            != CAMERA_RAIL_CONTROLLER_SCRIPT
+        ):
+            continue
+        points = [
+            marker.world_position
+            for marker in sorted(nodes, key=lambda node: node.order)
+            if (
+                marker.node_type == "Marker3D"
+                and marker.parent == rail.path
+            )
+        ]
+        if len(points) >= 2:
+            polylines.append(points)
+    return polylines
+
+
+def _camera_frame_at(
+    player_position: Vector3,
+    camera_rails: list[list[Vector3]],
+    look_ahead_m: float,
+) -> tuple[Vector3, Vector3] | None:
+    candidates: list[
+        tuple[float, list[Vector3], list[float], float, Vector3]
+    ] = []
+    for points in camera_rails:
+        cumulative = _polyline_cumulative_lengths(points)
+        if not cumulative or math.isclose(cumulative[-1], 0.0):
+            continue
+        rail_offset = _project_onto_polyline(
+            player_position,
+            points,
+            cumulative,
+        )
+        rail_position = _sample_polyline(
+            points,
+            cumulative,
+            rail_offset,
+        )
+        candidates.append(
+            (
+                _length(
+                    _subtract(player_position, rail_position)
+                ),
+                points,
+                cumulative,
+                rail_offset,
+                rail_position,
+            )
+        )
+    if not candidates:
+        return None
+    (
+        _distance,
+        points,
+        cumulative,
+        rail_offset,
+        rail_position,
+    ) = min(candidates, key=lambda candidate: candidate[0])
+    sample_distance = max(look_ahead_m, 0.0)
+    look_position = _sample_polyline(
+        points,
+        cumulative,
+        min(rail_offset + sample_distance, cumulative[-1]),
     )
-    forward = _normalize(horizontal_travel)
+    forward = _normalize(_subtract(look_position, rail_position))
     if _is_zero(forward):
-        return 0.0
-    side = _normalize(_cross(UP, forward))
-    camera_position = _add(
-        takeoff,
+        behind = _sample_polyline(
+            points,
+            cumulative,
+            max(rail_offset - sample_distance, 0.0),
+        )
+        forward = _normalize(_subtract(rail_position, behind))
+    corridor_forward = _normalize((forward[0], 0.0, forward[2]))
+    if _is_zero(corridor_forward):
+        return None
+    return rail_position, corridor_forward
+
+
+def _runtime_camera_offset(
+    mode: str,
+    tuning: AuthoringTuning,
+) -> Vector3:
+    offset = tuning.camera_offsets.get(
+        mode,
+        tuning.camera_offsets["default"],
+    )
+    if mode == "wall_run":
+        return (offset[2], offset[1], offset[0])
+    return offset
+
+
+def _camera_position(
+    rail_position: Vector3,
+    corridor_forward: Vector3,
+    camera_offset: Vector3,
+) -> Vector3:
+    camera_right = _normalize(_cross(corridor_forward, UP))
+    if _is_zero(camera_right):
+        camera_right = (1.0, 0.0, 0.0)
+    return _add(
+        rail_position,
         _add(
-            _multiply(side, camera_offset[0]),
+            _multiply(camera_right, camera_offset[0]),
             _add(
                 _multiply(UP, camera_offset[1]),
-                _multiply(forward, -camera_offset[2]),
+                _multiply(
+                    corridor_forward,
+                    -camera_offset[2],
+                ),
             ),
         ),
     )
+
+
+def _jump_depression_degrees(
+    camera_position: Vector3,
+    landing: Vector3,
+) -> float:
     to_landing = _subtract(landing, camera_position)
     horizontal_distance = math.hypot(
         to_landing[0],
@@ -857,6 +985,35 @@ def _project_onto_polyline(
     return best_along
 
 
+def _sample_polyline(
+    points: list[Vector3],
+    cumulative: list[float],
+    distance: float,
+) -> Vector3:
+    clamped_distance = max(
+        0.0,
+        min(distance, cumulative[-1]),
+    )
+    for index, (start, finish) in enumerate(
+        zip(points, points[1:])
+    ):
+        segment_start = cumulative[index]
+        segment_finish = cumulative[index + 1]
+        if clamped_distance > segment_finish:
+            continue
+        segment_length = segment_finish - segment_start
+        if math.isclose(segment_length, 0.0):
+            continue
+        weight = (
+            clamped_distance - segment_start
+        ) / segment_length
+        return _add(
+            start,
+            _multiply(_subtract(finish, start), weight),
+        )
+    return points[-1]
+
+
 def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
     economy = _assignment_values(
         (repo_root / "data/tuning/economy.tres").read_text(
@@ -890,6 +1047,7 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
         minimum_jump_depression_degrees=float(
             camera["minimum_jump_depression_degrees"]
         ),
+        camera_look_ahead_m=float(camera["look_ahead_m"]),
         camera_offsets=offsets,
     )
 

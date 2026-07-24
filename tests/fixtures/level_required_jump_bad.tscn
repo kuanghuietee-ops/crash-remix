@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="3_camera"]
 
 [sub_resource type="BoxShape3D" id="Shape_region"]
 size = Vector3(100, 100, 100)
@@ -30,3 +31,14 @@ camera_mode = &"default"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
 shape = SubResource("Shape_region")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("3_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -25)
