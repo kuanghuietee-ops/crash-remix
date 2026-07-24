@@ -109,6 +109,56 @@ func test_placed_wumpa_uses_live_radius_and_collects_once() -> void:
 	assert_false(pickup.visible)
 
 
+func test_real_fall_death_clears_the_player_mask_stack() -> void:
+	_economy.wumpa_per_standard_crate = (
+		_economy.wumpa_mask_threshold
+	)
+	var setup := _new_session(false, true)
+	if setup.is_empty():
+		return
+	var session: Node = setup["session"]
+	var player: CharacterBody3D = setup["player"]
+	var pickup := setup["wumpa"] as Area3D
+	var respawns: Array[bool] = []
+	player.respawned.connect(
+		func() -> void:
+			respawns.append(true)
+	)
+
+	pickup.body_entered.emit(player)
+
+	var run_state: RefCounted = session.get("run_state")
+	assert_eq(player.call("mask_count"), 1)
+	assert_eq(run_state.get("masks"), 1)
+
+	player.global_position.y = (
+		_catalog.move.respawn_floor_y_m
+		- _catalog.move.player_height_m
+	)
+	await wait_physics_frames(2)
+	assert_true(
+		player.call("is_respawning"),
+		"The real floor threshold must request the respawn"
+	)
+	var frame_limit := ceili(
+		_catalog.move.respawn_delay_s
+		* Engine.physics_ticks_per_second
+	) + Engine.physics_ticks_per_second
+	for _frame_index: int in range(frame_limit):
+		if not respawns.is_empty():
+			break
+		await wait_physics_frames(1)
+
+	assert_eq(
+		respawns.size(),
+		1,
+		"The real player must complete one fall respawn"
+	)
+	assert_eq(run_state.get("deaths_at_checkpoint"), 1)
+	assert_eq(player.call("mask_count"), 0)
+	assert_eq(run_state.get("masks"), 0)
+
+
 func test_mask_absorbs_exactly_one_hit_before_one_hit_death() -> void:
 	var setup := _new_session()
 	if setup.is_empty():
