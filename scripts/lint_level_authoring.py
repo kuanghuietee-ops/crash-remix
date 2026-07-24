@@ -25,7 +25,10 @@ CAMERA_REGION_SCRIPT = (
     "res://src/gameplay/camera/camera_region.gd"
 )
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
-LEGACY_LEVEL_SCENES = {"phase05_gauntlet.tscn"}
+LEVEL_META_EXEMPT_SCENES = {
+    "phase05_gauntlet.tscn",
+    "warp_room_1.tscn",
+}
 TIME_CRATE_TYPE = "time"
 IRON_CRATE_TYPE = "iron"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
@@ -141,7 +144,7 @@ def find_authoring_violations(root: Path) -> list[AuthoringViolation]:
         if meta_path is None:
             if (
                 scene_path.parent.name == "levels"
-                and scene_path.name not in LEGACY_LEVEL_SCENES
+                and scene_path.name not in LEVEL_META_EXEMPT_SCENES
             ):
                 findings.append(
                     AuthoringViolation(

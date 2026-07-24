@@ -32,6 +32,51 @@ func test_portal_entry_reaches_level_and_keeps_event_payload() -> void:
 
 	assert_eq(flow.call("state_name"), &"level")
 	assert_eq(flow.get("active_level_id"), &"wr1_n_sanity_beach")
+	assert_eq(flow.get("active_level_mode"), &"normal")
+
+
+func test_portal_and_results_retry_keep_the_requested_relic_mode() -> void:
+	var flow := _new_flow()
+	if flow == null:
+		return
+	assert_eq(flow.call("dispatch", {"type": &"save_loaded"}), OK)
+	assert_eq(
+		flow.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+				"mode": &"relic",
+			}
+		),
+		OK
+	)
+	assert_eq(flow.get("active_level_mode"), &"relic")
+	assert_eq(flow.call("dispatch", {"type": &"level_complete"}), OK)
+	assert_eq(flow.call("dispatch", {"type": &"retry_level"}), OK)
+	assert_eq(flow.get("active_level_mode"), &"relic")
+
+
+func test_unknown_portal_mode_is_rejected_without_leaving_hub() -> void:
+	var flow := _new_flow()
+	if flow == null:
+		return
+	assert_eq(flow.call("dispatch", {"type": &"save_loaded"}), OK)
+
+	assert_eq(
+		flow.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+				"mode": &"unknown",
+			}
+		),
+		ERR_INVALID_DATA
+	)
+	assert_eq(flow.call("state_name"), &"warp_room")
+	assert_eq(flow.get("active_level_id"), &"")
+	assert_eq(flow.get("active_level_mode"), &"normal")
 
 
 func test_level_completion_reaches_results() -> void:
@@ -64,6 +109,7 @@ func test_results_continue_returns_to_hub_and_clears_level() -> void:
 	)
 	assert_eq(flow.call("state_name"), &"warp_room")
 	assert_eq(flow.get("active_level_id"), &"")
+	assert_eq(flow.get("active_level_mode"), &"normal")
 
 
 func test_quitting_level_returns_to_warp_room() -> void:
@@ -74,6 +120,7 @@ func test_quitting_level_returns_to_warp_room() -> void:
 	assert_eq(flow.call("dispatch", {"type": &"quit_level"}), OK)
 	assert_eq(flow.call("state_name"), &"warp_room")
 	assert_eq(flow.get("active_level_id"), &"")
+	assert_eq(flow.get("active_level_mode"), &"normal")
 
 
 func test_every_state_pauses_and_resumes_to_the_same_state() -> void:

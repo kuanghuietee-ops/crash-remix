@@ -18,6 +18,12 @@ const EVENT_RESULTS_TO_HUB := &"results_to_hub"
 const EVENT_PAUSE := &"pause"
 const EVENT_RESUME := &"resume"
 const EVENT_SESSION_RESUME_AVAILABLE := &"session_resume_available"
+const MODE_NORMAL := &"normal"
+const MODE_RELIC := &"relic"
+const LEVEL_MODES: Array[StringName] = [
+	MODE_NORMAL,
+	MODE_RELIC,
+]
 
 const TRANSITIONS: Dictionary = {
 	State.BOOT: {
@@ -46,6 +52,7 @@ const STATE_NAMES: Dictionary = {
 
 var state: int = State.BOOT
 var active_level_id: StringName = &""
+var active_level_mode: StringName = MODE_NORMAL
 var resume_snapshot: Dictionary = {}
 var _resume_state: int = State.BOOT
 
@@ -96,8 +103,30 @@ func dispatch(event: Dictionary) -> Error:
 		var requested_level := StringName(level_value)
 		if requested_level.is_empty():
 			return ERR_INVALID_DATA
+		var mode_value: Variant = event.get("mode", MODE_NORMAL)
+		if (
+			typeof(mode_value) != TYPE_STRING
+			and typeof(mode_value) != TYPE_STRING_NAME
+		):
+			return ERR_INVALID_DATA
+		var requested_mode := StringName(mode_value)
+		if requested_mode not in LEVEL_MODES:
+			return ERR_INVALID_DATA
 		active_level_id = requested_level
+		active_level_mode = requested_mode
 		resume_snapshot.clear()
+
+	if event_type == EVENT_RETRY_LEVEL and event.has("mode"):
+		var retry_mode_value: Variant = event.get("mode")
+		if (
+			typeof(retry_mode_value) != TYPE_STRING
+			and typeof(retry_mode_value) != TYPE_STRING_NAME
+		):
+			return ERR_INVALID_DATA
+		var retry_mode := StringName(retry_mode_value)
+		if retry_mode not in LEVEL_MODES:
+			return ERR_INVALID_DATA
+		active_level_mode = retry_mode
 
 	state = int(state_transitions[event_type])
 	if event_type in [
@@ -105,6 +134,7 @@ func dispatch(event: Dictionary) -> Error:
 		EVENT_RESULTS_TO_HUB,
 	]:
 		active_level_id = &""
+		active_level_mode = MODE_NORMAL
 	return OK
 
 

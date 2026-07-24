@@ -1,0 +1,212 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/hub/warp_room.gd" id="1_room"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_player"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="3_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="4_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="5_touch"]
+[ext_resource type="PackedScene" path="res://scenes/props/portal.tscn" id="6_portal"]
+
+[sub_resource type="Environment" id="Environment_hub"]
+background_mode = 1
+background_color = Color(0.035, 0.055, 0.11, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.55, 0.64, 0.9, 1)
+ambient_light_energy = 0.78
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.13, 0.16, 0.26, 1)
+roughness = 0.72
+
+[sub_resource type="BoxMesh" id="Mesh_floor"]
+material = SubResource("Material_floor")
+size = Vector3(24, 0.5, 24)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(24, 0.5, 24)
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.2, 0.14, 0.3, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="Mesh_wall_ns"]
+material = SubResource("Material_wall")
+size = Vector3(24, 4, 0.5)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_ns"]
+size = Vector3(24, 4, 0.5)
+
+[sub_resource type="BoxMesh" id="Mesh_wall_ew"]
+material = SubResource("Material_wall")
+size = Vector3(0.5, 4, 24)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_ew"]
+size = Vector3(0.5, 4, 24)
+
+[sub_resource type="StandardMaterial3D" id="Material_dais"]
+albedo_color = Color(0.28, 0.32, 0.5, 1)
+roughness = 0.58
+
+[sub_resource type="CylinderMesh" id="Mesh_dais"]
+material = SubResource("Material_dais")
+top_radius = 3.2
+bottom_radius = 3.5
+height = 0.45
+
+[sub_resource type="CylinderShape3D" id="Shape_dais"]
+radius = 3.4
+height = 0.45
+
+[sub_resource type="StyleBoxFlat" id="Style_level_list"]
+bg_color = Color(0.12, 0.08, 0.2, 0.94)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.62, 0.48, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[node name="WarpRoom1" type="Node3D"]
+script = ExtResource("1_room")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_hub")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-58, -28, 0)
+light_color = Color(0.82, 0.86, 1, 1)
+light_energy = 1.25
+shadow_enabled = true
+
+[node name="Chamber" type="Node3D" parent="."]
+
+[node name="Floor" type="StaticBody3D" parent="Chamber"]
+position = Vector3(0, -0.25, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/Floor"]
+shape = SubResource("Shape_floor")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/Floor"]
+mesh = SubResource("Mesh_floor")
+
+[node name="NorthWall" type="StaticBody3D" parent="Chamber"]
+position = Vector3(0, 2, -12)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/NorthWall"]
+shape = SubResource("Shape_wall_ns")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/NorthWall"]
+mesh = SubResource("Mesh_wall_ns")
+
+[node name="SouthWall" type="StaticBody3D" parent="Chamber"]
+position = Vector3(0, 2, 12)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/SouthWall"]
+shape = SubResource("Shape_wall_ns")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/SouthWall"]
+mesh = SubResource("Mesh_wall_ns")
+
+[node name="WestWall" type="StaticBody3D" parent="Chamber"]
+position = Vector3(-12, 2, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/WestWall"]
+shape = SubResource("Shape_wall_ew")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/WestWall"]
+mesh = SubResource("Mesh_wall_ew")
+
+[node name="EastWall" type="StaticBody3D" parent="Chamber"]
+position = Vector3(12, 2, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/EastWall"]
+shape = SubResource("Shape_wall_ew")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/EastWall"]
+mesh = SubResource("Mesh_wall_ew")
+
+[node name="BossDais" type="StaticBody3D" parent="Chamber"]
+position = Vector3(0, 0.2, 7.8)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Chamber/BossDais"]
+shape = SubResource("Shape_dais")
+
+[node name="Mesh" type="MeshInstance3D" parent="Chamber/BossDais"]
+mesh = SubResource("Mesh_dais")
+
+[node name="Portals" type="Node3D" parent="."]
+
+[node name="NSanityBeach" parent="Portals" instance=ExtResource("6_portal")]
+position = Vector3(0, 0, -9.7)
+metadata/level_id = &"wr1_n_sanity_beach"
+metadata/display_name = "N. SANITY BEACH"
+
+[node name="Boulders" parent="Portals" instance=ExtResource("6_portal")]
+position = Vector3(-9.7, 0, -3.4)
+rotation_degrees = Vector3(0, -90, 0)
+metadata/level_id = &"wr1_boulders"
+metadata/display_name = "BOULDERS"
+
+[node name="HogWild" parent="Portals" instance=ExtResource("6_portal")]
+position = Vector3(9.7, 0, -3.4)
+rotation_degrees = Vector3(0, 90, 0)
+metadata/level_id = &"wr1_hog_wild"
+metadata/display_name = "HOG WILD"
+
+[node name="PapuPapu" parent="Portals" instance=ExtResource("6_portal")]
+position = Vector3(0, 0.45, 8.4)
+rotation_degrees = Vector3(0, 180, 0)
+metadata/level_id = &"wr1_papu_papu"
+metadata/display_name = "PAPU PAPU"
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0.05, 2)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 15.5, 17)
+rotation_degrees = Vector3(-42, 0, 0)
+current = true
+fov = 58.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("3_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("4_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_touch")
+
+[node name="LevelList" type="Button" parent="UI"]
+offset_left = 28.0
+offset_top = 28.0
+offset_right = 252.0
+offset_bottom = 94.0
+theme_override_font_sizes/font_size = 23
+theme_override_styles/normal = SubResource("Style_level_list")
+text = "LEVEL LIST"
+
+[node name="Title" type="Label" parent="UI"]
+offset_left = 370.0
+offset_top = 26.0
+offset_right = 910.0
+offset_bottom = 82.0
+theme_override_colors/font_color = Color(0.86, 0.8, 1, 1)
+theme_override_font_sizes/font_size = 30
+text = "WARP ROOM 1 — GRAYBOX"
+horizontal_alignment = 1

@@ -1,0 +1,144 @@
+[gd_scene load_steps=14 format=3]
+
+[sub_resource type="BoxShape3D" id="Shape_portal"]
+size = Vector3(3.2, 3.4, 1.2)
+
+[sub_resource type="StandardMaterial3D" id="Material_frame"]
+albedo_color = Color(0.18, 0.2, 0.3, 1)
+metallic = 0.35
+roughness = 0.42
+
+[sub_resource type="BoxMesh" id="Mesh_pillar"]
+material = SubResource("Material_frame")
+size = Vector3(0.45, 3.6, 0.7)
+
+[sub_resource type="BoxMesh" id="Mesh_lintel"]
+material = SubResource("Material_frame")
+size = Vector3(3.2, 0.45, 0.7)
+
+[sub_resource type="StandardMaterial3D" id="Material_locked"]
+shading_mode = 0
+albedo_color = Color(0.8, 0.15, 0.16, 0.88)
+
+[sub_resource type="BoxMesh" id="Mesh_locked"]
+material = SubResource("Material_locked")
+size = Vector3(2.3, 2.4, 0.12)
+
+[sub_resource type="StandardMaterial3D" id="Material_cleared"]
+shading_mode = 0
+albedo_color = Color(0.2, 0.95, 0.4, 1)
+
+[sub_resource type="CylinderMesh" id="Mesh_cleared"]
+material = SubResource("Material_cleared")
+top_radius = 0.55
+bottom_radius = 0.55
+height = 0.18
+
+[sub_resource type="StandardMaterial3D" id="Material_gem"]
+shading_mode = 0
+albedo_color = Color(0.2, 0.9, 1, 1)
+
+[sub_resource type="SphereMesh" id="Mesh_gem"]
+material = SubResource("Material_gem")
+radius = 0.34
+height = 0.68
+
+[sub_resource type="StandardMaterial3D" id="Material_relic"]
+shading_mode = 0
+albedo_color = Color(1, 0.74, 0.12, 1)
+
+[sub_resource type="CylinderMesh" id="Mesh_relic"]
+material = SubResource("Material_relic")
+top_radius = 0.36
+bottom_radius = 0.5
+height = 0.75
+
+[sub_resource type="StandardMaterial3D" id="Material_flawless"]
+shading_mode = 0
+albedo_color = Color(0.9, 0.42, 1, 1)
+
+[sub_resource type="TorusMesh" id="Mesh_flawless"]
+material = SubResource("Material_flawless")
+inner_radius = 0.26
+outer_radius = 0.38
+rings = 8
+ring_segments = 20
+
+[sub_resource type="BoxShape3D" id="Shape_relic"]
+size = Vector3(1.5, 1.1, 1.5)
+
+[node name="Portal" type="Area3D" groups=["warp_portal"]]
+collision_layer = 0
+collision_mask = 1
+monitorable = false
+metadata/level_id = &""
+metadata/display_name = ""
+metadata/unlocked = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.7, 0)
+shape = SubResource("Shape_portal")
+
+[node name="Frame" type="Node3D" parent="."]
+
+[node name="Left" type="MeshInstance3D" parent="Frame"]
+position = Vector3(-1.38, 1.8, 0)
+mesh = SubResource("Mesh_pillar")
+
+[node name="Right" type="MeshInstance3D" parent="Frame"]
+position = Vector3(1.38, 1.8, 0)
+mesh = SubResource("Mesh_pillar")
+
+[node name="Top" type="MeshInstance3D" parent="Frame"]
+position = Vector3(0, 3.38, 0)
+mesh = SubResource("Mesh_lintel")
+
+[node name="State" type="Node3D" parent="."]
+
+[node name="Locked" type="MeshInstance3D" parent="State"]
+position = Vector3(0, 1.7, 0)
+mesh = SubResource("Mesh_locked")
+
+[node name="Cleared" type="MeshInstance3D" parent="State"]
+position = Vector3(0, 0.12, -0.48)
+visible = false
+mesh = SubResource("Mesh_cleared")
+
+[node name="Gem" type="MeshInstance3D" parent="State"]
+position = Vector3(-0.76, 3.85, 0)
+visible = false
+mesh = SubResource("Mesh_gem")
+
+[node name="Relic" type="MeshInstance3D" parent="State"]
+position = Vector3(0, 0.44, -0.52)
+visible = false
+mesh = SubResource("Mesh_relic")
+
+[node name="Flawless" type="MeshInstance3D" parent="State"]
+position = Vector3(0.76, 3.85, 0)
+rotation_degrees = Vector3(90, 0, 0)
+visible = false
+mesh = SubResource("Mesh_flawless")
+
+[node name="RelicTrigger" type="Area3D" parent="."]
+position = Vector3(2.35, 0, 0)
+visible = false
+collision_layer = 0
+collision_mask = 1
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RelicTrigger"]
+position = Vector3(0, 0.55, 0)
+shape = SubResource("Shape_relic")
+
+[node name="Plinth" type="MeshInstance3D" parent="RelicTrigger"]
+position = Vector3(0, 0.38, 0)
+mesh = SubResource("Mesh_relic")
+
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(0, 4.35, 0)
+text = "PORTAL"
+font_size = 52
+outline_size = 10
+billboard = 1

@@ -21,8 +21,8 @@ const LEVEL_LIST_OVERLAY_SCENE := preload(
 	"res://scenes/ui/level_list_overlay.tscn"
 )
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
-const N_SANITY_BEACH_SCENE := preload(
-	"res://scenes/levels/wr1_n_sanity_beach.tscn"
+const WARP_ROOM_SCENE := preload(
+	"res://scenes/levels/warp_room_1.tscn"
 )
 const N_SANITY_BEACH_META := preload(
 	"res://data/tuning/levels/n_sanity_beach.tres"
@@ -36,6 +36,12 @@ const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
+const N_SANITY_BEACH_SCENE_PATH := (
+	"res://scenes/levels/wr1_n_sanity_beach.tscn"
+)
+const _LEVEL_SCENE_PATHS: Dictionary = {
+	N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_SCENE_PATH,
+}
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
 	GameFlow.State.LEVEL: &"LevelPlaceholder",
@@ -68,7 +74,9 @@ var _pause_overlay: Control
 var _level_list_overlay: Control
 var _level_list_open: bool = false
 var _owns_tree_pause: bool = false
-var _requested_level_mode: StringName = LevelRunState.MODE_NORMAL
+var _threaded_level_path: String = ""
+var _threaded_level_id: StringName = &""
+var _threaded_poll_count: int = 0
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
@@ -121,6 +129,10 @@ func _exit_tree() -> void:
 	_owns_tree_pause = false
 
 
+func _process(_delta_s: float) -> void:
+	_poll_threaded_level_load()
+
+
 func _notification(what: int) -> void:
 	if not is_node_ready():
 		return
@@ -136,6 +148,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if flow.state == GameFlow.State.LEVEL:
 		dispatch({"type": GameFlow.EVENT_PAUSE})
+	elif flow.state == GameFlow.State.WARP_ROOM:
+		_on_warp_room_level_list_requested()
 	elif flow.state == GameFlow.State.PAUSED:
 		if _level_list_open:
 			_on_level_list_closed()
@@ -208,6 +222,7 @@ func set_active_level_session(
 
 func _on_tuning_changed(_fingerprint: String) -> void:
 	PhaseState.configure(tuning_service.catalog.phase)
+	_refresh_warp_room_tuning()
 	_refresh_active_level_tuning()
 
 
@@ -429,9 +444,13 @@ func _render_state(previous_state: int = flow.state) -> void:
 
 	_level_list_open = false
 	_sync_ui_visibility()
+	_cancel_pending_level_load()
 	_clear_content()
 
 	if not _PLACEHOLDER_NAMES.has(flow.state):
+		return
+	if flow.state == GameFlow.State.WARP_ROOM:
+		_render_warp_room()
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -441,17 +460,152 @@ func _render_state(previous_state: int = flow.state) -> void:
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
-		and flow.active_level_id == N_SANITY_BEACH_LEVEL_ID
+		and _LEVEL_SCENE_PATHS.has(flow.active_level_id)
 	):
-		var level := N_SANITY_BEACH_SCENE.instantiate()
-		_content.add_child(level)
-		_configure_authored_level(
-			level,
-			N_SANITY_BEACH_META
-		)
+		_begin_threaded_level_load(flow.active_level_id)
 		return
+	_show_state_placeholder()
+
+
+func threaded_level_path() -> String:
+	return _threaded_level_path
+
+
+func threaded_level_poll_count() -> int:
+	return _threaded_poll_count
+
+
+func _render_warp_room() -> void:
+	var room := WARP_ROOM_SCENE.instantiate()
+	_content.add_child(room)
+	room.call(
+		"configure",
+		profile,
+		tuning_service.catalog,
+		_hub_level_metas()
+	)
+	room.connect(
+		&"flow_event_requested",
+		_on_warp_room_flow_event
+	)
+	room.connect(
+		&"level_list_requested",
+		_on_warp_room_level_list_requested
+	)
+
+
+func _refresh_warp_room_tuning() -> void:
+	if flow.state != GameFlow.State.WARP_ROOM:
+		return
+	var room := _content.get_node_or_null("WarpRoom1")
+	if room == null:
+		return
+	room.call(
+		"configure",
+		profile,
+		tuning_service.catalog,
+		_hub_level_metas()
+	)
+
+
+func _hub_level_metas() -> Dictionary:
+	return {
+		N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_META,
+	}
+
+
+func _begin_threaded_level_load(level_id: StringName) -> void:
+	var path := String(_LEVEL_SCENE_PATHS.get(level_id, ""))
+	if path.is_empty() or not ResourceLoader.exists(path):
+		_show_state_placeholder()
+		return
+	_threaded_level_path = path
+	_threaded_level_id = level_id
+	_threaded_poll_count = 0
+	var request_error := ResourceLoader.load_threaded_request(
+		path,
+		"",
+		true
+	)
+	if request_error != OK:
+		var existing_status := (
+			ResourceLoader.load_threaded_get_status(path)
+		)
+		if existing_status not in [
+			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+			ResourceLoader.THREAD_LOAD_LOADED,
+		]:
+			_cancel_pending_level_load()
+			_show_state_placeholder()
+			push_error(
+				"Could not request level load: "
+				+ error_string(request_error)
+			)
+			return
+	var loading := Node3D.new()
+	loading.name = &"LevelLoading"
+	_content.add_child(loading)
+
+
+func _poll_threaded_level_load() -> void:
+	if _threaded_level_path.is_empty():
+		return
+	if (
+		flow.state != GameFlow.State.LEVEL
+		or flow.active_level_id != _threaded_level_id
+	):
+		_cancel_pending_level_load()
+		return
+	_threaded_poll_count += 1
+	var status := ResourceLoader.load_threaded_get_status(
+		_threaded_level_path
+	)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		return
+	if status != ResourceLoader.THREAD_LOAD_LOADED:
+		_cancel_pending_level_load()
+		_clear_content()
+		_show_state_placeholder()
+		push_error("Threaded level load failed.")
+		return
+	var loaded_id := _threaded_level_id
+	var loaded_resource := ResourceLoader.load_threaded_get(
+		_threaded_level_path
+	) as PackedScene
+	_cancel_pending_level_load()
+	_clear_content()
+	if loaded_resource == null:
+		_show_state_placeholder()
+		push_error("Threaded level resource was not a PackedScene.")
+		return
+	var level := loaded_resource.instantiate()
+	_content.add_child(level)
+	var meta := _level_meta(loaded_id)
+	if meta == null:
+		_clear_content()
+		_show_state_placeholder()
+		push_error("Authored level has no LevelMeta.")
+		return
+	_configure_authored_level(level, meta)
+
+
+func _cancel_pending_level_load() -> void:
+	_threaded_level_path = ""
+	_threaded_level_id = &""
+
+
+func _level_meta(level_id: StringName) -> LevelMeta:
+	if level_id == N_SANITY_BEACH_LEVEL_ID:
+		return N_SANITY_BEACH_META
+	return null
+
+
+func _show_state_placeholder() -> void:
 	var placeholder := Node3D.new()
-	placeholder.name = _PLACEHOLDER_NAMES[flow.state]
+	placeholder.name = _PLACEHOLDER_NAMES.get(
+		flow.state,
+		&"StatePlaceholder"
+	)
 	_content.add_child(placeholder)
 
 
@@ -520,7 +674,7 @@ func _configure_authored_level(
 	var session := level as LevelSession
 	session.configure(
 		meta,
-		_requested_level_mode,
+		flow.active_level_mode,
 		catalog.economy,
 		player,
 		catalog.move,
@@ -808,12 +962,13 @@ func _on_results_relic_requested() -> void:
 		)
 	):
 		return
-	_requested_level_mode = LevelRunState.MODE_RELIC
-	dispatch({"type": GameFlow.EVENT_RETRY_LEVEL})
+	dispatch({
+		"type": GameFlow.EVENT_RETRY_LEVEL,
+		"mode": LevelRunState.MODE_RELIC,
+	})
 
 
 func _on_results_hub_requested() -> void:
-	_requested_level_mode = LevelRunState.MODE_NORMAL
 	dispatch({"type": GameFlow.EVENT_RESULTS_TO_HUB})
 
 
@@ -822,7 +977,10 @@ func _on_pause_resume_requested() -> void:
 
 
 func _on_pause_retry_requested() -> void:
-	_select_level(flow.active_level_id)
+	_select_level(
+		flow.active_level_id,
+		flow.active_level_mode
+	)
 
 
 func _on_pause_level_list_requested() -> void:
@@ -848,10 +1006,38 @@ func _on_toybox_requested() -> void:
 
 func _on_level_list_closed() -> void:
 	_level_list_open = false
+	if (
+		flow.state == GameFlow.State.PAUSED
+		and flow.active_level_id.is_empty()
+	):
+		dispatch({"type": GameFlow.EVENT_RESUME})
 	_sync_ui_visibility()
 
 
-func _select_level(level_id: StringName) -> void:
+func _on_warp_room_flow_event(event: Dictionary) -> void:
+	if flow.state != GameFlow.State.WARP_ROOM:
+		return
+	_select_level(
+		StringName(event.get("level_id", &"")),
+		StringName(
+			event.get("mode", LevelRunState.MODE_NORMAL)
+		)
+	)
+
+
+func _on_warp_room_level_list_requested() -> void:
+	if flow.state != GameFlow.State.WARP_ROOM:
+		return
+	if dispatch({"type": GameFlow.EVENT_PAUSE}) != OK:
+		return
+	_level_list_open = true
+	_sync_ui_visibility()
+
+
+func _select_level(
+	level_id: StringName,
+	mode: StringName = LevelRunState.MODE_NORMAL
+) -> void:
 	if level_id.is_empty():
 		return
 	if flow.state == GameFlow.State.PAUSED:
@@ -860,8 +1046,8 @@ func _select_level(level_id: StringName) -> void:
 		dispatch({"type": GameFlow.EVENT_QUIT_LEVEL})
 	if flow.state != GameFlow.State.WARP_ROOM:
 		return
-	_requested_level_mode = LevelRunState.MODE_NORMAL
 	dispatch({
 		"type": GameFlow.EVENT_PORTAL_ENTER,
 		"level_id": level_id,
+		"mode": mode,
 	})

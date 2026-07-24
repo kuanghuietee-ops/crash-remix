@@ -56,6 +56,12 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 [],
             )
 
+    def test_collectible_level_without_meta_still_fires(self) -> None:
+        self.assertEqual(
+            self._rules("levels/level_no_meta_bad.tscn"),
+            [CRATE_AUTHORING_RULE],
+        )
+
     def test_real_n_sanity_beach_level_passes_the_authoring_lint(
         self,
     ) -> None:
@@ -68,6 +74,21 @@ class LevelAuthoringLintTests(unittest.TestCase):
         self.assertTrue(level_path.is_file())
         self.assertEqual(
             find_authoring_violations(level_path),
+            [],
+        )
+
+    def test_warp_room_is_not_misclassified_as_a_collectible_level(
+        self,
+    ) -> None:
+        hub_path = (
+            REPO_ROOT
+            / "scenes"
+            / "levels"
+            / "warp_room_1.tscn"
+        )
+        self.assertTrue(hub_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(hub_path),
             [],
         )
 

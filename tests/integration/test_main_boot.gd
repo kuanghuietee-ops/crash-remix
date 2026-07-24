@@ -40,7 +40,7 @@ func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
 	assert_eq(root.call("state_name"), &"warp_room")
 	assert_true(SaveModel.validate(root.get("profile")))
 	assert_eq(root.get("save_dir"), TEST_SAVE_DIR)
-	assert_true(root.has_node("Content/WarpRoomPlaceholder"))
+	assert_true(root.has_node("Content/WarpRoom1"))
 	assert_false(
 		DirAccess.dir_exists_absolute(
 			ProjectSettings.globalize_path(TEST_SAVE_DIR)
@@ -361,7 +361,7 @@ func test_results_relic_entry_stays_locked_then_retries_in_relic_mode() -> void:
 
 	assert_eq(root.call("state_name"), &"results")
 	assert_eq(
-		root.get("_requested_level_mode"),
+		root.get("flow").get("active_level_mode"),
 		LevelRunState.MODE_NORMAL
 	)
 
@@ -382,7 +382,7 @@ func test_results_relic_entry_stays_locked_then_retries_in_relic_mode() -> void:
 
 	assert_eq(root.call("state_name"), &"level")
 	assert_eq(
-		root.get("_requested_level_mode"),
+		root.get("flow").get("active_level_mode"),
 		LevelRunState.MODE_RELIC
 	)
 
