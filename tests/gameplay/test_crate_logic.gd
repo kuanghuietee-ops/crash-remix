@@ -501,7 +501,17 @@ func test_time_crate_refuses_normal_mode_and_awards_tuning_in_relic_mode() -> vo
 	var normal_crate := _instantiate(TIME_SCENE)
 	if normal_crate == null:
 		return
+	assert_false(
+		normal_crate.call("is_armed"),
+		"a time crate must be disarmed before tree entry or configuration"
+	)
 	add_child_autofree(normal_crate)
+	await wait_physics_frames(1)
+	assert_false(normal_crate.get_node("Mesh").visible)
+	assert_true(
+		normal_crate.get_node("CollisionShape3D").disabled,
+		"default-disarmed time crates must not retain live collision"
+	)
 	normal_crate.call("configure", _economy, _move, _input, false)
 
 	assert_false(normal_crate.call("is_armed"))

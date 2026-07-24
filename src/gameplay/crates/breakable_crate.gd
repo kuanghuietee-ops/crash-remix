@@ -23,14 +23,13 @@ var _move: MoveTuning
 var _input: InputTuning
 var _broken: bool = false
 var _bounce_count: int = 0
-var _armed: bool = true
+var _armed: bool = false
 var _fuse_active: bool = false
 var _fuse_started_at_s: float = 0.0
 
 
 func _ready() -> void:
-	if crate_type == CrateLogicType.TYPE_TIME:
-		set_relic_context(false)
+	set_relic_context(false)
 
 
 func configure(
@@ -42,8 +41,7 @@ func configure(
 	_economy = economy
 	_move = move
 	_input = input
-	if crate_type == CrateLogicType.TYPE_TIME:
-		set_relic_context(relic_mode)
+	set_relic_context(relic_mode)
 
 
 func apply_verb(
