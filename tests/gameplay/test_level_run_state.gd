@@ -191,9 +191,14 @@ func test_flawless_cleared_by_first_death() -> void:
 
 
 func test_relic_death_voids_and_resets_everything_q4() -> void:
-	var state := _new_state(&"relic")
+	var state := _new_state(&"relic", _relic_meta())
 	if state == null:
 		return
+	state.call("pickup_relic_stopwatch")
+	state.call(
+		"advance_relic_timer",
+		_economy.time_crate_large_s
+	)
 	state.call(
 		"record_crate_broken",
 		1,
@@ -217,6 +222,9 @@ func test_relic_death_voids_and_resets_everything_q4() -> void:
 	assert_eq(state.get("masks"), 0)
 	assert_eq(state.get("deaths_at_checkpoint"), 0)
 	assert_true(state.get("relic_void"))
+	assert_false(state.get("relic_timer_armed"))
+	assert_eq(state.call("relic_elapsed_s"), 0.0)
+	assert_eq(state.get("relic_time_credit_s"), 0.0)
 
 
 func test_completion_banks_wumpa_and_reports_gem_on_full_sweep() -> void:
@@ -412,6 +420,20 @@ func _new_state(
 	var state := script.new() as RefCounted
 	state.call("start", meta if meta != null else _meta, mode)
 	return state
+
+
+func _relic_meta() -> LevelMeta:
+	var relic_meta := _meta.duplicate(true) as LevelMeta
+	relic_meta.relic_platinum_s = _economy.time_crate_small_s
+	relic_meta.relic_gold_s = (
+		relic_meta.relic_platinum_s
+		+ _economy.time_crate_medium_s
+	)
+	relic_meta.relic_sapphire_s = (
+		relic_meta.relic_gold_s
+		+ _economy.time_crate_large_s
+	)
+	return relic_meta
 
 
 func _instantiate(path: String) -> Node:

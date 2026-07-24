@@ -323,6 +323,70 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 	assert_true(root.has_node("Content/ResultsPlaceholder"))
 
 
+func test_results_relic_entry_stays_locked_then_retries_in_relic_mode() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	assert_eq(
+		root.call("dispatch", {"type": &"level_complete"}),
+		OK
+	)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	root.set("_active_level_meta", meta)
+	var profile: Dictionary = root.get("profile")
+	var record := SaveModel.level_record(
+		profile,
+		meta.level_id
+	)
+	record["completed"] = true
+	var levels: Dictionary = profile["levels"]
+	levels[String(meta.level_id)] = record
+	root.set("profile", profile)
+	var results := root.get_node("UI/ResultsScreen")
+
+	results.emit_signal(&"relic_requested")
+
+	assert_eq(root.call("state_name"), &"results")
+	assert_eq(
+		root.get("_requested_level_mode"),
+		LevelRunState.MODE_NORMAL
+	)
+
+	var economy := (
+		load("res://data/tuning/gameplay.tres")
+		as GameplayTuning
+	).economy
+	meta.relic_platinum_s = economy.time_crate_small_s
+	meta.relic_gold_s = (
+		meta.relic_platinum_s
+		+ economy.time_crate_medium_s
+	)
+	meta.relic_sapphire_s = (
+		meta.relic_gold_s
+		+ economy.time_crate_large_s
+	)
+	results.emit_signal(&"relic_requested")
+
+	assert_eq(root.call("state_name"), &"level")
+	assert_eq(
+		root.get("_requested_level_mode"),
+		LevelRunState.MODE_RELIC
+	)
+
+
 func test_pause_overlay_preserves_level_content_and_retry_is_direct() -> void:
 	var root := _instantiate_main()
 	if root == null:

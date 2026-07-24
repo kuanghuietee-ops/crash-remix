@@ -98,6 +98,20 @@ func _refresh() -> void:
 	_mask_label.text = "AKU AKU  %d" % int(
 		run_state.get("masks")
 	)
+	var relic_active := (
+		StringName(run_state.get("mode"))
+		== LevelRunState.MODE_RELIC
+		and bool(run_state.get("relic_timer_armed"))
+	)
+	var relic_time_s := 0.0
+	if (
+		relic_active
+		and run_state.has_method("relic_elapsed_s")
+	):
+		relic_time_s = float(
+			run_state.call("relic_elapsed_s")
+		)
+	set_relic_time(relic_time_s, relic_active)
 	_refresh_invincibility()
 
 

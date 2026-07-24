@@ -4,6 +4,10 @@ extends RefCounted
 const MODE_NORMAL := &"normal"
 const MODE_RELIC := &"relic"
 const START_CHECKPOINT: int = -1
+const RELIC_NONE := &"none"
+const RELIC_SAPPHIRE := &"sapphire"
+const RELIC_GOLD := &"gold"
+const RELIC_PLATINUM := &"platinum"
 
 var meta: LevelMeta
 var mode: StringName = MODE_NORMAL
@@ -16,6 +20,9 @@ var deaths_at_checkpoint: int = 0
 var flawless: bool = true
 var gem_void: bool = false
 var relic_void: bool = false
+var relic_timer_armed: bool = false
+var relic_timer_raw_s: float = 0.0
+var relic_time_credit_s: float = 0.0
 var run_active: bool = false
 
 
@@ -31,6 +38,10 @@ func start(level_meta: LevelMeta, run_mode: StringName) -> void:
 	run_active = (
 		meta != null
 		and mode in [MODE_NORMAL, MODE_RELIC]
+		and (
+			mode != MODE_RELIC
+			or relic_pars_authored(meta)
+		)
 	)
 
 
@@ -75,6 +86,54 @@ func record_checkpoint(crate_id: int) -> void:
 	deaths_at_checkpoint = 0
 
 
+func pickup_relic_stopwatch() -> bool:
+	if (
+		not run_active
+		or mode != MODE_RELIC
+		or relic_timer_armed
+		or not relic_pars_authored(meta)
+	):
+		return false
+	relic_timer_armed = true
+	relic_timer_raw_s = 0.0
+	relic_time_credit_s = 0.0
+	relic_void = false
+	return true
+
+
+func advance_relic_timer(delta_s: float) -> bool:
+	if (
+		not run_active
+		or mode != MODE_RELIC
+		or not relic_timer_armed
+		or delta_s <= 0.0
+	):
+		return false
+	relic_timer_raw_s += delta_s
+	return true
+
+
+func record_relic_time_credit(seconds: float) -> bool:
+	if (
+		not run_active
+		or mode != MODE_RELIC
+		or not relic_timer_armed
+		or seconds <= 0.0
+	):
+		return false
+	relic_time_credit_s += seconds
+	return true
+
+
+func relic_elapsed_s() -> float:
+	if not relic_timer_armed:
+		return 0.0
+	return maxf(
+		relic_timer_raw_s - relic_time_credit_s,
+		0.0
+	)
+
+
 func record_death(economy: EconomyTuning) -> Dictionary:
 	var outcome := {
 		"respawn_checkpoint": checkpoint_id,
@@ -117,11 +176,28 @@ func accept_mercy_skip(next_checkpoint_id: int) -> bool:
 func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 	if not run_active or meta == null:
 		return {}
+	if (
+		mode == MODE_RELIC
+		and (
+			not relic_timer_armed
+			or relic_void
+		)
+	):
+		return {}
 	var missing_ids := _missing_crate_ids()
 	var collected_all := (
 		broken_crate_ids.size() == meta.crate_count
 		and missing_ids.is_empty()
 	)
+	var relic_time: Variant = null
+	var relic_tier: Variant = null
+	if mode == MODE_RELIC:
+		var relic_time_s_value := relic_elapsed_s()
+		relic_time = relic_time_s_value
+		relic_tier = relic_tier_for_time(
+			relic_time_s_value,
+			meta
+		)
 	var result := {
 		"level_id": meta.level_id,
 		"mode": mode,
@@ -137,6 +213,8 @@ func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 		"wumpa_banked": wumpa_run,
 		"gem_void": gem_void,
 		"relic_void": relic_void,
+		"relic_time_s": relic_time,
+		"relic_tier": relic_tier,
 	}
 	_discard_run()
 	return result
@@ -243,6 +321,9 @@ func _reset_attempt() -> void:
 	masks = 0
 	checkpoint_id = START_CHECKPOINT
 	deaths_at_checkpoint = 0
+	relic_timer_armed = false
+	relic_timer_raw_s = 0.0
+	relic_time_credit_s = 0.0
 
 
 func _reset_run_values() -> void:
@@ -280,3 +361,38 @@ static func _is_integer(value: Variant) -> bool:
 		return false
 	var numeric_value: float = value
 	return is_finite(numeric_value) and numeric_value == floor(numeric_value)
+
+
+static func relic_pars_authored(level_meta: LevelMeta) -> bool:
+	return (
+		level_meta != null
+		and level_meta.relic_platinum_s > 0.0
+		and level_meta.relic_gold_s > 0.0
+		and level_meta.relic_sapphire_s > 0.0
+		and (
+			level_meta.relic_platinum_s
+			<= level_meta.relic_gold_s
+		)
+		and (
+			level_meta.relic_gold_s
+			<= level_meta.relic_sapphire_s
+		)
+	)
+
+
+static func relic_tier_for_time(
+	elapsed_s: float,
+	level_meta: LevelMeta
+) -> StringName:
+	if (
+		not relic_pars_authored(level_meta)
+		or elapsed_s < 0.0
+	):
+		return RELIC_NONE
+	if elapsed_s <= level_meta.relic_platinum_s:
+		return RELIC_PLATINUM
+	if elapsed_s <= level_meta.relic_gold_s:
+		return RELIC_GOLD
+	if elapsed_s <= level_meta.relic_sapphire_s:
+		return RELIC_SAPPHIRE
+	return RELIC_NONE

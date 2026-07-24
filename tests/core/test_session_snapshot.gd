@@ -64,8 +64,20 @@ func test_relic_snapshot_restores_as_voided_fresh_attempt() -> void:
 	var service := _new_service()
 	if service == null:
 		return
+	var relic_meta := _meta.duplicate(true) as LevelMeta
+	relic_meta.relic_platinum_s = (
+		_catalog.economy.time_crate_small_s
+	)
+	relic_meta.relic_gold_s = (
+		relic_meta.relic_platinum_s
+		+ _catalog.economy.time_crate_medium_s
+	)
+	relic_meta.relic_sapphire_s = (
+		relic_meta.relic_gold_s
+		+ _catalog.economy.time_crate_large_s
+	)
 	var state := LevelRunState.new()
-	state.start(_meta, &"relic")
+	state.start(relic_meta, &"relic")
 	state.record_crate_broken(
 		1,
 		_catalog.economy.wumpa_per_standard_crate
@@ -77,7 +89,7 @@ func test_relic_snapshot_restores_as_voided_fresh_attempt() -> void:
 	)
 	var restored := LevelRunState.restore(
 		service.call("load", TEST_SAVE_DIR),
-		_meta
+		relic_meta
 	)
 
 	assert_true(restored.relic_void)

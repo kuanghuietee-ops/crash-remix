@@ -94,13 +94,20 @@ theme_override_constants/separation = 18
 alignment = 1
 
 [node name="Retry" type="Button" parent="SafeArea/Center/Panel/Margin/Rows/Actions"]
-custom_minimum_size = Vector2(250, 70)
+custom_minimum_size = Vector2(190, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "RETRY"
 
+[node name="RelicTrial" type="Button" parent="SafeArea/Center/Panel/Margin/Rows/Actions"]
+visible = false
+custom_minimum_size = Vector2(190, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "RELIC TRIAL"
+
 [node name="Hub" type="Button" parent="SafeArea/Center/Panel/Margin/Rows/Actions"]
-custom_minimum_size = Vector2(250, 70)
+custom_minimum_size = Vector2(190, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "WARP ROOM"

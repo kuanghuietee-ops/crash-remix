@@ -18,6 +18,9 @@ func build(
 	var mode := StringName(
 		run_result.get("mode", LevelRunState.MODE_NORMAL)
 	)
+	var completed_before := bool(
+		previous_level_record.get("completed", false)
+	)
 	return {
 		"level_id": meta.level_id,
 		"display_name": meta.display_name,
@@ -52,7 +55,24 @@ func build(
 			if mode == LevelRunState.MODE_RELIC
 			else null
 		),
+		"relic_entry_available": (
+			LevelRunState.relic_pars_authored(meta)
+			and (
+				completed_before
+				or mode == LevelRunState.MODE_NORMAL
+			)
+		),
 	}
+
+
+func relic_entry_available(
+	meta: LevelMeta,
+	level_record: Dictionary
+) -> bool:
+	return (
+		bool(level_record.get("completed", false))
+		and LevelRunState.relic_pars_authored(meta)
+	)
 
 
 func persisted_profile(
@@ -70,27 +90,79 @@ func persisted_profile(
 	var level_id := StringName(level_id_value)
 	if level_id.is_empty():
 		return {}
+	var mode_value: Variant = payload.get(
+		"mode",
+		LevelRunState.MODE_NORMAL
+	)
+	if (
+		typeof(mode_value) != TYPE_STRING
+		and typeof(mode_value) != TYPE_STRING_NAME
+	):
+		return {}
+	var mode := StringName(mode_value)
+	if mode not in [
+		LevelRunState.MODE_NORMAL,
+		LevelRunState.MODE_RELIC,
+	]:
+		return {}
 
 	var updated := profile.duplicate(true)
 	var record := SaveModel.level_record(updated, level_id)
-	record["completed"] = true
-	record["gem"] = (
-		bool(record.get("gem", false))
-		or bool(payload.get("gem", false))
-	)
-	record["flawless"] = (
-		bool(record.get("flawless", false))
-		or bool(payload.get("flawless", false))
-	)
-	record["last_missed_crate_ids"] = _int_array(
-		payload.get("missed_crate_ids", [])
-	)
+	if (
+		mode == LevelRunState.MODE_RELIC
+		and not bool(record.get("completed", false))
+	):
+		return {}
+
+	if mode == LevelRunState.MODE_NORMAL:
+		record["completed"] = true
+		record["gem"] = (
+			bool(record.get("gem", false))
+			or bool(payload.get("gem", false))
+		)
+		record["flawless"] = (
+			bool(record.get("flawless", false))
+			or bool(payload.get("flawless", false))
+		)
+		record["last_missed_crate_ids"] = _int_array(
+			payload.get("missed_crate_ids", [])
+		)
+	else:
+		var relic_time_value: Variant = payload.get(
+			"relic_time_s"
+		)
+		var relic_tier_value: Variant = payload.get(
+			"relic_tier"
+		)
+		if (
+			(
+				typeof(relic_time_value) != TYPE_FLOAT
+				and typeof(relic_time_value) != TYPE_INT
+			)
+			or (
+				typeof(relic_tier_value) != TYPE_STRING
+				and typeof(relic_tier_value)
+				!= TYPE_STRING_NAME
+			)
+		):
+			return {}
+		record = SaveModel.improved_relic_record(
+			record,
+			float(relic_time_value),
+			StringName(relic_tier_value)
+		)
+		if record.is_empty():
+			return {}
 	var levels: Dictionary = updated["levels"]
 	levels[String(level_id)] = record
-	updated["lifetime_wumpa"] = (
-		int(updated.get("lifetime_wumpa", 0))
-		+ maxi(int(payload.get("wumpa_banked", 0)), 0)
-	)
+	if mode == LevelRunState.MODE_NORMAL:
+		updated["lifetime_wumpa"] = (
+			int(updated.get("lifetime_wumpa", 0))
+			+ maxi(
+				int(payload.get("wumpa_banked", 0)),
+				0
+			)
+		)
 	return updated if SaveModel.validate(updated) else {}
 
 

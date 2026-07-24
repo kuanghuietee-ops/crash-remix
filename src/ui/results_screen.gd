@@ -2,6 +2,7 @@ class_name ResultsScreen
 extends Control
 
 signal retry_requested
+signal relic_requested
 signal hub_requested
 
 @onready var _title: Label = (
@@ -19,6 +20,9 @@ signal hub_requested
 @onready var _retry: Button = (
 	$SafeArea/Center/Panel/Margin/Rows/Actions/Retry
 )
+@onready var _relic_trial: Button = (
+	$SafeArea/Center/Panel/Margin/Rows/Actions/RelicTrial
+)
 @onready var _hub: Button = (
 	$SafeArea/Center/Panel/Margin/Rows/Actions/Hub
 )
@@ -26,6 +30,9 @@ signal hub_requested
 
 func _ready() -> void:
 	_retry.pressed.connect(func() -> void: retry_requested.emit())
+	_relic_trial.pressed.connect(
+		func() -> void: relic_requested.emit()
+	)
 	_hub.pressed.connect(func() -> void: hub_requested.emit())
 
 
@@ -54,6 +61,9 @@ func present(payload: Dictionary) -> void:
 			str(relic_time),
 			str(relic_tier),
 		]
+	_relic_trial.visible = bool(
+		payload.get("relic_entry_available", false)
+	)
 
 
 func _missed_segments_text(value: Variant) -> String:

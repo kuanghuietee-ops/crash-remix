@@ -8,6 +8,7 @@ const _RELIC_TIERS: Array[String] = [
 	"gold",
 	"platinum",
 ]
+const _MILLISECONDS_PER_SECOND: float = 1000.0
 
 
 static func fresh() -> Dictionary:
@@ -85,6 +86,32 @@ static func level_record(data: Dictionary, level_id: StringName) -> Dictionary:
 		for key: Variant in existing:
 			record[key] = existing[key]
 	return record
+
+
+static func improved_relic_record(
+	record: Dictionary,
+	elapsed_s: float,
+	tier: StringName
+) -> Dictionary:
+	if (
+		not _validate_level_record(record)
+		or not is_finite(elapsed_s)
+		or elapsed_s < 0.0
+		or String(tier) not in _RELIC_TIERS
+	):
+		return {}
+	var updated := record.duplicate(true)
+	var candidate_ms := maxi(
+		roundi(elapsed_s * _MILLISECONDS_PER_SECOND),
+		1
+	)
+	var existing_ms := int(
+		updated.get("best_relic_time_ms", 0)
+	)
+	if existing_ms == 0 or candidate_ms < existing_ms:
+		updated["best_relic_time_ms"] = candidate_ms
+		updated["relic_tier"] = String(tier)
+	return updated if _validate_level_record(updated) else {}
 
 
 static func _fresh_level_record() -> Dictionary:

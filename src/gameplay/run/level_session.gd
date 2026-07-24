@@ -30,7 +30,9 @@ var _input: InputTuning
 var _player: Node
 var _crates_by_id: Dictionary = {}
 var _checkpoint_transforms: Dictionary = {}
+var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
+var _relic_stopwatch: Area3D
 var _death_recorded_pending_respawn: bool = false
 var _active_top_contact_ids: Array[int] = []
 var _offered_skip_checkpoint_id: int = (
@@ -45,7 +47,7 @@ func configure(
 	player: Node = null,
 	move: MoveTuning = null,
 	input: InputTuning = null
-) -> void:
+) -> bool:
 	_economy = economy
 	_move = move
 	_input = input
@@ -53,7 +55,9 @@ func configure(
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
 	_checkpoint_transforms.clear()
+	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
+	_relic_stopwatch = null
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	var authored_ids: Array[int] = []
 
@@ -78,7 +82,10 @@ func configure(
 			economy,
 			move,
 			input,
-			mode == LevelRunState.MODE_RELIC
+			(
+				run_state.run_active
+				and mode == LevelRunState.MODE_RELIC
+			)
 		)
 		_connect_crate(candidate)
 		if crate_type == CrateLogicType.TYPE_CHECKPOINT:
@@ -93,6 +100,8 @@ func configure(
 	):
 		if candidate.is_in_group(&"wumpa_pickup"):
 			_configure_wumpa_pickup(candidate as Area3D)
+		elif candidate.is_in_group(&"relic_stopwatch"):
+			_configure_relic_stopwatch(candidate as Area3D)
 	if not authored_ids.is_empty():
 		run_state.register_authored_crate_ids(authored_ids)
 
@@ -129,6 +138,7 @@ func configure(
 			&"body_entered",
 			_on_finish_body_entered
 		)
+	return run_state.run_active
 
 
 func refresh_tuning(
@@ -147,13 +157,18 @@ func refresh_tuning(
 				economy,
 				move,
 				input,
-				run_state.mode == LevelRunState.MODE_RELIC
+				(
+					run_state.run_active
+					and run_state.mode
+					== LevelRunState.MODE_RELIC
+				)
 			)
 
 
-func _physics_process(_delta_s: float) -> void:
+func _physics_process(delta_s: float) -> void:
 	if not run_state.run_active or _economy == null:
 		return
+	run_state.advance_relic_timer(delta_s)
 	var now_s := MonotonicClockType.now_s()
 	for crate_value: Variant in _crates_by_id.values():
 		var crate := crate_value as Node
@@ -228,6 +243,9 @@ func _record_death() -> Dictionary:
 			_offered_skip_checkpoint_id = next_checkpoint_id
 			skip_offered.emit(next_checkpoint_id)
 	_sync_crate_visuals(bool(outcome["relic_void_reset"]))
+	if bool(outcome["relic_void_reset"]):
+		_reset_relic_stopwatch()
+		_reset_placed_wumpa()
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
 	# Task 17 adds the enemy authored-spawn reset at this same death hook.
 	respawn_requested.emit(outcome)
@@ -308,6 +326,8 @@ func _grant_mask(now_s: float) -> void:
 
 
 func _configure_wumpa_pickup(pickup: Area3D) -> void:
+	if pickup not in _wumpa_pickups:
+		_wumpa_pickups.append(pickup)
 	pickup.set_meta(&"phase1_collected", false)
 	var collision := (
 		pickup.get_node_or_null("CollisionShape3D")
@@ -322,6 +342,69 @@ func _configure_wumpa_pickup(pickup: Area3D) -> void:
 		&"body_entered",
 		_on_wumpa_body_entered.bind(pickup)
 	)
+
+
+func _reset_placed_wumpa() -> void:
+	for pickup: Area3D in _wumpa_pickups:
+		if not is_instance_valid(pickup):
+			continue
+		pickup.set_meta(&"phase1_collected", false)
+		pickup.visible = true
+		pickup.set_deferred(&"monitoring", true)
+		pickup.set_deferred(&"monitorable", true)
+
+
+func _configure_relic_stopwatch(stopwatch: Area3D) -> void:
+	_relic_stopwatch = stopwatch
+	var available := (
+		run_state.run_active
+		and run_state.mode == LevelRunState.MODE_RELIC
+		and not run_state.relic_timer_armed
+	)
+	stopwatch.visible = available
+	stopwatch.set_deferred(&"monitoring", available)
+	stopwatch.set_deferred(&"monitorable", available)
+	var collision := (
+		stopwatch.get_node_or_null("CollisionShape3D")
+		as CollisionShape3D
+	)
+	if collision != null:
+		collision.set_deferred(&"disabled", not available)
+	_connect_once(
+		stopwatch,
+		&"body_entered",
+		_on_relic_stopwatch_body_entered
+	)
+
+
+func _reset_relic_stopwatch() -> void:
+	if (
+		_relic_stopwatch != null
+		and is_instance_valid(_relic_stopwatch)
+	):
+		_configure_relic_stopwatch(_relic_stopwatch)
+
+
+func _on_relic_stopwatch_body_entered(body: Node) -> void:
+	if (
+		body != _player
+		or not run_state.pickup_relic_stopwatch()
+	):
+		return
+	if (
+		_relic_stopwatch != null
+		and is_instance_valid(_relic_stopwatch)
+	):
+		_relic_stopwatch.visible = false
+		_relic_stopwatch.set_deferred(&"monitoring", false)
+		_relic_stopwatch.set_deferred(&"monitorable", false)
+		var collision := (
+			_relic_stopwatch.get_node_or_null(
+				"CollisionShape3D"
+			) as CollisionShape3D
+		)
+		if collision != null:
+			collision.set_deferred(&"disabled", true)
 
 
 func _on_wumpa_body_entered(
@@ -365,6 +448,11 @@ func _connect_crate(crate: Node) -> void:
 	)
 	_connect_once(crate, &"mask_granted", _on_mask_granted)
 	_connect_once(crate, &"detonated", _on_crate_detonated)
+	_connect_once(crate, &"time_awarded", _on_time_awarded)
+
+
+func _on_time_awarded(seconds: float) -> void:
+	run_state.record_relic_time_credit(seconds)
 
 
 func _connect_player_attacks() -> void:
@@ -559,6 +647,11 @@ func _set_crate_visual(crate: Node, broken: bool) -> void:
 	crate.set("_broken", broken)
 	crate.set("_bounce_count", 0)
 	crate.set("_fuse_active", false)
+	if crate.has_method("set_relic_context"):
+		crate.call(
+			"set_relic_context",
+			run_state.mode == LevelRunState.MODE_RELIC
+		)
 	var mesh := crate.get_node_or_null("Mesh") as Node3D
 	if mesh != null:
 		mesh.visible = not broken

@@ -68,6 +68,7 @@ var _pause_overlay: Control
 var _level_list_overlay: Control
 var _level_list_open: bool = false
 var _owns_tree_pause: bool = false
+var _requested_level_mode: StringName = LevelRunState.MODE_NORMAL
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
@@ -362,6 +363,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		_on_results_retry_requested
 	)
 	_results_screen.connect(
+		&"relic_requested",
+		_on_results_relic_requested
+	)
+	_results_screen.connect(
 		&"hub_requested",
 		_on_results_hub_requested
 	)
@@ -515,7 +520,7 @@ func _configure_authored_level(
 	var session := level as LevelSession
 	session.configure(
 		meta,
-		LevelRunState.MODE_NORMAL,
+		_requested_level_mode,
 		catalog.economy,
 		player,
 		catalog.move,
@@ -791,7 +796,24 @@ func _on_results_retry_requested() -> void:
 	dispatch({"type": GameFlow.EVENT_RETRY_LEVEL})
 
 
+func _on_results_relic_requested() -> void:
+	if (
+		_active_level_meta == null
+		or not results_model.relic_entry_available(
+			_active_level_meta,
+			SaveModel.level_record(
+				profile,
+				_active_level_meta.level_id
+			)
+		)
+	):
+		return
+	_requested_level_mode = LevelRunState.MODE_RELIC
+	dispatch({"type": GameFlow.EVENT_RETRY_LEVEL})
+
+
 func _on_results_hub_requested() -> void:
+	_requested_level_mode = LevelRunState.MODE_NORMAL
 	dispatch({"type": GameFlow.EVENT_RESULTS_TO_HUB})
 
 
@@ -838,6 +860,7 @@ func _select_level(level_id: StringName) -> void:
 		dispatch({"type": GameFlow.EVENT_QUIT_LEVEL})
 	if flow.state != GameFlow.State.WARP_ROOM:
 		return
+	_requested_level_mode = LevelRunState.MODE_NORMAL
 	dispatch({
 		"type": GameFlow.EVENT_PORTAL_ENTER,
 		"level_id": level_id,
