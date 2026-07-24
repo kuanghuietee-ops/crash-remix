@@ -15,6 +15,8 @@ const N_SANITY_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
 
+var _input_use_accumulated_before_test: bool
+
 
 class FailingSaveService:
 	extends SaveService
@@ -24,6 +26,9 @@ class FailingSaveService:
 
 
 func before_each() -> void:
+	_input_use_accumulated_before_test = (
+		Input.is_using_accumulated_input()
+	)
 	_remove_tree(TEST_SAVE_DIR)
 
 
@@ -32,6 +37,34 @@ func after_each() -> void:
 	var phase_state := get_node_or_null("/root/PhaseState")
 	if phase_state != null:
 		phase_state.call("reset_to_authored_set")
+	Input.set_use_accumulated_input(
+		_input_use_accumulated_before_test
+	)
+
+
+func test_main_cleanup_restores_input_accumulation_global() -> void:
+	var entering_state := Input.is_using_accumulated_input()
+	Input.set_use_accumulated_input(true)
+	before_each()
+	var root := _instantiate_main()
+	if root == null:
+		Input.set_use_accumulated_input(entering_state)
+		before_each()
+		return
+	await wait_process_frames(1)
+	assert_false(
+		Input.is_using_accumulated_input(),
+		"the real main root must exercise its global input mutation"
+	)
+
+	after_each()
+
+	assert_true(
+		Input.is_using_accumulated_input(),
+		"test cleanup must restore the entering Input singleton state"
+	)
+	Input.set_use_accumulated_input(entering_state)
+	before_each()
 
 
 func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
