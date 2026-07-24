@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 godot_bin="${GODOT_BIN:-/root/.local/share/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64}"
 temp_dir="$(mktemp -d /tmp/crash-remix-export-tuning.XXXXXX)"
-pack_path="$temp_dir/crash-remix-export.pck"
+pack_path="$temp_dir/crash-remix-export.zip"
 export_log="$temp_dir/export.log"
 runtime_log="$temp_dir/runtime.log"
 
@@ -28,6 +28,12 @@ if ! GODOT_SILENCE_ROOT_WARNING=1 "$godot_bin" \
     cat "$export_log" >&2
     exit 1
 fi
+
+zipinfo -1 "$pack_path" >"$temp_dir/pack.list"
+for level_meta_path in "$repo_root"/data/tuning/levels/*.tres; do
+    grep -qFx "${level_meta_path#"$repo_root"/}.remap" "$temp_dir/pack.list"
+    echo "res://${level_meta_path#"$repo_root"/}"
+done
 
 GODOT_SILENCE_ROOT_WARNING=1 "$godot_bin" \
     --headless \

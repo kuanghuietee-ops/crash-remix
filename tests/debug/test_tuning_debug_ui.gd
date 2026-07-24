@@ -4,6 +4,7 @@ const SERVICE_SCRIPT_PATH := "res://src/tuning/tuning_service.gd"
 const TUNING_DEBUG_UI_SCRIPT_PATH := "res://src/debug/tuning_debug_ui.gd"
 const DEBUG_SCENE_PATH := "res://scenes/debug/tuning_debug_ui.tscn"
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
+const LEVEL_META_PATH := "res://data/tuning/levels/n_sanity_beach.tres"
 const TEST_OVERRIDE_PATH := "user://test_sandbox/debug_ui_override.tres"
 
 
@@ -39,6 +40,25 @@ func test_debug_drawer_lists_traversal_sections() -> void:
 	assert_true(sections.has(&"grind"))
 	assert_true(sections.has(&"swing"))
 	assert_true(sections.has(&"phase"))
+
+
+func test_hud_reports_loaded_level_meta() -> void:
+	var setup := _new_ui()
+	if setup.is_empty():
+		return
+	var ui: Control = setup["ui"]
+	var meta := load(LEVEL_META_PATH) as Resource
+	assert_not_null(meta)
+	if meta == null:
+		return
+
+	ui.call("report_level_meta", meta)
+
+	assert_string_contains(ui.call("summary_text"), LEVEL_META_PATH)
+	assert_string_contains(
+		ui.call("summary_text"),
+		String(meta.call("fingerprint")).left(12)
+	)
 
 
 func test_live_edit_moves_fingerprint_and_override_survives_reload() -> void:

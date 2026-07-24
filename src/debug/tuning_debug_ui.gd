@@ -24,6 +24,8 @@ var _service: TuningServiceType
 var _override_path: String
 var _summary := ""
 var _last_fingerprint := ""
+var _level_meta_path := ""
+var _level_meta_fingerprint := ""
 var _property_count: int
 var _controls: Dictionary = {}
 
@@ -51,6 +53,16 @@ func configure(service: TuningServiceType, override_path: String) -> void:
 
 func summary_text() -> String:
 	return _summary
+
+
+func report_level_meta(meta: LevelMeta) -> void:
+	if meta == null:
+		_level_meta_path = ""
+		_level_meta_fingerprint = ""
+	else:
+		_level_meta_path = meta.resource_path
+		_level_meta_fingerprint = meta.fingerprint()
+	_refresh_summary(true)
 
 
 func override_watermark_visible() -> bool:
@@ -481,6 +493,10 @@ func _refresh_summary(force_log: bool = false) -> void:
 	])
 	for path: String in _service.get_loaded_resource_paths():
 		lines.append(path)
+	if not _level_meta_path.is_empty():
+		lines.append("LEVEL META")
+		lines.append(_level_meta_path)
+		lines.append("FINGERPRINT " + _level_meta_fingerprint.left(12))
 	_summary = "\n".join(lines)
 	_summary_label.text = _summary
 	_override_label.visible = (
