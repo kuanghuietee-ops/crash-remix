@@ -1,0 +1,8 @@
+{
+  "schema_version": 99,
+  "levels": {},
+  "lifetime_wumpa": 999,
+  "boss_defeated": {
+    "papu_papu": true
+  }
+}
