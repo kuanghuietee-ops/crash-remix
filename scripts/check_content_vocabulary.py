@@ -18,10 +18,10 @@ SCANNED_ROOTS = (
 )
 SCANNED_SUFFIXES = frozenset({".gd", ".gdshader", ".tscn", ".tres"})
 PROHIBITED_VOCABULARY = (
-    ("nitro", re.compile(r"(?<![a-z0-9])nitro(?![a-z0-9])")),
+    ("nitro", re.compile(r"(?<![a-z0-9])nitros?(?![a-z0-9])")),
     (
         "colored_gem",
-        re.compile(r"(?<![a-z0-9])colored_gem(?![a-z0-9])"),
+        re.compile(r"(?<![a-z0-9])colored_gems?(?![a-z0-9])"),
     ),
 )
 IDENTIFIER_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")

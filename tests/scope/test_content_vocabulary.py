@@ -70,6 +70,25 @@ class ContentVocabularyTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].term, "nitro")
 
+    def test_detects_plural_prohibited_identifiers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "src" / "gameplay" / "colored_gems_cache.gd"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "class_name ColoredGemsCache\n"
+                "func bank_colored_gems() -> void:\n"
+                "\tpass\n",
+                encoding="utf-8",
+            )
+
+            findings = find_prohibited_vocabulary(root)
+
+        self.assertEqual(len(findings), 3)
+        self.assertTrue(
+            all(finding.term == "colored_gem" for finding in findings)
+        )
+
     def test_allows_phase_zero_five_traversal_vocabulary(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
