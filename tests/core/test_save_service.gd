@@ -13,6 +13,7 @@ class RecordingSaveService:
 	extends SaveService
 
 	var filesystem_events: Array[String] = []
+	var copy_error: Error = OK
 
 	func _flush_file(file: FileAccess) -> void:
 		filesystem_events.append("flush")
@@ -28,6 +29,8 @@ class RecordingSaveService:
 				target_absolute.get_file(),
 			]
 		)
+		if copy_error != OK:
+			return copy_error
 		return DirAccess.copy_absolute(
 			source_absolute,
 			target_absolute
@@ -109,6 +112,48 @@ func test_store_flushes_before_atomic_rename_over_primary() -> void:
 	assert_eq(int(stored_primary.get("lifetime_wumpa")), 31)
 	assert_eq(int(stored_backup.get("lifetime_wumpa")), 17)
 	assert_false(FileAccess.file_exists(_save_path("profile.json.tmp")))
+
+
+func test_failed_backup_copy_keeps_previous_redundancy() -> void:
+	var service := RecordingSaveService.new()
+	var first := SaveModel.fresh()
+	first["lifetime_wumpa"] = 17
+	var second := SaveModel.fresh()
+	second["lifetime_wumpa"] = 31
+	var third := SaveModel.fresh()
+	third["lifetime_wumpa"] = 47
+	assert_eq(service.store_profile(TEST_SAVE_DIR, first), OK)
+	assert_eq(service.store_profile(TEST_SAVE_DIR, second), OK)
+	var backup_before := FileAccess.get_file_as_bytes(
+		_save_path("profile.json.bak")
+	)
+	service.copy_error = ERR_CANT_CREATE
+
+	assert_eq(
+		service.store_profile(TEST_SAVE_DIR, third),
+		ERR_CANT_CREATE
+	)
+
+	assert_true(FileAccess.file_exists(
+		_save_path("profile.json.bak")
+	))
+	assert_eq(
+		FileAccess.get_file_as_bytes(
+			_save_path("profile.json.bak")
+		),
+		backup_before,
+		"a failed replacement copy must preserve the old backup"
+	)
+	assert_eq(
+		int(_read_json(
+			_save_path("profile.json")
+		).get("lifetime_wumpa")),
+		31,
+		"the unpublished profile must not replace the primary"
+	)
+	assert_false(FileAccess.file_exists(
+		_save_path("profile.json.tmp")
+	))
 
 
 func test_corrupt_primary_recovers_previous_good_backup() -> void:

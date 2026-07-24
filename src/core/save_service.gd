@@ -78,7 +78,6 @@ func store_profile(save_dir: String, data: Dictionary) -> Error:
 
 	if int(primary["status"]) == _VALID:
 		var backup_path := _path(save_dir, _BACKUP_FILE)
-		_remove_if_present(backup_path)
 		var backup_error := _copy_absolute(
 			ProjectSettings.globalize_path(primary_path),
 			ProjectSettings.globalize_path(backup_path)
