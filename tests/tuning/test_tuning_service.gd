@@ -710,6 +710,79 @@ func test_layout_critical_override_values_are_rejected_before_replacing_authored
 	assert_gt(service.get("catalog").get("input").get("control_scale"), 0.0)
 
 
+func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(
+			TEST_OVERRIDE_PATH.get_base_dir()
+		)
+	)
+	assert_true(
+		directory_error in [OK, ERR_ALREADY_EXISTS],
+		"the override scenario must create its real sandbox"
+	)
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	var invalid_values: Array[Array] = [
+		[&"wumpa_per_standard_crate", 0],
+		[&"wumpa_collect_radius_m", 0.0],
+		[&"wumpa_mask_threshold", 0],
+		[&"mask_stack_maximum", 0],
+		[&"invincibility_duration_s", 0.0],
+		[&"tnt_fuse_s", 0.0],
+		[&"tnt_blast_radius_m", 0.0],
+		[&"bounce_crate_max_bounces", 0],
+		[&"bounce_crate_wumpa_per_bounce", 0],
+		[&"bounce_launch_height_m", 0.0],
+		[&"checkpoint_spacing_limit_s", 0.0],
+		[&"mercy_mask_death_threshold", 0],
+		[&"mercy_skip_death_threshold", 0],
+		[&"time_crate_small_s", 0.0],
+		[&"time_crate_medium_s", 0.0],
+		[&"time_crate_large_s", 0.0],
+		[
+			&"mercy_skip_death_threshold",
+			authored.economy.mercy_mask_death_threshold,
+		],
+		[
+			&"time_crate_medium_s",
+			authored.economy.time_crate_small_s,
+		],
+		[
+			&"time_crate_large_s",
+			authored.economy.time_crate_medium_s,
+		],
+	]
+	for invalid_value: Array in invalid_values:
+		var override := load(
+			BASE_CATALOG_PATH
+		).duplicate_deep(
+			Resource.DEEP_DUPLICATE_ALL
+		) as GameplayTuning
+		var property_name := invalid_value[0] as StringName
+		override.economy.set(property_name, invalid_value[1])
+		assert_eq(
+			ResourceSaver.save(override, TEST_OVERRIDE_PATH),
+			OK
+		)
+		var service := _new_service()
+		assert_eq(
+			service.call(
+				"load_from_paths",
+				BASE_CATALOG_PATH,
+				TEST_OVERRIDE_PATH
+			),
+			OK
+		)
+		assert_true(
+			service.get("override_rejected"),
+			"%s must reject %s from the real override file"
+			% [property_name, invalid_value[1]]
+		)
+		assert_false(service.get("override_active"))
+
+
 func test_playability_critical_soft_brick_values_are_rejected() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

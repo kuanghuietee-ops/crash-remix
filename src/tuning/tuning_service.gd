@@ -248,6 +248,30 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	):
 		return false
 
+	var economy := checked.economy
+	if (
+		economy.wumpa_per_standard_crate <= 0
+		or economy.wumpa_collect_radius_m <= 0.0
+		or economy.wumpa_mask_threshold <= 0
+		or economy.mask_stack_maximum <= 0
+		or economy.invincibility_duration_s <= 0.0
+		or economy.tnt_fuse_s <= 0.0
+		or economy.tnt_blast_radius_m <= 0.0
+		or economy.bounce_crate_max_bounces <= 0
+		or economy.bounce_crate_wumpa_per_bounce <= 0
+		or economy.bounce_launch_height_m <= 0.0
+		or economy.checkpoint_spacing_limit_s <= 0.0
+		or economy.mercy_mask_death_threshold <= 0
+		or economy.mercy_skip_death_threshold
+		<= economy.mercy_mask_death_threshold
+		or economy.time_crate_small_s <= 0.0
+		or economy.time_crate_medium_s
+		<= economy.time_crate_small_s
+		or economy.time_crate_large_s
+		<= economy.time_crate_medium_s
+	):
+		return false
+
 	var depth := checked.depth
 	return (
 		depth.shadow_diameter_m > 0.0
