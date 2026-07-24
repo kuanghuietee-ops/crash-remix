@@ -1,6 +1,7 @@
 extends GutTest
 
 const LOGIC_PATH := "res://src/gameplay/crates/crate_logic.gd"
+const LEVEL_SESSION_PATH := "res://src/gameplay/run/level_session.gd"
 const STANDARD_SCENE := "res://scenes/props/crate_standard.tscn"
 const BOUNCE_SCENE := "res://scenes/props/crate_bounce.tscn"
 const IRON_SCENE := "res://scenes/props/crate_iron.tscn"
@@ -283,6 +284,93 @@ func test_tnt_blast_set_uses_tuned_radius_and_inclusive_boundary() -> void:
 	)
 
 	assert_eq(affected, [1, 2])
+
+
+func test_real_tnt_blast_respects_occlusion_and_all_three_axes() -> void:
+	var session_script := load(LEVEL_SESSION_PATH) as Script
+	assert_not_null(session_script)
+	if session_script == null or not session_script.can_instantiate():
+		return
+	var session := session_script.new() as Node
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var radius := _economy.tnt_blast_radius_m
+	var inside_offset := radius - _input.bounce_timing_s
+	var outside_offset := radius + _input.bounce_timing_s
+	var source := _instantiate(TNT_SCENE) as StaticBody3D
+	var visible_x := _instantiate(STANDARD_SCENE) as StaticBody3D
+	var occluded_z := _instantiate(STANDARD_SCENE) as StaticBody3D
+	var inside_y := _instantiate(STANDARD_SCENE) as StaticBody3D
+	var outside_y := _instantiate(STANDARD_SCENE) as StaticBody3D
+	var outside_z := _instantiate(STANDARD_SCENE) as StaticBody3D
+	var crates: Array[StaticBody3D] = [
+		source,
+		visible_x,
+		occluded_z,
+		inside_y,
+		outside_y,
+		outside_z,
+	]
+	for crate: StaticBody3D in crates:
+		assert_not_null(crate)
+		if crate == null:
+			return
+		session.add_child(crate)
+	for crate_index: int in range(crates.size()):
+		crates[crate_index].set("crate_id", crate_index + 1)
+	visible_x.position = Vector3(inside_offset, 0.0, 0.0)
+	occluded_z.position = Vector3(0.0, 0.0, inside_offset)
+	inside_y.position = Vector3(0.0, inside_offset, 0.0)
+	outside_y.position = Vector3(0.0, -outside_offset, 0.0)
+	outside_z.position = Vector3(0.0, 0.0, -outside_offset)
+
+	var wall := StaticBody3D.new()
+	wall.position = Vector3(0.0, 0.0, inside_offset * 0.5)
+	var wall_collision := CollisionShape3D.new()
+	var wall_shape := BoxShape3D.new()
+	wall_shape.size = Vector3(
+		radius,
+		radius,
+		_input.bounce_timing_s
+	)
+	wall_collision.shape = wall_shape
+	wall.add_child(wall_collision)
+	session.add_child(wall)
+
+	add_child_autofree(session)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	meta.crate_count = crates.size()
+	assert_true(session.call(
+		"configure",
+		meta,
+		&"normal",
+		_economy,
+		null,
+		_move,
+		_input
+	))
+	await wait_physics_frames(2)
+
+	source.call("apply_verb", &"spin", _economy.tnt_fuse_s)
+
+	assert_true(source.call("is_broken"))
+	assert_true(visible_x.call("is_broken"))
+	assert_true(inside_y.call("is_broken"))
+	assert_false(
+		occluded_z.call("is_broken"),
+		"solid world geometry must block the blast"
+	)
+	assert_false(
+		outside_y.call("is_broken"),
+		"the radius must include the Y axis"
+	)
+	assert_false(
+		outside_z.call("is_broken"),
+		"the radius must include the Z axis"
+	)
 
 
 func test_blast_broken_crates_report_collected_and_chain_tnt_refuses() -> void:

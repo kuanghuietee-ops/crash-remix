@@ -624,12 +624,43 @@ func _on_crate_detonated(
 		_economy
 	)
 	var now_s := MonotonicClockType.now_s()
+	var source_crate := (
+		_crates_by_id.get(source_crate_id) as Node3D
+	)
 	for crate_id: int in affected:
 		if crate_id == source_crate_id:
 			continue
-		var crate := _crates_by_id.get(crate_id) as Node
-		if crate != null:
+		var crate := _crates_by_id.get(crate_id) as Node3D
+		if (
+			crate != null
+			and _blast_path_is_clear(
+				origin,
+				source_crate,
+				crate
+			)
+		):
 			crate.call("apply_blast", now_s)
+
+
+func _blast_path_is_clear(
+	origin: Vector3,
+	source_crate: Node3D,
+	target_crate: Node3D
+) -> bool:
+	if not is_instance_valid(target_crate):
+		return false
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		target_crate.global_position
+	)
+	if source_crate is CollisionObject3D:
+		query.exclude = [
+			(source_crate as CollisionObject3D).get_rid(),
+		]
+	var hit := target_crate.get_world_3d().direct_space_state.intersect_ray(
+		query
+	)
+	return hit.is_empty() or hit.get("collider") == target_crate
 
 
 func _on_finish_body_entered(body: Node) -> void:
