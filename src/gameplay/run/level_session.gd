@@ -131,13 +131,18 @@ func configure(
 	if _player != null and _player.has_method("clear_masks"):
 		_player.call("clear_masks")
 	_connect_player_attacks()
-	var finish := find_child("Finish", true, false) as Area3D
-	if finish != null:
-		_connect_once(
-			finish,
-			&"body_entered",
-			_on_finish_body_entered
+	var finish := get_node_or_null("Finish") as Area3D
+	if finish == null:
+		push_error(
+			"LevelSession requires a root Finish Area3D."
 		)
+		run_state.record_exit()
+		return false
+	_connect_once(
+		finish,
+		&"body_entered",
+		_on_finish_body_entered
+	)
 	return run_state.run_active
 
 
@@ -592,7 +597,7 @@ func _on_crate_detonated(
 
 func _on_finish_body_entered(body: Node) -> void:
 	if body == _player:
-		complete_level()
+		call_deferred(&"complete_level")
 
 
 func _is_authored_crate(candidate: Node) -> bool:

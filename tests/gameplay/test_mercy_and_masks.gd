@@ -260,6 +260,9 @@ func _new_session(
 	if session_script == null or not session_script.can_instantiate():
 		return {}
 	var session := session_script.new() as Node
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	var first_checkpoint: Node
 	var second_checkpoint: Node3D
 	if with_checkpoints:

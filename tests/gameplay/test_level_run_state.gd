@@ -363,6 +363,9 @@ func test_level_session_wires_crate_checkpoint_and_single_death_record() -> void
 	var session_script := load(LEVEL_SESSION_PATH) as Script
 	var session := session_script.new() as Node
 	add_child_autofree(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	var standard := _instantiate(STANDARD_SCENE)
 	var checkpoint := _instantiate(CHECKPOINT_SCENE)
 	if standard == null or checkpoint == null:

@@ -412,6 +412,9 @@ func test_stopwatch_scene_and_session_wire_timer_time_crate_and_hud() -> void:
 
 	var session := LevelSession.new()
 	add_child_autofree(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	session.add_child(stopwatch)
 	var time_crate := (
 		load(TIME_CRATE_SCENE) as PackedScene
@@ -516,6 +519,9 @@ func test_beach_authors_one_stopwatch_and_all_three_time_crates_relic_only() -> 
 func test_relic_death_restores_every_attempt_prop() -> void:
 	var session := LevelSession.new()
 	add_child_autofree(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	var stopwatch := (
 		load(STOPWATCH_SCENE) as PackedScene
 	).instantiate() as Area3D

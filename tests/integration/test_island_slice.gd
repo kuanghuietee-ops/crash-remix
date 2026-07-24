@@ -37,6 +37,71 @@ func test_real_scene_spawn_stays_on_authored_floor_without_death() -> void:
 	assert_eq(level.run_state.deaths_at_checkpoint, 0)
 
 
+func test_real_player_walking_into_finish_completes_level() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var finish := level.get_node("Finish") as Area3D
+	var finish_collision := (
+		finish.get_node("CollisionShape3D") as CollisionShape3D
+	)
+	var finish_shape := finish_collision.shape as BoxShape3D
+	assert_not_null(finish_shape)
+	if finish_shape == null:
+		return
+	await wait_physics_frames(2)
+	player.global_position = Vector3(
+		finish.global_position.x,
+		player.global_position.y,
+		(
+			finish.global_position.z
+			+ finish_shape.size.z * 0.5
+			+ 1.0
+		)
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(1)
+	assert_false(
+		finish.overlaps_body(player),
+		"the test must begin outside the real Finish trigger"
+	)
+	var start_z := player.global_position.z
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2(0.0, -1.0),
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var walked_forward := false
+	for _physics_index: int in range(120):
+		if root.call("state_name") == &"results":
+			break
+		if is_instance_valid(player):
+			walked_forward = (
+				walked_forward
+				or player.global_position.z < start_z
+			)
+		await wait_physics_frames(1)
+
+	assert_true(
+		walked_forward,
+		"the real controller must walk the player toward the exit"
+	)
+	assert_eq(
+		root.call("state_name"),
+		&"results",
+		"walking into the real Finish Area3D must complete the run"
+	)
+
+
 func test_island_slice_full_loop() -> void:
 	var root := _instantiate_main()
 	if root == null:

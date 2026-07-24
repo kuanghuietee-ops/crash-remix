@@ -216,6 +216,9 @@ func test_application_pause_auto_pauses_and_snapshots_active_run() -> void:
 	)
 	var session := LevelSession.new()
 	root.add_child(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	var meta := load(
 		"res://data/tuning/levels/n_sanity_beach.tres"
 	).duplicate(true) as LevelMeta
@@ -351,6 +354,9 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 	)
 	var session := LevelSession.new()
 	root.get_node("Content/LevelPlaceholder").add_child(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
 	var meta := load(
 		"res://data/tuning/levels/n_sanity_beach.tres"
 	).duplicate(true) as LevelMeta
