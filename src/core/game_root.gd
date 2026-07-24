@@ -4,6 +4,9 @@ extends Node
 const TuningServiceType := preload("res://src/tuning/tuning_service.gd")
 const GameFlowType := preload("res://src/core/game_flow.gd")
 const SaveServiceType := preload("res://src/core/save_service.gd")
+const UnlockRulesType := preload(
+	"res://src/gameplay/progression/unlock_rules.gd"
+)
 const SessionSnapshotType := preload(
 	"res://src/core/session_snapshot.gd"
 )
@@ -482,7 +485,8 @@ func _render_warp_room() -> void:
 		"configure",
 		profile,
 		tuning_service.catalog,
-		_hub_level_metas()
+		_hub_level_metas(),
+		_phase_available()
 	)
 	room.connect(
 		&"flow_event_requested",
@@ -504,7 +508,8 @@ func _refresh_warp_room_tuning() -> void:
 		"configure",
 		profile,
 		tuning_service.catalog,
-		_hub_level_metas()
+		_hub_level_metas(),
+		_phase_available()
 	)
 
 
@@ -512,6 +517,10 @@ func _hub_level_metas() -> Dictionary:
 	return {
 		N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_META,
 	}
+
+
+func _phase_available() -> bool:
+	return UnlockRulesType.phase_unlocked(profile)
 
 
 func _begin_threaded_level_load(level_id: StringName) -> void:
@@ -621,7 +630,12 @@ func _configure_authored_level(
 	var camera_rig := level.get_node("CameraRig")
 	router.call("configure", catalog.input)
 	gamepad.call("configure", router, catalog.input)
-	touch.call("configure", router, catalog.input)
+	touch.call(
+		"configure",
+		router,
+		catalog.input,
+		_phase_available()
+	)
 	touch.call(
 		"set_touch_exclusion_controls",
 		_level_touch_exclusions()
@@ -635,7 +649,8 @@ func _configure_authored_level(
 		catalog.grind,
 		catalog.swing,
 		router.get("buffer"),
-		catalog.economy
+		catalog.economy,
+		_phase_available()
 	)
 	var phase_reset_callback := Callable(
 		PhaseState,
@@ -716,7 +731,12 @@ func _refresh_active_level_tuning() -> void:
 	if gamepad != null and router != null:
 		gamepad.call("configure", router, catalog.input)
 	if touch != null and router != null:
-		touch.call("configure", router, catalog.input)
+		touch.call(
+			"configure",
+			router,
+			catalog.input,
+			_phase_available()
+		)
 	if player != null and router != null:
 		player.call(
 			"configure",
@@ -727,7 +747,8 @@ func _refresh_active_level_tuning() -> void:
 			catalog.grind,
 			catalog.swing,
 			router.get("buffer"),
-			catalog.economy
+			catalog.economy,
+			_phase_available()
 		)
 		_refresh_level_traversal(level, catalog)
 		player.get_node("BlobShadow").call(

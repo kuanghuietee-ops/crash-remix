@@ -11,6 +11,7 @@ signal level_list_requested
 var _profile: Dictionary = {}
 var _catalog: GameplayTuning
 var _level_metas: Dictionary = {}
+var _phase_available: bool
 
 
 func _ready() -> void:
@@ -23,7 +24,8 @@ func _ready() -> void:
 func configure(
 	profile: Dictionary,
 	catalog: GameplayTuning,
-	level_metas: Dictionary = {}
+	level_metas: Dictionary = {},
+	phase_available: bool = false
 ) -> void:
 	_profile = (
 		profile.duplicate(true)
@@ -32,6 +34,7 @@ func configure(
 	)
 	_catalog = catalog
 	_level_metas = level_metas.duplicate()
+	_phase_available = phase_available
 	_configure_player()
 	_apply_portal_states()
 
@@ -75,7 +78,11 @@ func _configure_player() -> void:
 	var player := $Player as CharacterBody3D
 	router.configure(_catalog.input)
 	gamepad.configure(router, _catalog.input)
-	touch.configure(router, _catalog.input)
+	touch.configure(
+		router,
+		_catalog.input,
+		_phase_available
+	)
 	touch.set_touch_exclusion_controls([$UI/LevelList])
 	player.call(
 		"configure",
@@ -86,7 +93,8 @@ func _configure_player() -> void:
 		_catalog.grind,
 		_catalog.swing,
 		router.buffer,
-		_catalog.economy
+		_catalog.economy,
+		_phase_available
 	)
 	player.call("set_spawn_transform", player.global_transform)
 	player.get_node("BlobShadow").call(

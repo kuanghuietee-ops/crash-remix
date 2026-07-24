@@ -42,6 +42,7 @@ var _grind_tuning: GrindTuning
 var _swing_tuning: SwingTuning
 var _economy_tuning: EconomyTuning
 var _intents: InputIntentBuffer
+var _phase_enabled: bool
 var _state_machine: PlayerStateMachineType = PlayerStateMachineType.new()
 var _collision_shape: CollisionShape3D
 var _hurtbox_area: Area3D
@@ -94,7 +95,8 @@ func configure(
 	grind_tuning: GrindTuning,
 	swing_tuning: SwingTuning,
 	intents: InputIntentBuffer,
-	economy_tuning: EconomyTuning = null
+	economy_tuning: EconomyTuning = null,
+	phase_enabled: bool = false
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning
@@ -103,6 +105,7 @@ func configure(
 	_grind_tuning = grind_tuning
 	_swing_tuning = swing_tuning
 	_economy_tuning = economy_tuning
+	_phase_enabled = phase_enabled
 	if is_instance_valid(_active_swing_anchor):
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
@@ -208,6 +211,8 @@ func advance_logic(
 		_swing_attach_blocked = null
 	_update_rail_neighbour_context()
 	if (
+		_phase_enabled
+		and
 		_intents.consume_pressed(
 			InputIntent.ACTION_PHASE,
 			now_s,

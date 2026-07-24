@@ -34,7 +34,7 @@ func _ready() -> void:
 	var camera_rig := get_node("CameraRig")
 	router.call("configure", catalog.input)
 	gamepad.call("configure", router, catalog.input)
-	touch.call("configure", router, catalog.input)
+	touch.call("configure", router, catalog.input, true)
 	var debug_tools_enabled := should_enable_debug_tools(OS.is_debug_build())
 	tuning_debug.visible = debug_tools_enabled
 	if debug_tools_enabled:
@@ -57,7 +57,8 @@ func _ready() -> void:
 		catalog.grind,
 		catalog.swing,
 		router.get("buffer"),
-		catalog.economy
+		catalog.economy,
+		true
 	)
 	var phase_reset_callback := Callable(
 		PhaseState,
@@ -103,7 +104,7 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 	var camera_rig := get_node("CameraRig")
 	router.call("configure", catalog.input)
 	gamepad.call("configure", router, catalog.input)
-	touch.call("configure", router, catalog.input)
+	touch.call("configure", router, catalog.input, true)
 	player.call(
 		"configure",
 		catalog.move,
@@ -113,7 +114,8 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 		catalog.grind,
 		catalog.swing,
 		router.get("buffer"),
-		catalog.economy
+		catalog.economy,
+		true
 	)
 	_refresh_traversal_rails(catalog.camera)
 	_refresh_swing_anchors(catalog.swing)

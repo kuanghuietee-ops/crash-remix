@@ -41,6 +41,13 @@ func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
 	assert_true(SaveModel.validate(root.get("profile")))
 	assert_eq(root.get("save_dir"), TEST_SAVE_DIR)
 	assert_true(root.has_node("Content/WarpRoom1"))
+	var hub_player := root.get_node("Content/WarpRoom1/Player")
+	assert_true(
+		_has_property(hub_player, &"_phase_enabled"),
+		"the hub player must receive the progression consumption gate"
+	)
+	if _has_property(hub_player, &"_phase_enabled"):
+		assert_false(hub_player.get("_phase_enabled"))
 	assert_false(
 		DirAccess.dir_exists_absolute(
 			ProjectSettings.globalize_path(TEST_SAVE_DIR)
@@ -50,6 +57,71 @@ func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
 	assert_eq(FileAccess.file_exists(live_primary), live_existed)
 	if live_existed:
 		assert_eq(FileAccess.get_file_as_bytes(live_primary), live_bytes)
+
+
+func test_wr4_completion_routes_phase_unlock_to_hub_ui_and_player() -> void:
+	var profile := SaveModel.fresh()
+	var future_level_id := &"wr4_future_fixture"
+	var record := SaveModel.level_record(profile, future_level_id)
+	record["completed"] = true
+	var levels: Dictionary = profile["levels"]
+	levels[String(future_level_id)] = record
+	var service := SaveService.new()
+	assert_eq(
+		service.store_profile(TEST_SAVE_DIR, profile),
+		OK
+	)
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var player := root.get_node("Content/WarpRoom1/Player")
+	assert_true(
+		_has_property(player, &"_phase_enabled"),
+		"the hub player must expose the progression gate"
+	)
+	if not _has_property(player, &"_phase_enabled"):
+		return
+
+	assert_true(player.get("_phase_enabled"))
+	var touch := root.get_node(
+		"Content/WarpRoom1/UI/TouchControls"
+	)
+	assert_true(
+		(touch.call("current_layout") as Dictionary).has(
+			"phase_center"
+		)
+	)
+
+
+func test_fresh_profile_keeps_phase_locked_in_authored_level() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	await wait_process_frames(2)
+	var player := root.get_node(
+		"Content/NSanityBeach/Player"
+	)
+	assert_false(player.get("_phase_enabled"))
+	var touch := root.get_node(
+		"Content/NSanityBeach/UI/TouchControls"
+	)
+	assert_false(
+		(touch.call("current_layout") as Dictionary).has(
+			"phase_center"
+		)
+	)
 
 
 func test_main_scene_owns_live_tuning_fingerprint_contract() -> void:
@@ -471,6 +543,13 @@ func _write_text(path: String, text: String) -> void:
 		return
 	file.store_string(text)
 	file.close()
+
+
+func _has_property(target: Object, property_name: StringName) -> bool:
+	for property: Dictionary in target.get_property_list():
+		if StringName(property.get("name", &"")) == property_name:
+			return true
+	return false
 
 
 func _remove_tree(path: String) -> void:

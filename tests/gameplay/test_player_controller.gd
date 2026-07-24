@@ -295,6 +295,61 @@ func test_spin_rotates_visual_pivot_and_resets_at_authored_end_time() -> void:
 	assert_almost_eq(spin_pivot.rotation.y, 0.0, 0.0001)
 
 
+func test_phase_intent_is_ignored_when_disabled_and_honored_when_enabled() -> void:
+	var catalog := load(TUNING_PATH) as GameplayTuning
+	PhaseState.configure(catalog.phase)
+	for phase_enabled: bool in [false, true]:
+		var setup := _new_controller()
+		if setup.is_empty():
+			return
+		var controller: CharacterBody3D = setup["controller"]
+		var has_phase_flag := false
+		for property: Dictionary in controller.get_property_list():
+			if property.get("name") == &"_phase_enabled":
+				has_phase_flag = true
+				break
+		assert_true(
+			has_phase_flag,
+			"PlayerController needs the runtime PHASE consumption gate"
+		)
+		if not has_phase_flag:
+			return
+		var buffer: InputIntentBuffer = setup["buffer"]
+		controller.call(
+			"configure",
+			_move,
+			_input,
+			_depth,
+			_wall_run,
+			_grind,
+			_swing,
+			buffer,
+			null,
+			phase_enabled
+		)
+		PhaseState.reset_to_authored_set()
+		var before := PhaseState.active_set()
+		buffer.push(InputIntent.button(
+			InputIntent.ACTION_PHASE,
+			true,
+			60.0,
+			InputIntent.SOURCE_GAMEPAD
+		))
+
+		controller.call(
+			"advance_logic",
+			60.0,
+			false,
+			0.0,
+			Vector3.FORWARD
+		)
+
+		if phase_enabled:
+			assert_ne(PhaseState.active_set(), before)
+		else:
+			assert_eq(PhaseState.active_set(), before)
+
+
 func test_respawn_waits_for_authored_delay_and_accepts_exact_boundary() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():

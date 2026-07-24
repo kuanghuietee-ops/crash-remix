@@ -5,7 +5,8 @@ extends RefCounted
 static func calculate(
 	safe_rect: Rect2,
 	dpi: float,
-	input_tuning: InputTuning
+	input_tuning: InputTuning,
+	phase_available: bool
 ) -> Dictionary:
 	var resolved_dpi := dpi if dpi > 0.0 else input_tuning.fallback_dpi
 	var pixels_per_mm := (
@@ -62,7 +63,7 @@ static func calculate(
 			Vector2(catchall_width, safe_end.y - catchall_top)
 		),
 	}
-	if input_tuning.phase_button_unlocked:
+	if phase_available and input_tuning.phase_button_unlocked:
 		layout["phase_center"] = phase_center
 		layout["phase_radius"] = (
 			input_tuning.phase_button_diameter_mm * pixels_per_mm * 0.5

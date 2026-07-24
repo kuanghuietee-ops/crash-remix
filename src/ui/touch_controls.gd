@@ -7,6 +7,7 @@ const TouchControlLayoutType := preload("res://src/ui/touch_control_layout.gd")
 
 var _router: InputRouterType
 var _input_tuning: InputTuning
+var _phase_available: bool
 var _layout: Dictionary = {}
 var _layout_override_rect := Rect2()
 var _layout_override_dpi := 0.0
@@ -29,9 +30,14 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 
 
-func configure(router: InputRouterType, input_tuning: InputTuning) -> void:
+func configure(
+	router: InputRouterType,
+	input_tuning: InputTuning,
+	phase_available: bool
+) -> void:
 	_router = router
 	_input_tuning = input_tuning
+	_phase_available = phase_available
 	_layout_metrics_poll_elapsed_s = 0.0
 	_recalculate_layout()
 
@@ -259,7 +265,12 @@ func _recalculate_layout() -> void:
 		var metrics := _viewport_layout_metrics()
 		safe_rect = metrics["safe_rect"]
 		dpi = metrics["dpi"]
-	_layout = TouchControlLayoutType.calculate(safe_rect, dpi, _input_tuning)
+	_layout = TouchControlLayoutType.calculate(
+		safe_rect,
+		dpi,
+		_input_tuning,
+		_phase_available
+	)
 	_last_safe_rect = safe_rect
 	_last_dpi = dpi
 	queue_redraw()

@@ -158,11 +158,17 @@ func test_touch_layout_uses_physical_millimeters_and_mirrors() -> void:
 	if script == null:
 		return
 	var safe_rect := Rect2(0.0, 0.0, 1920.0, 1080.0)
-	var layout: Dictionary = script.call("calculate", safe_rect, 254.0, _input_tuning)
+	var layout: Dictionary = script.call(
+		"calculate",
+		safe_rect,
+		254.0,
+		_input_tuning,
+		true
+	)
 	var mirrored_tuning: Resource = _input_tuning.duplicate()
 	mirrored_tuning.set("left_handed_layout", true)
 	var mirrored: Dictionary = script.call(
-		"calculate", safe_rect, 254.0, mirrored_tuning
+		"calculate", safe_rect, 254.0, mirrored_tuning, true
 	)
 
 	assert_eq(layout["jump_radius"], 70.0)
@@ -228,7 +234,8 @@ func test_native_safe_areas_map_into_tall_and_short_logical_viewports() -> void:
 			"calculate",
 			metrics["safe_rect"],
 			metrics["dpi"],
-			_input_tuning
+			_input_tuning,
+			true
 		)
 		for center_name: String in [
 			"jump_center",
@@ -257,7 +264,8 @@ func test_jump_catchall_width_is_driven_by_input_tuning() -> void:
 		"calculate",
 		Rect2(0.0, 0.0, 1920.0, 1080.0),
 		254.0,
-		tuning
+		tuning,
+		true
 	)
 
 	assert_almost_eq(
@@ -310,20 +318,27 @@ func test_gamepad_y_emits_phase_intent() -> void:
 	assert_true(router.get("buffer").call("is_action_pressed", &"phase"))
 
 
-func test_phase_button_absent_until_unlocked() -> void:
+func test_phase_button_absent_when_progression_is_locked() -> void:
 	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
-	input_tuning.set("phase_button_unlocked", false)
+	input_tuning.set("phase_button_unlocked", true)
 	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
 
 	var layout: Dictionary = layout_script.call(
 		"calculate",
 		Rect2(0.0, 0.0, 2400.0, 1080.0),
 		400.0,
-		input_tuning
+		input_tuning,
+		false
 	)
 
-	assert_false(layout.has("phase_center"), "PHASE must not exist before unlock")
-	assert_false(layout.has("phase_radius"), "locked PHASE must expose no hit target")
+	assert_false(
+		layout.has("phase_center"),
+		"progression must beat the tuning master flag"
+	)
+	assert_false(
+		layout.has("phase_radius"),
+		"locked PHASE must expose no hit target"
+	)
 
 
 func test_phase_button_sits_on_the_outer_arc_when_unlocked() -> void:
@@ -335,7 +350,8 @@ func test_phase_button_sits_on_the_outer_arc_when_unlocked() -> void:
 		"calculate",
 		Rect2(0.0, 0.0, 2400.0, 1080.0),
 		400.0,
-		input_tuning
+		input_tuning,
+		true
 	)
 
 	assert_true(layout.has("phase_center"))
@@ -359,7 +375,8 @@ func test_phase_button_sits_on_the_outer_arc_when_unlocked() -> void:
 		"calculate",
 		Rect2(0.0, 0.0, 2400.0, 1080.0),
 		400.0,
-		input_tuning
+		input_tuning,
+		true
 	)
 	assert_gt(
 		mirrored["phase_center"].x,
@@ -383,7 +400,7 @@ func test_unlocked_phase_touch_emits_phase_intent() -> void:
 	var input_tuning: Resource = _input_tuning.duplicate(true)
 	input_tuning.set("phase_button_unlocked", true)
 	router.call("configure", input_tuning)
-	touch.call("configure", router, input_tuning)
+	touch.call("configure", router, input_tuning, true)
 	touch.call(
 		"set_layout_override",
 		Rect2(0.0, 0.0, 1920.0, 1080.0),
@@ -456,7 +473,7 @@ func test_touch_stick_and_button_remain_independent_multitouch() -> void:
 	add_child_autofree(router)
 	add_child_autofree(touch)
 	router.call("configure", _input_tuning)
-	touch.call("configure", router, _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
 	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
 	var layout: Dictionary = touch.call("current_layout")
 
@@ -489,7 +506,7 @@ func test_touch_button_flashes_only_while_its_finger_is_held() -> void:
 	add_child_autofree(router)
 	add_child_autofree(touch)
 	router.call("configure", _input_tuning)
-	touch.call("configure", router, _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
 	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
 	var layout: Dictionary = touch.call("current_layout")
 	var jump_touch := InputEventScreenTouch.new()
@@ -514,7 +531,7 @@ func test_touch_ignores_new_contacts_inside_visible_debug_overlays() -> void:
 	add_child_autofree(router)
 	add_child_autofree(touch)
 	router.call("configure", _input_tuning)
-	touch.call("configure", router, _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
 	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
 	var drawer := Control.new()
 	drawer.position = Vector2(18.0, 246.0)
@@ -549,7 +566,7 @@ func test_touch_overlap_chooses_nearest_button_with_jump_winning_ambiguity() -> 
 	add_child_autofree(router)
 	add_child_autofree(touch)
 	router.call("configure", _input_tuning)
-	touch.call("configure", router, _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
 	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
 	var overlap_press := InputEventScreenTouch.new()
 	overlap_press.index = 9
@@ -584,7 +601,7 @@ func test_touch_layout_metrics_are_polled_only_at_configured_interval() -> void:
 	var tuning: Resource = _input_tuning.duplicate()
 	tuning.set("layout_metrics_poll_interval_s", 0.5)
 	router.call("configure", tuning)
-	touch.call("configure", router, tuning)
+	touch.call("configure", router, tuning, true)
 	touch.set_process(false)
 	var initial_count: int = touch.call("layout_metrics_poll_count")
 
