@@ -7,6 +7,9 @@ const PLACEHOLDER_LEVEL_ID := &"test_level"
 const FUTURE_SAVE_FIXTURE := (
 	"res://tests/fixtures/saves/profile_future_version.json"
 )
+const N_SANITY_META_PATH := (
+	"res://data/tuning/levels/n_sanity_beach.tres"
+)
 
 
 func before_each() -> void:
@@ -219,6 +222,37 @@ func test_main_scene_owns_live_tuning_fingerprint_contract() -> void:
 	assert_not_null(service.get("catalog"))
 	assert_string_contains(summary, service.call("fingerprint"))
 	assert_string_contains(summary, "res://data/tuning/gameplay.tres")
+
+
+func test_real_level_entry_reports_level_meta_to_live_tuning_hud() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var portal := _portal_for_level(
+		room,
+		&"wr1_n_sanity_beach"
+	)
+	assert_not_null(portal)
+	if portal == null:
+		return
+
+	portal.emit_signal(&"body_entered", room.get_node("Player"))
+	var level := await _wait_for_authored_level(root)
+	assert_not_null(level, "the real hub portal must load the authored scene")
+	if level == null:
+		return
+	var meta := load(N_SANITY_META_PATH) as LevelMeta
+	var summary: String = root.get_node(
+		"UI/TuningDebug"
+	).call("summary_text")
+
+	assert_string_contains(summary, N_SANITY_META_PATH)
+	assert_string_contains(
+		summary,
+		String(meta.fingerprint()).left(12)
+	)
 
 
 func test_project_boots_the_new_main_scene() -> void:
