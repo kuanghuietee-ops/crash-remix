@@ -176,14 +176,8 @@ func accept_mercy_skip(next_checkpoint_id: int) -> bool:
 func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 	if not run_active or meta == null:
 		return {}
-	if (
-		mode == MODE_RELIC
-		and (
-			not relic_timer_armed
-			or relic_void
-		)
-	):
-		return {}
+	if mode == MODE_RELIC and not relic_timer_armed:
+		relic_void = true
 	var missing_ids := _missing_crate_ids()
 	var collected_all := (
 		broken_crate_ids.size() == meta.crate_count
@@ -191,7 +185,7 @@ func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 	)
 	var relic_time: Variant = null
 	var relic_tier: Variant = null
-	if mode == MODE_RELIC:
+	if mode == MODE_RELIC and not relic_void:
 		var relic_time_s_value := relic_elapsed_s()
 		relic_time = relic_time_s_value
 		relic_tier = relic_tier_for_time(

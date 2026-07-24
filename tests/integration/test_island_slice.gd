@@ -592,6 +592,101 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	)
 
 
+func test_real_relic_death_can_finish_as_void_without_stranding_run() -> void:
+	var seeded_profile := SaveModel.fresh()
+	var seeded_record := SaveModel.level_record(
+		seeded_profile,
+		LEVEL_ID
+	)
+	seeded_record["completed"] = true
+	seeded_profile["levels"][String(LEVEL_ID)] = seeded_record
+	assert_eq(
+		SaveService.new().store_profile(
+			TEST_SAVE_DIR,
+			seeded_profile
+		),
+		OK
+	)
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	var relic_meta := (
+		level.run_state.meta.duplicate(true) as LevelMeta
+	)
+	relic_meta.relic_platinum_s = (
+		catalog.economy.time_crate_small_s
+	)
+	relic_meta.relic_gold_s = (
+		relic_meta.relic_platinum_s
+		+ catalog.economy.time_crate_medium_s
+	)
+	relic_meta.relic_sapphire_s = (
+		relic_meta.relic_gold_s
+		+ catalog.economy.time_crate_large_s
+	)
+	assert_true(level.configure(
+		relic_meta,
+		LevelRunState.MODE_RELIC,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+	root.set("_active_level_meta", relic_meta)
+	var run_state := level.run_state
+
+	for _physics_index: int in range(30):
+		if run_state.relic_timer_armed:
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		run_state.relic_timer_armed,
+		"the authored stopwatch overlap must arm the relic attempt"
+	)
+	var stopwatch := level.get_node(
+		"RelicOnly/Stopwatch"
+	) as Area3D
+	stopwatch.global_position.z = -20.0
+	await _fall_real_relic_player_once(level, player)
+	assert_true(run_state.relic_void)
+	assert_false(run_state.relic_timer_armed)
+
+	await _walk_real_player_into_finish(root, level, player)
+
+	assert_eq(
+		root.call("state_name"),
+		&"results",
+		"a voided relic attempt must not strand the flow in LEVEL"
+	)
+	assert_false(run_state.run_active)
+	assert_null(root.get("active_level_session"))
+	assert_eq(root.get("last_save_error"), OK)
+	var payload: Dictionary = root.get("last_results_payload")
+	assert_eq(payload.get("mode"), LevelRunState.MODE_RELIC)
+	assert_true(payload.get("relic_void", false))
+	assert_null(payload.get("relic_time_s"))
+	assert_null(payload.get("relic_tier"))
+	assert_eq(
+		root.get("profile"),
+		seeded_profile,
+		"a voided relic finish must save without inventing an award"
+	)
+	assert_true(
+		root.get_node("UI/ResultsScreen").visible,
+		"the real results screen must receive the voided finish"
+	)
+
+
 func test_process_killed_relaunch_restores_real_run_at_checkpoint() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -968,6 +1063,71 @@ func _fall_real_player_from_entry(
 	assert_true(
 		player.is_on_floor() and not player.call("is_respawning"),
 		"the real player must finish respawning before the next fall"
+	)
+
+
+func _fall_real_relic_player_once(
+	level: LevelSession,
+	player: CharacterBody3D
+) -> void:
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2.ZERO,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	player.global_position = Vector3(4.5, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if player.is_on_floor() and not player.call("is_respawning"):
+			break
+		await wait_physics_frames(1)
+	assert_true(player.is_on_floor())
+
+	router.push_intent(
+		InputIntent.move(
+			Vector2.RIGHT,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var physically_fell := false
+	var entered_respawn_delay := false
+	for _physics_index: int in range(300):
+		physically_fell = (
+			physically_fell
+			or player.global_position.y < 0.0
+		)
+		if player.call("is_respawning"):
+			entered_respawn_delay = true
+			router.push_intent(
+				InputIntent.move(
+					Vector2.ZERO,
+					0.0,
+					InputIntent.SOURCE_KEYBOARD
+				)
+			)
+		if (
+			level.run_state.relic_void
+			and not level.run_state.relic_timer_armed
+		):
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		physically_fell,
+		"the relic death must come from leaving the real floor"
+	)
+	assert_true(
+		entered_respawn_delay,
+		"the real controller must execute its respawn delay"
+	)
+	assert_true(
+		level.run_state.relic_void
+		and not level.run_state.relic_timer_armed,
+		"the real death hook must expose the void before a fresh pickup"
 	)
 
 

@@ -133,31 +133,32 @@ func persisted_profile(
 			payload.get("missed_crate_ids", [])
 		)
 	else:
-		var relic_time_value: Variant = payload.get(
-			"relic_time_s"
-		)
-		var relic_tier_value: Variant = payload.get(
-			"relic_tier"
-		)
-		if (
-			(
-				typeof(relic_time_value) != TYPE_FLOAT
-				and typeof(relic_time_value) != TYPE_INT
+		if not bool(payload.get("relic_void", false)):
+			var relic_time_value: Variant = payload.get(
+				"relic_time_s"
 			)
-			or (
-				typeof(relic_tier_value) != TYPE_STRING
-				and typeof(relic_tier_value)
-				!= TYPE_STRING_NAME
+			var relic_tier_value: Variant = payload.get(
+				"relic_tier"
 			)
-		):
-			return {}
-		record = SaveModel.improved_relic_record(
-			record,
-			float(relic_time_value),
-			StringName(relic_tier_value)
-		)
-		if record.is_empty():
-			return {}
+			if (
+				(
+					typeof(relic_time_value) != TYPE_FLOAT
+					and typeof(relic_time_value) != TYPE_INT
+				)
+				or (
+					typeof(relic_tier_value) != TYPE_STRING
+					and typeof(relic_tier_value)
+					!= TYPE_STRING_NAME
+				)
+			):
+				return {}
+			record = SaveModel.improved_relic_record(
+				record,
+				float(relic_time_value),
+				StringName(relic_tier_value)
+			)
+			if record.is_empty():
+				return {}
 	var levels: Dictionary = updated["levels"]
 	levels[String(level_id)] = record
 	if mode == LevelRunState.MODE_NORMAL:
