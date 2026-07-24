@@ -448,8 +448,11 @@ func test_process_killed_relaunch_restores_real_run_at_checkpoint() -> void:
 			TEST_SAVE_DIR.path_join("session.json")
 		)
 	)
-	root.queue_free()
-	await wait_process_frames(2)
+	root.free()
+	assert_false(
+		is_instance_valid(root),
+		"the killed process root must be fully disposed before relaunch"
+	)
 	assert_false(
 		get_tree().paused,
 		"destroying the paused process root must release tree pause"
