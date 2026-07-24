@@ -250,6 +250,9 @@ func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 		N_SANITY_SCENE_PATH
 	)
 
+	# Hold the consumer while the test observes the loader's terminal state.
+	# Otherwise GameRoot may validly consume a fast cached request first.
+	root.set_process(false)
 	var status := ResourceLoader.load_threaded_get_status(
 		N_SANITY_SCENE_PATH
 	)
@@ -264,6 +267,7 @@ func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 			N_SANITY_SCENE_PATH
 		)
 	assert_eq(status, ResourceLoader.THREAD_LOAD_LOADED)
+	root.set_process(true)
 	await wait_process_frames(2)
 	assert_true(root.has_node("Content/NSanityBeach"))
 	assert_gt(
