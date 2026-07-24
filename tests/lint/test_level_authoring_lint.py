@@ -234,6 +234,30 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 completed.stdout,
             )
 
+    def test_cli_fails_closed_for_an_unresolvable_requested_path(
+        self,
+    ) -> None:
+        missing_path = (
+            FIXTURE_ROOT / "missing_level_requested_by_operator.tscn"
+        )
+        self.assertFalse(missing_path.exists())
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/lint_level_authoring.py",
+                str(missing_path),
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(str(missing_path), completed.stderr)
+        self.assertIn("does not exist", completed.stderr)
+
     def _rules(self, fixture_name: str) -> list[str]:
         findings = find_authoring_violations(
             FIXTURE_ROOT / fixture_name

@@ -1310,6 +1310,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parse_args(sys.argv[1:] if argv is None else argv)
     repo_root = Path(__file__).resolve().parents[1]
     paths = arguments.paths or [repo_root]
+    missing_paths = [path for path in paths if not path.exists()]
+    if missing_paths:
+        for path in missing_paths:
+            print(f"{path}: does not exist", file=sys.stderr)
+        return 2
     findings = [
         finding
         for path in paths
