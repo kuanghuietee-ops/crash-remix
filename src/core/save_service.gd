@@ -69,7 +69,7 @@ func store_profile(save_dir: String, data: Dictionary) -> Error:
 	if file == null:
 		return FileAccess.get_open_error()
 	file.store_string(JSON.stringify(data, "\t"))
-	file.flush()
+	_flush_file(file)
 	var write_error := file.get_error()
 	file.close()
 	if write_error != OK:
@@ -79,7 +79,7 @@ func store_profile(save_dir: String, data: Dictionary) -> Error:
 	if int(primary["status"]) == _VALID:
 		var backup_path := _path(save_dir, _BACKUP_FILE)
 		_remove_if_present(backup_path)
-		var backup_error := DirAccess.copy_absolute(
+		var backup_error := _copy_absolute(
 			ProjectSettings.globalize_path(primary_path),
 			ProjectSettings.globalize_path(backup_path)
 		)
@@ -92,7 +92,7 @@ func store_profile(save_dir: String, data: Dictionary) -> Error:
 			_path(save_dir, _CORRUPT_FILE)
 		)
 
-	var rename_error := DirAccess.rename_absolute(
+	var rename_error := _rename_absolute(
 		ProjectSettings.globalize_path(temp_path),
 		ProjectSettings.globalize_path(primary_path)
 	)
@@ -144,10 +144,28 @@ func _preserve_corrupt(source_path: String, corrupt_path: String) -> void:
 	if not FileAccess.file_exists(source_path):
 		return
 	_remove_if_present(corrupt_path)
-	DirAccess.copy_absolute(
+	_copy_absolute(
 		ProjectSettings.globalize_path(source_path),
 		ProjectSettings.globalize_path(corrupt_path)
 	)
+
+
+func _flush_file(file: FileAccess) -> void:
+	file.flush()
+
+
+func _copy_absolute(
+	source_absolute: String,
+	target_absolute: String
+) -> Error:
+	return DirAccess.copy_absolute(source_absolute, target_absolute)
+
+
+func _rename_absolute(
+	source_absolute: String,
+	target_absolute: String
+) -> Error:
+	return DirAccess.rename_absolute(source_absolute, target_absolute)
 
 
 func _remove_if_present(path: String) -> void:

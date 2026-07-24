@@ -9,6 +9,46 @@ const FUTURE_FIXTURE := (
 )
 
 
+class RecordingSaveService:
+	extends SaveService
+
+	var filesystem_events: Array[String] = []
+
+	func _flush_file(file: FileAccess) -> void:
+		filesystem_events.append("flush")
+		file.flush()
+
+	func _copy_absolute(
+		source_absolute: String,
+		target_absolute: String
+	) -> Error:
+		filesystem_events.append(
+			"copy:%s->%s" % [
+				source_absolute.get_file(),
+				target_absolute.get_file(),
+			]
+		)
+		return DirAccess.copy_absolute(
+			source_absolute,
+			target_absolute
+		)
+
+	func _rename_absolute(
+		source_absolute: String,
+		target_absolute: String
+	) -> Error:
+		filesystem_events.append(
+			"rename:%s->%s" % [
+				source_absolute.get_file(),
+				target_absolute.get_file(),
+			]
+		)
+		return DirAccess.rename_absolute(
+			source_absolute,
+			target_absolute
+		)
+
+
 func before_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
 
@@ -40,6 +80,35 @@ func test_first_store_without_existing_primary_succeeds() -> void:
 	assert_true(FileAccess.file_exists(_save_path("profile.json")))
 	assert_true(SaveModel.validate(_read_json(_save_path("profile.json"))))
 	assert_false(FileAccess.file_exists(_save_path("profile.json.bak")))
+
+
+func test_store_flushes_before_atomic_rename_over_primary() -> void:
+	var service := RecordingSaveService.new()
+	var first := SaveModel.fresh()
+	first["lifetime_wumpa"] = 17
+	var second := SaveModel.fresh()
+	second["lifetime_wumpa"] = 31
+	assert_eq(service.store_profile(TEST_SAVE_DIR, first), OK)
+	service.filesystem_events.clear()
+
+	assert_eq(service.store_profile(TEST_SAVE_DIR, second), OK)
+
+	assert_eq(
+		service.filesystem_events,
+		[
+			"flush",
+			"copy:profile.json->profile.json.bak",
+			"rename:profile.json.tmp->profile.json",
+		],
+		"the real transaction must flush, back up, then publish by rename"
+	)
+	var stored_primary := _read_json(_save_path("profile.json"))
+	var stored_backup := _read_json(_save_path("profile.json.bak"))
+	assert_true(SaveModel.validate(stored_primary))
+	assert_true(SaveModel.validate(stored_backup))
+	assert_eq(int(stored_primary.get("lifetime_wumpa")), 31)
+	assert_eq(int(stored_backup.get("lifetime_wumpa")), 17)
+	assert_false(FileAccess.file_exists(_save_path("profile.json.tmp")))
 
 
 func test_corrupt_primary_recovers_previous_good_backup() -> void:
