@@ -1,3 +1,6 @@
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -146,6 +149,90 @@ class LevelAuthoringLintTests(unittest.TestCase):
             find_authoring_violations(hub_path),
             [],
         )
+
+    def test_no_argument_cli_recursively_scans_nested_level_scenes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repo_root = Path(temporary_directory)
+            (repo_root / "scripts").mkdir()
+            shutil.copy2(
+                REPO_ROOT / "scripts" / "lint_level_authoring.py",
+                repo_root / "scripts" / "lint_level_authoring.py",
+            )
+            tuning_root = repo_root / "data" / "tuning"
+            tuning_root.mkdir(parents=True)
+            for file_name in ["economy.tres", "camera.tres"]:
+                shutil.copy2(
+                    REPO_ROOT / "data" / "tuning" / file_name,
+                    tuning_root / file_name,
+                )
+            meta_root = tuning_root / "levels"
+            meta_root.mkdir()
+            (meta_root / "nested_bad.tres").write_text(
+                "\n".join(
+                    [
+                        "[gd_resource load_steps=2 format=3]",
+                        "",
+                        (
+                            "[ext_resource type=\"Script\" "
+                            "path=\"res://src/tuning/level_meta.gd\" "
+                            "id=\"1\"]"
+                        ),
+                        "",
+                        "[resource]",
+                        "script = ExtResource(\"1\")",
+                        "crate_count = 1",
+                        "design_pace_mps = 4.5",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            level_root = (
+                repo_root / "scenes" / "levels" / "warp_room_2"
+            )
+            level_root.mkdir(parents=True)
+            (level_root / "nested_bad.tscn").write_text(
+                "\n".join(
+                    [
+                        "[gd_scene load_steps=2 format=3]",
+                        "",
+                        (
+                            "[ext_resource type=\"Resource\" "
+                            "path=\"res://data/tuning/levels/"
+                            "nested_bad.tres\" id=\"1\"]"
+                        ),
+                        "",
+                        (
+                            "[node name=\"NestedBad\" "
+                            "type=\"Node3D\"]"
+                        ),
+                        "metadata/level_meta = ExtResource(\"1\")",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/lint_level_authoring.py",
+                ],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(completed.returncode, 1)
+            self.assertIn(
+                "scenes/levels/warp_room_2/nested_bad.tscn",
+                completed.stdout,
+            )
+            self.assertIn(
+                CHECKPOINT_SPACING_RULE,
+                completed.stdout,
+            )
 
     def _rules(self, fixture_name: str) -> list[str]:
         findings = find_authoring_violations(

@@ -1003,7 +1003,7 @@ def _scene_files(root: Path) -> Iterable[Path]:
         if (root / "scenes" / "levels").is_dir()
         else root
     )
-    yield from sorted(scan_root.glob("*.tscn"))
+    yield from sorted(scan_root.rglob("*.tscn"))
 
 
 def _find_repo_root(root: Path) -> Path:
