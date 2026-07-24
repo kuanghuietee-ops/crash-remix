@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[node name="TransformHierarchy" type="Node3D"]
+position = Vector3(10, 0, 0)
+
+[node name="TransformParent" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 2, 0)
+
+[node name="TransformChild" type="Marker3D" parent="TransformParent"]
+position = Vector3(2, 0, 0)
+
+[node name="BasisParent" type="Node3D" parent="."]
+position = Vector3(0, 0, 5)
+basis = Basis(0, 0, -1, 0, 1, 0, 1, 0, 0)
+
+[node name="BasisChild" type="Marker3D" parent="BasisParent"]
+position = Vector3(2, 0, 0)
+
+[node name="RotationParent" type="Node3D" parent="."]
+position = Vector3(0, 0, 10)
+rotation = Vector3(0, 1.57079632679, 0)
+
+[node name="RotationChild" type="Marker3D" parent="RotationParent"]
+position = Vector3(2, 0, 0)
+
+[node name="ScaleParent" type="Node3D" parent="."]
+position = Vector3(0, 0, 15)
+scale = Vector3(2, 3, 4)
+
+[node name="ScaleChild" type="Marker3D" parent="ScaleParent"]
+position = Vector3(1, 1, 1)
+
+[node name="MixedRotationParent" type="Node3D" parent="."]
+position = Vector3(0, 0, 20)
+rotation = Vector3(0.2, 0.3, 0.4)
+
+[node name="MixedRotationChild" type="Marker3D" parent="MixedRotationParent"]
+position = Vector3(1, 2, 3)

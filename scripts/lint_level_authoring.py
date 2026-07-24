@@ -35,8 +35,15 @@ CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 
 Vector3 = tuple[float, float, float]
+Basis3 = tuple[Vector3, Vector3, Vector3]
 ZERO: Vector3 = (0.0, 0.0, 0.0)
 UP: Vector3 = (0.0, 1.0, 0.0)
+ONE: Vector3 = (1.0, 1.0, 1.0)
+IDENTITY_BASIS: Basis3 = (
+    (1.0, 0.0, 0.0),
+    (0.0, 1.0, 0.0),
+    (0.0, 0.0, 1.0),
+)
 VECTOR_PATTERN = re.compile(
     r"Vector3\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*,"
     r"\s*([-+0-9.eE]+)\s*\)"
@@ -93,6 +100,15 @@ class ParsedScene:
     nodes: list[SceneNode]
 
 
+@dataclass(frozen=True)
+class SpatialTransform:
+    basis: Basis3
+    origin: Vector3
+
+
+IDENTITY_TRANSFORM = SpatialTransform(IDENTITY_BASIS, ZERO)
+
+
 @dataclass
 class FlatNode:
     name: str
@@ -102,6 +118,7 @@ class FlatNode:
     properties: dict[str, str]
     groups: set[str]
     script_path: str
+    world_transform: SpatialTransform
     world_position: Vector3
     order: int
     source_scene: ParsedScene
@@ -109,12 +126,18 @@ class FlatNode:
 
 @dataclass(frozen=True)
 class Bounds:
-    center: Vector3
+    transform: SpatialTransform
     half_size: Vector3
 
     def contains(self, point: Vector3) -> bool:
+        local_point = _basis_inverse_xform(
+            self.transform.basis,
+            _subtract(point, self.transform.origin),
+        )
+        if local_point is None:
+            return False
         return all(
-            abs(point[axis] - self.center[axis])
+            abs(local_point[axis])
             <= self.half_size[axis]
             for axis in range(3)
         )
@@ -507,7 +530,7 @@ def _flatten_scene(
         repo_root,
         ".",
         "",
-        ZERO,
+        IDENTITY_TRANSFORM,
         set(),
         {},
         flattened,
@@ -523,7 +546,7 @@ def _flatten_into(
     repo_root: Path,
     prefix: str,
     parent_path: str,
-    parent_world: Vector3,
+    parent_world: SpatialTransform,
     inherited_groups: set[str],
     root_overrides: dict[str, str],
     flattened: list[FlatNode],
@@ -561,7 +584,7 @@ def _flatten_into(
             else parent_path
         )
         resolved_parent_world = (
-            source_parent.world_position
+            source_parent.world_transform
             if source_parent is not None
             else parent_world
         )
@@ -611,10 +634,9 @@ def _flatten_into(
             properties,
             scene.ext_resources,
         )
-        world_position = _add(
+        world_transform = _compose_transform(
             resolved_parent_world,
-            _parse_vector(properties.get("position", ""))
-            or ZERO,
+            _node_transform(properties),
         )
         flat_node = FlatNode(
             name=(
@@ -628,7 +650,8 @@ def _flatten_into(
             properties=properties,
             groups=groups,
             script_path=script_path,
-            world_position=world_position,
+            world_transform=world_transform,
+            world_position=world_transform.origin,
             order=order[0],
             source_scene=scene,
         )
@@ -727,7 +750,7 @@ def _collision_bounds(
         if size is None:
             continue
         return Bounds(
-            center=child.world_position,
+            transform=child.world_transform,
             half_size=_multiply(size, 0.5),
         )
     return None
@@ -1011,6 +1034,106 @@ def _parse_vector(value: str) -> Vector3 | None:
     )  # type: ignore[return-value]
 
 
+def _parse_constructor_components(
+    value: str,
+    constructor: str,
+    count: int,
+) -> tuple[float, ...] | None:
+    stripped = value.strip()
+    prefix = constructor + "("
+    if not stripped.startswith(prefix) or not stripped.endswith(")"):
+        return None
+    raw_components = stripped[len(prefix) : -1].split(",")
+    if len(raw_components) != count:
+        return None
+    try:
+        components = tuple(
+            float(component.strip())
+            for component in raw_components
+        )
+    except ValueError:
+        return None
+    if not all(math.isfinite(component) for component in components):
+        return None
+    return components
+
+
+def _parse_basis(value: str) -> Basis3 | None:
+    components = _parse_constructor_components(value, "Basis", 9)
+    if components is None:
+        return None
+    return (
+        (components[0], components[3], components[6]),
+        (components[1], components[4], components[7]),
+        (components[2], components[5], components[8]),
+    )
+
+
+def _parse_transform(value: str) -> SpatialTransform | None:
+    components = _parse_constructor_components(
+        value,
+        "Transform3D",
+        12,
+    )
+    if components is None:
+        return None
+    return SpatialTransform(
+        basis=(
+            (components[0], components[3], components[6]),
+            (components[1], components[4], components[7]),
+            (components[2], components[5], components[8]),
+        ),
+        origin=(
+            components[9],
+            components[10],
+            components[11],
+        ),
+    )
+
+
+def _node_transform(
+    properties: dict[str, str],
+) -> SpatialTransform:
+    authored_transform = _parse_transform(
+        properties.get("transform", "")
+    )
+    if authored_transform is not None:
+        return authored_transform
+
+    origin = (
+        _parse_vector(properties.get("position", ""))
+        or ZERO
+    )
+    authored_basis = _parse_basis(properties.get("basis", ""))
+    if authored_basis is not None:
+        return SpatialTransform(authored_basis, origin)
+
+    rotation = _parse_vector(properties.get("rotation", ""))
+    if rotation is None:
+        rotation_degrees = _parse_vector(
+            properties.get("rotation_degrees", "")
+        )
+        rotation = (
+            tuple(
+                math.radians(component)
+                for component in rotation_degrees
+            )
+            if rotation_degrees is not None
+            else ZERO
+        )
+    scale = (
+        _parse_vector(properties.get("scale", ""))
+        or ONE
+    )
+    return SpatialTransform(
+        _scale_basis_columns(
+            _basis_from_euler_yxz(rotation),
+            scale,
+        ),
+        origin,
+    )
+
+
 def _resource_id(value: str) -> str:
     match = RESOURCE_CALL_PATTERN.fullmatch(value.strip())
     return match.group(1) if match is not None else ""
@@ -1051,6 +1174,94 @@ def _multiply(value: Vector3, scalar: float) -> Vector3:
     return tuple(
         component * scalar for component in value
     )  # type: ignore[return-value]
+
+
+def _basis_xform(basis: Basis3, value: Vector3) -> Vector3:
+    return _add(
+        _multiply(basis[0], value[0]),
+        _add(
+            _multiply(basis[1], value[1]),
+            _multiply(basis[2], value[2]),
+        ),
+    )
+
+
+def _basis_multiply(first: Basis3, second: Basis3) -> Basis3:
+    return tuple(
+        _basis_xform(first, column)
+        for column in second
+    )  # type: ignore[return-value]
+
+
+def _scale_basis_columns(
+    basis: Basis3,
+    scale: Vector3,
+) -> Basis3:
+    return tuple(
+        _multiply(column, scale[index])
+        for index, column in enumerate(basis)
+    )  # type: ignore[return-value]
+
+
+def _basis_from_euler_yxz(rotation: Vector3) -> Basis3:
+    x_angle, y_angle, z_angle = rotation
+    x_cos = math.cos(x_angle)
+    x_sin = math.sin(x_angle)
+    y_cos = math.cos(y_angle)
+    y_sin = math.sin(y_angle)
+    z_cos = math.cos(z_angle)
+    z_sin = math.sin(z_angle)
+    x_basis: Basis3 = (
+        (1.0, 0.0, 0.0),
+        (0.0, x_cos, x_sin),
+        (0.0, -x_sin, x_cos),
+    )
+    y_basis: Basis3 = (
+        (y_cos, 0.0, -y_sin),
+        (0.0, 1.0, 0.0),
+        (y_sin, 0.0, y_cos),
+    )
+    z_basis: Basis3 = (
+        (z_cos, z_sin, 0.0),
+        (-z_sin, z_cos, 0.0),
+        (0.0, 0.0, 1.0),
+    )
+    return _basis_multiply(
+        _basis_multiply(y_basis, x_basis),
+        z_basis,
+    )
+
+
+def _compose_transform(
+    parent: SpatialTransform,
+    local: SpatialTransform,
+) -> SpatialTransform:
+    return SpatialTransform(
+        basis=_basis_multiply(parent.basis, local.basis),
+        origin=_add(
+            parent.origin,
+            _basis_xform(parent.basis, local.origin),
+        ),
+    )
+
+
+def _basis_inverse_xform(
+    basis: Basis3,
+    value: Vector3,
+) -> Vector3 | None:
+    first, second, third = basis
+    determinant = _dot(first, _cross(second, third))
+    if math.isclose(determinant, 0.0):
+        return None
+    inverse_determinant = 1.0 / determinant
+    return (
+        _dot(_cross(second, third), value)
+        * inverse_determinant,
+        _dot(_cross(third, first), value)
+        * inverse_determinant,
+        _dot(_cross(first, second), value)
+        * inverse_determinant,
+    )
 
 
 def _dot(first: Vector3, second: Vector3) -> float:

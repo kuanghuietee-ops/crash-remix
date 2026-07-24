@@ -8,6 +8,7 @@ from scripts.lint_level_authoring import (
     CRATE_ID_RULE,
     REQUIRED_JUMP_RULE,
     TIME_CRATE_RULE,
+    _flatten_scene,
     find_authoring_violations,
 )
 
@@ -23,6 +24,49 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CHECKPOINT_SPACING_RULE],
         )
 
+    def test_editor_transform_form_drives_checkpoint_distance(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_checkpoint_transform_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_SPACING_RULE],
+        )
+        self.assertIn("88.889s", findings[0].detail)
+
+    def test_flatten_composes_transform_basis_rotation_and_scale(
+        self,
+    ) -> None:
+        nodes = _flatten_scene(
+            FIXTURE_ROOT / "level_transform_hierarchy.tscn",
+            REPO_ROOT,
+        )
+        positions = {
+            node.path: node.world_position
+            for node in nodes
+            if node.node_type == "Marker3D"
+        }
+
+        expected = {
+            "TransformParent/TransformChild": (10.0, 2.0, 2.0),
+            "BasisParent/BasisChild": (10.0, 0.0, 7.0),
+            "RotationParent/RotationChild": (10.0, 0.0, 8.0),
+            "ScaleParent/ScaleChild": (12.0, 3.0, 19.0),
+            "MixedRotationParent/MixedRotationChild": (
+                11.135776,
+                1.591050,
+                23.190387,
+            ),
+        }
+        self.assertEqual(set(positions), set(expected))
+        for path, expected_position in expected.items():
+            for actual, authored in zip(
+                positions[path],
+                expected_position,
+            ):
+                self.assertAlmostEqual(actual, authored, places=5)
+
     def test_nested_crate_total_fires_the_authoring_rule(self) -> None:
         self.assertEqual(
             self._rules("level_crate_count_bad.tscn"),
@@ -34,6 +78,17 @@ class LevelAuthoringLintTests(unittest.TestCase):
             self._rules("level_required_jump_bad.tscn"),
             [REQUIRED_JUMP_RULE],
         )
+
+    def test_editor_transform_form_drives_jump_depression(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_required_jump_transform_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn("9.486 degrees", findings[0].detail)
 
     def test_time_crate_outside_relic_group_fires_its_rule(self) -> None:
         self.assertEqual(
