@@ -41,7 +41,7 @@ fi
 
 grep -qE '^TUNING FINGERPRINT$' "$runtime_log"
 grep -qE '^[0-9a-f]{64}$' "$runtime_log"
-for tuning_path in gameplay move input camera depth wall_run grind swing phase; do
+for tuning_path in gameplay move input camera depth wall_run grind swing phase economy; do
     grep -qE "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
 done
 

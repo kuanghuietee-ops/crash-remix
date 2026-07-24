@@ -10,6 +10,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"grind",
 	&"swing",
 	&"phase",
+	&"economy",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.

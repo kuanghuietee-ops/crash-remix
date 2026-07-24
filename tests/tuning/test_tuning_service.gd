@@ -160,6 +160,24 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"ghost_opacity",
 		&"ghost_outline_width_m",
 	],
+	&"economy": [
+		&"wumpa_per_standard_crate",
+		&"wumpa_collect_radius_m",
+		&"wumpa_mask_threshold",
+		&"mask_stack_maximum",
+		&"invincibility_duration_s",
+		&"tnt_fuse_s",
+		&"tnt_blast_radius_m",
+		&"bounce_crate_max_bounces",
+		&"bounce_crate_wumpa_per_bounce",
+		&"bounce_launch_height_m",
+		&"checkpoint_spacing_limit_s",
+		&"mercy_mask_death_threshold",
+		&"mercy_skip_death_threshold",
+		&"time_crate_small_s",
+		&"time_crate_medium_s",
+		&"time_crate_large_s",
+	],
 }
 
 
@@ -186,6 +204,7 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("grind")), "GrindTuning")
 	assert_eq(_global_class_name(catalog.get("swing")), "SwingTuning")
 	assert_eq(_global_class_name(catalog.get("phase")), "PhaseTuning")
+	assert_eq(_global_class_name(catalog.get("economy")), "EconomyTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -250,6 +269,50 @@ func test_service_catalog_exposes_traversal_sections() -> void:
 	assert_eq(phase.get("retoggle_cooldown_s"), 0.25)
 
 
+func test_service_catalog_exposes_economy_section() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var catalog: Resource = service.get("catalog")
+	var economy: Resource = catalog.get("economy")
+
+	assert_not_null(economy, "clone dropped economy — dead-wired")
+	if economy == null:
+		return
+	assert_eq(economy.get("wumpa_mask_threshold"), 100)
+	assert_eq(economy.get("tnt_fuse_s"), 3.0)
+	assert_eq(economy.get("mercy_mask_death_threshold"), 3)
+
+
+func test_fingerprint_moves_when_an_economy_value_changes() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var before: String = service.call("fingerprint")
+	var economy: Resource = service.get("catalog").get("economy")
+	assert_not_null(economy)
+	if economy == null:
+		return
+
+	economy.set("tnt_fuse_s", 4.5)
+
+	assert_ne(
+		before,
+		service.call("fingerprint"),
+		"economy never reaches the fingerprint"
+	)
+
+
 func test_fingerprint_moves_when_traversal_value_changes() -> void:
 	var service: RefCounted = _new_service()
 	if service == null:
@@ -285,6 +348,7 @@ func test_loaded_paths_include_the_traversal_resources() -> void:
 
 	assert_true(joined.contains("grind.tres"), "debug HUD will not list grind.tres")
 	assert_true(joined.contains("wall_run.tres"))
+	assert_true(joined.contains("economy.tres"))
 
 
 func test_catalog_is_unusable_without_traversal_resources() -> void:
@@ -293,6 +357,29 @@ func test_catalog_is_unusable_without_traversal_resources() -> void:
 	catalog.set("grind", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_catalog_is_unusable_without_economy() -> void:
+	var service: RefCounted = _new_service()
+	var catalog: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	catalog.set("economy", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_phase05_shaped_override_backfills_economy() -> void:
+	var service: RefCounted = _new_service()
+	var stale: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	stale.set("economy", null)
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	service.call("load_from_paths", BASE_CATALOG_PATH, TEST_OVERRIDE_PATH)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a Phase 0.5 phone override must migrate, not reset operator tuning"
+	)
+	assert_not_null(service.get("catalog").get("economy"))
 
 
 func test_old_shape_override_is_migrated_not_rejected() -> void:
@@ -509,6 +596,7 @@ func test_effective_catalog_is_detached_and_reports_every_authored_path() -> voi
 	assert_has(loaded_paths, "res://data/tuning/input.tres")
 	assert_has(loaded_paths, "res://data/tuning/camera.tres")
 	assert_has(loaded_paths, "res://data/tuning/depth.tres")
+	assert_has(loaded_paths, "res://data/tuning/economy.tres")
 
 
 func test_fingerprint_changes_when_an_effective_value_changes() -> void:

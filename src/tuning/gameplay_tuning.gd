@@ -9,3 +9,4 @@ extends Resource
 @export var grind: GrindTuning
 @export var swing: SwingTuning
 @export var phase: PhaseTuning
+@export var economy: EconomyTuning

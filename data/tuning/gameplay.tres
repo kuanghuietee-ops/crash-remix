@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="GameplayTuning" load_steps=10 format=3]
+[gd_resource type="Resource" script_class="GameplayTuning" load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/tuning/gameplay_tuning.gd" id="1_catalog"]
 [ext_resource type="Resource" path="res://data/tuning/move.tres" id="2_move"]
@@ -9,6 +9,7 @@
 [ext_resource type="Resource" path="res://data/tuning/grind.tres" id="7_grind"]
 [ext_resource type="Resource" path="res://data/tuning/swing.tres" id="8_swing"]
 [ext_resource type="Resource" path="res://data/tuning/phase.tres" id="9_phase"]
+[ext_resource type="Resource" path="res://data/tuning/economy.tres" id="10_economy"]
 
 [resource]
 script = ExtResource("1_catalog")
@@ -20,3 +21,4 @@ wall_run = ExtResource("6_wall_run")
 grind = ExtResource("7_grind")
 swing = ExtResource("8_swing")
 phase = ExtResource("9_phase")
+economy = ExtResource("10_economy")

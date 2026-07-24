@@ -34,6 +34,7 @@ func test_debug_drawer_lists_traversal_sections() -> void:
 	var debug_script: Script = load(TUNING_DEBUG_UI_SCRIPT_PATH)
 	var sections: Array = debug_script.get("SECTION_NAMES")
 
+	assert_true(sections.has(&"economy"), "operator cannot tune Phase 1 economy")
 	assert_true(sections.has(&"wall_run"), "operator cannot tune wall-run at Gate F2")
 	assert_true(sections.has(&"grind"))
 	assert_true(sections.has(&"swing"))
