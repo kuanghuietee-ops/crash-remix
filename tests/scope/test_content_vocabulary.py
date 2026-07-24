@@ -45,8 +45,8 @@ class ContentVocabularyTests(unittest.TestCase):
             source = root / "src" / "gameplay" / "camera_notes.gd"
             source.parent.mkdir(parents=True)
             source.write_text(
-                '# Camera can swing later.\n'
-                'var notes := "enemy crate grind phase shift"\n'
+                "# A nitro crate belongs to a later wave.\n"
+                'var notes := "ColoredGem and colored_gem are prose only"\n'
                 "func move_player() -> void:\n\tpass\n",
                 encoding="utf-8",
             )
