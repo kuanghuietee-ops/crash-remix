@@ -1079,10 +1079,20 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	var bounce := _crate(level, 8)
 	var tnt := _crate(level, 27)
 	var blast_neighbour := _crate(level, 26)
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
 	assert_not_null(bounce)
 	assert_not_null(tnt)
 	assert_not_null(blast_neighbour)
-	if bounce == null or tnt == null or blast_neighbour == null:
+	assert_not_null(catalog)
+	if (
+		bounce == null
+		or tnt == null
+		or blast_neighbour == null
+		or catalog == null
+	):
 		return
 
 	player.velocity = Vector3.ZERO
@@ -1092,6 +1102,77 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 		0.0,
 		"the scene session must apply a bounce crate launch"
 	)
+	var relic_meta := (
+		level.run_state.meta.duplicate(true) as LevelMeta
+	)
+	relic_meta.relic_platinum_s = (
+		catalog.economy.time_crate_small_s
+	)
+	relic_meta.relic_gold_s = (
+		relic_meta.relic_platinum_s
+		+ catalog.economy.time_crate_medium_s
+	)
+	relic_meta.relic_sapphire_s = (
+		relic_meta.relic_gold_s
+		+ catalog.economy.time_crate_large_s
+	)
+	assert_true(level.configure(
+		relic_meta,
+		LevelRunState.MODE_RELIC,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+	var tnt_shape := (
+		tnt.get_node("CollisionShape3D").shape
+		as BoxShape3D
+	)
+	assert_not_null(tnt_shape)
+	if tnt_shape == null:
+		return
+	player.global_position = Vector3(
+		tnt.global_position.x,
+		tnt.global_position.y + tnt_shape.size.y * 0.5 + 0.01,
+		tnt.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	var collided_with_tnt := false
+	for _physics_index: int in range(
+		Engine.physics_ticks_per_second
+	):
+		await wait_physics_frames(1)
+		for collision_index: int in range(
+			player.get_slide_collision_count()
+		):
+			var collision := player.get_slide_collision(
+				collision_index
+			)
+			if collision.get_collider() == tnt:
+				collided_with_tnt = true
+		if collided_with_tnt:
+			break
+	assert_true(
+		collided_with_tnt,
+		"the real body must retain the TNT slide collision after contact"
+	)
+	assert_true(
+		tnt.call("tnt_fuse_active"),
+		"the real top contact must light the authored TNT first"
+	)
+
+	player.respawn()
+	assert_false(
+		tnt.call("tnt_fuse_active"),
+		"the real relic death must reset the TNT attempt"
+	)
+	await wait_physics_frames(1)
+	assert_false(
+		tnt.call("tnt_fuse_active"),
+		"a pre-teleport collision must not light TNT after respawn"
+	)
+
 	tnt.call("apply_verb", &"spin", 2.0)
 	assert_true(tnt.call("is_broken"))
 	assert_true(

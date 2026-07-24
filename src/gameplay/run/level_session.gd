@@ -36,6 +36,7 @@ var _start_transform := Transform3D.IDENTITY
 var _relic_stopwatch: Area3D
 var _death_recorded_pending_respawn: bool = false
 var _active_top_contact_ids: Array[int] = []
+var _skip_player_crate_collisions_once: bool = false
 var _offered_skip_checkpoint_id: int = (
 	LevelRunState.START_CHECKPOINT
 )
@@ -71,6 +72,7 @@ func configure(
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
+	_skip_player_crate_collisions_once = false
 	_relic_stopwatch = null
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_offered_skip_completes_level = false
@@ -272,6 +274,9 @@ func _physics_process(delta_s: float) -> void:
 		var crate := crate_value as Node
 		if crate != null and crate.has_method("advance_fuse"):
 			crate.call("advance_fuse", now_s)
+	if _skip_player_crate_collisions_once:
+		_skip_player_crate_collisions_once = false
+		return
 	_process_player_crate_collisions(now_s)
 
 
@@ -380,6 +385,8 @@ func _on_player_respawned() -> void:
 
 
 func _on_player_respawn_started() -> void:
+	_active_top_contact_ids.clear()
+	_skip_player_crate_collisions_once = true
 	if _death_recorded_pending_respawn:
 		return
 	var respawn_checkpoint := run_state.checkpoint_id
