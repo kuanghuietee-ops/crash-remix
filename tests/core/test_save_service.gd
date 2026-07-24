@@ -182,6 +182,41 @@ func test_double_corruption_preserves_primary_evidence_and_starts_fresh() -> voi
 	)
 
 
+func test_new_corruption_preserves_every_previous_incident() -> void:
+	var service := SaveService.new()
+	var previous_incident := "{previous corrupt profile"
+	var current_incident := "{current corrupt profile"
+	_write_text(
+		_save_path("profile.json.corrupt"),
+		previous_incident
+	)
+	_write_text(_save_path("profile.json"), current_incident)
+
+	assert_eq(service.load_profile(TEST_SAVE_DIR), SaveModel.fresh())
+
+	assert_eq(
+		FileAccess.get_file_as_string(
+			_save_path("profile.json.corrupt")
+		),
+		previous_incident,
+		"preserving a new incident must not destroy old evidence"
+	)
+	assert_eq(
+		FileAccess.get_file_as_string(
+			_save_path("profile.json.corrupt.1")
+		),
+		current_incident,
+		"the new incident must be preserved beside the old one"
+	)
+	assert_eq(service.load_profile(TEST_SAVE_DIR), SaveModel.fresh())
+	assert_false(
+		FileAccess.file_exists(
+			_save_path("profile.json.corrupt.2")
+		),
+		"reloading the same corrupt bytes must not duplicate evidence"
+	)
+
+
 func test_valid_fixture_loads() -> void:
 	var service := SaveService.new()
 	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))

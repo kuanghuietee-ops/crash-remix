@@ -143,11 +143,31 @@ func _read_candidate(path: String) -> Dictionary:
 func _preserve_corrupt(source_path: String, corrupt_path: String) -> void:
 	if not FileAccess.file_exists(source_path):
 		return
-	_remove_if_present(corrupt_path)
+	var evidence_path := _available_evidence_path(
+		source_path,
+		corrupt_path
+	)
+	if evidence_path.is_empty():
+		return
 	_copy_absolute(
 		ProjectSettings.globalize_path(source_path),
-		ProjectSettings.globalize_path(corrupt_path)
+		ProjectSettings.globalize_path(evidence_path)
 	)
+
+
+func _available_evidence_path(
+	source_path: String,
+	base_corrupt_path: String
+) -> String:
+	var source_bytes := FileAccess.get_file_as_bytes(source_path)
+	var candidate := base_corrupt_path
+	var suffix := 0
+	while FileAccess.file_exists(candidate):
+		if FileAccess.get_file_as_bytes(candidate) == source_bytes:
+			return ""
+		suffix += 1
+		candidate = "%s.%d" % [base_corrupt_path, suffix]
+	return candidate
 
 
 func _flush_file(file: FileAccess) -> void:
