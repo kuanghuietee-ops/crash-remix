@@ -152,6 +152,51 @@ func test_illegal_level_to_boot_event_is_rejected() -> void:
 	assert_eq(flow.call("state_name"), &"level")
 
 
+func test_valid_events_are_rejected_outside_their_owning_state() -> void:
+	var flow := _new_flow()
+	if flow == null:
+		return
+
+	assert_eq(
+		flow.call("dispatch", {"type": &"level_complete"}),
+		ERR_INVALID_PARAMETER
+	)
+	assert_eq(flow.call("state_name"), &"boot")
+	assert_eq(flow.call("dispatch", {"type": &"save_loaded"}), OK)
+	assert_eq(
+		flow.call("dispatch", {"type": &"level_complete"}),
+		ERR_INVALID_PARAMETER
+	)
+	assert_eq(flow.call("state_name"), &"warp_room")
+	assert_eq(
+		flow.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	assert_eq(
+		flow.call("dispatch", {"type": &"save_loaded"}),
+		ERR_INVALID_PARAMETER
+	)
+	assert_eq(flow.call("state_name"), &"level")
+	assert_eq(flow.call("dispatch", {"type": &"level_complete"}), OK)
+	assert_eq(
+		flow.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		ERR_INVALID_PARAMETER
+	)
+	assert_eq(flow.call("state_name"), &"results")
+
+
 func _new_flow() -> RefCounted:
 	assert_true(
 		ResourceLoader.exists(GAME_FLOW_PATH),
