@@ -47,29 +47,32 @@ func test_boss_unlocks_only_after_all_three_levels_are_completed() -> void:
 	var rules := _rules()
 	if rules == null:
 		return
-	var profile := SaveModel.fresh()
+	for missing_level_id: StringName in LEVEL_IDS:
+		var incomplete_profile := SaveModel.fresh()
+		for level_id: StringName in LEVEL_IDS:
+			if level_id != missing_level_id:
+				_set_completed(incomplete_profile, level_id)
+		assert_false(
+			rules.call("boss_unlocked", incomplete_profile),
+			"%s must be individually required" % missing_level_id
+		)
+		assert_false(
+			(
+				rules.call(
+					"state_for",
+					BOSS_ID,
+					incomplete_profile,
+					AVAILABLE_LEVEL_IDS
+				)
+				as Dictionary
+			).get("unlocked", true)
+		)
 
-	_set_completed(profile, LEVEL_IDS[0])
-	_set_completed(profile, LEVEL_IDS[1])
-	assert_false(
-		rules.call("boss_unlocked", profile),
-		"two clears must not unlock Papu Papu"
-	)
-	assert_false(
-		(
-			rules.call(
-				"state_for",
-				BOSS_ID,
-				profile,
-				AVAILABLE_LEVEL_IDS
-			)
-			as Dictionary
-		).get("unlocked", true)
-	)
-
-	_set_completed(profile, LEVEL_IDS[2])
+	var complete_profile := SaveModel.fresh()
+	for level_id: StringName in LEVEL_IDS:
+		_set_completed(complete_profile, level_id)
 	assert_true(
-		rules.call("boss_unlocked", profile),
+		rules.call("boss_unlocked", complete_profile),
 		"the third distinct level clear must unlock Papu Papu"
 	)
 	assert_true(
@@ -77,7 +80,7 @@ func test_boss_unlocks_only_after_all_three_levels_are_completed() -> void:
 			rules.call(
 				"state_for",
 				BOSS_ID,
-				profile,
+				complete_profile,
 				AVAILABLE_LEVEL_IDS
 			)
 			as Dictionary

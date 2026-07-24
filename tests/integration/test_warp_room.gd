@@ -194,6 +194,30 @@ func test_completed_level_exposes_relic_portal_only_with_authored_pars() -> void
 		assert_eq(received[0].get("mode"), &"relic")
 
 
+func test_real_boss_portal_requires_each_level_clear_individually() -> void:
+	var room := _instantiate_room()
+	if room == null:
+		return
+	await wait_process_frames(1)
+	var boss := _portal_for(_portals(room), BOSS_ID)
+	assert_not_null(boss)
+	if boss == null:
+		return
+
+	for missing_level_id: StringName in LEVEL_IDS:
+		var profile := SaveModel.fresh()
+		for level_id: StringName in LEVEL_IDS:
+			if level_id != missing_level_id:
+				_set_completed(profile, level_id)
+		_configure_room(room, profile)
+		assert_false(
+			boss.get_meta("unlocked", true),
+			"%s must keep the real boss portal locked"
+			% missing_level_id
+		)
+		assert_false(boss.monitoring)
+
+
 func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 	if not ResourceLoader.exists(MAIN_SCENE_PATH):
 		assert_true(false, "main scene must exist")
@@ -347,6 +371,13 @@ func _portal_for(
 		if StringName(portal.get_meta("level_id", &"")) == level_id:
 			return portal
 	return null
+
+
+func _set_completed(profile: Dictionary, level_id: StringName) -> void:
+	var record := SaveModel.level_record(profile, level_id)
+	record["completed"] = true
+	var levels: Dictionary = profile["levels"]
+	levels[String(level_id)] = record
 
 
 func _remove_tree(path: String) -> void:
