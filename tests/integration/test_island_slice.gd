@@ -457,6 +457,28 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	assert_true(level.run_state.gem_void)
 	assert_true(level.run_state.relic_void)
 
+	for crate_id: int in range(1, CRATE_TOTAL + 1):
+		var authored_crate := _crate(level, crate_id)
+		assert_not_null(
+			authored_crate,
+			"the gem-void scenario requires authored crate %d"
+			% crate_id
+		)
+		if (
+			authored_crate != null
+			and not bool(authored_crate.call("is_broken"))
+		):
+			spin_area.emit_signal(
+				&"body_entered",
+				authored_crate
+			)
+	await wait_process_frames(1)
+	assert_eq(
+		level.run_state.broken_crate_ids.size(),
+		CRATE_TOTAL,
+		"all normal crates must break through the real player attack wiring"
+	)
+
 	var relic_meta := (
 		level.run_state.meta.duplicate(true) as LevelMeta
 	)
@@ -475,6 +497,27 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	await _walk_real_player_into_finish(root, level, player)
 	assert_eq(root.call("state_name"), &"results")
 	var payload: Dictionary = root.get("last_results_payload")
+	assert_eq(
+		payload.get("box_count"),
+		CRATE_TOTAL,
+		"gem-void proof must complete with every authored crate broken"
+	)
+	assert_eq(
+		payload.get("missed_crate_ids"),
+		[],
+		"gem-void proof must not rely on a missed crate"
+	)
+	assert_false(
+		payload.get("gem", true),
+		"mercy skip must suppress the otherwise-earned gem"
+	)
+	assert_false(
+		SaveModel.level_record(
+			root.get("profile"),
+			LEVEL_ID
+		).get("gem", true),
+		"the voided gem must not reach the real saved profile"
+	)
 	assert_true(
 		payload.get("relic_void", false),
 		"the real skipped run must carry its relic void to results"
