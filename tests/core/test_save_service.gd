@@ -1,6 +1,7 @@
 extends GutTest
 
 const TEST_SAVE_DIR := "user://test_sandbox/task4_save_service"
+const LEGACY_FIXTURE := "res://tests/fixtures/saves/profile_v0_valid.json"
 const VALID_FIXTURE := "res://tests/fixtures/saves/profile_v1_valid.json"
 const CORRUPT_FIXTURE := "res://tests/fixtures/saves/profile_corrupt.json"
 const FUTURE_FIXTURE := (
@@ -126,6 +127,36 @@ func test_valid_fixture_loads() -> void:
 			&"wr1_n_sanity_beach"
 		).get("completed")
 	)
+
+
+func test_legacy_profile_migrates_through_the_real_load_path() -> void:
+	var service := SaveService.new()
+	_write_fixture(LEGACY_FIXTURE, _save_path("profile.json"))
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+	var record := SaveModel.level_record(
+		loaded,
+		&"wr1_n_sanity_beach"
+	)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(
+		loaded.get("schema_version"),
+		SaveModel.SCHEMA_VERSION
+	)
+	assert_eq(loaded.get("lifetime_wumpa"), 4211)
+	assert_eq(loaded.get("operator_note"), "keep me")
+	assert_true(record.get("completed"))
+	assert_true(record.get("gem"))
+	assert_eq(record.get("relic_tier"), "platinum")
+	assert_eq(record.get("best_relic_time_ms"), 73421)
+	assert_true(record.get("flawless"))
+	assert_eq(
+		record.get("legacy_level_note"),
+		"preserve this too"
+	)
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
 
 
 func _save_path(file_name: String) -> String:

@@ -1,0 +1,18 @@
+{
+  "schema_version": 0,
+  "levels": {
+    "wr1_n_sanity_beach": {
+      "completed": true,
+      "gem": true,
+      "relic_tier": "platinum",
+      "best_relic_time_ms": 73421,
+      "flawless": true,
+      "legacy_level_note": "preserve this too"
+    }
+  },
+  "lifetime_wumpa": 4211,
+  "boss_defeated": {
+    "papu_papu": false
+  },
+  "operator_note": "keep me"
+}

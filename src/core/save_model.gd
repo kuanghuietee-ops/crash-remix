@@ -55,10 +55,19 @@ static func validate(data: Dictionary) -> bool:
 static func migrate(data: Dictionary) -> Dictionary:
 	if is_future_version(data):
 		return {}
-	if _schema_version(data) != SCHEMA_VERSION:
+	var version := _schema_version(data)
+	if version < 0:
 		return {}
 
 	var migrated: Dictionary = data.duplicate(true)
+	while version < SCHEMA_VERSION:
+		migrated = _migration_step(version, migrated)
+		if migrated.is_empty():
+			return {}
+		var next_version := _schema_version(migrated)
+		if next_version != version + 1:
+			return {}
+		version = next_version
 	if not validate(migrated):
 		return {}
 	_normalize_known_integer_fields(migrated)
@@ -123,6 +132,31 @@ static func _fresh_level_record() -> Dictionary:
 		"flawless": false,
 		"last_missed_crate_ids": [],
 	}
+
+
+static func _migration_step(
+	version: int,
+	data: Dictionary
+) -> Dictionary:
+	match version:
+		0:
+			return _migrate_v0_to_v1(data)
+		1:
+			return _migrate_v1_to_v2_identity(data)
+		_:
+			return {}
+
+
+static func _migrate_v0_to_v1(data: Dictionary) -> Dictionary:
+	var migrated := data.duplicate(true)
+	migrated["schema_version"] = 1
+	return migrated
+
+
+static func _migrate_v1_to_v2_identity(data: Dictionary) -> Dictionary:
+	var migrated := data.duplicate(true)
+	migrated["schema_version"] = 2
+	return migrated
 
 
 static func _normalize_known_integer_fields(data: Dictionary) -> void:
