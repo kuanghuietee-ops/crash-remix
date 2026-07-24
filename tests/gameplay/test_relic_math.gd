@@ -284,6 +284,7 @@ func test_real_scene_completion_cannot_award_tier_with_unset_pars() -> void:
 		_catalog.move,
 		_catalog.input
 	))
+	level.set_physics_process(false)
 	var completed_results: Array[Dictionary] = []
 	level.run_completed.connect(
 		func(results: Dictionary) -> void:
