@@ -75,6 +75,9 @@ var _active_swing_anchor: SwingAnchorType
 var _swing_attach_blocked: SwingAnchorType
 var _swing_angle_rad: float
 var _swing_angular_velocity: float
+var _bounce_window_active: bool
+var _bounce_contact_s: float
+var _bounce_target_apex_y: float
 
 
 func _ready() -> void:
@@ -119,6 +122,7 @@ func configure(
 	if is_instance_valid(_active_swing_anchor):
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
+	_clear_bounce_timing_window()
 	_active_jump_tap_height_m = _move_tuning.jump_tap_height_m
 	floor_snap_length = _move_tuning.floor_snap_length_m
 	floor_max_angle = deg_to_rad(_move_tuning.floor_max_angle_degrees)
@@ -245,6 +249,7 @@ func advance_logic(
 		_wall_attach_blocked = null
 		_swing_attach_blocked = null
 	_update_rail_neighbour_context()
+	_apply_late_bounce_press(now_s)
 	if (
 		_phase_enabled
 		and _input_tuning.phase_button_unlocked
@@ -328,17 +333,44 @@ func current_state() -> StringName:
 	return _state_machine.state
 
 
-func bounce_jump_press_offset_s(now_s: float) -> float:
-	if (
-		_intents == null
-		or not _intents.is_action_pressed(
-			InputIntent.ACTION_JUMP
+func consume_bounce_contact_intent(now_s: float) -> bool:
+	if _intents == null or _input_tuning == null:
+		return false
+	if _intents.is_action_pressed(InputIntent.ACTION_JUMP):
+		_intents.consume_pressed(
+			InputIntent.ACTION_JUMP,
+			now_s,
+			_input_tuning.bounce_timing_s
 		)
+		return true
+	return (
+		_intents.consume_pressed(
+			InputIntent.ACTION_JUMP,
+			now_s,
+			_input_tuning.bounce_timing_s
+		)
+		!= null
+	)
+
+
+func begin_bounce_timing_window(
+	contact_s: float,
+	launched_high: bool
+) -> void:
+	_clear_bounce_timing_window()
+	if (
+		launched_high
+		or _input_tuning == null
+		or _economy_tuning == null
+		or _move_tuning == null
+		or _input_tuning.bounce_timing_s <= 0.0
 	):
-		return INF
-	return _intents.pressed_duration(
-		InputIntent.ACTION_JUMP,
-		now_s
+		return
+	_bounce_window_active = true
+	_bounce_contact_s = contact_s
+	_bounce_target_apex_y = (
+		global_position.y
+		+ _economy_tuning.bounce_launch_height_m
 	)
 
 
@@ -555,6 +587,7 @@ func respawn() -> void:
 	_clear_rail_state()
 	_clear_wall_run_state()
 	_clear_swing_state()
+	_clear_bounce_timing_window()
 	_state_machine = PlayerStateMachineType.new()
 	_last_state = &""
 	_last_spin_active = false
@@ -568,6 +601,53 @@ func respawn() -> void:
 	if _spin_visual_pivot != null:
 		_spin_visual_pivot.rotation.y = 0.0
 	respawned.emit()
+
+
+func _apply_late_bounce_press(now_s: float) -> void:
+	if not _bounce_window_active:
+		return
+	var contact_age_s := now_s - _bounce_contact_s
+	if (
+		contact_age_s > _input_tuning.bounce_timing_s
+		and not is_equal_approx(
+			contact_age_s,
+			_input_tuning.bounce_timing_s
+		)
+	):
+		_clear_bounce_timing_window()
+		return
+	var press := _intents.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		_input_tuning.bounce_timing_s
+	)
+	if press == null:
+		return
+	if (
+		press.timestamp_s < _bounce_contact_s
+		and not is_equal_approx(
+			press.timestamp_s,
+			_bounce_contact_s
+		)
+	):
+		return
+	var remaining_height_m := maxf(
+		_bounce_target_apex_y - global_position.y,
+		0.0
+	)
+	velocity.y = maxf(
+		velocity.y,
+		JumpKinematicsType.upward_speed_for_height(
+			remaining_height_m,
+			_move_tuning
+		)
+	)
+	_active_jump_tap_height_m = 0.0
+	_clear_bounce_timing_window()
+
+
+func _clear_bounce_timing_window() -> void:
+	_bounce_window_active = false
 
 
 func request_respawn(now_s: float) -> void:

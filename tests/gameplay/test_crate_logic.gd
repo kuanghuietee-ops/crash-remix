@@ -136,10 +136,9 @@ func test_timed_bounce_launch_reaches_the_tuned_height() -> void:
 
 	var actual_speed: float = logic.call(
 		"bounce_launch_speed",
-		0.0,
+		true,
 		_economy,
-		_move,
-		_input
+		_move
 	)
 	var expected_speed := JumpKinematics.upward_speed_for_height(
 		_economy.bounce_launch_height_m,
@@ -149,33 +148,26 @@ func test_timed_bounce_launch_reaches_the_tuned_height() -> void:
 	assert_almost_eq(actual_speed, expected_speed, 0.0001)
 
 
-func test_high_bounce_branch_consumes_live_bounce_timing_window() -> void:
+func test_bounce_launch_uses_explicit_normal_and_high_heights() -> void:
 	var logic := _logic_script()
 	if logic == null:
 		return
-	var press_offset_s := (
-		_input.bounce_timing_s + _input.bounce_timing_s
-	)
 
-	var outside_speed: float = logic.call(
+	var normal_speed: float = logic.call(
 		"bounce_launch_speed",
-		press_offset_s,
+		false,
 		_economy,
-		_move,
-		_input
+		_move
 	)
-	var widened_input := _input.duplicate(true) as InputTuning
-	widened_input.bounce_timing_s = press_offset_s
-	var inside_speed: float = logic.call(
+	var high_speed: float = logic.call(
 		"bounce_launch_speed",
-		press_offset_s,
+		true,
 		_economy,
-		_move,
-		widened_input
+		_move
 	)
 
 	assert_almost_eq(
-		outside_speed,
+		normal_speed,
 		JumpKinematics.upward_speed_for_height(
 			_move.jump_full_height_m,
 			_move
@@ -183,14 +175,14 @@ func test_high_bounce_branch_consumes_live_bounce_timing_window() -> void:
 		0.0001
 	)
 	assert_almost_eq(
-		inside_speed,
+		high_speed,
 		JumpKinematics.upward_speed_for_height(
 			_economy.bounce_launch_height_m,
 			_move
 		),
 		0.0001
 	)
-	assert_ne(outside_speed, inside_speed)
+	assert_ne(normal_speed, high_speed)
 
 
 func test_tnt_spin_detonates_while_touch_and_bounce_start_full_fuse() -> void:

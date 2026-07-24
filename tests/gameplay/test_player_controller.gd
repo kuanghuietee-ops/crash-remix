@@ -9,6 +9,7 @@ var _depth: DepthTuning
 var _wall_run: WallRunTuning
 var _grind: GrindTuning
 var _swing: SwingTuning
+var _economy: EconomyTuning
 
 
 func before_all() -> void:
@@ -21,6 +22,7 @@ func before_all() -> void:
 		_wall_run = catalog.wall_run
 		_grind = catalog.grind
 		_swing = catalog.swing
+		_economy = catalog.economy
 
 
 func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> void:
@@ -76,6 +78,100 @@ func test_controller_applies_variable_release_and_terminal_fall_speed() -> void:
 	controller.velocity = Vector3.ZERO
 	controller.call("advance_logic", 20.0, false, 10.0, Vector3.FORWARD)
 	assert_eq(controller.velocity.y, -_move.maximum_fall_speed_mps)
+
+
+func test_bounce_contact_accepts_jump_held_before_timing_window() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var press_s := 15.0
+	buffer.push(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		press_s,
+		InputIntent.SOURCE_TOUCH
+	))
+	controller.call(
+		"advance_logic",
+		press_s,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+	controller.call(
+		"advance_logic",
+		press_s + _input.bounce_timing_s + _input.bounce_timing_s,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_true(
+		controller.call(
+			"consume_bounce_contact_intent",
+			press_s
+				+ _input.bounce_timing_s
+				+ _input.bounce_timing_s
+		),
+		"a held JUMP must still request a high bounce after the timing window"
+	)
+
+
+func test_post_contact_jump_upgrades_bounce_at_tuned_boundary() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var contact_s := 20.0
+	var ordinary_speed := JumpKinematics.upward_speed_for_height(
+		_move.jump_full_height_m,
+		_move
+	)
+	controller.velocity.y = ordinary_speed
+	controller.call(
+		"begin_bounce_timing_window",
+		contact_s,
+		false
+	)
+	var press_s := contact_s + _input.bounce_timing_s
+	buffer.push(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		press_s,
+		InputIntent.SOURCE_TOUCH
+	))
+	buffer.push(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		false,
+		press_s,
+		InputIntent.SOURCE_TOUCH
+	))
+	var decision: RefCounted = controller.call(
+		"advance_logic",
+		press_s,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(decision.get("impulse"), &"none")
+	assert_almost_eq(
+		controller.velocity.y,
+		JumpKinematics.upward_speed_for_height(
+			_economy.bounce_launch_height_m,
+			_move
+		),
+		0.0001,
+		"a JUMP at +bounce_timing_s must reach the authored high apex"
+	)
+	assert_null(buffer.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		press_s,
+		_input.bounce_timing_s
+	))
 
 
 func test_double_jump_release_uses_its_own_tap_height() -> void:
@@ -576,7 +672,8 @@ func _new_controller() -> Dictionary:
 		_wall_run,
 		_grind,
 		_swing,
-		buffer
+		buffer,
+		_economy
 	)
 	return {
 		"controller": controller,

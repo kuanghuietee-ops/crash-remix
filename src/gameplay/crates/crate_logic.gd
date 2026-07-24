@@ -171,17 +171,13 @@ static func bounce_step(
 
 
 static func bounce_launch_speed(
-	jump_press_offset_s: float,
+	high_bounce: bool,
 	economy: EconomyTuning,
-	move: MoveTuning,
-	input: InputTuning
+	move: MoveTuning
 ) -> float:
-	var within_timing_window := (
-		absf(jump_press_offset_s) <= maxf(input.bounce_timing_s, 0.0)
-	)
 	var launch_height_m := (
 		economy.bounce_launch_height_m
-		if within_timing_window
+		if high_bounce
 		else move.jump_full_height_m
 	)
 	return JumpKinematicsType.upward_speed_for_height(

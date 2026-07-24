@@ -703,6 +703,8 @@ func _process_player_crate_collisions(now_s: float) -> void:
 		return
 	var player_body := _player as CharacterBody3D
 	var top_contacts: Array[int] = []
+	var bounce_intent_resolved := false
+	var high_bounce := false
 	for collision_index: int in range(
 		player_body.get_slide_collision_count()
 	):
@@ -748,24 +750,55 @@ func _process_player_crate_collisions(now_s: float) -> void:
 			var crate_id := int(crate.get("crate_id"))
 			top_contacts.append(crate_id)
 			if crate_id not in _active_top_contact_ids:
-				crate.call(
+				var bounce_info := CrateLogicType.break_result(
+					StringName(crate.get("crate_type")),
+					CrateLogicType.VERB_BOUNCE,
+					_economy
+				)
+				var bounces_player := bool(
+					bounce_info["bounces_player"]
+				)
+				if bounces_player and not bounce_intent_resolved:
+					high_bounce = (
+						_consume_bounce_contact_intent(now_s)
+					)
+					bounce_intent_resolved = true
+				var bounce_result: Dictionary = crate.call(
 					"apply_bounce",
-					_bounce_press_offset_s(now_s),
+					high_bounce if bounces_player else false,
 					now_s
 				)
+				if (
+					not is_zero_approx(float(
+						bounce_result.get(
+							"launch_speed_mps",
+							0.0
+						)
+					))
+					and _player.has_method(
+						"begin_bounce_timing_window"
+					)
+				):
+					_player.call(
+						"begin_bounce_timing_window",
+						now_s,
+						high_bounce
+					)
 	_active_top_contact_ids = top_contacts
 
 
-func _bounce_press_offset_s(now_s: float) -> float:
+func _consume_bounce_contact_intent(now_s: float) -> bool:
 	if (
 		_player != null
-		and _player.has_method("bounce_jump_press_offset_s")
+		and _player.has_method(
+			"consume_bounce_contact_intent"
+		)
 	):
-		return float(_player.call(
-			"bounce_jump_press_offset_s",
+		return bool(_player.call(
+			"consume_bounce_contact_intent",
 			now_s
 		))
-	return INF
+	return false
 
 
 func _on_crate_detonated(

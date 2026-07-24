@@ -80,14 +80,13 @@ func apply_verb(
 
 
 func apply_bounce(
-	jump_press_offset_s: float,
+	high_bounce: bool,
 	now_s: float = 0.0
 ) -> Dictionary:
 	if (
 		_broken
 		or _economy == null
 		or _move == null
-		or _input == null
 	):
 		return _inactive_bounce_result()
 	if crate_type != CrateLogicType.TYPE_BOUNCE:
@@ -98,10 +97,9 @@ func apply_bounce(
 		if not contact_result["bounces_player"]:
 			return _inactive_bounce_result()
 		var iron_launch_speed := CrateLogicType.bounce_launch_speed(
-			jump_press_offset_s,
+			high_bounce,
 			_economy,
-			_move,
-			_input
+			_move
 		)
 		bounced.emit(crate_id, 0, iron_launch_speed)
 		return {
@@ -113,10 +111,9 @@ func apply_bounce(
 	_bounce_count += 1
 	var step := CrateLogicType.bounce_step(_bounce_count, _economy)
 	var launch_speed := CrateLogicType.bounce_launch_speed(
-		jump_press_offset_s,
+		high_bounce,
 		_economy,
-		_move,
-		_input
+		_move
 	)
 	bounced.emit(crate_id, int(step["wumpa"]), launch_speed)
 	if step["breaks"]:

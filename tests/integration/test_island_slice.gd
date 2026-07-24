@@ -1164,7 +1164,7 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	if level == null:
 		return
 	var player := level.get_node("Player") as CharacterBody3D
-	var bounce := _crate(level, 8)
+	var bounce := _crate(level, 9)
 	var tnt := _crate(level, 27)
 	var blast_neighbour := _crate(level, 26)
 	var catalog := (
@@ -1183,13 +1183,128 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	):
 		return
 
+	catalog.economy.bounce_launch_height_m += (
+		catalog.move.jump_full_height_m
+	)
+	var bounce_shape := (
+		bounce.get_node("CollisionShape3D").shape
+		as BoxShape3D
+	)
+	assert_not_null(bounce_shape)
+	if bounce_shape == null:
+		return
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	var wumpa_before_bounce := level.run_state.wumpa_run
+	player.global_position = Vector3(
+		bounce.global_position.x,
+		bounce.global_position.y
+			+ bounce_shape.size.y * 0.5
+			+ 0.01,
+		bounce.global_position.z
+	)
 	player.velocity = Vector3.ZERO
-	bounce.call("apply_bounce", 0.0, 1.0)
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(
+		Engine.physics_ticks_per_second
+	):
+		await wait_physics_frames(1)
+		if level.run_state.wumpa_run > wumpa_before_bounce:
+			break
 	assert_gt(
 		player.velocity.y,
 		0.0,
-		"the scene session must apply a bounce crate launch"
+		"real top contact must apply the ordinary bounce launch"
 	)
+	assert_eq(
+		level.run_state.wumpa_run,
+		wumpa_before_bounce
+			+ catalog.economy.bounce_crate_wumpa_per_bounce
+	)
+	var ordinary_launch_speed := (
+		JumpKinematics.upward_speed_for_height(
+			catalog.move.jump_full_height_m,
+			catalog.move
+		)
+	)
+	var high_launch_speed := (
+		JumpKinematics.upward_speed_for_height(
+			catalog.economy.bounce_launch_height_m,
+			catalog.move
+		)
+	)
+	assert_almost_eq(
+		player.velocity.y,
+		ordinary_launch_speed,
+		0.0001
+	)
+	var late_press_s := MonotonicClock.now_s()
+	router.push_intent(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		late_press_s,
+		InputIntent.SOURCE_KEYBOARD
+	))
+	await wait_physics_frames(1)
+	assert_gt(
+		player.velocity.y,
+		lerpf(ordinary_launch_speed, high_launch_speed, 0.5),
+		"a post-contact JUMP inside the tuned window must upgrade the bounce"
+	)
+	router.push_intent(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		false,
+		MonotonicClock.now_s(),
+		InputIntent.SOURCE_KEYBOARD
+	))
+	await wait_physics_frames(1)
+	var held_press_s := MonotonicClock.now_s()
+	router.push_intent(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		held_press_s,
+		InputIntent.SOURCE_KEYBOARD
+	))
+	await wait_physics_frames(
+		ceili(
+			catalog.input.bounce_timing_s
+				* Engine.physics_ticks_per_second
+		) + 1
+	)
+	var wumpa_before_held_bounce := level.run_state.wumpa_run
+	player.global_position = Vector3(
+		bounce.global_position.x,
+		bounce.global_position.y
+			+ bounce_shape.size.y * 0.5
+			+ 0.01,
+		bounce.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(
+		Engine.physics_ticks_per_second
+	):
+		await wait_physics_frames(1)
+		if (
+			level.run_state.wumpa_run
+			> wumpa_before_held_bounce
+		):
+			break
+	assert_eq(
+		level.run_state.wumpa_run,
+		wumpa_before_held_bounce
+			+ catalog.economy.bounce_crate_wumpa_per_bounce
+	)
+	assert_gt(
+		player.velocity.y,
+		lerpf(ordinary_launch_speed, high_launch_speed, 0.5),
+		"real contact must keep a long-held JUMP on the high branch"
+	)
+	router.push_intent(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		false,
+		MonotonicClock.now_s(),
+		InputIntent.SOURCE_KEYBOARD
+	))
 	var relic_meta := (
 		level.run_state.meta.duplicate(true) as LevelMeta
 	)
@@ -1227,6 +1342,7 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	player.velocity = Vector3.ZERO
 	player.reset_physics_interpolation()
 	var collided_with_tnt := false
+	var landed_on_tnt := false
 	for _physics_index: int in range(
 		Engine.physics_ticks_per_second
 	):
@@ -1239,12 +1355,20 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 			)
 			if collision.get_collider() == tnt:
 				collided_with_tnt = true
+				landed_on_tnt = collision.get_normal().y > 0.0
 		if collided_with_tnt:
 			break
 	assert_true(
 		collided_with_tnt,
 		"the real body must retain the TNT slide collision after contact"
 	)
+	assert_true(
+		landed_on_tnt,
+		"the real body must contact the authored TNT from above"
+	)
+	assert_true(tnt.call("is_armed"))
+	assert_false(tnt.call("is_broken"))
+	await wait_physics_frames(1)
 	assert_true(
 		tnt.call("tnt_fuse_active"),
 		"the real top contact must light the authored TNT first"
