@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_time.tscn" id="2_time"]
+
+[node name="TimeCrateParentGroupBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -10)
+
+[node name="NormalSegment" type="Node3D" parent="." groups=["relic_only"]]
+
+[node name="TimeCrate" parent="NormalSegment" instance=ExtResource("2_time")]
+position = Vector3(0, 0.5, -5)
+crate_id = 1
+segment_group = &"Normal Segment"

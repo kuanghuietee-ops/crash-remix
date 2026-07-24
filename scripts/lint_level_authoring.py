@@ -631,15 +631,12 @@ def _flatten_into(
             if source_parent is not None
             else parent_world
         )
-        parent_groups = (
-            source_parent.groups
-            if source_parent is not None
-            else inherited_groups
-        )
         properties = dict(source_node.properties)
         if source_node.path == ".":
             properties.update(root_overrides)
-        groups = {*parent_groups, *source_node.groups}
+        groups = set(source_node.groups)
+        if source_node.path == ".":
+            groups.update(inherited_groups)
 
         if source_node.instance_id:
             reference = scene.ext_resources.get(

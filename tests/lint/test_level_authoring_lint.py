@@ -172,6 +172,12 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [TIME_CRATE_RULE],
         )
 
+    def test_time_crate_does_not_inherit_parent_group(self) -> None:
+        self.assertEqual(
+            self._rules("level_time_crate_parent_group_bad.tscn"),
+            [TIME_CRATE_RULE],
+        )
+
     def test_duplicate_crate_id_fires_the_identity_rule(self) -> None:
         self.assertEqual(
             self._rules("level_duplicate_crate_id_bad.tscn"),
