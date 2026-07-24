@@ -18,6 +18,9 @@ const EXCLUDED_DRAWER_PROPERTIES: Dictionary = {
 	&"camera": [
 		&"minimum_jump_depression_degrees",
 	],
+	&"economy": [
+		&"checkpoint_spacing_limit_s",
+	],
 }
 
 var _service: TuningServiceType

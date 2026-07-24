@@ -30,7 +30,7 @@ func test_hud_dumps_full_fingerprint_and_every_authored_path() -> void:
 	assert_gt(ui.call("drawer_property_count"), 20)
 
 
-func test_debug_drawer_renders_traversal_sections_and_every_economy_field() -> void:
+func test_debug_drawer_renders_every_runtime_economy_field() -> void:
 	var setup := _new_ui()
 	if setup.is_empty():
 		return
@@ -72,7 +72,11 @@ func test_debug_drawer_renders_traversal_sections_and_every_economy_field() -> v
 	if economy == null:
 		return
 	for property_info: Dictionary in economy.get_property_list():
-		if int(property_info["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
+		if (
+			int(property_info["usage"])
+			& PROPERTY_USAGE_SCRIPT_VARIABLE
+			and property_info["name"] != &"checkpoint_spacing_limit_s"
+		):
 			expected_economy_fields.append(property_info["name"])
 	expected_economy_fields.sort()
 	rendered_economy_fields.sort()
@@ -80,7 +84,7 @@ func test_debug_drawer_renders_traversal_sections_and_every_economy_field() -> v
 	assert_eq(
 		rendered_economy_fields,
 		expected_economy_fields,
-		"every exported economy field must have a real slider row"
+		"every runtime economy field must have a real slider row"
 	)
 
 
@@ -184,6 +188,11 @@ func test_drawer_excludes_physical_constants_and_does_not_poll_fingerprint() -> 
 		"drawer_has_control",
 		&"camera",
 		&"minimum_jump_depression_degrees"
+	))
+	assert_false(ui.call(
+		"drawer_has_control",
+		&"economy",
+		&"checkpoint_spacing_limit_s"
 	))
 	assert_false(ui.is_processing())
 
