@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/core/game_root.gd" id="1_root"]
+[ext_resource type="PackedScene" path="res://scenes/debug/tuning_debug_ui.tscn" id="2_debug"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_root")
+
+[node name="Content" type="Node" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TuningDebug" parent="UI" instance=ExtResource("2_debug")]
