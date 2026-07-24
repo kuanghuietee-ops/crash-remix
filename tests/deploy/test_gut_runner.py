@@ -72,6 +72,7 @@ class GutRunnerTests(unittest.TestCase):
                 invocation["args"],
                 [
                     "--headless",
+                    "--disable-render-loop",
                     "--path",
                     str(REPO_ROOT),
                     "-s",

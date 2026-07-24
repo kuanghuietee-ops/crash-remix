@@ -12,6 +12,7 @@ trap cleanup EXIT HUP INT TERM
 
 XDG_DATA_HOME="$test_user_root" "$godot_bin" \
     --headless \
+    --disable-render-loop \
     --path "$repo_root" \
     -s addons/gut/gut_cmdln.gd \
     -gexit \
