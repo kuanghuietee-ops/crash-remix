@@ -341,6 +341,29 @@ func test_phase_button_absent_when_progression_is_locked() -> void:
 	)
 
 
+func test_phase_button_absent_when_tuning_master_is_locked() -> void:
+	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
+	input_tuning.set("phase_button_unlocked", false)
+	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
+
+	var layout: Dictionary = layout_script.call(
+		"calculate",
+		Rect2(0.0, 0.0, 2400.0, 1080.0),
+		400.0,
+		input_tuning,
+		true
+	)
+
+	assert_false(
+		layout.has("phase_center"),
+		"tuning master flag must hide PHASE"
+	)
+	assert_false(
+		layout.has("phase_radius"),
+		"disabled PHASE must expose no hit target"
+	)
+
+
 func test_phase_button_sits_on_the_outer_arc_when_unlocked() -> void:
 	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
 	input_tuning.set("phase_button_unlocked", true)
