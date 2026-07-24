@@ -9,6 +9,7 @@ wumpa_collect_radius_m = 1.0
 wumpa_mask_threshold = 100
 mask_stack_maximum = 2
 invincibility_duration_s = 20.0
+mask_hit_invulnerability_s = 1.0
 tnt_fuse_s = 3.0
 tnt_blast_radius_m = 2.0
 bounce_crate_max_bounces = 5

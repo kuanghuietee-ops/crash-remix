@@ -183,6 +183,12 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 
 func before_each() -> void:
 	_remove_test_override()
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(
+			TEST_OVERRIDE_PATH.get_base_dir()
+		)
+	)
+	assert_true(directory_error in [OK, ERR_ALREADY_EXISTS])
 
 
 func after_each() -> void:
@@ -542,6 +548,45 @@ func test_old_swing_override_backfills_the_chain_catch_assist() -> void:
 	)
 
 
+func test_old_economy_override_backfills_mask_hit_grace() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.economy.mask_hit_invulnerability_s = (
+		EconomyTuning.new().mask_hit_invulnerability_s
+	)
+	stale.economy.wumpa_per_standard_crate += 1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	assert_eq(
+		migrated.economy.mask_hit_invulnerability_s,
+		authored.economy.mask_hit_invulnerability_s
+	)
+	assert_eq(
+		migrated.economy.wumpa_per_standard_crate,
+		stale.economy.wumpa_per_standard_crate,
+		"migration must preserve existing economy edits"
+	)
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script
@@ -730,6 +775,7 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		[&"wumpa_mask_threshold", 0],
 		[&"mask_stack_maximum", 0],
 		[&"invincibility_duration_s", 0.0],
+		[&"mask_hit_invulnerability_s", 0.0],
 		[&"tnt_fuse_s", 0.0],
 		[&"tnt_blast_radius_m", 0.0],
 		[&"bounce_crate_max_bounces", 0],

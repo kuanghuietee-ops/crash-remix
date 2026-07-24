@@ -31,6 +31,11 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"transfer_minimum_catch_speed_mps",
 		],
 	],
+	&"economy": [
+		[
+			&"mask_hit_invulnerability_s",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -255,6 +260,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or economy.wumpa_mask_threshold <= 0
 		or economy.mask_stack_maximum <= 0
 		or economy.invincibility_duration_s <= 0.0
+		or economy.mask_hit_invulnerability_s <= 0.0
 		or economy.tnt_fuse_s <= 0.0
 		or economy.tnt_blast_radius_m <= 0.0
 		or economy.bounce_crate_max_bounces <= 0

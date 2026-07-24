@@ -9,6 +9,7 @@ extends Resource
 @export_category("Aku Aku")
 @export var mask_stack_maximum: int
 @export var invincibility_duration_s: float
+@export var mask_hit_invulnerability_s: float = -1.0
 
 @export_category("Crates")
 @export var tnt_fuse_s: float

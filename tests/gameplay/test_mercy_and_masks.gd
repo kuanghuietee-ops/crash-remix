@@ -175,12 +175,76 @@ func test_mask_absorbs_exactly_one_hit_before_one_hit_death() -> void:
 
 	player.call("grant_mask", 20.0)
 
-	assert_false(player.call("receive_hit", 20.1))
+	var absorbed_at_s := 20.1
+	assert_false(player.call("receive_hit", absorbed_at_s))
 	assert_eq(player.call("mask_count"), 0)
 	assert_false(player.call("is_respawning"))
 
-	assert_true(player.call("receive_hit", 20.2))
+	assert_false(player.call(
+		"receive_hit",
+		absorbed_at_s
+		+ _economy.mask_hit_invulnerability_s * 0.5
+	))
+	assert_false(player.call("is_respawning"))
+	assert_true(player.call(
+		"receive_hit",
+		absorbed_at_s + _economy.mask_hit_invulnerability_s
+	))
 	assert_true(player.call("is_respawning"))
+
+
+func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
+	var tuned_hit_grace_s := 0.75
+	_economy.mask_hit_invulnerability_s = tuned_hit_grace_s
+	var setup := _new_session()
+	if setup.is_empty():
+		return
+	var player: CharacterBody3D = setup["player"]
+	var contact_at_s := 20.0
+	for _mask_index: int in range(_economy.mask_stack_maximum):
+		player.call("grant_mask", contact_at_s)
+	assert_eq(
+		player.call("mask_count"),
+		_economy.mask_stack_maximum
+	)
+
+	assert_false(player.call("receive_hit", contact_at_s))
+	assert_false(player.call("receive_hit", contact_at_s))
+	assert_false(player.call("receive_hit", contact_at_s))
+
+	assert_eq(
+		player.call("mask_count"),
+		_economy.mask_stack_maximum - 1,
+		"one contact instant must consume exactly one mask"
+	)
+	assert_false(
+		player.call("is_respawning"),
+		"repeat callbacks from one contact must not kill the player"
+	)
+	assert_true(
+		player.call(
+			"is_invincible",
+			contact_at_s + tuned_hit_grace_s * 0.5
+		),
+		"the absorbed hit must open the tuned grace window"
+	)
+	assert_false(player.call(
+		"receive_hit",
+		contact_at_s + tuned_hit_grace_s * 0.5
+	))
+	assert_eq(
+		player.call("mask_count"),
+		_economy.mask_stack_maximum - 1
+	)
+	assert_false(player.call(
+		"receive_hit",
+		contact_at_s + tuned_hit_grace_s
+	))
+	assert_eq(
+		player.call("mask_count"),
+		_economy.mask_stack_maximum - 2,
+		"the exact tuned boundary must permit the next distinct hit"
+	)
 
 
 func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void:

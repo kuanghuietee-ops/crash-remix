@@ -170,6 +170,10 @@ func receive_hit(now_s: float) -> bool:
 		_invincible_until_s = -1.0
 	if _mask_count > 0:
 		_mask_count -= 1
+		_invincible_until_s = (
+			now_s
+			+ _economy_tuning.mask_hit_invulnerability_s
+		)
 		_emit_mask_state()
 		return false
 	request_respawn(now_s)
