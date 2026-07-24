@@ -15,6 +15,7 @@ const EVENT_LEVEL_COMPLETE := &"level_complete"
 const EVENT_QUIT_LEVEL := &"quit_level"
 const EVENT_PAUSE := &"pause"
 const EVENT_RESUME := &"resume"
+const EVENT_SESSION_RESUME_AVAILABLE := &"session_resume_available"
 
 const TRANSITIONS: Dictionary = {
 	State.BOOT: {
@@ -22,6 +23,7 @@ const TRANSITIONS: Dictionary = {
 	},
 	State.WARP_ROOM: {
 		EVENT_PORTAL_ENTER: State.LEVEL,
+		EVENT_SESSION_RESUME_AVAILABLE: State.WARP_ROOM,
 	},
 	State.LEVEL: {
 		EVENT_LEVEL_COMPLETE: State.RESULTS,
@@ -38,6 +40,7 @@ const STATE_NAMES: Dictionary = {
 
 var state: int = State.BOOT
 var active_level_id: StringName = &""
+var resume_snapshot: Dictionary = {}
 var _resume_state: int = State.BOOT
 
 
@@ -64,6 +67,19 @@ func dispatch(event: Dictionary) -> Error:
 	if not state_transitions.has(event_type):
 		return ERR_INVALID_PARAMETER
 
+	if event_type == EVENT_SESSION_RESUME_AVAILABLE:
+		var snapshot_value: Variant = event.get("snapshot")
+		if not snapshot_value is Dictionary:
+			return ERR_INVALID_DATA
+		var snapshot: Dictionary = snapshot_value
+		var resume_level_id: Variant = snapshot.get("level_id")
+		if (
+			typeof(resume_level_id) != TYPE_STRING
+			and typeof(resume_level_id) != TYPE_STRING_NAME
+		):
+			return ERR_INVALID_DATA
+		resume_snapshot = snapshot.duplicate(true)
+
 	if event_type == EVENT_PORTAL_ENTER:
 		var level_value: Variant = event.get("level_id")
 		if (
@@ -75,6 +91,7 @@ func dispatch(event: Dictionary) -> Error:
 		if requested_level.is_empty():
 			return ERR_INVALID_DATA
 		active_level_id = requested_level
+		resume_snapshot.clear()
 
 	state = int(state_transitions[event_type])
 	if event_type == EVENT_QUIT_LEVEL:
@@ -84,3 +101,7 @@ func dispatch(event: Dictionary) -> Error:
 
 func state_name() -> StringName:
 	return STATE_NAMES.get(state, &"unknown")
+
+
+func has_resume_decision() -> bool:
+	return not resume_snapshot.is_empty()
