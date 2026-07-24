@@ -86,6 +86,19 @@ theme_override_font_sizes/font_size = 32
 text = "RELIC  0.00"
 horizontal_alignment = 1
 
+[node name="Pause" type="Button" parent="SafeArea"]
+custom_minimum_size = Vector2(160, 72)
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -184.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 96.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 24
+text = "PAUSE"
+
 [node name="MercyPanel" type="PanelContainer" parent="SafeArea"]
 visible = false
 layout_mode = 0

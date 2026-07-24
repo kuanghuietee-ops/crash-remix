@@ -5,10 +5,13 @@ const MonotonicClockType := preload(
 	"res://src/core/monotonic_clock.gd"
 )
 
+signal pause_requested
+
 var _session: Node
 var _meta: LevelMeta
 var _player: Node
 var _relic_elapsed_s: float
+var _pause_touch_index: int = -1
 
 @onready var _wumpa_label: Label = (
 	$SafeArea/Stats/Margin/Rows/Wumpa
@@ -32,13 +35,36 @@ var _relic_elapsed_s: float
 @onready var _skip_button: Button = (
 	$SafeArea/MercyPanel/Margin/Rows/Skip
 )
+@onready var _pause_button: Button = $SafeArea/Pause
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pause_button.pressed.connect(
+		_on_pause_pressed
+	)
 	_skip_button.pressed.connect(_on_skip_pressed)
 	_mercy_panel.visible = false
 	_relic_label.visible = false
+
+
+func _input(event: InputEvent) -> void:
+	if not visible or not event is InputEventScreenTouch:
+		return
+	var touch := event as InputEventScreenTouch
+	if (
+		touch.pressed
+		and _pause_touch_index < 0
+		and _pause_button.get_global_rect().has_point(
+			touch.position
+		)
+	):
+		_pause_touch_index = touch.index
+		get_viewport().set_input_as_handled()
+	elif not touch.pressed and touch.index == _pause_touch_index:
+		_pause_touch_index = -1
+		get_viewport().set_input_as_handled()
+		_on_pause_pressed()
 
 
 func configure(session: Node, meta: LevelMeta) -> void:
@@ -158,6 +184,10 @@ func _on_skip_pressed() -> void:
 		and bool(_session.call("accept_mercy_skip"))
 	):
 		_mercy_panel.visible = false
+
+
+func _on_pause_pressed() -> void:
+	pause_requested.emit()
 
 
 func _connect_once(

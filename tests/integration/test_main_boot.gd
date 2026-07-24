@@ -514,6 +514,53 @@ func test_pause_overlay_preserves_level_content_and_retry_is_direct() -> void:
 	)
 
 
+func test_hud_pause_button_reaches_the_real_pause_overlay() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	var pause_button := root.get_node_or_null(
+		"UI/HUD/SafeArea/Pause"
+	) as Button
+	assert_not_null(
+		pause_button,
+		"the live HUD must expose a touch-reachable pause button"
+	)
+	if pause_button == null:
+		return
+	assert_true(pause_button.visible)
+	assert_false(root.get_node("UI/PauseOverlay").visible)
+	await wait_process_frames(1)
+	var touch_position := pause_button.get_global_rect().get_center()
+	var press := InputEventScreenTouch.new()
+	press.index = 21
+	press.position = touch_position
+	press.pressed = true
+	var release := InputEventScreenTouch.new()
+	release.index = press.index
+	release.position = touch_position
+	release.pressed = false
+
+	var hud := root.get_node("UI/HUD")
+	hud.call("_input", press)
+	hud.call("_input", release)
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"paused")
+	assert_true(root.get_node("UI/PauseOverlay").visible)
+	assert_true(get_tree().paused)
+
+
 func _instantiate_main() -> Node:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)

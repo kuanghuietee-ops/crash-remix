@@ -376,6 +376,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	]:
 		_ui.add_child(screen)
 
+	_hud.connect(
+		&"pause_requested",
+		_on_hud_pause_requested
+	)
 	_results_screen.connect(
 		&"retry_requested",
 		_on_results_retry_requested
@@ -934,6 +938,7 @@ func _refresh_ghost_materials(level: Node) -> void:
 
 func _level_touch_exclusions() -> Array:
 	var controls: Array = [
+		_hud.get_node("SafeArea/Pause"),
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
@@ -1000,6 +1005,11 @@ func _on_results_relic_requested() -> void:
 
 func _on_results_hub_requested() -> void:
 	dispatch({"type": GameFlow.EVENT_RESULTS_TO_HUB})
+
+
+func _on_hud_pause_requested() -> void:
+	if flow.state == GameFlow.State.LEVEL:
+		dispatch({"type": GameFlow.EVENT_PAUSE})
 
 
 func _on_pause_resume_requested() -> void:
