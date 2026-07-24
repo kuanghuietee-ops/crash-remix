@@ -27,6 +27,7 @@ CAMERA_REGION_SCRIPT = (
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
 LEGACY_LEVEL_SCENES = {"phase05_gauntlet.tscn"}
 TIME_CRATE_TYPE = "time"
+IRON_CRATE_TYPE = "iron"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 
@@ -279,7 +280,8 @@ def _crate_findings(
     normal_crates = [
         crate
         for crate in crates
-        if _crate_type(crate) != TIME_CRATE_TYPE
+        if _crate_type(crate)
+        not in {TIME_CRATE_TYPE, IRON_CRATE_TYPE}
     ]
     membership_errors: list[str] = []
     for crate in crates:

@@ -1,0 +1,95 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="4_bounce"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(18, 12, 100)
+
+[node name="CrateCadence" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 2.5, -4)
+text = "CRATE CADENCE"
+font_size = 48
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="WeaveA" type="Marker3D" parent="Spine"]
+position = Vector3(-1.5, 0, -32)
+
+[node name="WeaveB" type="Marker3D" parent="Spine"]
+position = Vector3(1.5, 0, -64)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -96)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(12, 1, 12)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -48)
+size = Vector3(12, 1, 84)
+color = Color(0.21, 0.36, 0.2, 1)
+
+[node name="LeftCadencePad" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-4.5, 0.1, -44)
+size = Vector3(2.5, 0.2, 18)
+color = Color(0.42, 0.56, 0.18, 1)
+
+[node name="RightCadencePad" parent="." instance=ExtResource("1_platform")]
+position = Vector3(4.5, 0.1, -66)
+size = Vector3(2.5, 0.2, 18)
+color = Color(0.42, 0.56, 0.18, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -92)
+size = Vector3(12, 1, 12)
+color = Color(0.28, 0.42, 0.2, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -48)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="Crate18" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-2, 0.5, -14)
+crate_id = 18
+segment_group = &"Crate Cadence"
+
+[node name="Crate19" parent="." instance=ExtResource("3_standard")]
+position = Vector3(2, 0.5, -26)
+crate_id = 19
+segment_group = &"Crate Cadence"
+
+[node name="Crate20" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-2, 0.5, -40)
+crate_id = 20
+segment_group = &"Crate Cadence"
+
+[node name="Crate21" parent="." instance=ExtResource("3_standard")]
+position = Vector3(2, 0.5, -54)
+crate_id = 21
+segment_group = &"Crate Cadence"
+
+[node name="Crate22" parent="." instance=ExtResource("4_bounce")]
+position = Vector3(-2, 0.5, -68)
+crate_id = 22
+segment_group = &"Crate Cadence"
+
+[node name="Crate23" parent="." instance=ExtResource("3_standard")]
+position = Vector3(0, 0.5, -84)
+crate_id = 23
+segment_group = &"Crate Cadence"

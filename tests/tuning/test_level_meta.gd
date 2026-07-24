@@ -12,7 +12,8 @@ func test_level_meta_loads_with_typed_fields() -> void:
 	if meta == null:
 		return
 	assert_eq(_global_class_name(meta), "LevelMeta")
-	assert_eq(meta.get("crate_count"), 0)
+	assert_eq(meta.get("crate_count"), 40)
+	assert_eq(meta.get("wumpa_total"), 61)
 	assert_eq(meta.get("design_pace_mps"), 4.5)
 	assert_eq(meta.get("relic_sapphire_s"), 0.0)
 	assert_eq(meta.get("relic_gold_s"), 0.0)

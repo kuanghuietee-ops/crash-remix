@@ -3,6 +3,7 @@ extends GutTest
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const DEFAULT_SAVE_DIR := "user://save"
 const TEST_SAVE_DIR := "user://test_sandbox/task5_main_boot"
+const PLACEHOLDER_LEVEL_ID := &"test_level"
 
 
 func before_each() -> void:
@@ -136,7 +137,7 @@ func test_application_pause_auto_pauses_and_snapshots_active_run() -> void:
 			"dispatch",
 			{
 				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
+				"level_id": PLACEHOLDER_LEVEL_ID,
 			}
 		),
 		OK
@@ -180,7 +181,7 @@ func test_level_completion_deletes_session_snapshot() -> void:
 			"dispatch",
 			{
 				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
+				"level_id": PLACEHOLDER_LEVEL_ID,
 			}
 		),
 		OK
@@ -211,7 +212,7 @@ func test_quit_to_hub_deletes_session_snapshot() -> void:
 			"dispatch",
 			{
 				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
+				"level_id": PLACEHOLDER_LEVEL_ID,
 			}
 		),
 		OK
@@ -271,7 +272,7 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 			"dispatch",
 			{
 				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
+				"level_id": PLACEHOLDER_LEVEL_ID,
 			}
 		),
 		OK
@@ -332,7 +333,7 @@ func test_pause_overlay_preserves_level_content_and_retry_is_direct() -> void:
 			"dispatch",
 			{
 				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
+				"level_id": PLACEHOLDER_LEVEL_ID,
 			}
 		),
 		OK
@@ -367,7 +368,7 @@ func test_pause_overlay_preserves_level_content_and_retry_is_direct() -> void:
 	assert_eq(root.call("state_name"), &"level")
 	assert_eq(
 		root.get("flow").get("active_level_id"),
-		&"wr1_n_sanity_beach"
+		PLACEHOLDER_LEVEL_ID
 	)
 
 

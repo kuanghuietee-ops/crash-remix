@@ -21,11 +21,21 @@ const LEVEL_LIST_OVERLAY_SCENE := preload(
 	"res://scenes/ui/level_list_overlay.tscn"
 )
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
+const N_SANITY_BEACH_SCENE := preload(
+	"res://scenes/levels/wr1_n_sanity_beach.tscn"
+)
+const N_SANITY_BEACH_META := preload(
+	"res://data/tuning/levels/n_sanity_beach.tres"
+)
+const PHASE_GHOST_SHADER := preload(
+	"res://assets/shaders/phase_ghost.gdshader"
+)
 
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
+const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
 	GameFlow.State.LEVEL: &"LevelPlaceholder",
@@ -197,6 +207,7 @@ func set_active_level_session(
 
 func _on_tuning_changed(_fingerprint: String) -> void:
 	PhaseState.configure(tuning_service.catalog.phase)
+	_refresh_active_level_tuning()
 
 
 func _pause_and_snapshot_active_run() -> void:
@@ -423,9 +434,325 @@ func _render_state(previous_state: int = flow.state) -> void:
 	):
 		_content.add_child(TOYBOX_SCENE.instantiate())
 		return
+	if (
+		flow.state == GameFlow.State.LEVEL
+		and flow.active_level_id == N_SANITY_BEACH_LEVEL_ID
+	):
+		var level := N_SANITY_BEACH_SCENE.instantiate()
+		_content.add_child(level)
+		_configure_authored_level(
+			level,
+			N_SANITY_BEACH_META
+		)
+		return
 	var placeholder := Node3D.new()
 	placeholder.name = _PLACEHOLDER_NAMES[flow.state]
 	_content.add_child(placeholder)
+
+
+func _configure_authored_level(
+	level: Node,
+	meta: LevelMeta
+) -> void:
+	var catalog := tuning_service.catalog
+	var router := level.get_node("Input/InputRouter")
+	var gamepad := level.get_node("Input/GamepadInput")
+	var touch := level.get_node("UI/TouchControls")
+	var player := level.get_node("Player") as CharacterBody3D
+	var camera_rig := level.get_node("CameraRig")
+	router.call("configure", catalog.input)
+	gamepad.call("configure", router, catalog.input)
+	touch.call("configure", router, catalog.input)
+	touch.call(
+		"set_touch_exclusion_controls",
+		_level_touch_exclusions()
+	)
+	player.call(
+		"configure",
+		catalog.move,
+		catalog.input,
+		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
+		router.get("buffer"),
+		catalog.economy
+	)
+	var phase_reset_callback := Callable(
+		PhaseState,
+		"reset_to_authored_set"
+	)
+	if not player.is_connected(
+		&"respawned",
+		phase_reset_callback
+	):
+		player.connect(&"respawned", phase_reset_callback)
+	PhaseState.reset_to_authored_set()
+	player.call("set_spawn_transform", player.global_transform)
+	_refresh_level_traversal(level, catalog)
+	player.get_node("BlobShadow").call(
+		"configure",
+		player,
+		catalog.depth
+	)
+	player.get_node("LandingRing").call(
+		"configure",
+		player,
+		catalog.move,
+		catalog.depth,
+		catalog.grind,
+		_level_traversal_rails(level)
+	)
+	camera_rig.call(
+		"configure",
+		player,
+		camera_rig.get_node("Rail"),
+		camera_rig.get_node("Camera3D"),
+		catalog.camera,
+		_level_camera_regions(level),
+		router
+	)
+	var session := level as LevelSession
+	session.configure(
+		meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	)
+	var segment_map := _crate_segment_map(level)
+	_apply_replay_ghost_markers(
+		level,
+		results_model.ghost_marker_ids(
+			profile,
+			meta.level_id
+		)
+	)
+	set_active_level_session(
+		session,
+		meta,
+		segment_map
+	)
+
+
+func _refresh_active_level_tuning() -> void:
+	if (
+		active_level_session == null
+		or not is_instance_valid(active_level_session)
+		or not active_level_session is LevelSession
+	):
+		return
+	var level := active_level_session
+	var catalog := tuning_service.catalog
+	var router := level.get_node_or_null("Input/InputRouter")
+	var gamepad := level.get_node_or_null("Input/GamepadInput")
+	var touch := level.get_node_or_null("UI/TouchControls")
+	var player := (
+		level.get_node_or_null("Player") as CharacterBody3D
+	)
+	var camera_rig := level.get_node_or_null("CameraRig")
+	if router != null:
+		router.call("configure", catalog.input)
+	if gamepad != null and router != null:
+		gamepad.call("configure", router, catalog.input)
+	if touch != null and router != null:
+		touch.call("configure", router, catalog.input)
+	if player != null and router != null:
+		player.call(
+			"configure",
+			catalog.move,
+			catalog.input,
+			catalog.depth,
+			catalog.wall_run,
+			catalog.grind,
+			catalog.swing,
+			router.get("buffer"),
+			catalog.economy
+		)
+		_refresh_level_traversal(level, catalog)
+		player.get_node("BlobShadow").call(
+			"configure",
+			player,
+			catalog.depth
+		)
+		player.get_node("LandingRing").call(
+			"configure",
+			player,
+			catalog.move,
+			catalog.depth,
+			catalog.grind,
+			_level_traversal_rails(level)
+		)
+	if camera_rig != null:
+		camera_rig.call("refresh_tuning", catalog.camera)
+	active_level_session.call(
+		"refresh_tuning",
+		catalog.economy,
+		catalog.move,
+		catalog.input
+	)
+	_refresh_ghost_materials(level)
+
+
+func _refresh_level_traversal(
+	level: Node,
+	catalog: GameplayTuning
+) -> void:
+	for candidate: Node in get_tree().get_nodes_in_group(
+		&"traversal_rail"
+	):
+		if level.is_ancestor_of(candidate):
+			candidate.call(
+				"refresh_tuning",
+				catalog.camera
+			)
+	for candidate: Node in get_tree().get_nodes_in_group(
+		&"swing_anchor"
+	):
+		if level.is_ancestor_of(candidate):
+			candidate.call(
+				"refresh_tuning",
+				catalog.swing
+			)
+
+
+func _level_traversal_rails(level: Node) -> Array:
+	var result: Array = []
+	for candidate: Node in get_tree().get_nodes_in_group(
+		&"traversal_rail"
+	):
+		if (
+			level.is_ancestor_of(candidate)
+			and candidate.has_method("samples")
+		):
+			result.append(candidate)
+	return result
+
+
+func _level_camera_regions(level: Node) -> Array:
+	var result: Array = []
+	for candidate: Node in level.find_children(
+		"*",
+		"Area3D",
+		true,
+		false
+	):
+		if candidate is CameraRegion:
+			result.append(candidate)
+	return result
+
+
+func _crate_segment_map(level: Node) -> Dictionary:
+	var result: Dictionary = {}
+	for candidate: Node in level.find_children(
+		"*",
+		"StaticBody3D",
+		true,
+		false
+	):
+		if not candidate.has_method("apply_verb"):
+			continue
+		var crate_type := StringName(
+			candidate.get("crate_type")
+		)
+		if crate_type in [&"iron", &"time"]:
+			continue
+		result[int(candidate.get("crate_id"))] = (
+			StringName(candidate.get("segment_group"))
+		)
+	return result
+
+
+func _apply_replay_ghost_markers(
+	level: Node,
+	missed_crate_ids: Array[int]
+) -> void:
+	if missed_crate_ids.is_empty():
+		return
+	var material := ShaderMaterial.new()
+	material.shader = PHASE_GHOST_SHADER
+	material.set_shader_parameter(
+		&"ghost_opacity",
+		tuning_service.catalog.phase.ghost_opacity
+	)
+	material.set_shader_parameter(
+		&"ghost_outline_width_m",
+		tuning_service.catalog.phase.ghost_outline_width_m
+	)
+	for candidate: Node in level.find_children(
+		"*",
+		"StaticBody3D",
+		true,
+		false
+	):
+		if (
+			not candidate.has_method("apply_verb")
+			or int(candidate.get("crate_id"))
+			not in missed_crate_ids
+		):
+			continue
+		var source := (
+			candidate.get_node_or_null("Mesh")
+			as MeshInstance3D
+		)
+		if source == null:
+			continue
+		var ghost := MeshInstance3D.new()
+		ghost.name = &"GhostMarker"
+		ghost.transform = source.transform
+		ghost.mesh = source.mesh
+		ghost.material_override = material
+		ghost.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
+		candidate.add_child(ghost)
+		candidate.connect(
+			&"broken",
+			_on_ghost_crate_broken.bind(ghost)
+		)
+
+
+func _on_ghost_crate_broken(
+	_crate_id: int,
+	_wumpa: int,
+	ghost: MeshInstance3D
+) -> void:
+	if is_instance_valid(ghost):
+		ghost.visible = false
+
+
+func _refresh_ghost_materials(level: Node) -> void:
+	for candidate: Node in level.find_children(
+		"GhostMarker",
+		"MeshInstance3D",
+		true,
+		false
+	):
+		var ghost := candidate as MeshInstance3D
+		var material := ghost.material_override as ShaderMaterial
+		if material == null:
+			continue
+		material.set_shader_parameter(
+			&"ghost_opacity",
+			tuning_service.catalog.phase.ghost_opacity
+		)
+		material.set_shader_parameter(
+			&"ghost_outline_width_m",
+			tuning_service.catalog.phase.ghost_outline_width_m
+		)
+
+
+func _level_touch_exclusions() -> Array:
+	var controls: Array = [
+		_results_screen,
+		_pause_overlay,
+		_level_list_overlay,
+	]
+	if _tuning_debug.visible:
+		controls.append(_tuning_debug.get_node("HUD"))
+		controls.append(_tuning_debug.get_node("Drawer"))
+	return controls
 
 
 func _sync_ui_visibility() -> void:

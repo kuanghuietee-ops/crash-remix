@@ -1,0 +1,145 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
+[ext_resource type="Resource" path="res://data/tuning/levels/n_sanity_beach.tres" id="2_meta"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3_player"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="4_camera"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="5_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_landing.tscn" id="8_landing"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_first_crates.tscn" id="9_crates"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_jungle_corridor.tscn" id="10_jungle"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_crate_cadence.tscn" id="11_cadence"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_tnt_introduction.tscn" id="12_tnt"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_plant_gauntlet.tscn" id="13_plants"]
+[ext_resource type="PackedScene" path="res://scenes/segments/beach_crescendo.tscn" id="14_crescendo"]
+
+[sub_resource type="Environment" id="Environment_beach"]
+background_mode = 1
+background_color = Color(0.12, 0.38, 0.58, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.72, 0.82, 0.92, 1)
+ambient_light_energy = 0.82
+tonemap_mode = 2
+
+[sub_resource type="BoxShape3D" id="Shape_finish"]
+size = Vector3(12, 3, 5)
+
+[sub_resource type="StandardMaterial3D" id="Material_finish"]
+shading_mode = 0
+albedo_color = Color(0.2, 1, 0.55, 0.75)
+
+[sub_resource type="BoxMesh" id="Mesh_finish"]
+material = SubResource("Material_finish")
+size = Vector3(12, 3, 0.15)
+
+[node name="NSanityBeach" type="Node3D"]
+script = ExtResource("1_session")
+metadata/level_meta = ExtResource("2_meta")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_beach")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -28, 0)
+light_color = Color(1, 0.9, 0.72, 1)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="Segments" type="Node3D" parent="."]
+
+[node name="BeachLanding" parent="Segments" instance=ExtResource("8_landing")]
+
+[node name="FirstCrates" parent="Segments" instance=ExtResource("9_crates")]
+position = Vector3(0, 0, -96)
+
+[node name="JungleCorridor" parent="Segments" instance=ExtResource("10_jungle")]
+position = Vector3(0, 0, -192)
+
+[node name="CrateCadence" parent="Segments" instance=ExtResource("11_cadence")]
+position = Vector3(0, 0, -288)
+
+[node name="TNTIntroduction" parent="Segments" instance=ExtResource("12_tnt")]
+position = Vector3(0, 0, -384)
+
+[node name="PlantGauntlet" parent="Segments" instance=ExtResource("13_plants")]
+position = Vector3(0, 0, -480)
+
+[node name="Crescendo" parent="Segments" instance=ExtResource("14_crescendo")]
+position = Vector3(0, 0, -576)
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+position = Vector3(0, 0.05, 6)
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="BeachEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -96)
+
+[node name="CratesEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -192)
+
+[node name="JungleEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -288)
+
+[node name="CadenceEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -384)
+
+[node name="TNTEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -480)
+
+[node name="PlantsEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -576)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -672)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
+current = true
+fov = 58.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("5_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("6_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_touch")
+
+[node name="Finish" type="Area3D" parent="."]
+position = Vector3(0, 1.5, -666)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Finish"]
+shape = SubResource("Shape_finish")
+
+[node name="Marker" type="MeshInstance3D" parent="Finish"]
+cast_shadow = 0
+mesh = SubResource("Mesh_finish")
+
+[node name="Label" type="Label3D" parent="Finish"]
+position = Vector3(0, 2.2, 0)
+text = "LEVEL EXIT"
+font_size = 58
+outline_size = 12

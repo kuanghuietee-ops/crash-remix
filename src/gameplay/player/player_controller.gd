@@ -287,6 +287,20 @@ func current_state() -> StringName:
 	return _state_machine.state
 
 
+func bounce_jump_press_offset_s(now_s: float) -> float:
+	if (
+		_intents == null
+		or not _intents.is_action_pressed(
+			InputIntent.ACTION_JUMP
+		)
+	):
+		return INF
+	return _intents.pressed_duration(
+		InputIntent.ACTION_JUMP,
+		now_s
+	)
+
+
 func traversal_camera_context() -> Dictionary:
 	var context_position := (
 		global_position

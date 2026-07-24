@@ -247,7 +247,7 @@ func test_skip_offer_repeats_and_acceptance_moves_to_next_checkpoint() -> void:
 	assert_true(run_state.get("relic_void"))
 	assert_eq(
 		player.global_transform,
-		second_checkpoint.global_transform
+		second_checkpoint.get_node("Spawn").global_transform
 	)
 
 

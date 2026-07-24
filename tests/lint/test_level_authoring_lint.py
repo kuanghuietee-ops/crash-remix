@@ -56,6 +56,21 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 [],
             )
 
+    def test_real_n_sanity_beach_level_passes_the_authoring_lint(
+        self,
+    ) -> None:
+        level_path = (
+            REPO_ROOT
+            / "scenes"
+            / "levels"
+            / "wr1_n_sanity_beach.tscn"
+        )
+        self.assertTrue(level_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(level_path),
+            [],
+        )
+
     def _rules(self, fixture_name: str) -> list[str]:
         findings = find_authoring_violations(
             FIXTURE_ROOT / fixture_name

@@ -4,10 +4,10 @@
 
 [resource]
 script = ExtResource("1_meta")
-level_id = &"wr1_n_sanity_beach"
-display_name = "N. Sanity Beach"
-crate_count = 40
-wumpa_total = 61
+level_id = &"fixture_zero_crates"
+display_name = "Zero-crate lint fixture"
+crate_count = 0
+wumpa_total = 0
 design_pace_mps = 4.5
 relic_sapphire_s = 0.0
 relic_gold_s = 0.0

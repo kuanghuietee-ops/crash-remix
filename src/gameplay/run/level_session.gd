@@ -4,6 +4,12 @@ extends Node
 const MonotonicClockType := preload(
 	"res://src/core/monotonic_clock.gd"
 )
+const CrateLogicType := preload(
+	"res://src/gameplay/crates/crate_logic.gd"
+)
+const PlayerStateMachineType := preload(
+	"res://src/gameplay/player/player_state_machine.gd"
+)
 
 signal respawn_requested(outcome: Dictionary)
 signal run_completed(results: Dictionary)
@@ -19,11 +25,14 @@ signal skip_offered(next_checkpoint_id: int)
 var run_state := LevelRunState.new()
 
 var _economy: EconomyTuning
+var _move: MoveTuning
+var _input: InputTuning
 var _player: Node
 var _crates_by_id: Dictionary = {}
 var _checkpoint_transforms: Dictionary = {}
 var _start_transform := Transform3D.IDENTITY
 var _death_recorded_pending_respawn: bool = false
+var _active_top_contact_ids: Array[int] = []
 var _offered_skip_checkpoint_id: int = (
 	LevelRunState.START_CHECKPOINT
 )
@@ -38,10 +47,13 @@ func configure(
 	input: InputTuning = null
 ) -> void:
 	_economy = economy
+	_move = move
+	_input = input
 	_player = player
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
 	_checkpoint_transforms.clear()
+	_active_top_contact_ids.clear()
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	var authored_ids: Array[int] = []
 
@@ -54,8 +66,13 @@ func configure(
 		if not candidate.has_signal(&"broken"):
 			continue
 		var crate_id := int(candidate.get("crate_id"))
+		var crate_type := StringName(candidate.get("crate_type"))
 		_crates_by_id[crate_id] = candidate
-		authored_ids.append(crate_id)
+		if crate_type not in [
+			CrateLogicType.TYPE_IRON,
+			CrateLogicType.TYPE_TIME,
+		]:
+			authored_ids.append(crate_id)
 		candidate.call(
 			"configure",
 			economy,
@@ -64,7 +81,7 @@ func configure(
 			mode == LevelRunState.MODE_RELIC
 		)
 		_connect_crate(candidate)
-		if candidate.get("crate_type") == &"checkpoint":
+		if crate_type == CrateLogicType.TYPE_CHECKPOINT:
 			_checkpoint_transforms[crate_id] = (
 				_checkpoint_spawn_transform(candidate)
 			)
@@ -104,6 +121,45 @@ func configure(
 		)
 	if _player != null and _player.has_method("clear_masks"):
 		_player.call("clear_masks")
+	_connect_player_attacks()
+	var finish := find_child("Finish", true, false) as Area3D
+	if finish != null:
+		_connect_once(
+			finish,
+			&"body_entered",
+			_on_finish_body_entered
+		)
+
+
+func refresh_tuning(
+	economy: EconomyTuning,
+	move: MoveTuning,
+	input: InputTuning
+) -> void:
+	_economy = economy
+	_move = move
+	_input = input
+	for crate_value: Variant in _crates_by_id.values():
+		var crate := crate_value as Node
+		if crate != null:
+			crate.call(
+				"configure",
+				economy,
+				move,
+				input,
+				run_state.mode == LevelRunState.MODE_RELIC
+			)
+
+
+func _physics_process(_delta_s: float) -> void:
+	if not run_state.run_active or _economy == null:
+		return
+	var now_s := MonotonicClockType.now_s()
+	for crate_value: Variant in _crates_by_id.values():
+		var crate := crate_value as Node
+		if crate != null and crate.has_method("advance_fuse"):
+			crate.call("advance_fuse", now_s)
+	_process_player_crate_collisions(now_s)
 
 
 func record_player_death() -> Dictionary:
@@ -198,12 +254,16 @@ func _on_crate_broken(crate_id: int, wumpa: int) -> void:
 func _on_crate_bounced(
 	_crate_id: int,
 	wumpa: int,
-	_launch_speed_mps: float
+	launch_speed_mps: float
 ) -> void:
 	collect_wumpa(
 		wumpa,
 		MonotonicClockType.now_s()
 	)
+	if _player is CharacterBody3D:
+		(_player as CharacterBody3D).velocity.y = (
+			launch_speed_mps
+		)
 
 
 func _on_checkpoint_reached(crate_id: int) -> void:
@@ -304,6 +364,155 @@ func _connect_crate(crate: Node) -> void:
 		_on_checkpoint_reached
 	)
 	_connect_once(crate, &"mask_granted", _on_mask_granted)
+	_connect_once(crate, &"detonated", _on_crate_detonated)
+
+
+func _connect_player_attacks() -> void:
+	if _player == null:
+		return
+	var spin_area := _player.get_node_or_null("SpinArea") as Area3D
+	var slam_area := _player.get_node_or_null("SlamArea") as Area3D
+	if spin_area != null:
+		_connect_once(
+			spin_area,
+			&"body_entered",
+			_on_spin_body_entered
+		)
+	if slam_area != null:
+		_connect_once(
+			slam_area,
+			&"body_entered",
+			_on_slam_body_entered
+		)
+
+
+func _on_spin_body_entered(body: Node) -> void:
+	_apply_crate_verb(body, CrateLogicType.VERB_SPIN)
+
+
+func _on_slam_body_entered(body: Node) -> void:
+	_apply_crate_verb(body, CrateLogicType.VERB_SLAM)
+
+
+func _apply_crate_verb(
+	candidate: Node,
+	verb: StringName
+) -> void:
+	if not _is_authored_crate(candidate):
+		return
+	candidate.call(
+		"apply_verb",
+		verb,
+		MonotonicClockType.now_s()
+	)
+
+
+func _process_player_crate_collisions(now_s: float) -> void:
+	if not _player is CharacterBody3D:
+		_active_top_contact_ids.clear()
+		return
+	var player_body := _player as CharacterBody3D
+	var top_contacts: Array[int] = []
+	for collision_index: int in range(
+		player_body.get_slide_collision_count()
+	):
+		var collision := player_body.get_slide_collision(
+			collision_index
+		)
+		var crate := collision.get_collider() as Node
+		if not _is_authored_crate(crate):
+			continue
+		crate.call(
+			"apply_verb",
+			CrateLogicType.VERB_TOUCH,
+			now_s
+		)
+		var normal := collision.get_normal()
+		var state := (
+			StringName(player_body.call("current_state"))
+			if player_body.has_method("current_state")
+			else &""
+		)
+		if state == PlayerStateMachineType.STATE_SLIDING:
+			crate.call(
+				"apply_verb",
+				CrateLogicType.VERB_SLIDE,
+				now_s
+			)
+		elif state in [
+			PlayerStateMachineType.STATE_BODY_SLAM,
+			PlayerStateMachineType.STATE_SLAM_RECOVERY,
+		]:
+			crate.call(
+				"apply_verb",
+				CrateLogicType.VERB_SLAM,
+				now_s
+			)
+		elif normal.y < 0.0:
+			crate.call(
+				"apply_verb",
+				CrateLogicType.VERB_JUMP_UNDER,
+				now_s
+			)
+		elif normal.y > 0.0:
+			var crate_id := int(crate.get("crate_id"))
+			top_contacts.append(crate_id)
+			if crate_id not in _active_top_contact_ids:
+				crate.call(
+					"apply_bounce",
+					_bounce_press_offset_s(now_s),
+					now_s
+				)
+	_active_top_contact_ids = top_contacts
+
+
+func _bounce_press_offset_s(now_s: float) -> float:
+	if (
+		_player != null
+		and _player.has_method("bounce_jump_press_offset_s")
+	):
+		return float(_player.call(
+			"bounce_jump_press_offset_s",
+			now_s
+		))
+	return INF
+
+
+func _on_crate_detonated(
+	source_crate_id: int,
+	origin: Vector3
+) -> void:
+	var positions: Dictionary = {}
+	for crate_id_value: Variant in _crates_by_id:
+		var crate_id := int(crate_id_value)
+		var crate := _crates_by_id[crate_id] as Node3D
+		if crate != null:
+			positions[crate_id] = crate.global_position
+	var affected := CrateLogicType.blast_crate_ids(
+		origin,
+		positions,
+		_economy
+	)
+	var now_s := MonotonicClockType.now_s()
+	for crate_id: int in affected:
+		if crate_id == source_crate_id:
+			continue
+		var crate := _crates_by_id.get(crate_id) as Node
+		if crate != null:
+			crate.call("apply_blast", now_s)
+
+
+func _on_finish_body_entered(body: Node) -> void:
+	if body == _player:
+		complete_level()
+
+
+func _is_authored_crate(candidate: Node) -> bool:
+	if candidate == null or not candidate.has_method("apply_verb"):
+		return false
+	return _crates_by_id.get(
+		int(candidate.get("crate_id"))
+	) == candidate
 
 
 func _connect_once(

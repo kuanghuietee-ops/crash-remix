@@ -1,0 +1,104 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="4_bounce"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_aku.tscn" id="5_aku"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(18, 12, 100)
+
+[sub_resource type="StandardMaterial3D" id="Material_marker"]
+shading_mode = 0
+albedo_color = Color(0.98, 0.5, 0.16, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_marker"]
+material = SubResource("Material_marker")
+size = Vector3(4, 0.08, 0.25)
+
+[node name="FirstCrates" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 2.5, -4)
+text = "FIRST CRATES"
+font_size = 48
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="SpinLesson" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -32)
+
+[node name="BounceLesson" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -64)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -96)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(12, 1, 12)
+color = Color(0.43, 0.58, 0.3, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -48)
+size = Vector3(12, 1, 84)
+color = Color(0.31, 0.5, 0.25, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -92)
+size = Vector3(12, 1, 12)
+color = Color(0.24, 0.43, 0.22, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -48)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="BounceStackMarker" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.06, -32)
+cast_shadow = 0
+mesh = SubResource("Mesh_marker")
+
+[node name="Crate5" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-1.5, 0.5, -14)
+crate_id = 5
+segment_group = &"First Crates"
+
+[node name="Crate6" parent="." instance=ExtResource("3_standard")]
+position = Vector3(1.5, 0.5, -22)
+crate_id = 6
+segment_group = &"First Crates"
+
+[node name="Crate7" parent="." instance=ExtResource("3_standard")]
+position = Vector3(0, 2, -32)
+crate_id = 7
+segment_group = &"First Crates"
+
+[node name="Crate8" parent="." instance=ExtResource("4_bounce")]
+position = Vector3(0, 0.5, -32)
+crate_id = 8
+segment_group = &"First Crates"
+
+[node name="Crate9" parent="." instance=ExtResource("4_bounce")]
+position = Vector3(2.5, 0.5, -48)
+crate_id = 9
+segment_group = &"First Crates"
+
+[node name="Crate10" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-1.5, 0.5, -66)
+crate_id = 10
+segment_group = &"First Crates"
+
+[node name="Crate11" parent="." instance=ExtResource("5_aku")]
+position = Vector3(0, 0.5, -82)
+crate_id = 11
+segment_group = &"First Crates"

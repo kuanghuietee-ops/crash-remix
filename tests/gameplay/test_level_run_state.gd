@@ -391,7 +391,10 @@ func test_level_session_wires_crate_checkpoint_and_single_death_record() -> void
 	assert_eq(run_state.get("broken_crate_ids"), [1, 2])
 	assert_eq(run_state.get("deaths_at_checkpoint"), 1)
 	assert_eq(outcome["respawn_checkpoint"], 2)
-	assert_eq(player.spawn_transform, checkpoint.global_transform)
+	assert_eq(
+		player.spawn_transform,
+		checkpoint.get_node("Spawn").global_transform
+	)
 	assert_false(standard.get_node("Mesh").visible)
 
 
