@@ -626,6 +626,56 @@ func test_old_economy_override_backfills_placed_wumpa_payout() -> void:
 	)
 
 
+func test_old_economy_override_backfills_mercy_banner_duration() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var default_duration: Variant = EconomyTuning.new().get(
+		&"mercy_banner_duration_s"
+	)
+	assert_eq(
+		typeof(default_duration),
+		TYPE_FLOAT,
+		"the mercy notice lifetime must be an exported tuning field"
+	)
+	if typeof(default_duration) != TYPE_FLOAT:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.economy.set(
+		&"mercy_banner_duration_s",
+		default_duration
+	)
+	stale.economy.mercy_mask_death_threshold += 1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	assert_eq(
+		migrated.economy.get(&"mercy_banner_duration_s"),
+		authored.economy.get(&"mercy_banner_duration_s")
+	)
+	assert_eq(
+		migrated.economy.mercy_mask_death_threshold,
+		stale.economy.mercy_mask_death_threshold,
+		"migration must preserve existing mercy edits"
+	)
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script
@@ -824,6 +874,7 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		[&"checkpoint_spacing_limit_s", 0.0],
 		[&"mercy_mask_death_threshold", 0],
 		[&"mercy_skip_death_threshold", 0],
+		[&"mercy_banner_duration_s", 0.0],
 		[&"time_crate_small_s", 0.0],
 		[&"time_crate_medium_s", 0.0],
 		[&"time_crate_large_s", 0.0],

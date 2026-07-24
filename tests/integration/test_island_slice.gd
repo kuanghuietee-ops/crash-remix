@@ -592,6 +592,120 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	)
 
 
+func test_new_real_run_clears_previous_mercy_banner() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var economy := (
+		root.get("tuning_service").get("catalog").get("economy")
+		as EconomyTuning
+	)
+	assert_not_null(economy)
+	if economy == null:
+		return
+	economy.mercy_mask_death_threshold = (
+		economy.wumpa_per_standard_crate
+	)
+	await _fall_real_player_from_entry(level, player, 1)
+	var mercy_panel := root.get_node(
+		"UI/HUD/SafeArea/MercyPanel"
+	) as PanelContainer
+	var skip_button := mercy_panel.get_node(
+		"Margin/Rows/Skip"
+	) as Button
+	assert_true(mercy_panel.visible)
+	assert_false(skip_button.visible)
+
+	root.get_node(
+		"UI/HUD/SafeArea/Pause"
+	).emit_signal(&"pressed")
+	assert_eq(root.call("state_name"), &"paused")
+	root.get_node(
+		"UI/PauseOverlay/SafeArea/Center/Panel/Margin/Rows/Quit"
+	).emit_signal(&"pressed")
+	assert_eq(root.call("state_name"), &"warp_room")
+	var next_level := await _enter_authored_level(root)
+	if next_level == null:
+		return
+
+	assert_false(
+		mercy_panel.visible,
+		"a new real run must not inherit the previous run's notice"
+	)
+
+
+func test_real_mercy_banner_expires_after_tuned_active_play_time() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	catalog.economy.mercy_mask_death_threshold = (
+		catalog.economy.wumpa_per_standard_crate
+	)
+	catalog.economy.mercy_skip_death_threshold = (
+		catalog.economy.mercy_mask_death_threshold
+		+ catalog.economy.wumpa_per_standard_crate
+	)
+	catalog.economy.mercy_banner_duration_s = (
+		catalog.input.bounce_timing_s
+	)
+	await _fall_real_player_from_entry(level, player, 1)
+	var mercy_panel := root.get_node(
+		"UI/HUD/SafeArea/MercyPanel"
+	) as PanelContainer
+	var skip_button := mercy_panel.get_node(
+		"Margin/Rows/Skip"
+	) as Button
+	assert_true(mercy_panel.visible)
+	assert_false(skip_button.visible)
+
+	var frame_limit := (
+		ceili(
+			catalog.economy.mercy_banner_duration_s
+			* Engine.physics_ticks_per_second
+		)
+		+ Engine.physics_ticks_per_second
+	)
+	for _physics_index: int in range(frame_limit):
+		if not mercy_panel.visible:
+			break
+		await wait_physics_frames(1)
+
+	assert_false(
+		mercy_panel.visible,
+		"the informational mercy notice must expire while play continues"
+	)
+
+	await _fall_real_player_from_entry(level, player, 2)
+	assert_true(mercy_panel.visible)
+	assert_true(
+		skip_button.visible,
+		"the real skip offer must remain an actionable modal"
+	)
+	for _physics_index: int in range(frame_limit):
+		await wait_physics_frames(1)
+	assert_true(
+		mercy_panel.visible and skip_button.visible,
+		"the tuned info timeout must not dismiss the skip offer"
+	)
+
+
 func test_final_checkpoint_mercy_skip_completes_a_voided_run() -> void:
 	var root := _instantiate_main()
 	if root == null:

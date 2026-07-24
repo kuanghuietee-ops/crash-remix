@@ -38,6 +38,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"wumpa_per_pickup",
 		],
+		[
+			&"mercy_banner_duration_s",
+		],
 	],
 }
 
@@ -274,6 +277,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or economy.mercy_mask_death_threshold <= 0
 		or economy.mercy_skip_death_threshold
 		<= economy.mercy_mask_death_threshold
+		or economy.mercy_banner_duration_s <= 0.0
 		or economy.time_crate_small_s <= 0.0
 		or economy.time_crate_medium_s
 		<= economy.time_crate_small_s

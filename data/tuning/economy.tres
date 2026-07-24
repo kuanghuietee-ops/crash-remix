@@ -19,6 +19,7 @@ bounce_launch_height_m = 2.6
 checkpoint_spacing_limit_s = 60.0
 mercy_mask_death_threshold = 3
 mercy_skip_death_threshold = 6
+mercy_banner_duration_s = 3.0
 time_crate_small_s = 1.0
 time_crate_medium_s = 2.0
 time_crate_large_s = 3.0

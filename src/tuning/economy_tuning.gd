@@ -25,6 +25,7 @@ extends Resource
 @export_category("Mercy")
 @export var mercy_mask_death_threshold: int
 @export var mercy_skip_death_threshold: int
+@export var mercy_banner_duration_s: float = -1.0
 
 @export_category("Relic Time Crates")
 @export var time_crate_small_s: float

@@ -10,7 +10,9 @@ signal pause_requested
 var _session: Node
 var _meta: LevelMeta
 var _player: Node
+var _economy: EconomyTuning
 var _relic_elapsed_s: float
+var _mercy_banner_remaining_s := -1.0
 var _pause_touch_index: int = -1
 
 @onready var _wumpa_label: Label = (
@@ -67,10 +69,16 @@ func _input(event: InputEvent) -> void:
 		_on_pause_pressed()
 
 
-func configure(session: Node, meta: LevelMeta) -> void:
+func configure(
+	session: Node,
+	meta: LevelMeta,
+	economy: EconomyTuning
+) -> void:
 	_disconnect_session()
+	_clear_mercy_panel()
 	_session = session
 	_meta = meta
+	_economy = economy
 	_player = (
 		_session.get("_player")
 		if _session != null
@@ -90,12 +98,16 @@ func configure(session: Node, meta: LevelMeta) -> void:
 	_refresh()
 
 
+func refresh_tuning(economy: EconomyTuning) -> void:
+	_economy = economy
+
+
 func set_run_display_visible(run_display_visible: bool) -> void:
 	$SafeArea/Stats.visible = run_display_visible
 	if run_display_visible:
 		return
 	_relic_label.visible = false
-	_mercy_panel.visible = false
+	_clear_mercy_panel()
 
 
 func set_relic_time(elapsed_s: float, active: bool) -> void:
@@ -104,8 +116,10 @@ func set_relic_time(elapsed_s: float, active: bool) -> void:
 	_relic_label.text = "RELIC  %.2f" % _relic_elapsed_s
 
 
-func _process(_delta_s: float) -> void:
+func _process(delta_s: float) -> void:
 	if visible:
+		if get_tree() != null and not get_tree().paused:
+			_advance_mercy_banner(delta_s)
 		_refresh()
 
 
@@ -170,8 +184,14 @@ func _refresh_invincibility() -> void:
 
 
 func _on_mercy_granted(_mask_count: int) -> void:
+	if _economy == null:
+		_clear_mercy_panel()
+		return
 	_mercy_panel.visible = true
 	_skip_button.visible = false
+	_mercy_banner_remaining_s = (
+		_economy.mercy_banner_duration_s
+	)
 	_mercy_label.text = (
 		"Mercy: Aku Aku granted for this retry."
 	)
@@ -180,6 +200,7 @@ func _on_mercy_granted(_mask_count: int) -> void:
 func _on_skip_offered(_checkpoint_id: int) -> void:
 	_mercy_panel.visible = true
 	_skip_button.visible = true
+	_mercy_banner_remaining_s = -1.0
 	var completes_level := (
 		_session != null
 		and is_instance_valid(_session)
@@ -209,7 +230,27 @@ func _on_skip_pressed() -> void:
 		and _session.has_method("accept_mercy_skip")
 		and bool(_session.call("accept_mercy_skip"))
 	):
-		_mercy_panel.visible = false
+		_clear_mercy_panel()
+
+
+func _advance_mercy_banner(delta_s: float) -> void:
+	if (
+		_mercy_banner_remaining_s < 0.0
+		or delta_s <= 0.0
+	):
+		return
+	_mercy_banner_remaining_s = maxf(
+		_mercy_banner_remaining_s - delta_s,
+		0.0
+	)
+	if _mercy_banner_remaining_s <= 0.0:
+		_clear_mercy_panel()
+
+
+func _clear_mercy_panel() -> void:
+	_mercy_banner_remaining_s = -1.0
+	_mercy_panel.visible = false
+	_skip_button.visible = false
 
 
 func _on_pause_pressed() -> void:

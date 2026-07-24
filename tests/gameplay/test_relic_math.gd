@@ -604,7 +604,7 @@ func test_stopwatch_scene_and_session_wire_timer_time_crate_and_hud() -> void:
 		load(HUD_SCENE) as PackedScene
 	).instantiate() as Control
 	add_child_autofree(hud)
-	hud.configure(session, session_meta)
+	hud.configure(session, session_meta, _economy)
 	hud.call("_refresh")
 	assert_false(hud.get_node("SafeArea/RelicTimer").visible)
 

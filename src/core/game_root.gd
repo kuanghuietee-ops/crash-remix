@@ -278,7 +278,8 @@ func set_active_level_session(
 		_hud.call(
 			"configure",
 			active_level_session,
-			_active_level_meta
+			_active_level_meta,
+			tuning_service.catalog.economy
 		)
 	if _active_level_meta != null:
 		_tuning_debug.report_level_meta(_active_level_meta)
@@ -872,6 +873,8 @@ func _refresh_active_level_tuning() -> void:
 		catalog.move,
 		catalog.input
 	)
+	if _hud != null:
+		_hud.call("refresh_tuning", catalog.economy)
 	_refresh_ghost_materials(level)
 
 
