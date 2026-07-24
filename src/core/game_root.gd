@@ -23,6 +23,9 @@ const PAUSE_OVERLAY_SCENE := preload(
 const LEVEL_LIST_OVERLAY_SCENE := preload(
 	"res://scenes/ui/level_list_overlay.tscn"
 )
+const BOOT_ERROR_OVERLAY_SCENE := preload(
+	"res://scenes/ui/boot_error_overlay.tscn"
+)
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
@@ -75,6 +78,7 @@ var _hud: Control
 var _results_screen: Control
 var _pause_overlay: Control
 var _level_list_overlay: Control
+var _boot_error_overlay: Control
 var _level_list_open: bool = false
 var _owns_tree_pause: bool = false
 var _threaded_level_path: String = ""
@@ -108,6 +112,14 @@ func _ready() -> void:
 	profile = save_service.load_profile(save_dir)
 	if save_service.refused_future_version:
 		boot_error = ERR_UNAVAILABLE
+		_boot_error_overlay.call(
+			"present",
+			(
+				"This save was written by a newer version of "
+				+ "Crash Remix.\nYour save was not changed. "
+				+ "Install the newer version to continue."
+			)
+		)
 		push_error("Save data was written by a newer version of Crash Remix.")
 		return
 	if not SaveModel.validate(profile):
@@ -379,11 +391,15 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	_level_list_overlay = (
 		LEVEL_LIST_OVERLAY_SCENE.instantiate() as Control
 	)
+	_boot_error_overlay = (
+		BOOT_ERROR_OVERLAY_SCENE.instantiate() as Control
+	)
 	for screen: Control in [
 		_hud,
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
+		_boot_error_overlay,
 	]:
 		_ui.add_child(screen)
 

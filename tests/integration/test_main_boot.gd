@@ -92,6 +92,20 @@ func test_future_profile_refuses_real_boot_without_overwrite() -> void:
 	assert_eq(root.get("boot_error"), ERR_UNAVAILABLE)
 	assert_eq(root.call("state_name"), &"boot")
 	assert_false(root.has_node("Content/WarpRoom1"))
+	var boot_error_overlay := root.get_node_or_null(
+		"UI/BootError"
+	) as Control
+	assert_not_null(
+		boot_error_overlay,
+		"Q9 must show a player-visible boot error"
+	)
+	if boot_error_overlay != null:
+		assert_true(boot_error_overlay.visible)
+		var message := boot_error_overlay.call(
+			"message_text"
+		) as String
+		assert_string_contains(message.to_lower(), "newer version")
+		assert_string_contains(message.to_lower(), "not changed")
 	assert_eq(
 		FileAccess.get_file_as_bytes(primary_path),
 		before,
