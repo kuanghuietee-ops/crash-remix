@@ -1,7 +1,6 @@
 extends GutTest
 
 const SERVICE_SCRIPT_PATH := "res://src/tuning/tuning_service.gd"
-const TUNING_DEBUG_UI_SCRIPT_PATH := "res://src/debug/tuning_debug_ui.gd"
 const DEBUG_SCENE_PATH := "res://scenes/debug/tuning_debug_ui.tscn"
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const LEVEL_META_PATH := "res://data/tuning/levels/n_sanity_beach.tres"
@@ -31,15 +30,58 @@ func test_hud_dumps_full_fingerprint_and_every_authored_path() -> void:
 	assert_gt(ui.call("drawer_property_count"), 20)
 
 
-func test_debug_drawer_lists_traversal_sections() -> void:
-	var debug_script: Script = load(TUNING_DEBUG_UI_SCRIPT_PATH)
-	var sections: Array = debug_script.get("SECTION_NAMES")
+func test_debug_drawer_renders_traversal_sections_and_every_economy_field() -> void:
+	var setup := _new_ui()
+	if setup.is_empty():
+		return
+	var service: RefCounted = setup["service"]
+	var ui: Control = setup["ui"]
+	var rows := ui.get_node(
+		"Drawer/Margin/VBox/Scroll/Rows"
+	) as VBoxContainer
+	var rendered_sections: Array[String] = []
+	var rendered_economy_fields: Array[StringName] = []
+	var inside_economy := false
+	for child: Control in rows.get_children():
+		if child is Label:
+			var section_title := (child as Label).text
+			rendered_sections.append(section_title)
+			inside_economy = section_title == "ECONOMY"
+		elif inside_economy and child is HBoxContainer:
+			var field_label := child.get_child(0) as Label
+			assert_not_null(field_label)
+			assert_true(child.get_child(1) is HSlider)
+			assert_true(child.get_child(2) is SpinBox)
+			if field_label != null:
+				rendered_economy_fields.append(
+					StringName(field_label.text)
+				)
 
-	assert_true(sections.has(&"economy"), "operator cannot tune Phase 1 economy")
-	assert_true(sections.has(&"wall_run"), "operator cannot tune wall-run at Gate F2")
-	assert_true(sections.has(&"grind"))
-	assert_true(sections.has(&"swing"))
-	assert_true(sections.has(&"phase"))
+	for section_title: String in [
+		"WALL_RUN",
+		"GRIND",
+		"SWING",
+		"PHASE",
+		"ECONOMY",
+	]:
+		assert_has(rendered_sections, section_title)
+
+	var expected_economy_fields: Array[StringName] = []
+	var economy := service.get("catalog").get("economy") as Resource
+	assert_not_null(economy)
+	if economy == null:
+		return
+	for property_info: Dictionary in economy.get_property_list():
+		if int(property_info["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			expected_economy_fields.append(property_info["name"])
+	expected_economy_fields.sort()
+	rendered_economy_fields.sort()
+	assert_gt(expected_economy_fields.size(), 0)
+	assert_eq(
+		rendered_economy_fields,
+		expected_economy_fields,
+		"every exported economy field must have a real slider row"
+	)
 
 
 func test_hud_reports_loaded_level_meta() -> void:
