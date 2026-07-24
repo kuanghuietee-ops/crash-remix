@@ -12,6 +12,9 @@ func before_each() -> void:
 
 func after_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
+	var phase_state := get_node_or_null("/root/PhaseState")
+	if phase_state != null:
+		phase_state.call("reset_to_authored_set")
 
 
 func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
@@ -110,6 +113,65 @@ func test_fresh_profile_keeps_phase_locked_in_authored_level() -> void:
 		(touch.call("current_layout") as Dictionary).has(
 			"phase_center"
 		)
+	)
+
+
+func test_wr4_unlock_reaches_real_level_portal_player_and_touch() -> void:
+	var profile := SaveModel.fresh()
+	var future_level_id := &"wr4_future_fixture"
+	var record := SaveModel.level_record(profile, future_level_id)
+	record["completed"] = true
+	var levels: Dictionary = profile["levels"]
+	levels[String(future_level_id)] = record
+	assert_eq(
+		SaveService.new().store_profile(TEST_SAVE_DIR, profile),
+		OK
+	)
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var portal := _portal_for_level(
+		room,
+		&"wr1_n_sanity_beach"
+	)
+	assert_not_null(portal)
+	if portal == null:
+		return
+
+	portal.emit_signal(&"body_entered", room.get_node("Player"))
+	var level := await _wait_for_authored_level(root)
+	assert_not_null(level, "the real hub portal must load the authored scene")
+	if level == null:
+		return
+	var touch := level.get_node("UI/TouchControls")
+	var layout := touch.call("current_layout") as Dictionary
+	assert_true(
+		layout.has("phase_center"),
+		"the unlocked level must render a real PHASE touch target"
+	)
+	if not layout.has("phase_center"):
+		return
+	var phase_state := get_node("/root/PhaseState")
+	var before: StringName = phase_state.call("active_set")
+	var press := InputEventScreenTouch.new()
+	press.index = 29
+	press.position = layout["phase_center"]
+	press.pressed = true
+	touch.call("handle_touch_event", press)
+
+	await wait_physics_frames(1)
+
+	var release := InputEventScreenTouch.new()
+	release.index = press.index
+	release.position = press.position
+	release.pressed = false
+	touch.call("handle_touch_event", release)
+	assert_ne(
+		phase_state.call("active_set"),
+		before,
+		"the real level player must consume the routed PHASE intent"
 	)
 
 
@@ -581,6 +643,26 @@ func _enter_authored_level(root: Node) -> LevelSession:
 		OK
 	)
 	return await _wait_for_authored_level(root)
+
+
+func _portal_for_level(
+	room: Node,
+	level_id: StringName
+) -> Area3D:
+	for candidate: Node in room.find_children(
+		"*",
+		"Area3D",
+		true,
+		false
+	):
+		if (
+			candidate.is_in_group(&"warp_portal")
+			and StringName(
+				candidate.get_meta("level_id", &"")
+			) == level_id
+		):
+			return candidate as Area3D
+	return null
 
 
 func _wait_for_authored_level(root: Node) -> LevelSession:
