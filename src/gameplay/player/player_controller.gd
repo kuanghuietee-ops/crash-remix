@@ -34,6 +34,8 @@ const SwingAnchorType := preload(
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
+const DAMAGE_SOURCE_GROUP := &"player_damage_source"
+
 var _move_tuning: MoveTuning
 var _input_tuning: InputTuning
 var _depth_tuning: DepthTuning
@@ -81,6 +83,13 @@ func _ready() -> void:
 	_spin_visual_pivot = get_node_or_null("Visual/SpinPivot") as Node3D
 	_spin_area = get_node_or_null("SpinArea") as Area3D
 	_slam_area = get_node_or_null("SlamArea") as Area3D
+	if _hurtbox_area != null:
+		_hurtbox_area.area_entered.connect(
+			_on_hurtbox_area_entered
+		)
+		_hurtbox_area.body_entered.connect(
+			_on_hurtbox_body_entered
+		)
 	_spawn_transform = global_transform
 	_fall_apex_y = global_position.y
 	_apply_character_dimensions(_state_machine.state)
@@ -178,6 +187,20 @@ func receive_hit(now_s: float) -> bool:
 		return false
 	request_respawn(now_s)
 	return true
+
+
+func _on_hurtbox_area_entered(area: Area3D) -> void:
+	_receive_contact_hit(area)
+
+
+func _on_hurtbox_body_entered(body: Node3D) -> void:
+	_receive_contact_hit(body)
+
+
+func _receive_contact_hit(source: Node) -> void:
+	if not source.is_in_group(DAMAGE_SOURCE_GROUP):
+		return
+	receive_hit(MonotonicClockType.now_s())
 
 
 func clear_masks() -> void:

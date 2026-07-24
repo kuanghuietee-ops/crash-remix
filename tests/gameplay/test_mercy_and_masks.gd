@@ -247,6 +247,51 @@ func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
 	)
 
 
+func test_real_hurtbox_routes_tagged_damage_contact_into_mask_absorb() -> void:
+	var setup := _new_session()
+	if setup.is_empty():
+		return
+	var session: Node = setup["session"]
+	var player: CharacterBody3D = setup["player"]
+	var hurtbox := player.get_node("Hurtbox") as Area3D
+	assert_not_null(hurtbox)
+	if hurtbox == null:
+		return
+	player.call("grant_mask", 0.0)
+	assert_eq(player.call("mask_count"), 1)
+
+	var damage_source := Area3D.new()
+	damage_source.name = "TaggedDamageSource"
+	damage_source.add_to_group(&"player_damage_source")
+	damage_source.collision_layer = hurtbox.collision_layer
+	damage_source.collision_mask = 0
+	var source_shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = _catalog.move.collision_radius_m
+	source_shape.shape = sphere
+	damage_source.add_child(source_shape)
+	session.add_child(damage_source)
+	damage_source.global_position = hurtbox.global_position
+
+	await wait_physics_frames(3)
+
+	assert_true(
+		hurtbox.monitoring,
+		"the authored Hurtbox must actively monitor damage sources"
+	)
+	assert_ne(
+		hurtbox.collision_mask & damage_source.collision_layer,
+		0,
+		"the authored collision layers must permit the contact"
+	)
+	assert_eq(
+		player.call("mask_count"),
+		0,
+		"real Area3D contact must reach PlayerController.receive_hit"
+	)
+	assert_false(player.call("is_respawning"))
+
+
 func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void:
 	var setup := _new_session()
 	if setup.is_empty():
