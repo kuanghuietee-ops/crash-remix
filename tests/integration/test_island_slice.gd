@@ -959,6 +959,87 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	)
 
 
+func test_real_app_pause_freezes_invincibility_and_tnt_fuse() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var tnt := _crate(level, 27)
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	assert_not_null(tnt)
+	assert_not_null(catalog)
+	if tnt == null or catalog == null:
+		return
+	var timer_duration_s := catalog.input.bounce_timing_s
+	assert_gt(timer_duration_s, 0.0)
+	if timer_duration_s <= 0.0:
+		return
+	catalog.economy.invincibility_duration_s = timer_duration_s
+	catalog.economy.tnt_fuse_s = timer_duration_s
+	var started_at_s := MonotonicClock.now_s()
+	for _mask_index: int in range(
+		catalog.economy.mask_stack_maximum + 1
+	):
+		player.call("grant_mask", started_at_s)
+	tnt.call("apply_verb", &"touch", started_at_s)
+	assert_true(player.call("is_invincible", started_at_s))
+	assert_true(tnt.call("tnt_fuse_active"))
+
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(root.call("state_name"), &"paused")
+	await get_tree().create_timer(
+		timer_duration_s + timer_duration_s,
+		true,
+		false,
+		true
+	).timeout
+	root.get_node(
+		"UI/PauseOverlay/SafeArea/Center/Panel/Margin/Rows/Resume"
+	).emit_signal(&"pressed")
+	assert_eq(root.call("state_name"), &"level")
+	await wait_physics_frames(1)
+
+	assert_true(
+		player.call("is_invincible", MonotonicClock.now_s()),
+		"background time must not consume player invincibility"
+	)
+	assert_false(
+		tnt.call("is_broken"),
+		"background time must not consume the authored TNT fuse"
+	)
+	assert_true(tnt.call("tnt_fuse_active"))
+
+	var active_frame_limit := (
+		ceili(timer_duration_s * Engine.physics_ticks_per_second)
+		+ Engine.physics_ticks_per_second
+	)
+	for _physics_index: int in range(active_frame_limit):
+		if (
+			not player.call(
+				"is_invincible",
+				MonotonicClock.now_s()
+			)
+			and tnt.call("is_broken")
+		):
+			break
+		await wait_physics_frames(1)
+	assert_false(
+		player.call("is_invincible", MonotonicClock.now_s()),
+		"invincibility must still expire during active gameplay"
+	)
+	assert_true(
+		tnt.call("is_broken"),
+		"the TNT fuse must still detonate during active gameplay"
+	)
+
+
 func test_replay_marks_only_the_previous_runs_missed_crates() -> void:
 	var seeded_profile := SaveModel.fresh()
 	var record := SaveModel.level_record(

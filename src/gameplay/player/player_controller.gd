@@ -172,6 +172,13 @@ func invincibility_remaining_s(now_s: float) -> float:
 	return _invincible_until_s - now_s
 
 
+func delay_invincibility(duration_s: float) -> void:
+	if duration_s <= 0.0 or _invincible_until_s < 0.0:
+		return
+	_invincible_until_s += duration_s
+	_emit_mask_state()
+
+
 func receive_hit(now_s: float) -> bool:
 	if is_invincible(now_s):
 		return false

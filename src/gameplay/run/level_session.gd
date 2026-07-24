@@ -40,6 +40,17 @@ var _offered_skip_checkpoint_id: int = (
 	LevelRunState.START_CHECKPOINT
 )
 var _offered_skip_completes_level: bool = false
+var _timers_paused_at_s := -1.0
+
+
+func set_gameplay_timers_paused(
+	paused: bool,
+	now_s: float
+) -> void:
+	if paused:
+		_pause_gameplay_timers(now_s)
+	else:
+		_resume_gameplay_timers(now_s)
 
 
 func configure(
@@ -50,6 +61,7 @@ func configure(
 	move: MoveTuning = null,
 	input: InputTuning = null
 ) -> bool:
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_economy = economy
 	_move = move
 	_input = input
@@ -62,6 +74,7 @@ func configure(
 	_relic_stopwatch = null
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_offered_skip_completes_level = false
+	_timers_paused_at_s = -1.0
 	var authored_ids: Array[int] = []
 
 	for candidate: Node in find_children(
@@ -147,6 +160,37 @@ func configure(
 		_on_finish_body_entered
 	)
 	return run_state.run_active
+
+
+func _pause_gameplay_timers(now_s: float) -> void:
+	if _timers_paused_at_s >= 0.0:
+		return
+	_timers_paused_at_s = now_s
+
+
+func _resume_gameplay_timers(now_s: float) -> void:
+	if _timers_paused_at_s < 0.0:
+		return
+	var paused_duration_s := maxf(
+		now_s - _timers_paused_at_s,
+		0.0
+	)
+	_timers_paused_at_s = -1.0
+	if (
+		_player != null
+		and _player.has_method("delay_invincibility")
+	):
+		_player.call(
+			"delay_invincibility",
+			paused_duration_s
+		)
+	for crate_value: Variant in _crates_by_id.values():
+		var crate := crate_value as Node
+		if (
+			crate != null
+			and crate.has_method("delay_fuse")
+		):
+			crate.call("delay_fuse", paused_duration_s)
 
 
 func refresh_tuning(

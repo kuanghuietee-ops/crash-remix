@@ -13,6 +13,9 @@ const SessionSnapshotType := preload(
 const ResultsModelType := preload(
 	"res://src/gameplay/run/results_model.gd"
 )
+const MonotonicClockType := preload(
+	"res://src/core/monotonic_clock.gd"
+)
 const HUD_SCENE := preload("res://scenes/ui/hud.tscn")
 const RESULTS_SCREEN_SCENE := preload(
 	"res://scenes/ui/results_screen.tscn"
@@ -197,6 +200,7 @@ func dispatch(event: Dictionary) -> Error:
 	if transition_error != OK:
 		return transition_error
 	if flow.state != previous_state:
+		_sync_active_level_timer_pause(previous_state)
 		_sync_tree_pause()
 		_render_state(previous_state)
 	var event_type := StringName(event.get("type", &""))
@@ -207,6 +211,35 @@ func dispatch(event: Dictionary) -> Error:
 	]:
 		_clear_session_snapshot()
 	return OK
+
+
+func _sync_active_level_timer_pause(previous_state: int) -> void:
+	if (
+		active_level_session == null
+		or not is_instance_valid(active_level_session)
+		or not active_level_session.has_method(
+			"set_gameplay_timers_paused"
+		)
+	):
+		return
+	var timers_paused: Variant = null
+	if (
+		previous_state == GameFlow.State.LEVEL
+		and flow.state == GameFlow.State.PAUSED
+	):
+		timers_paused = true
+	elif (
+		previous_state == GameFlow.State.PAUSED
+		and flow.state == GameFlow.State.LEVEL
+	):
+		timers_paused = false
+	if timers_paused == null:
+		return
+	active_level_session.call(
+		"set_gameplay_timers_paused",
+		bool(timers_paused),
+		MonotonicClockType.now_s()
+	)
 
 
 func state_name() -> StringName:

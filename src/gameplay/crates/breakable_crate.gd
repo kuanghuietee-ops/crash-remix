@@ -165,6 +165,12 @@ func advance_fuse(now_s: float) -> bool:
 	return true
 
 
+func delay_fuse(duration_s: float) -> void:
+	if duration_s <= 0.0 or not _fuse_active:
+		return
+	_fuse_started_at_s += duration_s
+
+
 func tnt_fuse_active() -> bool:
 	return _fuse_active
 
