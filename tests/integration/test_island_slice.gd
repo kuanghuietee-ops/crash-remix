@@ -180,10 +180,88 @@ func test_island_slice_full_loop() -> void:
 		[1, 14, 15, 16]
 	)
 
-	level.record_player_death()
-	player.respawn()
+	player.global_position = Vector3(
+		4.5,
+		0.05,
+		0.0
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if player.is_on_floor():
+			break
+		await wait_physics_frames(1)
 	assert_true(
-		player.global_transform.is_equal_approx(checkpoint_spawn)
+		player.is_on_floor(),
+		"the death proof must begin on the real entry floor"
+	)
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	var fall_start_x := player.global_position.x
+	var farthest_x := fall_start_x
+	router.push_intent(
+		InputIntent.move(
+			Vector2.RIGHT,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var fell_below_route := false
+	var entered_respawn_delay := false
+	for _physics_index: int in range(300):
+		farthest_x = maxf(farthest_x, player.global_position.x)
+		fell_below_route = (
+			fell_below_route
+			or player.global_position.y < 0.0
+		)
+		if player.call("is_respawning"):
+			entered_respawn_delay = true
+			router.push_intent(
+				InputIntent.move(
+					Vector2.ZERO,
+					0.0,
+					InputIntent.SOURCE_KEYBOARD
+				)
+			)
+		if level.run_state.deaths_at_checkpoint == 1:
+			break
+		await wait_physics_frames(1)
+	assert_gt(
+		farthest_x,
+		fall_start_x,
+		"the real controller must move the player off the floor"
+	)
+	assert_true(
+		fell_below_route,
+		"the player body must physically fall below the route"
+	)
+	assert_true(
+		entered_respawn_delay,
+		"the real controller must enter its tuned respawn delay"
+	)
+	assert_eq(
+		level.run_state.deaths_at_checkpoint,
+		1,
+		"the respawned signal must record exactly one real death"
+	)
+	for _physics_index: int in range(30):
+		if player.is_on_floor():
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		player.is_on_floor(),
+		"the real respawn must settle on checkpoint floor"
+	)
+	assert_true(
+		Vector2(
+			player.global_position.x,
+			player.global_position.z
+		).is_equal_approx(
+			Vector2(
+				checkpoint_spawn.origin.x,
+				checkpoint_spawn.origin.z
+			)
+		),
+		"the real respawn must return to the checkpoint position"
 	)
 	for crate_id: int in [1, 14, 15, 16]:
 		var broken_crate := _crate(level, crate_id)
@@ -201,8 +279,48 @@ func test_island_slice_full_loop() -> void:
 		root.call("dispatch", {"type": &"resume"}),
 		OK
 	)
-	level.complete_level()
-	await wait_process_frames(1)
+	var finish := level.get_node("Finish") as Area3D
+	var finish_shape := (
+		finish.get_node("CollisionShape3D").shape as BoxShape3D
+	)
+	player.global_position = Vector3(
+		finish.global_position.x,
+		player.global_position.y,
+		(
+			finish.global_position.z
+			+ finish_shape.size.z * 0.5
+			+ 1.0
+		)
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(1)
+	assert_false(
+		finish.overlaps_body(player),
+		"the completion proof must begin outside the real exit"
+	)
+	var finish_start_z := player.global_position.z
+	router.push_intent(
+		InputIntent.move(
+			Vector2(0.0, -1.0),
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var walked_into_finish := false
+	for _physics_index: int in range(120):
+		if root.call("state_name") == &"results":
+			break
+		if is_instance_valid(player):
+			walked_into_finish = (
+				walked_into_finish
+				or player.global_position.z < finish_start_z
+			)
+		await wait_physics_frames(1)
+	assert_true(
+		walked_into_finish,
+		"the real controller must walk the player into the exit"
+	)
 
 	assert_eq(root.call("state_name"), &"results")
 	var payload: Dictionary = root.get("last_results_payload")
