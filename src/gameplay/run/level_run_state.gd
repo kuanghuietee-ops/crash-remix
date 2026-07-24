@@ -180,7 +180,8 @@ func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 		relic_void = true
 	var missing_ids := _missing_crate_ids()
 	var collected_all := (
-		broken_crate_ids.size() == meta.crate_count
+		not authored_crate_ids.is_empty()
+		and broken_crate_ids.size() == meta.crate_count
 		and missing_ids.is_empty()
 	)
 	var relic_time: Variant = null

@@ -275,6 +275,70 @@ func test_real_scene_completion_cannot_award_tier_with_unset_pars() -> void:
 	)
 
 
+func test_real_zero_crate_scene_completion_does_not_award_gem() -> void:
+	var packed := load(LEVEL_SCENE) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var level := packed.instantiate() as LevelSession
+	for candidate: Node in level.find_children(
+		"*",
+		"StaticBody3D",
+		true,
+		false
+	):
+		if not candidate.has_method("apply_verb"):
+			continue
+		candidate.get_parent().remove_child(candidate)
+		candidate.free()
+	add_child_autofree(level)
+	var player := level.get_node("Player") as CharacterBody3D
+	var empty_meta := _meta.duplicate(true) as LevelMeta
+	empty_meta.crate_count = 0
+	assert_true(level.configure(
+		empty_meta,
+		LevelRunState.MODE_NORMAL,
+		_economy,
+		player,
+		_catalog.move,
+		_catalog.input
+	))
+	var completed_results: Array[Dictionary] = []
+	level.run_completed.connect(
+		func(results: Dictionary) -> void:
+			completed_results.append(results)
+	)
+
+	var finish := level.get_node("Finish") as Area3D
+	var finish_shape := (
+		finish.get_node("CollisionShape3D").shape as BoxShape3D
+	)
+	player.global_position = (
+		finish.global_position
+		+ Vector3(0.0, 0.0, finish_shape.size.z)
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(1)
+	assert_false(finish.overlaps_body(player))
+	player.global_position = finish.global_position
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
+
+	assert_eq(
+		completed_results.size(),
+		1,
+		"the real player and Finish area must complete the empty scene"
+	)
+	if completed_results.size() != 1:
+		return
+	assert_false(
+		completed_results[0].get("gem", true),
+		"an empty level must not grant a free permanent crate gem"
+	)
+	assert_false(level.run_state.run_active)
+
+
 func test_first_normal_completion_offers_relic_when_pars_are_authored() -> void:
 	var normal := LevelRunState.new()
 	normal.start(_meta, LevelRunState.MODE_NORMAL)
