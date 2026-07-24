@@ -7,10 +7,25 @@ const SaveServiceType := preload("res://src/core/save_service.gd")
 const SessionSnapshotType := preload(
 	"res://src/core/session_snapshot.gd"
 )
+const ResultsModelType := preload(
+	"res://src/gameplay/run/results_model.gd"
+)
+const HUD_SCENE := preload("res://scenes/ui/hud.tscn")
+const RESULTS_SCREEN_SCENE := preload(
+	"res://scenes/ui/results_screen.tscn"
+)
+const PAUSE_OVERLAY_SCENE := preload(
+	"res://scenes/ui/pause_overlay.tscn"
+)
+const LEVEL_LIST_OVERLAY_SCENE := preload(
+	"res://scenes/ui/level_list_overlay.tscn"
+)
+const TOYBOX_SCENE := preload("res://scenes/game.tscn")
 
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 const DEFAULT_SAVE_DIR := "user://save"
+const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
 	GameFlow.State.LEVEL: &"LevelPlaceholder",
@@ -22,14 +37,27 @@ const _PLACEHOLDER_NAMES: Dictionary = {
 var tuning_service: TuningServiceType = TuningServiceType.new()
 var save_service: SaveServiceType = SaveServiceType.new()
 var session_snapshot: SessionSnapshotType = SessionSnapshotType.new()
+var results_model: ResultsModelType = ResultsModelType.new()
 var flow: GameFlowType = GameFlowType.new()
 var profile: Dictionary = {}
 var boot_error: Error = OK
 var last_snapshot_error: Error = OK
+var last_save_error: Error = OK
+var last_results_payload: Dictionary = {}
 var active_level_session: Node
 
 @onready var _content: Node = $Content
+@onready var _ui: CanvasLayer = $UI
 @onready var _tuning_debug: TuningDebugUI = $UI/TuningDebug
+
+var _active_level_meta: LevelMeta
+var _segment_by_crate_id: Dictionary = {}
+var _hud: Control
+var _results_screen: Control
+var _pause_overlay: Control
+var _level_list_overlay: Control
+var _level_list_open: bool = false
+var _owns_tree_pause: bool = false
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
@@ -37,6 +65,7 @@ static func should_enable_debug_tools(is_debug_build: bool) -> bool:
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	Input.set_use_accumulated_input(false)
 	boot_error = tuning_service.load_from_paths(
 		BASE_TUNING_PATH,
@@ -52,6 +81,7 @@ func _ready() -> void:
 	if debug_tools_enabled:
 		_tuning_debug.configure(tuning_service, OVERRIDE_TUNING_PATH)
 		_tuning_debug.tuning_changed.connect(_on_tuning_changed)
+	_install_task11_ui(debug_tools_enabled)
 
 	profile = save_service.load_profile(save_dir)
 	if save_service.refused_future_version:
@@ -74,6 +104,12 @@ func _ready() -> void:
 		})
 
 
+func _exit_tree() -> void:
+	if _owns_tree_pause and get_tree() != null:
+		get_tree().paused = false
+	_owns_tree_pause = false
+
+
 func _notification(what: int) -> void:
 	if not is_node_ready():
 		return
@@ -84,17 +120,34 @@ func _notification(what: int) -> void:
 		_pause_and_snapshot_active_run()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed(&"ui_cancel"):
+		return
+	if flow.state == GameFlow.State.LEVEL:
+		dispatch({"type": GameFlow.EVENT_PAUSE})
+	elif flow.state == GameFlow.State.PAUSED:
+		if _level_list_open:
+			_on_level_list_closed()
+		else:
+			dispatch({"type": GameFlow.EVENT_RESUME})
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
 func dispatch(event: Dictionary) -> Error:
 	var previous_state := flow.state
 	var transition_error := flow.dispatch(event)
 	if transition_error != OK:
 		return transition_error
 	if flow.state != previous_state:
-		_render_state()
+		_sync_tree_pause()
+		_render_state(previous_state)
 	var event_type := StringName(event.get("type", &""))
 	if event_type in [
 		GameFlow.EVENT_LEVEL_COMPLETE,
 		GameFlow.EVENT_QUIT_LEVEL,
+		GameFlow.EVENT_RESULTS_TO_HUB,
 	]:
 		_clear_session_snapshot()
 	return OK
@@ -104,11 +157,24 @@ func state_name() -> StringName:
 	return flow.state_name()
 
 
-func set_active_level_session(session: Node) -> void:
+func set_active_level_session(
+	session: Node,
+	meta: LevelMeta = null,
+	segment_by_crate_id: Dictionary = {}
+) -> void:
 	_disconnect_active_level_session()
 	active_level_session = session
+	_active_level_meta = meta
+	_segment_by_crate_id = segment_by_crate_id.duplicate(true)
 	if active_level_session == null:
 		return
+	if _active_level_meta == null:
+		var run_state := (
+			active_level_session.get("run_state")
+			as LevelRunState
+		)
+		if run_state != null:
+			_active_level_meta = run_state.meta
 	if active_level_session.has_signal(&"run_completed"):
 		active_level_session.connect(
 			&"run_completed",
@@ -119,6 +185,14 @@ func set_active_level_session(session: Node) -> void:
 			&"run_exited",
 			_on_level_session_exited
 		)
+	if _hud != null:
+		_hud.call(
+			"configure",
+			active_level_session,
+			_active_level_meta
+		)
+	if _active_level_meta != null:
+		_tuning_debug.report_level_meta(_active_level_meta)
 
 
 func _on_tuning_changed(_fingerprint: String) -> void:
@@ -152,12 +226,74 @@ func _clear_session_snapshot() -> void:
 	active_level_session = null
 
 
-func _on_level_session_completed(_results: Dictionary) -> void:
-	_clear_session_snapshot()
+func _on_level_session_completed(results: Dictionary) -> void:
+	var meta := _active_level_meta
+	if meta == null and active_level_session != null:
+		var run_state := (
+			active_level_session.get("run_state")
+			as LevelRunState
+		)
+		if run_state != null:
+			meta = run_state.meta
+	if meta == null:
+		last_save_error = ERR_INVALID_DATA
+		push_error("Cannot build results without LevelMeta.")
+		return
+
+	var previous_record := SaveModel.level_record(
+		profile,
+		meta.level_id
+	)
+	var payload := results_model.build(
+		results,
+		meta,
+		_segment_by_crate_id,
+		previous_record
+	)
+	if payload.is_empty():
+		last_save_error = ERR_INVALID_DATA
+		push_error("Level results payload failed validation.")
+		return
+	last_results_payload = payload.duplicate(true)
+	if _results_screen != null:
+		_results_screen.call("present", last_results_payload)
+
+	var updated_profile := results_model.persisted_profile(
+		profile,
+		last_results_payload
+	)
+	if updated_profile.is_empty():
+		last_save_error = ERR_INVALID_DATA
+	else:
+		last_save_error = save_service.store_profile(
+			save_dir,
+			updated_profile
+		)
+		if last_save_error == OK:
+			profile = updated_profile
+	if last_save_error != OK:
+		push_error(
+			"Level results were not saved: "
+			+ error_string(last_save_error)
+		)
+
+	var transition_error := dispatch({
+		"type": GameFlow.EVENT_LEVEL_COMPLETE,
+	})
+	if transition_error != OK:
+		push_error(
+			"Could not show level results: "
+			+ error_string(transition_error)
+		)
 
 
 func _on_level_session_exited() -> void:
-	_clear_session_snapshot()
+	if flow.state == GameFlow.State.PAUSED:
+		dispatch({"type": GameFlow.EVENT_RESUME})
+	if flow.state == GameFlow.State.LEVEL:
+		dispatch({"type": GameFlow.EVENT_QUIT_LEVEL})
+	else:
+		_clear_session_snapshot()
 
 
 func _disconnect_active_level_session() -> void:
@@ -195,16 +331,187 @@ func _disconnect_active_level_session() -> void:
 		)
 
 
-func _render_state() -> void:
+func _install_task11_ui(debug_tools_enabled: bool) -> void:
+	_hud = HUD_SCENE.instantiate() as Control
+	_results_screen = RESULTS_SCREEN_SCENE.instantiate() as Control
+	_pause_overlay = PAUSE_OVERLAY_SCENE.instantiate() as Control
+	_level_list_overlay = (
+		LEVEL_LIST_OVERLAY_SCENE.instantiate() as Control
+	)
+	for screen: Control in [
+		_hud,
+		_results_screen,
+		_pause_overlay,
+		_level_list_overlay,
+	]:
+		_ui.add_child(screen)
+
+	_results_screen.connect(
+		&"retry_requested",
+		_on_results_retry_requested
+	)
+	_results_screen.connect(
+		&"hub_requested",
+		_on_results_hub_requested
+	)
+	_pause_overlay.connect(
+		&"resume_requested",
+		_on_pause_resume_requested
+	)
+	_pause_overlay.connect(
+		&"retry_requested",
+		_on_pause_retry_requested
+	)
+	_pause_overlay.connect(
+		&"level_list_requested",
+		_on_pause_level_list_requested
+	)
+	_pause_overlay.connect(
+		&"quit_requested",
+		_on_pause_quit_requested
+	)
+	_level_list_overlay.connect(
+		&"level_requested",
+		_on_level_requested
+	)
+	_level_list_overlay.connect(
+		&"toybox_requested",
+		_on_toybox_requested
+	)
+	_level_list_overlay.connect(
+		&"closed",
+		_on_level_list_closed
+	)
+	_level_list_overlay.call(
+		"configure",
+		debug_tools_enabled
+	)
+	_sync_ui_visibility()
+	_tuning_debug.move_to_front()
+
+
+func _sync_tree_pause() -> void:
+	if get_tree() == null:
+		return
 	if flow.state == GameFlow.State.PAUSED:
+		get_tree().paused = true
+		_owns_tree_pause = true
+	elif _owns_tree_pause:
+		get_tree().paused = false
+		_owns_tree_pause = false
+
+
+func _render_state(previous_state: int = flow.state) -> void:
+	if flow.state == GameFlow.State.PAUSED:
+		_level_list_open = false
+		_sync_ui_visibility()
+		return
+	if previous_state == GameFlow.State.PAUSED:
+		_level_list_open = false
+		_sync_ui_visibility()
 		return
 
-	for child: Node in _content.get_children():
-		_content.remove_child(child)
-		child.free()
+	_level_list_open = false
+	_sync_ui_visibility()
+	_clear_content()
 
 	if not _PLACEHOLDER_NAMES.has(flow.state):
+		return
+	if (
+		flow.state == GameFlow.State.LEVEL
+		and flow.active_level_id == DEBUG_TOYBOX_LEVEL_ID
+	):
+		_content.add_child(TOYBOX_SCENE.instantiate())
 		return
 	var placeholder := Node3D.new()
 	placeholder.name = _PLACEHOLDER_NAMES[flow.state]
 	_content.add_child(placeholder)
+
+
+func _sync_ui_visibility() -> void:
+	if (
+		_hud == null
+		or _results_screen == null
+		or _pause_overlay == null
+		or _level_list_overlay == null
+	):
+		return
+	if flow.state != GameFlow.State.PAUSED:
+		_hud.visible = flow.state == GameFlow.State.LEVEL
+		_results_screen.visible = (
+			flow.state == GameFlow.State.RESULTS
+		)
+	_pause_overlay.visible = (
+		flow.state == GameFlow.State.PAUSED
+		and not _level_list_open
+	)
+	_level_list_overlay.visible = (
+		flow.state == GameFlow.State.PAUSED
+		and _level_list_open
+	)
+
+
+func _clear_content() -> void:
+	for child: Node in _content.get_children():
+		if child.is_queued_for_deletion():
+			continue
+		child.name = "_RetiredContent_%d" % child.get_instance_id()
+		child.process_mode = Node.PROCESS_MODE_DISABLED
+		child.queue_free()
+
+
+func _on_results_retry_requested() -> void:
+	dispatch({"type": GameFlow.EVENT_RETRY_LEVEL})
+
+
+func _on_results_hub_requested() -> void:
+	dispatch({"type": GameFlow.EVENT_RESULTS_TO_HUB})
+
+
+func _on_pause_resume_requested() -> void:
+	dispatch({"type": GameFlow.EVENT_RESUME})
+
+
+func _on_pause_retry_requested() -> void:
+	_select_level(flow.active_level_id)
+
+
+func _on_pause_level_list_requested() -> void:
+	_level_list_open = true
+	_sync_ui_visibility()
+
+
+func _on_pause_quit_requested() -> void:
+	if flow.state == GameFlow.State.PAUSED:
+		dispatch({"type": GameFlow.EVENT_RESUME})
+	if flow.state == GameFlow.State.LEVEL:
+		dispatch({"type": GameFlow.EVENT_QUIT_LEVEL})
+
+
+func _on_level_requested(level_id: StringName) -> void:
+	_select_level(level_id)
+
+
+func _on_toybox_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_TOYBOX_LEVEL_ID)
+
+
+func _on_level_list_closed() -> void:
+	_level_list_open = false
+	_sync_ui_visibility()
+
+
+func _select_level(level_id: StringName) -> void:
+	if level_id.is_empty():
+		return
+	if flow.state == GameFlow.State.PAUSED:
+		dispatch({"type": GameFlow.EVENT_RESUME})
+	if flow.state == GameFlow.State.LEVEL:
+		dispatch({"type": GameFlow.EVENT_QUIT_LEVEL})
+	if flow.state != GameFlow.State.WARP_ROOM:
+		return
+	dispatch({
+		"type": GameFlow.EVENT_PORTAL_ENTER,
+		"level_id": level_id,
+	})

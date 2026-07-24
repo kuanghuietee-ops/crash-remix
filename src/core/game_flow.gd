@@ -13,6 +13,8 @@ const EVENT_SAVE_LOADED := &"save_loaded"
 const EVENT_PORTAL_ENTER := &"portal_enter"
 const EVENT_LEVEL_COMPLETE := &"level_complete"
 const EVENT_QUIT_LEVEL := &"quit_level"
+const EVENT_RETRY_LEVEL := &"retry_level"
+const EVENT_RESULTS_TO_HUB := &"results_to_hub"
 const EVENT_PAUSE := &"pause"
 const EVENT_RESUME := &"resume"
 const EVENT_SESSION_RESUME_AVAILABLE := &"session_resume_available"
@@ -28,6 +30,10 @@ const TRANSITIONS: Dictionary = {
 	State.LEVEL: {
 		EVENT_LEVEL_COMPLETE: State.RESULTS,
 		EVENT_QUIT_LEVEL: State.WARP_ROOM,
+	},
+	State.RESULTS: {
+		EVENT_RETRY_LEVEL: State.LEVEL,
+		EVENT_RESULTS_TO_HUB: State.WARP_ROOM,
 	},
 }
 const STATE_NAMES: Dictionary = {
@@ -94,7 +100,10 @@ func dispatch(event: Dictionary) -> Error:
 		resume_snapshot.clear()
 
 	state = int(state_transitions[event_type])
-	if event_type == EVENT_QUIT_LEVEL:
+	if event_type in [
+		EVENT_QUIT_LEVEL,
+		EVENT_RESULTS_TO_HUB,
+	]:
 		active_level_id = &""
 	return OK
 

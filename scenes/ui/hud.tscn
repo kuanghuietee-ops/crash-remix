@@ -1,0 +1,122 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/ui/hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://src/ui/safe_area_control.gd" id="2_safe"]
+
+[sub_resource type="StyleBoxFlat" id="Panel_hud"]
+bg_color = Color(0.025, 0.035, 0.055, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.58, 0.08, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+
+[node name="SafeArea" type="Control" parent="."]
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("2_safe")
+
+[node name="Stats" type="PanelContainer" parent="SafeArea"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 390.0
+offset_bottom = 190.0
+theme_override_styles/panel = SubResource("Panel_hud")
+
+[node name="Margin" type="MarginContainer" parent="SafeArea/Stats"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="Rows" type="VBoxContainer" parent="SafeArea/Stats/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="Wumpa" type="Label" parent="SafeArea/Stats/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "WUMPA  0"
+
+[node name="Crates" type="Label" parent="SafeArea/Stats/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "CRATES  0 / 0"
+
+[node name="Masks" type="Label" parent="SafeArea/Stats/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "AKU AKU  0"
+
+[node name="Invincible" type="Label" parent="SafeArea/Stats/Margin/Rows"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.2, 1)
+theme_override_font_sizes/font_size = 23
+text = "INVINCIBLE"
+
+[node name="RelicTimer" type="Label" parent="SafeArea"]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -180.0
+offset_top = 24.0
+offset_right = 180.0
+offset_bottom = 78.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.3, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 32
+text = "RELIC  0.00"
+horizontal_alignment = 1
+
+[node name="MercyPanel" type="PanelContainer" parent="SafeArea"]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -390.0
+offset_top = 92.0
+offset_right = 390.0
+offset_bottom = 230.0
+grow_horizontal = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("Panel_hud")
+
+[node name="Margin" type="MarginContainer" parent="SafeArea/MercyPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="Rows" type="VBoxContainer" parent="SafeArea/MercyPanel/Margin"]
+layout_mode = 2
+
+[node name="Message" type="Label" parent="SafeArea/MercyPanel/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Mercy"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Skip" type="Button" parent="SafeArea/MercyPanel/Margin/Rows"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 54)
+text = "SKIP TO NEXT CHECKPOINT"

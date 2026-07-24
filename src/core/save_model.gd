@@ -79,7 +79,9 @@ static func level_record(data: Dictionary, level_id: StringName) -> Dictionary:
 	if existing_value == null:
 		existing_value = levels.get(level_id)
 	if existing_value is Dictionary:
-		var existing: Dictionary = existing_value
+		var existing: Dictionary = (
+			existing_value as Dictionary
+		).duplicate(true)
 		for key: Variant in existing:
 			record[key] = existing[key]
 	return record
@@ -92,6 +94,7 @@ static func _fresh_level_record() -> Dictionary:
 		"relic_tier": "none",
 		"best_relic_time_ms": 0,
 		"flawless": false,
+		"last_missed_crate_ids": [],
 	}
 
 
@@ -102,6 +105,14 @@ static func _normalize_known_integer_fields(data: Dictionary) -> void:
 	for level_id: Variant in levels:
 		var record: Dictionary = levels[level_id]
 		record["best_relic_time_ms"] = int(record["best_relic_time_ms"])
+		if record.has("last_missed_crate_ids"):
+			var normalized_ids: Array[int] = []
+			for crate_id: Variant in record["last_missed_crate_ids"]:
+				var normalized_id := int(crate_id)
+				if normalized_id not in normalized_ids:
+					normalized_ids.append(normalized_id)
+			normalized_ids.sort()
+			record["last_missed_crate_ids"] = normalized_ids
 
 
 static func _validate_level_record(record: Dictionary) -> bool:
@@ -123,6 +134,18 @@ static func _validate_level_record(record: Dictionary) -> bool:
 		return false
 	if typeof(record.get("flawless")) != TYPE_BOOL:
 		return false
+	if record.has("last_missed_crate_ids"):
+		var missed_value: Variant = record["last_missed_crate_ids"]
+		if not missed_value is Array:
+			return false
+		var seen_ids: Array[int] = []
+		for crate_id: Variant in missed_value:
+			if not _is_non_negative_integer(crate_id):
+				return false
+			var normalized_id := int(crate_id)
+			if normalized_id in seen_ids:
+				return false
+			seen_ids.append(normalized_id)
 	return true
 
 

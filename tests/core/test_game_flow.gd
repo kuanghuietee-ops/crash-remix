@@ -43,6 +43,29 @@ func test_level_completion_reaches_results() -> void:
 	assert_eq(flow.call("state_name"), &"results")
 
 
+func test_one_tap_results_retry_reenters_the_same_level() -> void:
+	var flow := _flow_in_state(&"results")
+	if flow == null:
+		return
+
+	assert_eq(flow.call("dispatch", {"type": &"retry_level"}), OK)
+	assert_eq(flow.call("state_name"), &"level")
+	assert_eq(flow.get("active_level_id"), &"wr1_n_sanity_beach")
+
+
+func test_results_continue_returns_to_hub_and_clears_level() -> void:
+	var flow := _flow_in_state(&"results")
+	if flow == null:
+		return
+
+	assert_eq(
+		flow.call("dispatch", {"type": &"results_to_hub"}),
+		OK
+	)
+	assert_eq(flow.call("state_name"), &"warp_room")
+	assert_eq(flow.get("active_level_id"), &"")
+
+
 func test_quitting_level_returns_to_warp_room() -> void:
 	var flow := _flow_in_level()
 	if flow == null:

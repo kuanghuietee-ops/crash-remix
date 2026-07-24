@@ -1,0 +1,106 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/ui/results_screen.gd" id="1_results"]
+[ext_resource type="Script" path="res://src/ui/safe_area_control.gd" id="2_safe"]
+
+[sub_resource type="StyleBoxFlat" id="Panel_results"]
+bg_color = Color(0.035, 0.05, 0.08, 0.97)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.58, 0.08, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[node name="ResultsScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_results")
+
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+mouse_filter = 2
+
+[node name="SafeArea" type="Control" parent="."]
+layout_mode = 0
+mouse_filter = 2
+script = ExtResource("2_safe")
+
+[node name="Center" type="CenterContainer" parent="SafeArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="SafeArea/Center"]
+custom_minimum_size = Vector2(760, 640)
+layout_mode = 2
+theme_override_styles/panel = SubResource("Panel_results")
+
+[node name="Margin" type="MarginContainer" parent="SafeArea/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 34
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 34
+theme_override_constants/margin_bottom = 28
+
+[node name="Rows" type="VBoxContainer" parent="SafeArea/Center/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="SafeArea/Center/Panel/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+text = "LEVEL COMPLETE"
+horizontal_alignment = 1
+
+[node name="Summary" type="Label" parent="SafeArea/Center/Panel/Margin/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "CRATES\nGEM\nFLAWLESS\nWUMPA"
+
+[node name="Misses" type="Label" parent="SafeArea/Center/Panel/Margin/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.8, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 21
+text = "MISSED CRATES"
+autowrap_mode = 2
+
+[node name="Relic" type="Label" parent="SafeArea/Center/Panel/Margin/Rows"]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "RELIC"
+
+[node name="Actions" type="HBoxContainer" parent="SafeArea/Center/Panel/Margin/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Retry" type="Button" parent="SafeArea/Center/Panel/Margin/Rows/Actions"]
+custom_minimum_size = Vector2(250, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "RETRY"
+
+[node name="Hub" type="Button" parent="SafeArea/Center/Panel/Margin/Rows/Actions"]
+custom_minimum_size = Vector2(250, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "WARP ROOM"

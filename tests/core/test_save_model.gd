@@ -43,6 +43,28 @@ func test_level_record_supplies_v1_defaults_without_mutating_profile() -> void:
 			"relic_tier": "none",
 			"best_relic_time_ms": 0,
 			"flawless": false,
+			"last_missed_crate_ids": [],
 		}
 	)
 	assert_eq(profile.get("levels"), {})
+
+
+func test_task4_v1_without_last_missed_crate_ids_defaults_to_empty() -> void:
+	var task4_profile := SaveModel.fresh()
+	var levels: Dictionary = task4_profile["levels"]
+	levels["wr1_n_sanity_beach"] = {
+		"completed": true,
+		"gem": false,
+		"relic_tier": "none",
+		"best_relic_time_ms": 0,
+		"flawless": true,
+	}
+
+	assert_true(SaveModel.validate(task4_profile))
+	assert_eq(
+		SaveModel.level_record(
+			task4_profile,
+			&"wr1_n_sanity_beach"
+		).get("last_missed_crate_ids"),
+		[]
+	)

@@ -232,6 +232,145 @@ func test_quit_to_hub_deletes_session_snapshot() -> void:
 	)
 
 
+func test_task11_ui_is_owned_by_main_and_starts_out_of_the_way() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	assert_true(root.has_node("UI/HUD"))
+	assert_true(root.has_node("UI/ResultsScreen"))
+	assert_true(root.has_node("UI/PauseOverlay"))
+	assert_true(root.has_node("UI/LevelListOverlay"))
+	if not root.has_node("UI/HUD"):
+		return
+	for screen_name: String in [
+		"HUD",
+		"ResultsScreen",
+		"PauseOverlay",
+		"LevelListOverlay",
+	]:
+		assert_true(
+			root.has_node("UI/%s/SafeArea" % screen_name),
+			"%s must map required UI into the device safe area"
+			% screen_name
+		)
+	assert_false(root.get_node("UI/HUD").visible)
+	assert_false(root.get_node("UI/ResultsScreen").visible)
+	assert_false(root.get_node("UI/PauseOverlay").visible)
+	assert_false(root.get_node("UI/LevelListOverlay").visible)
+
+
+func test_level_completion_builds_persists_and_presents_results() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	var session := LevelSession.new()
+	root.get_node("Content/LevelPlaceholder").add_child(session)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	meta.crate_count = 2
+	var catalog := load(
+		"res://data/tuning/gameplay.tres"
+	).duplicate(true) as GameplayTuning
+	session.configure(meta, &"normal", catalog.economy)
+	session.run_state.record_crate_broken(
+		1,
+		catalog.economy.wumpa_per_standard_crate
+	)
+	root.call(
+		"set_active_level_session",
+		session,
+		meta,
+		{
+			1: &"Beach Start",
+			2: &"Finish",
+		}
+	)
+
+	session.complete_level()
+
+	assert_eq(root.call("state_name"), &"results")
+	var payload: Dictionary = root.get("last_results_payload")
+	assert_eq(payload.get("box_count"), 1)
+	assert_eq(payload.get("crate_count"), 2)
+	assert_eq(payload.get("missed_crate_ids"), [2])
+	assert_eq(
+		payload.get("missed_crate_ids_by_segment"),
+		{"Finish": [2]}
+	)
+	assert_eq(root.get("last_save_error"), OK)
+	var saved_record := SaveModel.level_record(
+		root.get("profile"),
+		meta.level_id
+	)
+	assert_true(saved_record.get("completed"))
+	assert_eq(saved_record.get("last_missed_crate_ids"), [2])
+	assert_true(root.get_node("UI/ResultsScreen").visible)
+	assert_true(root.has_node("Content/ResultsPlaceholder"))
+
+
+func test_pause_overlay_preserves_level_content_and_retry_is_direct() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	var level_content := root.get_node("Content/LevelPlaceholder")
+
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	assert_same(
+		root.get_node("Content/LevelPlaceholder"),
+		level_content
+	)
+	assert_true(root.get_node("UI/PauseOverlay").visible)
+	assert_eq(
+		root.call("dispatch", {"type": &"resume"}),
+		OK
+	)
+	assert_same(
+		root.get_node("Content/LevelPlaceholder"),
+		level_content
+	)
+
+	assert_eq(
+		root.call("dispatch", {"type": &"level_complete"}),
+		OK
+	)
+	root.get_node("UI/ResultsScreen").emit_signal(
+		"retry_requested"
+	)
+	assert_eq(root.call("state_name"), &"level")
+	assert_eq(
+		root.get("flow").get("active_level_id"),
+		&"wr1_n_sanity_beach"
+	)
+
+
 func _instantiate_main() -> Node:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
