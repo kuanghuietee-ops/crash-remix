@@ -92,6 +92,40 @@ func test_future_profile_refuses_real_boot_without_overwrite() -> void:
 	)
 
 
+func test_future_backup_without_primary_is_preserved_and_does_not_brick_boot() -> void:
+	var backup_path := TEST_SAVE_DIR.path_join(
+		"profile.json.bak"
+	)
+	var preserved_path := TEST_SAVE_DIR.path_join(
+		"profile.json.bak.future"
+	)
+	_write_text(
+		backup_path,
+		FileAccess.get_file_as_string(FUTURE_SAVE_FIXTURE)
+	)
+	var before := FileAccess.get_file_as_bytes(backup_path)
+	var root := _instantiate_main()
+	if root == null:
+		return
+
+	await wait_process_frames(1)
+
+	assert_eq(root.get("boot_error"), OK)
+	assert_eq(root.call("state_name"), &"warp_room")
+	assert_true(root.has_node("Content/WarpRoom1"))
+	assert_true(SaveModel.validate(root.get("profile")))
+	assert_eq(
+		FileAccess.get_file_as_bytes(backup_path),
+		before,
+		"boot must not overwrite the newer backup"
+	)
+	assert_eq(
+		FileAccess.get_file_as_bytes(preserved_path),
+		before,
+		"the downgrade-safe copy must retain the newer bytes"
+	)
+
+
 func test_wr4_completion_routes_phase_unlock_to_hub_ui_and_player() -> void:
 	var profile := SaveModel.fresh()
 	var future_level_id := &"wr4_future_fixture"

@@ -5,6 +5,7 @@ const _PRIMARY_FILE := "profile.json"
 const _BACKUP_FILE := "profile.json.bak"
 const _TEMP_FILE := "profile.json.tmp"
 const _CORRUPT_FILE := "profile.json.corrupt"
+const _FUTURE_BACKUP_FILE := "profile.json.bak.future"
 
 const _MISSING := 0
 const _VALID := 1
@@ -36,13 +37,21 @@ func load_profile(save_dir: String) -> Dictionary:
 			recovered_from_backup = true
 			return backup["data"]
 		_FUTURE:
-			refused_future_version = true
-			return {}
+			_preserve_evidence(
+				backup_path,
+				_path(save_dir, _FUTURE_BACKUP_FILE)
+			)
+			if int(primary["status"]) == _INVALID:
+				_preserve_evidence(
+					primary_path,
+					_path(save_dir, _CORRUPT_FILE)
+				)
+			return SaveModel.fresh()
 
 	if int(primary["status"]) == _INVALID:
-		_preserve_corrupt(primary_path, _path(save_dir, _CORRUPT_FILE))
+		_preserve_evidence(primary_path, _path(save_dir, _CORRUPT_FILE))
 	elif int(backup["status"]) == _INVALID:
-		_preserve_corrupt(backup_path, _path(save_dir, _CORRUPT_FILE))
+		_preserve_evidence(backup_path, _path(save_dir, _CORRUPT_FILE))
 	return SaveModel.fresh()
 
 
@@ -86,7 +95,7 @@ func store_profile(save_dir: String, data: Dictionary) -> Error:
 			_remove_if_present(temp_path)
 			return backup_error
 	elif int(primary["status"]) == _INVALID:
-		_preserve_corrupt(
+		_preserve_evidence(
 			primary_path,
 			_path(save_dir, _CORRUPT_FILE)
 		)
@@ -139,12 +148,12 @@ func _read_candidate(path: String) -> Dictionary:
 	}
 
 
-func _preserve_corrupt(source_path: String, corrupt_path: String) -> void:
+func _preserve_evidence(source_path: String, evidence_base_path: String) -> void:
 	if not FileAccess.file_exists(source_path):
 		return
 	var evidence_path := _available_evidence_path(
 		source_path,
-		corrupt_path
+		evidence_base_path
 	)
 	if evidence_path.is_empty():
 		return
@@ -156,16 +165,16 @@ func _preserve_corrupt(source_path: String, corrupt_path: String) -> void:
 
 func _available_evidence_path(
 	source_path: String,
-	base_corrupt_path: String
+	base_evidence_path: String
 ) -> String:
 	var source_bytes := FileAccess.get_file_as_bytes(source_path)
-	var candidate := base_corrupt_path
+	var candidate := base_evidence_path
 	var suffix := 0
 	while FileAccess.file_exists(candidate):
 		if FileAccess.get_file_as_bytes(candidate) == source_bytes:
 			return ""
 		suffix += 1
-		candidate = "%s.%d" % [base_corrupt_path, suffix]
+		candidate = "%s.%d" % [base_evidence_path, suffix]
 	return candidate
 
 
