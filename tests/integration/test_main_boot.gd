@@ -99,24 +99,13 @@ func test_fresh_profile_keeps_phase_locked_in_authored_level() -> void:
 	if root == null:
 		return
 	await wait_process_frames(1)
-	assert_eq(
-		root.call(
-			"dispatch",
-			{
-				"type": &"portal_enter",
-				"level_id": &"wr1_n_sanity_beach",
-			}
-		),
-		OK
-	)
-	await wait_process_frames(2)
-	var player := root.get_node(
-		"Content/NSanityBeach/Player"
-	)
+	var level := await _enter_authored_level(root)
+	assert_not_null(level, "the known level id must load the authored scene")
+	if level == null:
+		return
+	var player := level.get_node("Player")
 	assert_false(player.get("_phase_enabled"))
-	var touch := root.get_node(
-		"Content/NSanityBeach/UI/TouchControls"
-	)
+	var touch := level.get_node("UI/TouchControls")
 	assert_false(
 		(touch.call("current_layout") as Dictionary).has(
 			"phase_center"
@@ -570,6 +559,28 @@ func _instantiate_main() -> Node:
 	root.set("save_dir", TEST_SAVE_DIR)
 	add_child_autofree(root)
 	return root
+
+
+func _enter_authored_level(root: Node) -> LevelSession:
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	for _poll_index: int in range(120):
+		var level := root.get_node_or_null(
+			"Content/NSanityBeach"
+		) as LevelSession
+		if level != null:
+			return level
+		await wait_process_frames(1)
+	assert_true(false, "the authored level must finish threaded loading")
+	return null
 
 
 func _normal_snapshot() -> Dictionary:

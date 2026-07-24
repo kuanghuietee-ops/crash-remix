@@ -108,24 +108,8 @@ func test_island_slice_full_loop() -> void:
 		return
 	await wait_process_frames(1)
 	assert_eq(root.call("state_name"), &"warp_room")
-	assert_eq(
-		root.call(
-			"dispatch",
-			{
-				"type": &"portal_enter",
-				"level_id": LEVEL_ID,
-			}
-		),
-		OK
-	)
-	await wait_process_frames(2)
-	var level := root.get_node_or_null(
-		"Content/NSanityBeach"
-	) as LevelSession
-	assert_not_null(
-		level,
-		"the known level id must load the authored scene"
-	)
+	var level := await _enter_authored_level(root)
+	assert_not_null(level, "the known level id must load the authored scene")
 	if level == null:
 		return
 	var player := level.get_node("Player") as CharacterBody3D
