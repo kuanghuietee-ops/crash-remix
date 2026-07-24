@@ -499,6 +499,9 @@ func _configure_wumpa_pickup(pickup: Area3D) -> void:
 	if pickup not in _wumpa_pickups:
 		_wumpa_pickups.append(pickup)
 	pickup.set_meta(&"phase1_collected", false)
+	pickup.visible = true
+	pickup.set_deferred(&"monitoring", true)
+	pickup.set_deferred(&"monitorable", true)
 	var collision := (
 		pickup.get_node_or_null("CollisionShape3D")
 		as CollisionShape3D

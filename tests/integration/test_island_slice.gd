@@ -163,6 +163,9 @@ func test_island_slice_full_loop() -> void:
 	var checkpoint := _crate(level, 14)
 	var second_crate := _crate(level, 15)
 	var third_crate := _crate(level, 16)
+	var first_pickup := level.get_node(
+		"Segments/BeachLanding/WumpaA"
+	) as Area3D
 	var catalog := (
 		root.get("tuning_service").get("catalog")
 		as GameplayTuning
@@ -171,17 +174,78 @@ func test_island_slice_full_loop() -> void:
 	assert_not_null(checkpoint)
 	assert_not_null(second_crate)
 	assert_not_null(third_crate)
+	assert_not_null(first_pickup)
 	assert_not_null(catalog)
 	if (
 		first_crate == null
 		or checkpoint == null
 		or second_crate == null
 		or third_crate == null
+		or first_pickup == null
 		or catalog == null
 	):
 		return
 
 	var fresh_meta := level.run_state.meta
+	player.global_position = Vector3(
+		first_pickup.global_position.x,
+		0.05,
+		first_pickup.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if bool(first_pickup.get_meta(&"phase1_collected", false)):
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		bool(first_pickup.get_meta(&"phase1_collected", false)),
+		"the real player must collect the authored Wumpa"
+	)
+	assert_false(first_pickup.visible)
+	assert_eq(
+		level.run_state.wumpa_run,
+		catalog.economy.wumpa_per_pickup
+	)
+	player.global_position = Vector3(0.0, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
+	assert_true(level.configure(
+		fresh_meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+	await wait_process_frames(1)
+	assert_false(
+		bool(first_pickup.get_meta(&"phase1_collected", false))
+	)
+	assert_true(
+		first_pickup.visible,
+		"configure re-entry must restore collected Wumpa visibility"
+	)
+	assert_true(first_pickup.monitoring)
+	assert_true(first_pickup.monitorable)
+	player.global_position = Vector3(
+		first_pickup.global_position.x,
+		0.05,
+		first_pickup.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if level.run_state.wumpa_run > 0:
+			break
+		await wait_physics_frames(1)
+	assert_eq(
+		level.run_state.wumpa_run,
+		catalog.economy.wumpa_per_pickup,
+		"the restored authored Wumpa must collect through its real Area3D"
+	)
+
 	level.record_player_death()
 	await wait_process_frames(1)
 	await _fall_real_player_from_entry(level, player, 2)
