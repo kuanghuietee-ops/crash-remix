@@ -390,15 +390,43 @@ func test_phase05_shaped_override_backfills_economy() -> void:
 
 func test_old_shape_override_is_migrated_not_rejected() -> void:
 	var service: RefCounted = _new_service()
-	var stale := load(BASE_CATALOG_PATH).duplicate_deep(
-		Resource.DEEP_DUPLICATE_ALL
-	) as GameplayTuning
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	var stale := GameplayTuning.new()
+	for section_name: StringName in [
+		&"move",
+		&"input",
+		&"camera",
+		&"depth",
+	]:
+		stale.set(
+			section_name,
+			_detached_resource_copy(
+				authored.get(section_name) as Resource
+			)
+		)
 	stale.move.gravity_mps2 = 31.0
-	stale.wall_run = null
-	stale.grind = null
-	stale.swing = null
-	stale.phase = null
-	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(
+			TEST_OVERRIDE_PATH.get_base_dir()
+		)
+	)
+	assert_true(
+		directory_error in [OK, ERR_ALREADY_EXISTS],
+		"the override fixture must create its own sandbox"
+	)
+	assert_eq(
+		ResourceSaver.save(
+			stale,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+	assert_true(
+		FileAccess.get_file_as_string(TEST_OVERRIDE_PATH).contains(
+			"gravity_mps2 = 31.0"
+		),
+		"the old-shape fixture must really persist the operator edit"
+	)
 
 	service.call("load_from_paths", BASE_CATALOG_PATH, TEST_OVERRIDE_PATH)
 
@@ -821,6 +849,14 @@ func _exported_property_names(resource: Resource) -> Array[StringName]:
 		if usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			names.append(StringName(property_info["name"]))
 	return names
+
+
+func _detached_resource_copy(source: Resource) -> Resource:
+	var script := source.get_script() as Script
+	var detached := script.new() as Resource
+	for property_name: StringName in _exported_property_names(source):
+		detached.set(property_name, source.get(property_name))
+	return detached
 
 
 func _remove_test_override() -> void:
