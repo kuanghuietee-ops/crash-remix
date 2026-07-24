@@ -35,6 +35,7 @@ var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
 var _relic_stopwatch: Area3D
 var _death_recorded_pending_respawn: bool = false
+var _death_recorded_pending_generation: int = 0
 var _active_top_contact_ids: Array[int] = []
 var _skip_player_crate_collisions_once: bool = false
 var _offered_skip_checkpoint_id: int = (
@@ -67,6 +68,7 @@ func configure(
 	_move = move
 	_input = input
 	_player = player
+	_clear_death_recorded_pending_respawn()
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
 	_checkpoint_transforms.clear()
@@ -260,7 +262,7 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	for _mask_index: int in range(restored_mask_count):
 		_grant_mask(MonotonicClockType.now_s())
 	if _player != null and _player.has_method("respawn"):
-		_death_recorded_pending_respawn = true
+		_arm_death_recorded_pending_respawn()
 		_player.call("respawn")
 	return true
 
@@ -282,7 +284,13 @@ func _physics_process(delta_s: float) -> void:
 
 func record_player_death() -> Dictionary:
 	var outcome := _record_death()
-	_death_recorded_pending_respawn = true
+	var pending_generation := (
+		_arm_death_recorded_pending_respawn()
+	)
+	call_deferred(
+		&"_expire_death_recorded_pending_respawn",
+		pending_generation
+	)
 	return outcome
 
 
@@ -321,7 +329,7 @@ func accept_mercy_skip() -> bool:
 		complete_level()
 		return true
 	if _player != null and _player.has_method("respawn"):
-		_death_recorded_pending_respawn = true
+		_arm_death_recorded_pending_respawn()
 		_player.call("respawn")
 	return true
 
@@ -379,7 +387,7 @@ func _record_death() -> Dictionary:
 
 func _on_player_respawned() -> void:
 	if _death_recorded_pending_respawn:
-		_death_recorded_pending_respawn = false
+		_clear_death_recorded_pending_respawn()
 		return
 	_record_death()
 
@@ -396,6 +404,28 @@ func _on_player_respawn_started() -> void:
 	):
 		respawn_checkpoint = LevelRunState.START_CHECKPOINT
 	_set_player_spawn(respawn_checkpoint)
+
+
+func _arm_death_recorded_pending_respawn() -> int:
+	_death_recorded_pending_generation += 1
+	_death_recorded_pending_respawn = true
+	return _death_recorded_pending_generation
+
+
+func _clear_death_recorded_pending_respawn() -> void:
+	_death_recorded_pending_generation += 1
+	_death_recorded_pending_respawn = false
+
+
+func _expire_death_recorded_pending_respawn(
+	pending_generation: int
+) -> void:
+	if (
+		_death_recorded_pending_respawn
+		and pending_generation
+		== _death_recorded_pending_generation
+	):
+		_clear_death_recorded_pending_respawn()
 
 
 func _on_crate_broken(crate_id: int, wumpa: int) -> void:

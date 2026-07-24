@@ -163,17 +163,41 @@ func test_island_slice_full_loop() -> void:
 	var checkpoint := _crate(level, 14)
 	var second_crate := _crate(level, 15)
 	var third_crate := _crate(level, 16)
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
 	assert_not_null(first_crate)
 	assert_not_null(checkpoint)
 	assert_not_null(second_crate)
 	assert_not_null(third_crate)
+	assert_not_null(catalog)
 	if (
 		first_crate == null
 		or checkpoint == null
 		or second_crate == null
 		or third_crate == null
+		or catalog == null
 	):
 		return
+
+	var fresh_meta := level.run_state.meta
+	level.record_player_death()
+	await wait_process_frames(1)
+	await _fall_real_player_from_entry(level, player, 2)
+	level.record_player_death()
+	assert_true(level.configure(
+		fresh_meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+	assert_true(
+		level.run_state.flawless,
+		"the fresh run must begin flawless after the manual death hook"
+	)
 
 	player.get_node("SpinArea").emit_signal(
 		&"body_entered",
