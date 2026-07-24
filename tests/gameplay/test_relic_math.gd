@@ -220,6 +220,61 @@ func test_unset_pars_refuse_relic_mode_and_entry() -> void:
 	)
 
 
+func test_real_scene_completion_cannot_award_tier_with_unset_pars() -> void:
+	var packed := load(LEVEL_SCENE) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var level := packed.instantiate() as LevelSession
+	add_child_autofree(level)
+	var player := level.get_node("Player") as CharacterBody3D
+	var live_meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	_author_relic_pars(live_meta)
+	assert_true(level.configure(
+		live_meta,
+		LevelRunState.MODE_RELIC,
+		_economy,
+		player,
+		_catalog.move,
+		_catalog.input
+	))
+	var completed_results: Array[Dictionary] = []
+	level.run_completed.connect(
+		func(results: Dictionary) -> void:
+			completed_results.append(results)
+	)
+
+	level.get_node("RelicOnly/Stopwatch").emit_signal(
+		&"body_entered",
+		player
+	)
+	assert_true(level.run_state.relic_timer_armed)
+	live_meta.relic_platinum_s = 0.0
+	live_meta.relic_gold_s = 0.0
+	live_meta.relic_sapphire_s = 0.0
+	level.get_node("Finish").emit_signal(
+		&"body_entered",
+		player
+	)
+	await wait_process_frames(2)
+
+	assert_eq(
+		completed_results.size(),
+		1,
+		"the real stopwatch and Finish signals must complete the attempt"
+	)
+	if completed_results.size() != 1:
+		return
+	assert_eq(completed_results[0].get("relic_time_s"), 0.0)
+	assert_eq(
+		completed_results[0].get("relic_tier"),
+		&"none",
+		"the Q12 sentinel must win even at an exact zero time"
+	)
+
+
 func test_first_normal_completion_offers_relic_when_pars_are_authored() -> void:
 	var normal := LevelRunState.new()
 	normal.start(_meta, LevelRunState.MODE_NORMAL)
