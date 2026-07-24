@@ -662,9 +662,6 @@ func test_real_mercy_banner_expires_after_tuned_active_play_time() -> void:
 		catalog.economy.mercy_mask_death_threshold
 		+ catalog.economy.wumpa_per_standard_crate
 	)
-	catalog.economy.mercy_banner_duration_s = (
-		catalog.input.bounce_timing_s
-	)
 	await _fall_real_player_from_entry(level, player, 1)
 	var mercy_panel := root.get_node(
 		"UI/HUD/SafeArea/MercyPanel"
@@ -813,6 +810,19 @@ func test_real_relic_death_can_finish_as_void_without_stranding_run() -> void:
 	if level == null:
 		return
 	var player := level.get_node("Player") as CharacterBody3D
+	var start_position := player.global_position
+	var checkpoint := _crate(level, 14)
+	assert_not_null(checkpoint)
+	if checkpoint == null:
+		return
+	var spin_area := player.get_node("SpinArea") as Area3D
+	spin_area.emit_signal(&"body_entered", checkpoint)
+	await wait_process_frames(1)
+	assert_eq(
+		level.run_state.checkpoint_id,
+		14,
+		"the real checkpoint must replace the normal respawn target"
+	)
 	var catalog := (
 		root.get("tuning_service").get("catalog")
 		as GameplayTuning
@@ -857,6 +867,23 @@ func test_real_relic_death_can_finish_as_void_without_stranding_run() -> void:
 	await _fall_real_relic_player_once(level, player)
 	assert_true(run_state.relic_void)
 	assert_false(run_state.relic_timer_armed)
+	for _physics_index: int in range(120):
+		if player.is_on_floor() and not player.call("is_respawning"):
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		player.is_on_floor() and not player.call("is_respawning"),
+		"the real player must finish the relic respawn"
+	)
+	assert_true(
+		Vector2(
+			player.global_position.x,
+			player.global_position.z
+		).is_equal_approx(
+			Vector2(start_position.x, start_position.z)
+		),
+		"a relic death after a checkpoint must land at level start"
+	)
 
 	await _walk_real_player_into_finish(root, level, player)
 

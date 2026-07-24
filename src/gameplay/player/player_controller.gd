@@ -4,6 +4,7 @@ extends CharacterBody3D
 signal state_changed(previous_state: StringName, state: StringName)
 signal spin_changed(active: bool)
 signal body_slam_impacted
+signal respawn_started
 signal respawned
 signal mask_state_changed(
 	mask_count: int,
@@ -546,6 +547,7 @@ func try_soft_landing_assist() -> bool:
 
 
 func respawn() -> void:
+	respawn_started.emit()
 	global_transform = _spawn_transform
 	reset_physics_interpolation()
 	velocity = Vector3.ZERO

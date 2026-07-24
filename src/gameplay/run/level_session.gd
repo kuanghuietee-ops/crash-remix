@@ -123,6 +123,15 @@ func configure(
 
 	if _player is Node3D:
 		_start_transform = (_player as Node3D).global_transform
+	if _player != null and _player.has_signal(&"respawn_started"):
+		if not _player.is_connected(
+			&"respawn_started",
+			_on_player_respawn_started
+		):
+			_player.connect(
+				&"respawn_started",
+				_on_player_respawn_started
+			)
 	if (
 		_player != null
 		and _player.has_signal(&"respawned")
@@ -368,6 +377,18 @@ func _on_player_respawned() -> void:
 		_death_recorded_pending_respawn = false
 		return
 	_record_death()
+
+
+func _on_player_respawn_started() -> void:
+	if _death_recorded_pending_respawn:
+		return
+	var respawn_checkpoint := run_state.checkpoint_id
+	if (
+		run_state.run_active
+		and run_state.mode == LevelRunState.MODE_RELIC
+	):
+		respawn_checkpoint = LevelRunState.START_CHECKPOINT
+	_set_player_spawn(respawn_checkpoint)
 
 
 func _on_crate_broken(crate_id: int, wumpa: int) -> void:
