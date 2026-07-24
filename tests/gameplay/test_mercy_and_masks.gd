@@ -23,43 +23,61 @@ func before_each() -> void:
 	_meta.crate_count = _economy.mask_stack_maximum
 
 
-func test_hundred_wumpa_auto_summons_mask_and_rolls_counter() -> void:
-	var setup := _new_session()
+func test_placed_wumpa_auto_summons_mask_and_rolls_counter() -> void:
+	var pickup_value := _economy.mercy_mask_death_threshold
+	var threshold := _economy.wumpa_mask_threshold
+	assert_gt(pickup_value, 0)
+	assert_lt(
+		pickup_value,
+		threshold,
+		"The pickup value must permit a nonzero rollover remainder"
+	)
+	assert_ne(
+		threshold % pickup_value,
+		0,
+		"The final real pickup must cross the threshold with surplus"
+	)
+	if (
+		pickup_value <= 0
+		or pickup_value >= threshold
+		or threshold % pickup_value == 0
+	):
+		return
+	_economy.wumpa_per_standard_crate = pickup_value
+	var pickup_count := ceili(
+		float(threshold) / float(pickup_value)
+	)
+	var expected_total := pickup_count * pickup_value
+	var expected_remainder := expected_total % threshold
+	var expected_masks := expected_total / threshold
+	assert_gt(
+		expected_remainder,
+		0,
+		"The scenario must distinguish rollover from reset"
+	)
+
+	var setup := _new_session(false, true, pickup_count)
 	if setup.is_empty():
 		return
 	var session: Node = setup["session"]
 	var player: CharacterBody3D = setup["player"]
 	assert_true(
-		session.has_method("collect_wumpa"),
-		"LevelSession must own the wumpa-to-mask conversion"
-	)
-	assert_true(
 		player.has_method("mask_count"),
 		"PlayerController must expose its live mask count"
 	)
-	if (
-		not session.has_method("collect_wumpa")
-		or not player.has_method("mask_count")
-	):
+	if not player.has_method("mask_count"):
 		return
 
-	session.call(
-		"collect_wumpa",
-		_economy.wumpa_mask_threshold - 1,
-		10.0
-	)
+	for pickup: Area3D in setup["wumpa_pickups"]:
+		pickup.body_entered.emit(player)
+
 	var run_state: RefCounted = session.get("run_state")
 	assert_eq(
 		run_state.get("wumpa_run"),
-		_economy.wumpa_mask_threshold - 1
+		expected_remainder
 	)
-	assert_eq(run_state.get("masks"), 0)
-
-	session.call("collect_wumpa", 1, 10.1)
-
-	assert_eq(run_state.get("wumpa_run"), 0)
-	assert_eq(run_state.get("masks"), 1)
-	assert_eq(player.call("mask_count"), 1)
+	assert_eq(run_state.get("masks"), expected_masks)
+	assert_eq(player.call("mask_count"), expected_masks)
 
 
 func test_placed_wumpa_uses_live_radius_and_collects_once() -> void:
@@ -255,7 +273,8 @@ func test_skip_offer_repeats_and_acceptance_moves_to_next_checkpoint() -> void:
 
 func _new_session(
 	with_checkpoints: bool = false,
-	with_wumpa: bool = false
+	with_wumpa: bool = false,
+	wumpa_count: int = 1
 ) -> Dictionary:
 	var session_script := load(LEVEL_SESSION_PATH) as Script
 	assert_not_null(session_script)
@@ -283,11 +302,15 @@ func _new_session(
 		session.add_child(second_checkpoint)
 
 	var wumpa: Area3D
+	var wumpa_pickups: Array[Area3D] = []
 	if with_wumpa:
-		wumpa = _instantiate(WUMPA_SCENE) as Area3D
-		if wumpa == null:
-			return {}
-		session.add_child(wumpa)
+		for _pickup_index: int in range(wumpa_count):
+			var pickup := _instantiate(WUMPA_SCENE) as Area3D
+			if pickup == null:
+				return {}
+			session.add_child(pickup)
+			wumpa_pickups.append(pickup)
+			wumpa = wumpa if wumpa != null else pickup
 
 	var player := _instantiate(PLAYER_SCENE) as CharacterBody3D
 	if player == null:
@@ -310,6 +333,7 @@ func _new_session(
 		"first_checkpoint": first_checkpoint,
 		"second_checkpoint": second_checkpoint,
 		"wumpa": wumpa,
+		"wumpa_pickups": wumpa_pickups,
 	}
 
 
