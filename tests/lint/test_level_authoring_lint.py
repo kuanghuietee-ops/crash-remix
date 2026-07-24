@@ -76,6 +76,41 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CRATE_AUTHORING_RULE],
         )
 
+    def test_segment_container_cannot_satisfy_crate_membership(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT
+            / "level_segment_container_membership_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CRATE_AUTHORING_RULE],
+        )
+        self.assertIn("ContainerClaim", findings[0].detail)
+        self.assertIn(
+            "per-segment normal crate sum=1",
+            findings[0].detail,
+        )
+
+    def test_crate_must_match_exactly_one_concrete_segment(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT
+            / "level_repeated_segment_membership_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CRATE_AUTHORING_RULE],
+        )
+        self.assertIn(
+            "per-segment normal crate sum=0",
+            findings[0].detail,
+        )
+
     def test_required_jump_fires_the_depression_rule(self) -> None:
         self.assertEqual(
             self._rules("level_required_jump_bad.tscn"),

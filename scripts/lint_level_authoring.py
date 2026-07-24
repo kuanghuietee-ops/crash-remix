@@ -33,6 +33,7 @@ TIME_CRATE_TYPE = "time"
 IRON_CRATE_TYPE = "iron"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
+SEGMENT_CONTAINER_SLUGS = {"segments"}
 
 Vector3 = tuple[float, float, float]
 Basis3 = tuple[Vector3, Vector3, Vector3]
@@ -310,6 +311,7 @@ def _crate_findings(
         not in {TIME_CRATE_TYPE, IRON_CRATE_TYPE}
     ]
     membership_errors: list[str] = []
+    normal_crates_by_segment: dict[str, int] = {}
     for crate in crates:
         segment_name = _string_value(
             crate.properties.get("segment_group", "")
@@ -319,17 +321,39 @@ def _crate_findings(
             for component in crate.path.split("/")[:-1]
             if component and component != "."
         ]
-        if (
-            not segment_name
-            or _slug(segment_name)
-            not in {_slug(name) for name in ancestor_names}
-        ):
+        segment_slug = _slug(segment_name)
+        matching_ancestors = [
+            name
+            for name in ancestor_names
+            if (
+                _slug(name) == segment_slug
+                and _slug(name) not in SEGMENT_CONTAINER_SLUGS
+            )
+        ]
+        if not segment_name or len(matching_ancestors) != 1:
             membership_errors.append(crate.path)
+            continue
+        if _crate_type(crate) not in {
+            TIME_CRATE_TYPE,
+            IRON_CRATE_TYPE,
+        }:
+            concrete_segment = matching_ancestors[0]
+            normal_crates_by_segment[concrete_segment] = (
+                normal_crates_by_segment.get(concrete_segment, 0) + 1
+            )
 
     details: list[str] = []
     if len(normal_crates) != meta.crate_count:
         details.append(
             f"authored normal crates={len(normal_crates)}, "
+            f"LevelMeta.crate_count={meta.crate_count}"
+        )
+    per_segment_normal_total = sum(
+        normal_crates_by_segment.values()
+    )
+    if per_segment_normal_total != meta.crate_count:
+        details.append(
+            f"per-segment normal crate sum={per_segment_normal_total}, "
             f"LevelMeta.crate_count={meta.crate_count}"
         )
     if membership_errors:

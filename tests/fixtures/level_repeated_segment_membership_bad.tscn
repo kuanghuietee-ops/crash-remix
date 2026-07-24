@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_crate_count_bad_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="2_crate"]
+
+[node name="RepeatedMembershipBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -10)
+
+[node name="Segments" type="Node3D" parent="."]
+
+[node name="Repeated Segment" type="Node3D" parent="Segments"]
+
+[node name="Repeated Segment" type="Node3D" parent="Segments/Repeated Segment"]
+
+[node name="Crate01" parent="Segments/Repeated Segment/Repeated Segment" instance=ExtResource("2_crate")]
+crate_id = 1
+segment_group = &"Repeated Segment"
+
+[node name="Crate02" parent="Segments/Repeated Segment/Repeated Segment" instance=ExtResource("2_crate")]
+crate_id = 2
+segment_group = &"Repeated Segment"
