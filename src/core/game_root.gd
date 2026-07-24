@@ -572,6 +572,8 @@ func _begin_threaded_level_load(level_id: StringName) -> void:
 func _poll_threaded_level_load() -> void:
 	if _threaded_level_path.is_empty():
 		return
+	if flow.state == GameFlow.State.PAUSED:
+		return
 	if (
 		flow.state != GameFlow.State.LEVEL
 		or flow.active_level_id != _threaded_level_id

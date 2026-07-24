@@ -275,6 +275,49 @@ func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 	await wait_process_frames(2)
 
 
+func test_app_pause_during_real_level_load_resumes_into_authored_scene() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+	var room := root.get_node_or_null("Content/WarpRoom1")
+	assert_not_null(room)
+	if room == null:
+		return
+
+	room.get_node("UI/LevelList").emit_signal(&"pressed")
+	var list := root.get_node("UI/LevelListOverlay")
+	list.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/NSanityBeach"
+	).emit_signal(&"pressed")
+	assert_eq(root.call("state_name"), &"level")
+	assert_true(root.has_node("Content/LevelLoading"))
+
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(root.call("state_name"), &"paused")
+	await wait_process_frames(1)
+	root.get_node(
+		"UI/PauseOverlay/SafeArea/Center/Panel/Margin/Rows/Resume"
+	).emit_signal(&"pressed")
+	assert_eq(root.call("state_name"), &"level")
+
+	var frames := 0
+	while (
+		not root.has_node("Content/NSanityBeach")
+		and frames < 120
+	):
+		await wait_process_frames(1)
+		frames += 1
+	assert_true(
+		root.has_node("Content/NSanityBeach"),
+		"resuming the real pause UI must finish the interrupted level load"
+	)
+
+
 func test_quit_during_threaded_load_can_reenter_without_stalling() -> void:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
