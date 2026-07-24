@@ -1,9 +1,20 @@
 class_name LevelSession
 extends Node
 
+const MonotonicClockType := preload(
+	"res://src/core/monotonic_clock.gd"
+)
+
 signal respawn_requested(outcome: Dictionary)
 signal run_completed(results: Dictionary)
 signal run_exited
+signal wumpa_changed(wumpa_count: int)
+signal mask_state_changed(
+	mask_count: int,
+	invincible_until_s: float
+)
+signal mercy_granted(mask_count: int)
+signal skip_offered(next_checkpoint_id: int)
 
 var run_state := LevelRunState.new()
 
@@ -13,6 +24,9 @@ var _crates_by_id: Dictionary = {}
 var _checkpoint_transforms: Dictionary = {}
 var _start_transform := Transform3D.IDENTITY
 var _death_recorded_pending_respawn: bool = false
+var _offered_skip_checkpoint_id: int = (
+	LevelRunState.START_CHECKPOINT
+)
 
 
 func configure(
@@ -28,6 +42,7 @@ func configure(
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
 	_checkpoint_transforms.clear()
+	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	var authored_ids: Array[int] = []
 
 	for candidate: Node in find_children(
@@ -53,6 +68,14 @@ func configure(
 			_checkpoint_transforms[crate_id] = (
 				_checkpoint_spawn_transform(candidate)
 			)
+	for candidate: Node in find_children(
+		"*",
+		"Area3D",
+		true,
+		false
+	):
+		if candidate.is_in_group(&"wumpa_pickup"):
+			_configure_wumpa_pickup(candidate as Area3D)
 	if not authored_ids.is_empty():
 		run_state.register_authored_crate_ids(authored_ids)
 
@@ -67,12 +90,61 @@ func configure(
 		)
 	):
 		_player.connect(&"respawned", _on_player_respawned)
+	if (
+		_player != null
+		and _player.has_signal(&"mask_state_changed")
+		and not _player.is_connected(
+			&"mask_state_changed",
+			_on_player_mask_state_changed
+		)
+	):
+		_player.connect(
+			&"mask_state_changed",
+			_on_player_mask_state_changed
+		)
+	if _player != null and _player.has_method("clear_masks"):
+		_player.call("clear_masks")
 
 
 func record_player_death() -> Dictionary:
 	var outcome := _record_death()
 	_death_recorded_pending_respawn = true
 	return outcome
+
+
+func collect_wumpa(amount: int, now_s: float) -> void:
+	if (
+		not run_state.run_active
+		or _economy == null
+		or amount <= 0
+	):
+		return
+	run_state.record_wumpa_collected(amount)
+	var mask_threshold := _economy.wumpa_mask_threshold
+	if mask_threshold <= 0:
+		wumpa_changed.emit(run_state.wumpa_run)
+		return
+	while run_state.wumpa_run >= mask_threshold:
+		run_state.wumpa_run -= mask_threshold
+		_grant_mask(now_s)
+	wumpa_changed.emit(run_state.wumpa_run)
+
+
+func accept_mercy_skip() -> bool:
+	if (
+		_offered_skip_checkpoint_id
+		== LevelRunState.START_CHECKPOINT
+		or not run_state.accept_mercy_skip(
+			_offered_skip_checkpoint_id
+		)
+	):
+		return false
+	_set_player_spawn(_offered_skip_checkpoint_id)
+	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
+	if _player != null and _player.has_method("respawn"):
+		_death_recorded_pending_respawn = true
+		_player.call("respawn")
+	return true
 
 
 func complete_level() -> Dictionary:
@@ -89,6 +161,16 @@ func exit_level() -> void:
 
 func _record_death() -> Dictionary:
 	var outcome := run_state.record_death(_economy)
+	if _player != null and _player.has_method("clear_masks"):
+		_player.call("clear_masks")
+	if bool(outcome["grant_mercy_mask"]):
+		_grant_mask(MonotonicClockType.now_s())
+		mercy_granted.emit(run_state.masks)
+	if bool(outcome["offer_skip"]):
+		var next_checkpoint_id := _next_checkpoint_id()
+		if next_checkpoint_id != LevelRunState.START_CHECKPOINT:
+			_offered_skip_checkpoint_id = next_checkpoint_id
+			skip_offered.emit(next_checkpoint_id)
 	_sync_crate_visuals(bool(outcome["relic_void_reset"]))
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
 	# Task 17 adds the enemy authored-spawn reset at this same death hook.
@@ -104,7 +186,13 @@ func _on_player_respawned() -> void:
 
 
 func _on_crate_broken(crate_id: int, wumpa: int) -> void:
-	run_state.record_crate_broken(crate_id, wumpa)
+	var broken_count := run_state.broken_crate_ids.size()
+	run_state.record_crate_broken(crate_id, 0)
+	if run_state.broken_crate_ids.size() > broken_count:
+		collect_wumpa(
+			wumpa,
+			MonotonicClockType.now_s()
+		)
 
 
 func _on_crate_bounced(
@@ -112,16 +200,99 @@ func _on_crate_bounced(
 	wumpa: int,
 	_launch_speed_mps: float
 ) -> void:
-	run_state.record_wumpa_collected(wumpa)
+	collect_wumpa(
+		wumpa,
+		MonotonicClockType.now_s()
+	)
 
 
 func _on_checkpoint_reached(crate_id: int) -> void:
 	run_state.record_checkpoint(crate_id)
+	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_set_player_spawn(crate_id)
 
 
 func _on_mask_granted(amount: int) -> void:
-	run_state.record_mask_granted(amount)
+	var remaining := amount
+	while remaining > 0:
+		_grant_mask(MonotonicClockType.now_s())
+		remaining -= 1
+
+
+func _on_player_mask_state_changed(
+	mask_count: int,
+	invincible_until_s: float
+) -> void:
+	run_state.masks = clampi(
+		mask_count,
+		0,
+		_economy.mask_stack_maximum
+	)
+	mask_state_changed.emit(
+		run_state.masks,
+		invincible_until_s
+	)
+
+
+func _grant_mask(now_s: float) -> void:
+	if _player != null and _player.has_method("grant_mask"):
+		_player.call("grant_mask", now_s)
+		if _player.has_method("mask_count"):
+			run_state.masks = int(_player.call("mask_count"))
+		return
+	run_state.masks = mini(
+		run_state.masks + 1,
+		_economy.mask_stack_maximum
+	)
+	mask_state_changed.emit(run_state.masks, -1.0)
+
+
+func _configure_wumpa_pickup(pickup: Area3D) -> void:
+	pickup.set_meta(&"phase1_collected", false)
+	var collision := (
+		pickup.get_node_or_null("CollisionShape3D")
+		as CollisionShape3D
+	)
+	if collision != null and collision.shape is SphereShape3D:
+		var shape := collision.shape.duplicate() as SphereShape3D
+		shape.radius = _economy.wumpa_collect_radius_m
+		collision.shape = shape
+	_connect_once(
+		pickup,
+		&"body_entered",
+		_on_wumpa_body_entered.bind(pickup)
+	)
+
+
+func _on_wumpa_body_entered(
+	body: Node,
+	pickup: Area3D
+) -> void:
+	if (
+		body != _player
+		or bool(pickup.get_meta(&"phase1_collected", false))
+	):
+		return
+	pickup.set_meta(&"phase1_collected", true)
+	pickup.visible = false
+	pickup.set_deferred(&"monitoring", false)
+	pickup.set_deferred(&"monitorable", false)
+	collect_wumpa(
+		_economy.wumpa_per_standard_crate,
+		MonotonicClockType.now_s()
+	)
+
+
+func _next_checkpoint_id() -> int:
+	var candidates: Array[int] = []
+	for checkpoint_value: Variant in _checkpoint_transforms:
+		var checkpoint_id := int(checkpoint_value)
+		if checkpoint_id > run_state.checkpoint_id:
+			candidates.append(checkpoint_id)
+	candidates.sort()
+	if candidates.is_empty():
+		return LevelRunState.START_CHECKPOINT
+	return candidates.front()
 
 
 func _connect_crate(crate: Node) -> void:

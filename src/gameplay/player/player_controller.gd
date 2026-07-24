@@ -5,6 +5,10 @@ signal state_changed(previous_state: StringName, state: StringName)
 signal spin_changed(active: bool)
 signal body_slam_impacted
 signal respawned
+signal mask_state_changed(
+	mask_count: int,
+	invincible_until_s: float
+)
 
 const PlayerStateMachineType := preload("res://src/gameplay/player/player_state_machine.gd")
 const PlayerFrameDecisionType := preload("res://src/gameplay/player/player_frame_decision.gd")
@@ -36,6 +40,7 @@ var _depth_tuning: DepthTuning
 var _wall_run_tuning: WallRunTuning
 var _grind_tuning: GrindTuning
 var _swing_tuning: SwingTuning
+var _economy_tuning: EconomyTuning
 var _intents: InputIntentBuffer
 var _state_machine: PlayerStateMachineType = PlayerStateMachineType.new()
 var _collision_shape: CollisionShape3D
@@ -50,6 +55,8 @@ var _last_state := &""
 var _last_spin_active: bool
 var _fall_apex_y: float
 var _respawn_due_s := -1.0
+var _mask_count: int
+var _invincible_until_s := -1.0
 var _active_jump_tap_height_m := 0.0
 var _traversal_neighbour_available: bool
 var _active_rail: TraversalRailType
@@ -86,7 +93,8 @@ func configure(
 	wall_run_tuning: WallRunTuning,
 	grind_tuning: GrindTuning,
 	swing_tuning: SwingTuning,
-	intents: InputIntentBuffer
+	intents: InputIntentBuffer,
+	economy_tuning: EconomyTuning = null
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning
@@ -94,6 +102,7 @@ func configure(
 	_wall_run_tuning = wall_run_tuning
 	_grind_tuning = grind_tuning
 	_swing_tuning = swing_tuning
+	_economy_tuning = economy_tuning
 	if is_instance_valid(_active_swing_anchor):
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
@@ -112,6 +121,71 @@ func set_corridor_forward(forward: Vector3) -> void:
 
 func set_spawn_transform(spawn_transform: Transform3D) -> void:
 	_spawn_transform = spawn_transform
+
+
+func grant_mask(now_s: float) -> bool:
+	if (
+		_economy_tuning == null
+		or _economy_tuning.mask_stack_maximum <= 0
+	):
+		return false
+	if _mask_count < _economy_tuning.mask_stack_maximum:
+		_mask_count += 1
+		_invincible_until_s = -1.0
+		_emit_mask_state()
+		return false
+	_invincible_until_s = (
+		now_s
+		+ _economy_tuning.invincibility_duration_s
+	)
+	_emit_mask_state()
+	return true
+
+
+func mask_count() -> int:
+	return _mask_count
+
+
+func is_invincible(now_s: float) -> bool:
+	return (
+		_economy_tuning != null
+		and _invincible_until_s >= 0.0
+		and now_s < _invincible_until_s
+	)
+
+
+func invincibility_remaining_s(now_s: float) -> float:
+	if not is_invincible(now_s):
+		return 0.0
+	return _invincible_until_s - now_s
+
+
+func receive_hit(now_s: float) -> bool:
+	if is_invincible(now_s):
+		return false
+	if _invincible_until_s >= 0.0:
+		_invincible_until_s = -1.0
+	if _mask_count > 0:
+		_mask_count -= 1
+		_emit_mask_state()
+		return false
+	request_respawn(now_s)
+	return true
+
+
+func clear_masks() -> void:
+	if _mask_count == 0 and _invincible_until_s < 0.0:
+		return
+	_mask_count = 0
+	_invincible_until_s = -1.0
+	_emit_mask_state()
+
+
+func _emit_mask_state() -> void:
+	mask_state_changed.emit(
+		_mask_count,
+		_invincible_until_s
+	)
 
 
 func advance_logic(

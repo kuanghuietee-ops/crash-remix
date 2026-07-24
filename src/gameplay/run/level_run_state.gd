@@ -99,7 +99,7 @@ func record_death(economy: EconomyTuning) -> Dictionary:
 		deaths_at_checkpoint == economy.mercy_mask_death_threshold
 	)
 	outcome["offer_skip"] = (
-		deaths_at_checkpoint == economy.mercy_skip_death_threshold
+		deaths_at_checkpoint >= economy.mercy_skip_death_threshold
 	)
 	return outcome
 
