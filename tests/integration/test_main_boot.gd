@@ -3,6 +3,10 @@ extends GutTest
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const DEFAULT_SAVE_DIR := "user://save"
 const TEST_SAVE_DIR := "user://test_sandbox/task5_main_boot"
+const TEST_OVERRIDE_PATH := (
+	TEST_SAVE_DIR + "/injected_tuning_override.tres"
+)
+const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const PLACEHOLDER_LEVEL_ID := &"test_level"
 const FUTURE_SAVE_FIXTURE := (
 	"res://tests/fixtures/saves/profile_future_version.json"
@@ -277,6 +281,50 @@ func test_main_scene_owns_live_tuning_fingerprint_contract() -> void:
 	assert_not_null(service.get("catalog"))
 	assert_string_contains(summary, service.call("fingerprint"))
 	assert_string_contains(summary, "res://data/tuning/gameplay.tres")
+
+
+func test_main_boot_reads_only_the_injected_tuning_override() -> void:
+	var authoring_service := TuningService.new()
+	assert_eq(
+		authoring_service.load_from_paths(
+			BASE_TUNING_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+	assert_false(authoring_service.catalog.input.left_handed_layout)
+	authoring_service.catalog.input.left_handed_layout = true
+	assert_eq(
+		authoring_service.save_override(TEST_OVERRIDE_PATH),
+		OK
+	)
+
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	var path_is_injectable := _has_property(
+		root,
+		&"tuning_override_path"
+	)
+	if path_is_injectable:
+		root.set("tuning_override_path", TEST_OVERRIDE_PATH)
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	assert_true(
+		path_is_injectable,
+		"the real main scene must expose its tuning override input"
+	)
+	var boot_service := root.get("tuning_service") as TuningService
+	assert_true(boot_service.override_active)
+	assert_true(boot_service.catalog.input.left_handed_layout)
+	assert_has(
+		boot_service.get_loaded_resource_paths(),
+		TEST_OVERRIDE_PATH
+	)
 
 
 func test_real_level_entry_reports_level_meta_to_live_tuning_hud() -> void:

@@ -38,7 +38,6 @@ const PHASE_GHOST_SHADER := preload(
 )
 
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
-const OVERRIDE_TUNING_PATH := "user://tuning/override.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
@@ -55,6 +54,7 @@ const _PLACEHOLDER_NAMES: Dictionary = {
 }
 
 @export var save_dir: String = DEFAULT_SAVE_DIR
+@export_file("*.tres") var tuning_override_path: String = ""
 
 var tuning_service: TuningServiceType = TuningServiceType.new()
 var save_service: SaveServiceType = SaveServiceType.new()
@@ -93,9 +93,10 @@ static func should_enable_debug_tools(is_debug_build: bool) -> bool:
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Input.set_use_accumulated_input(false)
+	var override_path := _resolved_tuning_override_path()
 	boot_error = tuning_service.load_from_paths(
 		BASE_TUNING_PATH,
-		OVERRIDE_TUNING_PATH
+		override_path
 	)
 	if boot_error != OK:
 		push_error("Phase 1 tuning failed to load: " + error_string(boot_error))
@@ -105,7 +106,7 @@ func _ready() -> void:
 	var debug_tools_enabled := should_enable_debug_tools(OS.is_debug_build())
 	_tuning_debug.visible = debug_tools_enabled
 	if debug_tools_enabled:
-		_tuning_debug.configure(tuning_service, OVERRIDE_TUNING_PATH)
+		_tuning_debug.configure(tuning_service, override_path)
 		_tuning_debug.tuning_changed.connect(_on_tuning_changed)
 	_install_task11_ui(debug_tools_enabled)
 
@@ -145,6 +146,12 @@ func _ready() -> void:
 			})
 		else:
 			last_snapshot_error = session_snapshot.delete(save_dir)
+
+
+func _resolved_tuning_override_path() -> String:
+	if not tuning_override_path.is_empty():
+		return tuning_override_path
+	return "user://tuning/override.tres"
 
 
 func _exit_tree() -> void:
