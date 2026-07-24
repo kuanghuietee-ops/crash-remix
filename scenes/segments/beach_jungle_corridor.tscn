@@ -85,6 +85,7 @@ segment_group = &"Jungle Corridor"
 position = Vector3(0, 0.5, -56)
 crate_id = 14
 segment_group = &"Jungle Corridor"
+metadata/next_checkpoint_id = 30
 
 [node name="Crate15" parent="." instance=ExtResource("3_standard")]
 position = Vector3(-1.5, 0.5, -66)

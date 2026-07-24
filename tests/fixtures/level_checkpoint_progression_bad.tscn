@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_crate_count_bad_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_checkpoint.tscn" id="2_checkpoint"]
+
+[node name="CheckpointProgressionBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -10)
+
+[node name="Segment" type="Node3D" parent="."]
+
+[node name="FirstSpatialCheckpoint" parent="Segment" instance=ExtResource("2_checkpoint")]
+position = Vector3(0, 0.5, -3)
+crate_id = 2
+segment_group = &"Segment"
+metadata/next_checkpoint_id = 2
+
+[node name="FinalSpatialCheckpoint" parent="Segment" instance=ExtResource("2_checkpoint")]
+position = Vector3(0, 0.5, -7)
+crate_id = 1
+segment_group = &"Segment"

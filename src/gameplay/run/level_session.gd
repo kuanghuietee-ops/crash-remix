@@ -10,6 +10,7 @@ const CrateLogicType := preload(
 const PlayerStateMachineType := preload(
 	"res://src/gameplay/player/player_state_machine.gd"
 )
+const CHECKPOINT_NEXT_ID_META := &"next_checkpoint_id"
 
 signal respawn_requested(outcome: Dictionary)
 signal run_completed(results: Dictionary)
@@ -494,15 +495,44 @@ func _on_wumpa_body_entered(
 
 
 func _next_checkpoint_id() -> int:
-	var candidates: Array[int] = []
+	if run_state.checkpoint_id == LevelRunState.START_CHECKPOINT:
+		return _first_checkpoint_id()
+	return _checkpoint_successor_id(run_state.checkpoint_id)
+
+
+func _first_checkpoint_id() -> int:
+	var referenced_ids: Dictionary = {}
+	for checkpoint_value: Variant in _checkpoint_transforms:
+		var successor_id := _checkpoint_successor_id(
+			int(checkpoint_value)
+		)
+		if successor_id != LevelRunState.START_CHECKPOINT:
+			referenced_ids[successor_id] = true
+	var first_id := LevelRunState.START_CHECKPOINT
 	for checkpoint_value: Variant in _checkpoint_transforms:
 		var checkpoint_id := int(checkpoint_value)
-		if checkpoint_id > run_state.checkpoint_id:
-			candidates.append(checkpoint_id)
-	candidates.sort()
-	if candidates.is_empty():
+		if referenced_ids.has(checkpoint_id):
+			continue
+		if first_id != LevelRunState.START_CHECKPOINT:
+			return LevelRunState.START_CHECKPOINT
+		first_id = checkpoint_id
+	return first_id
+
+
+func _checkpoint_successor_id(checkpoint_id: int) -> int:
+	var checkpoint := _crates_by_id.get(checkpoint_id) as Node
+	if checkpoint == null:
 		return LevelRunState.START_CHECKPOINT
-	return candidates.front()
+	var successor_value: Variant = checkpoint.get_meta(
+		CHECKPOINT_NEXT_ID_META,
+		LevelRunState.START_CHECKPOINT
+	)
+	if typeof(successor_value) != TYPE_INT:
+		return LevelRunState.START_CHECKPOINT
+	var successor_id := int(successor_value)
+	if not _checkpoint_transforms.has(successor_id):
+		return LevelRunState.START_CHECKPOINT
+	return successor_id
 
 
 func _connect_crate(crate: Node) -> void:

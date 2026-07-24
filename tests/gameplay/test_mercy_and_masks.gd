@@ -321,10 +321,45 @@ func test_skip_offer_repeats_and_acceptance_moves_to_next_checkpoint() -> void:
 	)
 
 
+func test_skip_follows_authored_checkpoint_link_when_ids_descend() -> void:
+	var setup := _new_session(true, false, 1, true)
+	if setup.is_empty():
+		return
+	var session: Node = setup["session"]
+	var player: CharacterBody3D = setup["player"]
+	var first_checkpoint: Node = setup["first_checkpoint"]
+	var second_checkpoint: Node3D = setup["second_checkpoint"]
+	var offers: Array[int] = []
+	session.skip_offered.connect(
+		func(checkpoint_id: int) -> void:
+			offers.append(checkpoint_id)
+	)
+	first_checkpoint.call("apply_verb", &"spin")
+
+	_advance_deaths(
+		player,
+		_economy.mercy_skip_death_threshold
+	)
+
+	assert_eq(
+		offers,
+		[1],
+		"mercy progression must follow the authored checkpoint link"
+	)
+	assert_true(session.call("accept_mercy_skip"))
+	var run_state: RefCounted = session.get("run_state")
+	assert_eq(run_state.get("checkpoint_id"), 1)
+	assert_eq(
+		player.global_transform,
+		second_checkpoint.get_node("Spawn").global_transform
+	)
+
+
 func _new_session(
 	with_checkpoints: bool = false,
 	with_wumpa: bool = false,
-	wumpa_count: int = 1
+	wumpa_count: int = 1,
+	descending_checkpoint_ids: bool = false
 ) -> Dictionary:
 	var session_script := load(LEVEL_SESSION_PATH) as Script
 	assert_not_null(session_script)
@@ -341,8 +376,18 @@ func _new_session(
 		second_checkpoint = _instantiate(CHECKPOINT_SCENE) as Node3D
 		if first_checkpoint == null or second_checkpoint == null:
 			return {}
-		first_checkpoint.set("crate_id", 1)
-		second_checkpoint.set("crate_id", 2)
+		var first_checkpoint_id := (
+			2 if descending_checkpoint_ids else 1
+		)
+		var second_checkpoint_id := (
+			1 if descending_checkpoint_ids else 2
+		)
+		first_checkpoint.set("crate_id", first_checkpoint_id)
+		first_checkpoint.set_meta(
+			&"next_checkpoint_id",
+			second_checkpoint_id
+		)
+		second_checkpoint.set("crate_id", second_checkpoint_id)
 		second_checkpoint.position = Vector3(
 			_economy.tnt_blast_radius_m,
 			0.0,

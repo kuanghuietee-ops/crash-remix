@@ -13,6 +13,7 @@ from typing import Iterable, Sequence
 
 
 CHECKPOINT_SPACING_RULE = "checkpoint_spacing"
+CHECKPOINT_PROGRESSION_RULE = "checkpoint_progression"
 CRATE_AUTHORING_RULE = "crate_count_and_segment_membership"
 CRATE_ID_RULE = "crate_id_unique"
 REQUIRED_JUMP_RULE = "required_jump_depression"
@@ -265,14 +266,25 @@ def _checkpoint_findings(
                 "level Spine must have non-zero authored distance",
             )
         ]
-    checkpoint_distances = [
-        _project_onto_polyline(
-            node.world_position,
-            points,
-            cumulative,
+    checkpoints_with_distances = [
+        (
+            node,
+            _project_onto_polyline(
+                node.world_position,
+                points,
+                cumulative,
+            ),
         )
         for node in _crate_nodes(nodes)
         if _crate_type(node) == CHECKPOINT_CRATE_TYPE
+    ]
+    findings = _checkpoint_progression_findings(
+        scene_name,
+        checkpoints_with_distances,
+    )
+    checkpoint_distances = [
+        distance
+        for _, distance in checkpoints_with_distances
     ]
     boundaries = sorted(
         [0.0, *checkpoint_distances, cumulative[-1]]
@@ -286,20 +298,91 @@ def _checkpoint_findings(
         for elapsed_s in interval_times
         if elapsed_s > tuning.checkpoint_spacing_limit_s
     ]
-    if not violating_times:
-        return []
-    longest_s = max(violating_times)
-    return [
-        AuthoringViolation(
-            scene_name,
-            CHECKPOINT_SPACING_RULE,
-            (
-                f"checkpoint interval is {longest_s:.3f}s; "
-                f"limit from EconomyTuning is "
-                f"{tuning.checkpoint_spacing_limit_s:.3f}s"
-            ),
+    if violating_times:
+        longest_s = max(violating_times)
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                CHECKPOINT_SPACING_RULE,
+                (
+                    f"checkpoint interval is {longest_s:.3f}s; "
+                    f"limit from EconomyTuning is "
+                    f"{tuning.checkpoint_spacing_limit_s:.3f}s"
+                ),
+            )
         )
-    ]
+    return findings
+
+
+def _checkpoint_progression_findings(
+    scene_name: str,
+    checkpoints_with_distances: list[tuple[FlatNode, float]],
+) -> list[AuthoringViolation]:
+    ordered = sorted(
+        checkpoints_with_distances,
+        key=lambda item: item[1],
+    )
+    findings: list[AuthoringViolation] = []
+    for (checkpoint, _), (successor, _) in zip(
+        ordered,
+        ordered[1:],
+    ):
+        checkpoint_id = _integer_value(
+            checkpoint.properties.get("crate_id", "")
+        )
+        expected_successor_id = _integer_value(
+            successor.properties.get("crate_id", "")
+        )
+        if checkpoint_id is None or expected_successor_id is None:
+            continue
+        authored_successor_id = _integer_value(
+            checkpoint.properties.get(
+                "metadata/next_checkpoint_id",
+                "",
+            )
+        )
+        if authored_successor_id == expected_successor_id:
+            continue
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                CHECKPOINT_PROGRESSION_RULE,
+                (
+                    f"checkpoint {checkpoint_id} links to "
+                    f"{authored_successor_id}; next spatial "
+                    f"checkpoint is {expected_successor_id}"
+                ),
+            )
+        )
+    if not ordered:
+        return findings
+    final_checkpoint = ordered[-1][0]
+    final_checkpoint_id = _integer_value(
+        final_checkpoint.properties.get("crate_id", "")
+    )
+    final_successor_id = _integer_value(
+        final_checkpoint.properties.get(
+            "metadata/next_checkpoint_id",
+            "",
+        )
+    )
+    if (
+        final_checkpoint_id is not None
+        and final_successor_id is not None
+        and final_successor_id >= 0
+    ):
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                CHECKPOINT_PROGRESSION_RULE,
+                (
+                    f"final checkpoint {final_checkpoint_id} "
+                    f"must not link to checkpoint "
+                    f"{final_successor_id}"
+                ),
+            )
+        )
+    return findings
 
 
 def _crate_findings(

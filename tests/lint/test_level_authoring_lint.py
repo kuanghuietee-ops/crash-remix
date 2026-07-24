@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.lint_level_authoring import (
+    CHECKPOINT_PROGRESSION_RULE,
     CHECKPOINT_SPACING_RULE,
     CRATE_AUTHORING_RULE,
     CRATE_ID_RULE,
@@ -37,6 +38,18 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CHECKPOINT_SPACING_RULE],
         )
         self.assertIn("88.889s", findings[0].detail)
+
+    def test_checkpoint_links_must_follow_spatial_route_order(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_checkpoint_progression_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_PROGRESSION_RULE],
+        )
+        self.assertIn("checkpoint 2 links to 2", findings[0].detail)
+        self.assertIn("next spatial checkpoint is 1", findings[0].detail)
 
     def test_flatten_composes_transform_basis_rotation_and_scale(
         self,

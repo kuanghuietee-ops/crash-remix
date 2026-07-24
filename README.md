@@ -71,10 +71,10 @@ keep an upright horizon, detach targets must enter the camera frustum, and rails
 need grind-region coverage plus symmetric neighbour links.
 `lint_level_authoring.py` recursively resolves level, segment, and inherited crate
 scenes. It reads the limits from `EconomyTuning`, `CameraTuning`, and each
-`LevelMeta`, then checks checkpoint spacing along the authored Spine, collectible
-normal-mode crate totals and segment membership (iron and relic-only time crates do
-not count toward the gem total), stable crate IDs, required-jump camera depression,
-and relic-only time-crate placement.
+`LevelMeta`, then checks checkpoint spacing and explicit next-checkpoint links along
+the authored Spine, collectible normal-mode crate totals and segment membership
+(iron and relic-only time crates do not count toward the gem total), stable crate
+IDs, required-jump camera depression, and relic-only time-crate placement.
 `verify_exported_tuning.sh` separately exports and boots the packed runtime,
 catching resource-loader differences that editor-mode tests cannot see. The
 vocabulary check examines identifiers, scene-node names, and paths while ignoring
