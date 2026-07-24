@@ -5,6 +5,7 @@
 [resource]
 script = ExtResource("1_economy")
 wumpa_per_standard_crate = 1
+wumpa_per_pickup = 1
 wumpa_collect_radius_m = 1.0
 wumpa_mask_threshold = 100
 mask_stack_maximum = 2

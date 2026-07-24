@@ -489,7 +489,7 @@ func _on_wumpa_body_entered(
 	pickup.set_deferred(&"monitoring", false)
 	pickup.set_deferred(&"monitorable", false)
 	collect_wumpa(
-		_economy.wumpa_per_standard_crate,
+		_economy.wumpa_per_pickup,
 		MonotonicClockType.now_s()
 	)
 

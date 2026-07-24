@@ -43,7 +43,7 @@ func test_placed_wumpa_auto_summons_mask_and_rolls_counter() -> void:
 		or threshold % pickup_value == 0
 	):
 		return
-	_economy.wumpa_per_standard_crate = pickup_value
+	_economy.wumpa_per_pickup = pickup_value
 	var pickup_count := ceili(
 		float(threshold) / float(pickup_value)
 	)
@@ -104,13 +104,49 @@ func test_placed_wumpa_uses_live_radius_and_collects_once() -> void:
 	var run_state: RefCounted = session.get("run_state")
 	assert_eq(
 		run_state.get("wumpa_run"),
-		_economy.wumpa_per_standard_crate
+		_economy.wumpa_per_pickup
 	)
 	assert_false(pickup.visible)
 
 
+func test_real_placed_wumpa_payout_is_independent_from_crate_payout() -> void:
+	var pickup_payout := _economy.mercy_mask_death_threshold
+	var crate_payout := (
+		pickup_payout
+		+ _economy.bounce_crate_wumpa_per_bounce
+	)
+	assert_ne(pickup_payout, crate_payout)
+	_economy.wumpa_per_standard_crate = crate_payout
+	_economy.wumpa_per_pickup = pickup_payout
+
+	var setup := _new_session(false, true)
+	if setup.is_empty():
+		return
+	var session: Node = setup["session"]
+	var pickup := setup["wumpa"] as Area3D
+	assert_true(pickup.visible)
+
+	await wait_physics_frames(3)
+
+	var run_state: RefCounted = session.get("run_state")
+	assert_false(
+		pickup.visible,
+		"the real player overlap must collect the authored pickup"
+	)
+	assert_eq(
+		run_state.get("wumpa_run"),
+		pickup_payout,
+		"placed fruit must consume its own tuning field"
+	)
+	assert_ne(
+		run_state.get("wumpa_run"),
+		crate_payout,
+		"standard-crate tuning must not alter placed fruit"
+	)
+
+
 func test_real_fall_death_clears_the_player_mask_stack() -> void:
-	_economy.wumpa_per_standard_crate = (
+	_economy.wumpa_per_pickup = (
 		_economy.wumpa_mask_threshold
 	)
 	var setup := _new_session(false, true)

@@ -3,6 +3,7 @@ extends Resource
 
 @export_category("Wumpa")
 @export var wumpa_per_standard_crate: int
+@export var wumpa_per_pickup: int = -1
 @export var wumpa_collect_radius_m: float
 @export var wumpa_mask_threshold: int
 

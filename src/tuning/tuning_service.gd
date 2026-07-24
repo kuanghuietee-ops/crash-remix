@@ -35,6 +35,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"mask_hit_invulnerability_s",
 		],
+		[
+			&"wumpa_per_pickup",
+		],
 	],
 }
 
@@ -256,6 +259,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	var economy := checked.economy
 	if (
 		economy.wumpa_per_standard_crate <= 0
+		or economy.wumpa_per_pickup <= 0
 		or economy.wumpa_collect_radius_m <= 0.0
 		or economy.wumpa_mask_threshold <= 0
 		or economy.mask_stack_maximum <= 0

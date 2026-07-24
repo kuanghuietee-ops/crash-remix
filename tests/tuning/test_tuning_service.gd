@@ -587,6 +587,45 @@ func test_old_economy_override_backfills_mask_hit_grace() -> void:
 	)
 
 
+func test_old_economy_override_backfills_placed_wumpa_payout() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.economy.wumpa_per_pickup = (
+		EconomyTuning.new().wumpa_per_pickup
+	)
+	stale.economy.wumpa_per_standard_crate += 1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	assert_eq(
+		migrated.economy.wumpa_per_pickup,
+		authored.economy.wumpa_per_pickup
+	)
+	assert_eq(
+		migrated.economy.wumpa_per_standard_crate,
+		stale.economy.wumpa_per_standard_crate,
+		"migration must preserve the crate-specific payout"
+	)
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script
@@ -771,6 +810,7 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		return
 	var invalid_values: Array[Array] = [
 		[&"wumpa_per_standard_crate", 0],
+		[&"wumpa_per_pickup", 0],
 		[&"wumpa_collect_radius_m", 0.0],
 		[&"wumpa_mask_threshold", 0],
 		[&"mask_stack_maximum", 0],
