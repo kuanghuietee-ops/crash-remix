@@ -21,6 +21,9 @@ func build(
 	var completed_before := bool(
 		previous_level_record.get("completed", false)
 	)
+	var relic_void := bool(
+		run_result.get("relic_void", false)
+	)
 	return {
 		"level_id": meta.level_id,
 		"display_name": meta.display_name,
@@ -55,8 +58,10 @@ func build(
 			if mode == LevelRunState.MODE_RELIC
 			else null
 		),
+		"relic_void": relic_void,
 		"relic_entry_available": (
 			LevelRunState.relic_pars_authored(meta)
+			and not relic_void
 			and (
 				completed_before
 				or mode == LevelRunState.MODE_NORMAL

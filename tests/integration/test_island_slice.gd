@@ -348,6 +348,103 @@ func test_island_slice_full_loop() -> void:
 	)
 
 
+func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var checkpoint := _crate(level, 14)
+	assert_not_null(checkpoint)
+	if checkpoint == null:
+		return
+	var spin_area := player.get_node("SpinArea") as Area3D
+	spin_area.emit_signal(&"body_entered", checkpoint)
+	await wait_process_frames(1)
+	assert_eq(
+		level.run_state.checkpoint_id,
+		14,
+		"the real checkpoint crate must establish the mercy counter"
+	)
+
+	var economy := (
+		root.get("tuning_service").get("catalog").get("economy")
+		as EconomyTuning
+	)
+	assert_not_null(economy)
+	if economy == null:
+		return
+	for expected_deaths: int in range(
+		1,
+		economy.mercy_skip_death_threshold + 1
+	):
+		await _fall_real_player_from_entry(
+			level,
+			player,
+			expected_deaths
+		)
+
+	var mercy_panel := root.get_node(
+		"UI/HUD/SafeArea/MercyPanel"
+	) as PanelContainer
+	var skip_button := mercy_panel.get_node(
+		"Margin/Rows/Skip"
+	) as Button
+	assert_true(
+		mercy_panel.visible and skip_button.visible,
+		"the sixth real death must surface the HUD skip offer"
+	)
+	skip_button.emit_signal(&"pressed")
+	await wait_process_frames(1)
+	assert_false(
+		mercy_panel.visible,
+		"the real HUD button must accept and dismiss the skip offer"
+	)
+	assert_eq(
+		level.run_state.checkpoint_id,
+		30,
+		"the accepted offer must advance to the next authored checkpoint"
+	)
+	assert_true(level.run_state.gem_void)
+	assert_true(level.run_state.relic_void)
+
+	var relic_meta := (
+		level.run_state.meta.duplicate(true) as LevelMeta
+	)
+	relic_meta.relic_platinum_s = economy.time_crate_small_s
+	relic_meta.relic_gold_s = (
+		relic_meta.relic_platinum_s
+		+ economy.time_crate_medium_s
+	)
+	relic_meta.relic_sapphire_s = (
+		relic_meta.relic_gold_s
+		+ economy.time_crate_large_s
+	)
+	level.run_state.meta = relic_meta
+	root.set("_active_level_meta", relic_meta)
+
+	await _walk_real_player_into_finish(root, level, player)
+	assert_eq(root.call("state_name"), &"results")
+	var payload: Dictionary = root.get("last_results_payload")
+	assert_true(
+		payload.get("relic_void", false),
+		"the real skipped run must carry its relic void to results"
+	)
+	assert_false(
+		payload.get("relic_entry_available", true),
+		"the skipped run must not offer an immediate relic trial"
+	)
+	assert_false(
+		root.get_node(
+			"UI/ResultsScreen/SafeArea/Center/Panel/Margin/Rows/Actions/RelicTrial"
+		).visible,
+		"the real results screen must hide the voided relic action"
+	)
+
+
 func test_process_killed_relaunch_restores_real_run_at_checkpoint() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -657,6 +754,124 @@ func _crate(level: Node, crate_id: int) -> Node:
 		):
 			return candidate
 	return null
+
+
+func _fall_real_player_from_entry(
+	level: LevelSession,
+	player: CharacterBody3D,
+	expected_deaths: int
+) -> void:
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2.ZERO,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	player.global_position = Vector3(4.5, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _physics_index: int in range(30):
+		if player.is_on_floor() and not player.call("is_respawning"):
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		player.is_on_floor(),
+		"each mercy death must begin on the authored entry floor"
+	)
+
+	router.push_intent(
+		InputIntent.move(
+			Vector2.RIGHT,
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var physically_fell := false
+	for _physics_index: int in range(300):
+		physically_fell = (
+			physically_fell
+			or player.global_position.y < 0.0
+		)
+		if player.call("is_respawning"):
+			router.push_intent(
+				InputIntent.move(
+					Vector2.ZERO,
+					0.0,
+					InputIntent.SOURCE_KEYBOARD
+				)
+			)
+		if level.run_state.deaths_at_checkpoint == expected_deaths:
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		physically_fell,
+		"each mercy retry must come from the real player falling"
+	)
+	assert_eq(
+		level.run_state.deaths_at_checkpoint,
+		expected_deaths,
+		"the real respawn signal must advance the mercy counter once"
+	)
+	for _physics_index: int in range(120):
+		if player.is_on_floor() and not player.call("is_respawning"):
+			break
+		await wait_physics_frames(1)
+	assert_true(
+		player.is_on_floor() and not player.call("is_respawning"),
+		"the real player must finish respawning before the next fall"
+	)
+
+
+func _walk_real_player_into_finish(
+	root: Node,
+	level: LevelSession,
+	player: CharacterBody3D
+) -> void:
+	var finish := level.get_node("Finish") as Area3D
+	var finish_shape := (
+		finish.get_node("CollisionShape3D").shape as BoxShape3D
+	)
+	player.global_position = Vector3(
+		finish.global_position.x,
+		player.global_position.y,
+		(
+			finish.global_position.z
+			+ finish_shape.size.z * 0.5
+			+ 1.0
+		)
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(1)
+	assert_false(
+		finish.overlaps_body(player),
+		"the mercy completion must begin outside the real Finish trigger"
+	)
+	var start_z := player.global_position.z
+	var router := level.get_node("Input/InputRouter") as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2(0.0, -1.0),
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var walked_forward := false
+	for _physics_index: int in range(120):
+		if root.call("state_name") == &"results":
+			break
+		if is_instance_valid(player):
+			walked_forward = (
+				walked_forward
+				or player.global_position.z < start_z
+			)
+		await wait_physics_frames(1)
+	assert_true(
+		walked_forward,
+		"the real controller must walk the skipped run into the exit"
+	)
 
 
 func _remove_tree(path: String) -> void:
