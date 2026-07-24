@@ -423,14 +423,72 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	assert_not_null(economy)
 	if economy == null:
 		return
+	assert_eq(economy.mercy_mask_death_threshold, 3)
+	assert_eq(economy.mercy_skip_death_threshold, 6)
+	var scenario_economy := economy.duplicate(true) as EconomyTuning
+	scenario_economy.mercy_mask_death_threshold += (
+		economy.wumpa_per_standard_crate
+	)
+	scenario_economy.mercy_skip_death_threshold += (
+		economy.wumpa_per_standard_crate
+	)
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	level.refresh_tuning(
+		scenario_economy,
+		catalog.move,
+		catalog.input
+	)
+	var mercy_grants: Array[int] = []
+	var skip_offers: Array[int] = []
+	level.mercy_granted.connect(
+		func(mask_count: int) -> void:
+			mercy_grants.append(mask_count)
+	)
+	level.skip_offered.connect(
+		func(checkpoint_id: int) -> void:
+			skip_offers.append(checkpoint_id)
+	)
 	for expected_deaths: int in range(
 		1,
-		economy.mercy_skip_death_threshold + 1
+		scenario_economy.mercy_skip_death_threshold + 1
 	):
 		await _fall_real_player_from_entry(
 			level,
 			player,
 			expected_deaths
+		)
+		assert_eq(
+			mercy_grants.size(),
+			(
+				1
+				if expected_deaths
+				>= scenario_economy.mercy_mask_death_threshold
+				else 0
+			),
+			"mask mercy must fire at its live tuned boundary"
+		)
+		assert_eq(
+			level.run_state.masks,
+			(
+				1
+				if expected_deaths
+				== scenario_economy.mercy_mask_death_threshold
+				else 0
+			),
+			"the real player stack must receive only the boundary grant"
+		)
+		assert_eq(
+			skip_offers.size(),
+			(
+				1
+				if expected_deaths
+				>= scenario_economy.mercy_skip_death_threshold
+				else 0
+			),
+			"skip mercy must fire at its live tuned boundary"
 		)
 
 	var mercy_panel := root.get_node(
