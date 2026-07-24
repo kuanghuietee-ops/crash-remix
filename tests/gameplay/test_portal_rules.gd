@@ -6,10 +6,13 @@ const LEVEL_IDS: Array[StringName] = [
 	&"wr1_boulders",
 	&"wr1_hog_wild",
 ]
+const AVAILABLE_LEVEL_IDS: Array[StringName] = [
+	&"wr1_n_sanity_beach",
+]
 const BOSS_ID := &"wr1_papu_papu"
 
 
-func test_fresh_profile_opens_all_three_levels_but_locks_boss() -> void:
+func test_fresh_profile_opens_only_built_levels_and_locks_boss() -> void:
 	var rules := _rules()
 	if rules == null:
 		return
@@ -19,11 +22,13 @@ func test_fresh_profile_opens_all_three_levels_but_locks_boss() -> void:
 		var state: Dictionary = rules.call(
 			"state_for",
 			level_id,
-			profile
+			profile,
+			AVAILABLE_LEVEL_IDS
 		)
-		assert_true(
+		assert_eq(
 			state.get("unlocked", false),
-			"%s must be open on a fresh save" % level_id
+			level_id in AVAILABLE_LEVEL_IDS,
+			"%s availability must follow the scene registry" % level_id
 		)
 		assert_eq(state.get("kind"), &"level")
 		assert_false(state.get("completed", true))
@@ -31,7 +36,8 @@ func test_fresh_profile_opens_all_three_levels_but_locks_boss() -> void:
 	var boss_state: Dictionary = rules.call(
 		"state_for",
 		BOSS_ID,
-		profile
+		profile,
+		AVAILABLE_LEVEL_IDS
 	)
 	assert_eq(boss_state.get("kind"), &"boss")
 	assert_false(boss_state.get("unlocked", true))
@@ -51,7 +57,12 @@ func test_boss_unlocks_only_after_all_three_levels_are_completed() -> void:
 	)
 	assert_false(
 		(
-			rules.call("state_for", BOSS_ID, profile)
+			rules.call(
+				"state_for",
+				BOSS_ID,
+				profile,
+				AVAILABLE_LEVEL_IDS
+			)
 			as Dictionary
 		).get("unlocked", true)
 	)
@@ -63,7 +74,12 @@ func test_boss_unlocks_only_after_all_three_levels_are_completed() -> void:
 	)
 	assert_true(
 		(
-			rules.call("state_for", BOSS_ID, profile)
+			rules.call(
+				"state_for",
+				BOSS_ID,
+				profile,
+				AVAILABLE_LEVEL_IDS
+			)
 			as Dictionary
 		).get("unlocked", false)
 	)
@@ -86,7 +102,8 @@ func test_level_portal_state_reflects_gem_relic_and_flawless_save_data() -> void
 	var state: Dictionary = rules.call(
 		"state_for",
 		LEVEL_IDS[0],
-		profile
+		profile,
+		AVAILABLE_LEVEL_IDS
 	)
 
 	assert_true(state.get("unlocked", false))
@@ -104,7 +121,8 @@ func test_unknown_portal_is_closed_instead_of_defaulting_open() -> void:
 	var state: Dictionary = rules.call(
 		"state_for",
 		&"not_authored",
-		SaveModel.fresh()
+		SaveModel.fresh(),
+		AVAILABLE_LEVEL_IDS
 	)
 
 	assert_false(state.get("unlocked", true))

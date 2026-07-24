@@ -12,6 +12,9 @@ const LEVEL_IDS: Array[StringName] = [
 	&"wr1_boulders",
 	&"wr1_hog_wild",
 ]
+const AVAILABLE_LEVEL_IDS: Array[StringName] = [
+	&"wr1_n_sanity_beach",
+]
 const BOSS_ID := &"wr1_papu_papu"
 
 
@@ -23,7 +26,7 @@ func after_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
 
 
-func test_warp_room_instances_headless_with_all_four_portals() -> void:
+func test_warp_room_authors_all_portals_but_locks_unbuilt_levels() -> void:
 	var room := _instantiate_room()
 	if room == null:
 		return
@@ -38,7 +41,12 @@ func test_warp_room_instances_headless_with_all_four_portals() -> void:
 		var portal := _portal_for(portals, level_id)
 		assert_not_null(portal, "%s portal must be authored" % level_id)
 		if portal != null:
-			assert_true(portal.get_meta("unlocked", false))
+			var expected_open := level_id == &"wr1_n_sanity_beach"
+			assert_eq(
+				portal.get_meta("unlocked", false),
+				expected_open
+			)
+			assert_eq(portal.monitoring, expected_open)
 	var boss := _portal_for(portals, BOSS_ID)
 	assert_not_null(boss)
 	if boss != null:
@@ -79,6 +87,45 @@ func test_entering_a_portal_emits_the_exact_flow_event_payload() -> void:
 	assert_eq(received[0].get("mode"), &"normal")
 
 
+func test_unbuilt_portal_stays_in_warp_room_when_player_enters_its_volume() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+	var room := root.get_node_or_null("Content/WarpRoom1")
+	assert_not_null(room)
+	if room == null:
+		return
+	var portal := _portal_for(
+		_portals(room),
+		&"wr1_boulders"
+	)
+	assert_not_null(portal)
+	if portal == null:
+		return
+	assert_false(
+		portal.monitoring,
+		"an unbuilt level portal must not monitor player bodies"
+	)
+	var player := room.get_node("Player") as CharacterBody3D
+	player.global_position = portal.global_position
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(3)
+
+	assert_eq(
+		root.call("state_name"),
+		&"warp_room",
+		"entering an unbuilt portal volume must not leave the hub"
+	)
+	assert_true(root.has_node("Content/WarpRoom1"))
+	assert_false(root.has_node("Content/LevelPlaceholder"))
+
+
 func test_completed_level_exposes_relic_portal_only_with_authored_pars() -> void:
 	var room := _instantiate_room()
 	if room == null:
@@ -114,7 +161,9 @@ func test_completed_level_exposes_relic_portal_only_with_authored_pars() -> void
 		"configure",
 		profile,
 		catalog,
-		{&"wr1_n_sanity_beach": meta}
+		{&"wr1_n_sanity_beach": meta},
+		false,
+		AVAILABLE_LEVEL_IDS
 	)
 	var portal := _portal_for(
 		_portals(room),
@@ -271,7 +320,9 @@ func _configure_room(room: Node, profile: Dictionary) -> void:
 		"configure",
 		profile,
 		catalog,
-		{&"wr1_n_sanity_beach": meta}
+		{&"wr1_n_sanity_beach": meta},
+		false,
+		AVAILABLE_LEVEL_IDS
 	)
 
 

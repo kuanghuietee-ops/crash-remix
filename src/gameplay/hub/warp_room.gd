@@ -12,6 +12,7 @@ var _profile: Dictionary = {}
 var _catalog: GameplayTuning
 var _level_metas: Dictionary = {}
 var _phase_available: bool
+var _available_level_ids: Array[StringName] = []
 
 
 func _ready() -> void:
@@ -25,7 +26,8 @@ func configure(
 	profile: Dictionary,
 	catalog: GameplayTuning,
 	level_metas: Dictionary = {},
-	phase_available: bool = false
+	phase_available: bool = false,
+	available_level_ids: Array[StringName] = []
 ) -> void:
 	_profile = (
 		profile.duplicate(true)
@@ -35,6 +37,7 @@ func configure(
 	_catalog = catalog
 	_level_metas = level_metas.duplicate()
 	_phase_available = phase_available
+	_available_level_ids = available_level_ids.duplicate()
 	_configure_player()
 	_apply_portal_states()
 
@@ -119,7 +122,8 @@ func _apply_portal_states() -> void:
 		)
 		var state := PortalRulesType.state_for(
 			portal_id,
-			_profile
+			_profile,
+			_available_level_ids
 		)
 		for key: Variant in state:
 			portal.set_meta(key, state[key])

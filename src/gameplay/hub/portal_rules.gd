@@ -15,7 +15,8 @@ const LEVEL_IDS: Array[StringName] = [
 
 static func state_for(
 	portal_id: StringName,
-	profile: Dictionary
+	profile: Dictionary,
+	available_level_ids: Array[StringName]
 ) -> Dictionary:
 	if portal_id in LEVEL_IDS:
 		if not SaveModel.validate(profile):
@@ -24,7 +25,7 @@ static func state_for(
 		return {
 			"portal_id": portal_id,
 			"kind": KIND_LEVEL,
-			"unlocked": true,
+			"unlocked": portal_id in available_level_ids,
 			"completed": bool(record.get("completed", false)),
 			"gem": bool(record.get("gem", false)),
 			"relic_tier": StringName(

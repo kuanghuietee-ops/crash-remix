@@ -486,7 +486,8 @@ func _render_warp_room() -> void:
 		profile,
 		tuning_service.catalog,
 		_hub_level_metas(),
-		_phase_available()
+		_phase_available(),
+		_available_level_ids()
 	)
 	room.connect(
 		&"flow_event_requested",
@@ -509,7 +510,8 @@ func _refresh_warp_room_tuning() -> void:
 		profile,
 		tuning_service.catalog,
 		_hub_level_metas(),
-		_phase_available()
+		_phase_available(),
+		_available_level_ids()
 	)
 
 
@@ -517,6 +519,13 @@ func _hub_level_metas() -> Dictionary:
 	return {
 		N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_META,
 	}
+
+
+func _available_level_ids() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for level_id: Variant in _LEVEL_SCENE_PATHS:
+		result.append(StringName(level_id))
+	return result
 
 
 func _phase_available() -> bool:
