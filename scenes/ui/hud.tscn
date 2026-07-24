@@ -52,7 +52,7 @@ theme_override_constants/separation = 4
 [node name="Wumpa" type="Label" parent="SafeArea/Stats/Margin/Rows"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
-text = "WUMPA  0"
+text = "WUMPA  0 / 0"
 
 [node name="Crates" type="Label" parent="SafeArea/Stats/Margin/Rows"]
 layout_mode = 2

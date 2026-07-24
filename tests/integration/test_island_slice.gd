@@ -102,6 +102,52 @@ func test_real_player_walking_into_finish_completes_level() -> void:
 	)
 
 
+func test_authored_level_wumpa_total_is_visible_on_hud() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var first_crate := _crate(level, 1)
+	assert_not_null(first_crate)
+	if first_crate == null:
+		return
+	var economy := (
+		root.get("tuning_service").get("catalog").get("economy")
+		as EconomyTuning
+	)
+	var visible_meta := (
+		level.run_state.meta.duplicate(true) as LevelMeta
+	)
+	visible_meta.wumpa_total += economy.wumpa_per_standard_crate
+	root.call(
+		"set_active_level_session",
+		level,
+		visible_meta,
+		root.get("_segment_by_crate_id")
+	)
+
+	player.get_node("SpinArea").emit_signal(
+		&"body_entered",
+		first_crate
+	)
+	await wait_process_frames(1)
+
+	assert_eq(
+		root.get_node(
+			"UI/HUD/SafeArea/Stats/Margin/Rows/Wumpa"
+		).text,
+		"WUMPA  %d / %d" % [
+			economy.wumpa_per_standard_crate,
+			visible_meta.wumpa_total,
+		],
+		"the live HUD must consume LevelMeta.wumpa_total"
+	)
+
+
 func test_island_slice_full_loop() -> void:
 	var root := _instantiate_main()
 	if root == null:

@@ -114,9 +114,11 @@ func _refresh() -> void:
 		else 0
 	)
 	var crate_total := _meta.crate_count if _meta != null else 0
-	_wumpa_label.text = "WUMPA  %d" % int(
-		run_state.get("wumpa_run")
-	)
+	var wumpa_total := _meta.wumpa_total if _meta != null else 0
+	_wumpa_label.text = "WUMPA  %d / %d" % [
+		int(run_state.get("wumpa_run")),
+		wumpa_total,
+	]
 	_crate_label.text = "CRATES  %d / %d" % [
 		broken_count,
 		crate_total,
