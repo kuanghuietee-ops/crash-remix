@@ -10,6 +10,10 @@ const TNT_SCENE := "res://scenes/props/crate_tnt.tscn"
 const AKU_SCENE := "res://scenes/props/crate_aku.tscn"
 const TIME_SCENE := "res://scenes/props/crate_time.tscn"
 const WUMPA_SCENE := "res://scenes/props/wumpa.tscn"
+const LIVE_BOUNCE_WUMPA_PROBE := 7
+const LIVE_TNT_FUSE_PROBE_S := 4.25
+const LIVE_TNT_RADIUS_PROBE_M := 3.25
+const CLOCK_ORIGIN_PROBE_S := 11.0
 
 var _catalog: GameplayTuning
 var _economy: EconomyTuning
@@ -103,6 +107,9 @@ func test_bounce_crate_pays_each_bounce_and_breaks_at_tuned_limit() -> void:
 	var logic := _logic_script()
 	if logic == null:
 		return
+	_economy.bounce_crate_wumpa_per_bounce = (
+		LIVE_BOUNCE_WUMPA_PROBE
+	)
 	var bounce_count := 0
 
 	while bounce_count < _economy.bounce_crate_max_bounces:
@@ -114,7 +121,7 @@ func test_bounce_crate_pays_each_bounce_and_breaks_at_tuned_limit() -> void:
 		)
 		assert_eq(
 			result["wumpa"],
-			_economy.bounce_crate_wumpa_per_bounce
+			LIVE_BOUNCE_WUMPA_PROBE
 		)
 		assert_eq(
 			result["breaks"],
@@ -190,6 +197,7 @@ func test_tnt_spin_detonates_while_touch_and_bounce_start_full_fuse() -> void:
 	var logic := _logic_script()
 	if logic == null:
 		return
+	_economy.tnt_fuse_s = LIVE_TNT_FUSE_PROBE_S
 
 	var spin: Dictionary = logic.call(
 		"break_result",
@@ -208,7 +216,7 @@ func test_tnt_spin_detonates_while_touch_and_bounce_start_full_fuse() -> void:
 		)
 		assert_true(contact["starts_fuse"])
 		assert_false(contact["detonates"])
-		assert_eq(contact["fuse_s"], _economy.tnt_fuse_s)
+		assert_eq(contact["fuse_s"], LIVE_TNT_FUSE_PROBE_S)
 	assert_true(
 		logic.call(
 			"tnt_contact_result",
@@ -228,7 +236,7 @@ func test_tnt_spin_detonates_while_touch_and_bounce_start_full_fuse() -> void:
 		func(crate_id: int, _origin: Vector3) -> void:
 			detonations.append(crate_id)
 	)
-	crate.call("apply_verb", &"spin", _economy.tnt_fuse_s)
+	crate.call("apply_verb", &"spin", LIVE_TNT_FUSE_PROBE_S)
 	assert_eq(detonations.size(), 1)
 
 
@@ -236,7 +244,8 @@ func test_tnt_fuse_uses_simulated_clock_and_exact_tuned_boundary() -> void:
 	var logic := _logic_script()
 	if logic == null:
 		return
-	var started_at_s := _economy.tnt_blast_radius_m
+	_economy.tnt_fuse_s = LIVE_TNT_FUSE_PROBE_S
+	var started_at_s := CLOCK_ORIGIN_PROBE_S
 	var deadline_s: float = logic.call(
 		"tnt_fuse_deadline",
 		started_at_s,
@@ -245,7 +254,7 @@ func test_tnt_fuse_uses_simulated_clock_and_exact_tuned_boundary() -> void:
 
 	assert_eq(
 		deadline_s,
-		started_at_s + _economy.tnt_fuse_s
+		started_at_s + LIVE_TNT_FUSE_PROBE_S
 	)
 	assert_false(
 		logic.call(
@@ -269,11 +278,19 @@ func test_tnt_blast_set_uses_tuned_radius_and_inclusive_boundary() -> void:
 	var logic := _logic_script()
 	if logic == null:
 		return
-	var radius := _economy.tnt_blast_radius_m
+	_economy.tnt_blast_radius_m = LIVE_TNT_RADIUS_PROBE_M
 	var positions: Dictionary = {
-		1: Vector3(radius - _input.bounce_timing_s, 0.0, 0.0),
-		2: Vector3(radius, 0.0, 0.0),
-		3: Vector3(radius + radius, 0.0, 0.0),
+		1: Vector3(
+			LIVE_TNT_RADIUS_PROBE_M - _input.bounce_timing_s,
+			0.0,
+			0.0
+		),
+		2: Vector3(LIVE_TNT_RADIUS_PROBE_M, 0.0, 0.0),
+		3: Vector3(
+			LIVE_TNT_RADIUS_PROBE_M + LIVE_TNT_RADIUS_PROBE_M,
+			0.0,
+			0.0
+		),
 	}
 
 	var affected: Array = logic.call(
@@ -291,11 +308,12 @@ func test_real_tnt_blast_respects_occlusion_and_all_three_axes() -> void:
 	assert_not_null(session_script)
 	if session_script == null or not session_script.can_instantiate():
 		return
+	_economy.tnt_blast_radius_m = LIVE_TNT_RADIUS_PROBE_M
 	var session := session_script.new() as Node
 	var finish := Area3D.new()
 	finish.name = "Finish"
 	session.add_child(finish)
-	var radius := _economy.tnt_blast_radius_m
+	var radius := LIVE_TNT_RADIUS_PROBE_M
 	var inside_offset := radius - _input.bounce_timing_s
 	var outside_offset := radius + _input.bounce_timing_s
 	var source := _instantiate(TNT_SCENE) as StaticBody3D
@@ -354,7 +372,7 @@ func test_real_tnt_blast_respects_occlusion_and_all_three_axes() -> void:
 	))
 	await wait_physics_frames(2)
 
-	source.call("apply_verb", &"spin", _economy.tnt_fuse_s)
+	source.call("apply_verb", &"spin", CLOCK_ORIGIN_PROBE_S)
 
 	assert_true(source.call("is_broken"))
 	assert_true(visible_x.call("is_broken"))
@@ -407,9 +425,10 @@ func test_chained_tnt_runs_its_own_full_fuse_from_blast_time() -> void:
 	var crate := _instantiate(TNT_SCENE)
 	if crate == null:
 		return
+	_economy.tnt_fuse_s = LIVE_TNT_FUSE_PROBE_S
 	add_child_autofree(crate)
 	crate.call("configure", _economy, _move, _input)
-	var blast_time_s := _economy.tnt_blast_radius_m
+	var blast_time_s := CLOCK_ORIGIN_PROBE_S
 	var detonations: Array[int] = []
 	crate.connect(
 		&"detonated",
@@ -423,15 +442,15 @@ func test_chained_tnt_runs_its_own_full_fuse_from_blast_time() -> void:
 	assert_true(crate.call("tnt_fuse_active"))
 	assert_eq(
 		crate.call("tnt_fuse_deadline_s"),
-		blast_time_s + _economy.tnt_fuse_s
+		blast_time_s + LIVE_TNT_FUSE_PROBE_S
 	)
 	assert_false(crate.call(
 		"advance_fuse",
-		blast_time_s + _economy.tnt_fuse_s - _input.bounce_timing_s
+		blast_time_s + LIVE_TNT_FUSE_PROBE_S - _input.bounce_timing_s
 	))
 	assert_true(crate.call(
 		"advance_fuse",
-		blast_time_s + _economy.tnt_fuse_s
+		blast_time_s + LIVE_TNT_FUSE_PROBE_S
 	))
 	assert_eq(detonations.size(), 1)
 
