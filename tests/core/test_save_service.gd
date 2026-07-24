@@ -262,6 +262,35 @@ func test_new_corruption_preserves_every_previous_incident() -> void:
 	)
 
 
+func test_store_preserves_corrupt_primary_before_publishing_profile() -> void:
+	var service := SaveService.new()
+	var corrupt_bytes := "{corrupt primary before store"
+	_write_text(_save_path("profile.json"), corrupt_bytes)
+	var replacement := SaveModel.fresh()
+	replacement["lifetime_wumpa"] = 53
+
+	assert_eq(
+		service.store_profile(TEST_SAVE_DIR, replacement),
+		OK
+	)
+
+	assert_eq(
+		service.load_profile(TEST_SAVE_DIR),
+		replacement,
+		"the valid replacement must publish through the real store path"
+	)
+	assert_eq(
+		FileAccess.get_file_as_string(
+			_save_path("profile.json.corrupt")
+		),
+		corrupt_bytes,
+		"store must preserve the invalid primary before replacing it"
+	)
+	assert_false(FileAccess.file_exists(
+		_save_path("profile.json.tmp")
+	))
+
+
 func test_valid_fixture_loads() -> void:
 	var service := SaveService.new()
 	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))
