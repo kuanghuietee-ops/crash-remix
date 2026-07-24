@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/crates/breakable_crate.gd" id="1_crate"]
+
+[sub_resource type="StandardMaterial3D" id="Material_crate"]
+albedo_color = Color(0.55, 0.3, 0.12, 1)
+roughness = 0.82
+
+[sub_resource type="BoxMesh" id="Mesh_crate"]
+material = SubResource("Material_crate")
+size = Vector3(1, 1, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_crate"]
+size = Vector3(1, 1, 1)
+
+[node name="BreakableCrate" type="StaticBody3D"]
+script = ExtResource("1_crate")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_crate")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_crate")
