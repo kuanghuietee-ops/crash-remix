@@ -293,28 +293,30 @@ func _on_level_session_completed(results: Dictionary) -> void:
 		last_save_error = ERR_INVALID_DATA
 		push_error("Level results payload failed validation.")
 		return
-	last_results_payload = payload.duplicate(true)
-	if _results_screen != null:
-		_results_screen.call("present", last_results_payload)
 
 	var updated_profile := results_model.persisted_profile(
 		profile,
-		last_results_payload
+		payload
 	)
 	if updated_profile.is_empty():
 		last_save_error = ERR_INVALID_DATA
-	else:
-		last_save_error = save_service.store_profile(
-			save_dir,
-			updated_profile
-		)
-		if last_save_error == OK:
-			profile = updated_profile
+		push_error("Level results could not update the profile.")
+		return
+	last_save_error = save_service.store_profile(
+		save_dir,
+		updated_profile
+	)
 	if last_save_error != OK:
 		push_error(
 			"Level results were not saved: "
 			+ error_string(last_save_error)
 		)
+		return
+
+	profile = updated_profile
+	last_results_payload = payload.duplicate(true)
+	if _results_screen != null:
+		_results_screen.call("present", last_results_payload)
 
 	var transition_error := dispatch({
 		"type": GameFlow.EVENT_LEVEL_COMPLETE,

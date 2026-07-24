@@ -12,6 +12,13 @@ const N_SANITY_META_PATH := (
 )
 
 
+class FailingSaveService:
+	extends SaveService
+
+	func store_profile(_save_dir: String, _data: Dictionary) -> Error:
+		return ERR_CANT_CREATE
+
+
 func before_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
 
@@ -553,6 +560,89 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 	assert_eq(saved_record.get("last_missed_crate_ids"), [2])
 	assert_true(root.get_node("UI/ResultsScreen").visible)
 	assert_true(root.has_node("Content/ResultsPlaceholder"))
+
+
+func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(root.call("state_name"), &"paused")
+	var snapshot_path := TEST_SAVE_DIR.path_join("session.json")
+	assert_true(FileAccess.file_exists(snapshot_path))
+	assert_eq(
+		root.call("dispatch", {"type": &"resume"}),
+		OK
+	)
+	var profile_before: Dictionary = root.get("profile").duplicate(true)
+	root.set("save_service", FailingSaveService.new())
+	var results := root.get_node("UI/ResultsScreen") as Control
+	assert_false(results.visible)
+
+	var finish := level.get_node("Finish") as Area3D
+	var finish_shape := (
+		finish.get_node("CollisionShape3D").shape as BoxShape3D
+	)
+	player.global_position = Vector3(
+		finish.global_position.x,
+		player.global_position.y,
+		(
+			finish.global_position.z
+			+ finish_shape.size.z * 0.5
+			+ 1.0
+		)
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	await wait_physics_frames(1)
+	assert_false(
+		finish.overlaps_body(player),
+		"the failed-save scenario must begin outside the real exit"
+	)
+	var start_z := player.global_position.z
+	var router := level.get_node(
+		"Input/InputRouter"
+	) as InputRouter
+	router.push_intent(
+		InputIntent.move(
+			Vector2(0.0, -1.0),
+			0.0,
+			InputIntent.SOURCE_KEYBOARD
+		)
+	)
+	var walked_forward := false
+	for _physics_index: int in range(120):
+		if root.get("last_save_error") != OK:
+			break
+		if is_instance_valid(player):
+			walked_forward = (
+				walked_forward
+				or player.global_position.z < start_z
+			)
+		await wait_physics_frames(1)
+
+	assert_push_error("Level results were not saved")
+	assert_true(
+		walked_forward,
+		"the real controller must walk into the real Finish area"
+	)
+	assert_eq(root.get("last_save_error"), ERR_CANT_CREATE)
+	assert_eq(root.call("state_name"), &"level")
+	assert_true(FileAccess.file_exists(snapshot_path))
+	assert_eq(root.get("profile"), profile_before)
+	assert_true(root.get("last_results_payload").is_empty())
+	assert_false(
+		results.visible,
+		"an uncommitted award must not be presented as saved"
+	)
+	assert_same(root.get("active_level_session"), level)
+	root.queue_free()
+	await wait_process_frames(2)
 
 
 func test_results_relic_entry_stays_locked_then_retries_in_relic_mode() -> void:
