@@ -180,10 +180,26 @@ func _on_mercy_granted(_mask_count: int) -> void:
 func _on_skip_offered(_checkpoint_id: int) -> void:
 	_mercy_panel.visible = true
 	_skip_button.visible = true
-	_mercy_label.text = (
-		"Skip to the next checkpoint? "
-		+ "Gem and relic will be void for this run."
+	var completes_level := (
+		_session != null
+		and is_instance_valid(_session)
+		and _session.has_method(
+			"offered_mercy_skip_completes_level"
+		)
+		and bool(_session.call(
+			"offered_mercy_skip_completes_level"
+		))
 	)
+	if completes_level:
+		_mercy_label.text = (
+			"Skip the remaining level? "
+			+ "Gem and relic will be void for this run."
+		)
+	else:
+		_mercy_label.text = (
+			"Skip to the next checkpoint? "
+			+ "Gem and relic will be void for this run."
+		)
 
 
 func _on_skip_pressed() -> void:

@@ -592,6 +592,89 @@ func test_real_mercy_skip_voids_relic_entry_at_results() -> void:
 	)
 
 
+func test_final_checkpoint_mercy_skip_completes_a_voided_run() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var final_checkpoint := _crate(level, 30)
+	assert_not_null(final_checkpoint)
+	if final_checkpoint == null:
+		return
+	player.get_node("SpinArea").emit_signal(
+		&"body_entered",
+		final_checkpoint
+	)
+	await wait_process_frames(1)
+	assert_eq(
+		level.run_state.checkpoint_id,
+		30,
+		"the scenario must begin at the final authored checkpoint"
+	)
+	var skip_offers: Array[int] = []
+	level.skip_offered.connect(
+		func(checkpoint_id: int) -> void:
+			skip_offers.append(checkpoint_id)
+	)
+	var economy := (
+		root.get("tuning_service").get("catalog").get("economy")
+		as EconomyTuning
+	)
+	assert_not_null(economy)
+	if economy == null:
+		return
+
+	for expected_deaths: int in range(
+		1,
+		economy.mercy_skip_death_threshold + 1
+	):
+		await _fall_real_player_from_entry(
+			level,
+			player,
+			expected_deaths
+		)
+
+	assert_eq(
+		skip_offers,
+		[30],
+		"the sixth real death must offer relief at the final checkpoint"
+	)
+	var mercy_panel := root.get_node(
+		"UI/HUD/SafeArea/MercyPanel"
+	) as PanelContainer
+	var skip_button := mercy_panel.get_node(
+		"Margin/Rows/Skip"
+	) as Button
+	assert_true(mercy_panel.visible and skip_button.visible)
+	assert_string_contains(
+		mercy_panel.get_node("Margin/Rows/Message").text,
+		"remaining level"
+	)
+
+	skip_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(
+		root.call("state_name"),
+		&"results",
+		"accepting final-checkpoint mercy must finish instead of stall"
+	)
+	var payload: Dictionary = root.get("last_results_payload")
+	assert_false(payload.get("gem", true))
+	assert_true(payload.get("relic_void", false))
+	assert_true(
+		SaveModel.level_record(
+			root.get("profile"),
+			LEVEL_ID
+		).get("completed", false),
+		"the real results path must persist the mercy completion"
+	)
+
+
 func test_real_relic_death_can_finish_as_void_without_stranding_run() -> void:
 	var seeded_profile := SaveModel.fresh()
 	var seeded_record := SaveModel.level_record(

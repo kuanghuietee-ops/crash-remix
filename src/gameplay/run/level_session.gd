@@ -38,6 +38,7 @@ var _active_top_contact_ids: Array[int] = []
 var _offered_skip_checkpoint_id: int = (
 	LevelRunState.START_CHECKPOINT
 )
+var _offered_skip_completes_level: bool = false
 
 
 func configure(
@@ -59,6 +60,7 @@ func configure(
 	_active_top_contact_ids.clear()
 	_relic_stopwatch = null
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
+	_offered_skip_completes_level = false
 	var authored_ids: Array[int] = []
 
 	for candidate: Node in find_children(
@@ -244,6 +246,7 @@ func collect_wumpa(amount: int, now_s: float) -> void:
 
 
 func accept_mercy_skip() -> bool:
+	var completes_level := _offered_skip_completes_level
 	if (
 		_offered_skip_checkpoint_id
 		== LevelRunState.START_CHECKPOINT
@@ -254,10 +257,22 @@ func accept_mercy_skip() -> bool:
 		return false
 	_set_player_spawn(_offered_skip_checkpoint_id)
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
+	_offered_skip_completes_level = false
+	if completes_level:
+		complete_level()
+		return true
 	if _player != null and _player.has_method("respawn"):
 		_death_recorded_pending_respawn = true
 		_player.call("respawn")
 	return true
+
+
+func offered_mercy_skip_completes_level() -> bool:
+	return (
+		_offered_skip_checkpoint_id
+		!= LevelRunState.START_CHECKPOINT
+		and _offered_skip_completes_level
+	)
 
 
 func complete_level() -> Dictionary:
@@ -281,8 +296,17 @@ func _record_death() -> Dictionary:
 		mercy_granted.emit(run_state.masks)
 	if bool(outcome["offer_skip"]):
 		var next_checkpoint_id := _next_checkpoint_id()
+		var completes_level := false
+		if (
+			next_checkpoint_id == LevelRunState.START_CHECKPOINT
+			and run_state.checkpoint_id
+			!= LevelRunState.START_CHECKPOINT
+		):
+			next_checkpoint_id = run_state.checkpoint_id
+			completes_level = true
 		if next_checkpoint_id != LevelRunState.START_CHECKPOINT:
 			_offered_skip_checkpoint_id = next_checkpoint_id
+			_offered_skip_completes_level = completes_level
 			skip_offered.emit(next_checkpoint_id)
 	_sync_crate_visuals(bool(outcome["relic_void_reset"]))
 	if bool(outcome["relic_void_reset"]):
@@ -329,6 +353,7 @@ func _on_crate_bounced(
 func _on_checkpoint_reached(crate_id: int) -> void:
 	run_state.record_checkpoint(crate_id)
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
+	_offered_skip_completes_level = false
 	_set_player_spawn(crate_id)
 
 
