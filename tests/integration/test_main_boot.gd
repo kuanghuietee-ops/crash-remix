@@ -4,6 +4,9 @@ const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const DEFAULT_SAVE_DIR := "user://save"
 const TEST_SAVE_DIR := "user://test_sandbox/task5_main_boot"
 const PLACEHOLDER_LEVEL_ID := &"test_level"
+const FUTURE_SAVE_FIXTURE := (
+	"res://tests/fixtures/saves/profile_future_version.json"
+)
 
 
 func before_each() -> void:
@@ -60,6 +63,30 @@ func test_main_boots_fresh_profile_to_warp_room_through_scratch_path() -> void:
 	assert_eq(FileAccess.file_exists(live_primary), live_existed)
 	if live_existed:
 		assert_eq(FileAccess.get_file_as_bytes(live_primary), live_bytes)
+
+
+func test_future_profile_refuses_real_boot_without_overwrite() -> void:
+	var primary_path := TEST_SAVE_DIR.path_join("profile.json")
+	_write_text(
+		primary_path,
+		FileAccess.get_file_as_string(FUTURE_SAVE_FIXTURE)
+	)
+	var before := FileAccess.get_file_as_bytes(primary_path)
+	var root := _instantiate_main()
+	if root == null:
+		return
+
+	await wait_process_frames(1)
+
+	assert_push_error("Save data was written by a newer version")
+	assert_eq(root.get("boot_error"), ERR_UNAVAILABLE)
+	assert_eq(root.call("state_name"), &"boot")
+	assert_false(root.has_node("Content/WarpRoom1"))
+	assert_eq(
+		FileAccess.get_file_as_bytes(primary_path),
+		before,
+		"Q9 must leave the future save byte-identical"
+	)
 
 
 func test_wr4_completion_routes_phase_unlock_to_hub_ui_and_player() -> void:
