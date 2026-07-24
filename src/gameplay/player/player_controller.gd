@@ -212,6 +212,7 @@ func advance_logic(
 	_update_rail_neighbour_context()
 	if (
 		_phase_enabled
+		and _input_tuning.phase_button_unlocked
 		and
 		_intents.consume_pressed(
 			InputIntent.ACTION_PHASE,

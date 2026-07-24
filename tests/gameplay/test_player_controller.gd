@@ -350,6 +350,52 @@ func test_phase_intent_is_ignored_when_disabled_and_honored_when_enabled() -> vo
 			assert_eq(PhaseState.active_set(), before)
 
 
+func test_phase_tuning_master_blocks_gamepad_at_player_choke_point() -> void:
+	var catalog := load(TUNING_PATH) as GameplayTuning
+	PhaseState.configure(catalog.phase)
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	var locked_input := _input.duplicate(true)
+	locked_input.phase_button_unlocked = false
+	controller.call(
+		"configure",
+		_move,
+		locked_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer,
+		null,
+		true
+	)
+	PhaseState.reset_to_authored_set()
+	var before := PhaseState.active_set()
+	buffer.push(InputIntent.button(
+		InputIntent.ACTION_PHASE,
+		true,
+		61.0,
+		InputIntent.SOURCE_GAMEPAD
+	))
+
+	controller.call(
+		"advance_logic",
+		61.0,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(
+		PhaseState.active_set(),
+		before,
+		"tuning master must gate gamepad at the shared player choke point"
+	)
+
+
 func test_respawn_waits_for_authored_delay_and_accepts_exact_boundary() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():
