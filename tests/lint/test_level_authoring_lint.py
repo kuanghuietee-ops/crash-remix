@@ -128,6 +128,19 @@ class LevelAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("9.486 degrees", findings[0].detail)
 
+    def test_wall_run_camera_mode_cannot_bypass_jump_depression(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_wall_run_required_jump_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn("4.109 degrees", findings[0].detail)
+
     def test_time_crate_outside_relic_group_fires_its_rule(self) -> None:
         self.assertEqual(
             self._rules("level_time_crate_outside_relic_bad.tscn"),

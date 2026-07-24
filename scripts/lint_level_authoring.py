@@ -479,7 +479,6 @@ def _required_jump_findings(
             continue
         passes = False
         observed: list[float] = []
-        exempt = False
         for region in matching_regions:
             mode = (
                 _string_value(
@@ -487,9 +486,6 @@ def _required_jump_findings(
                 )
                 or "default"
             )
-            if mode == "wall_run":
-                exempt = True
-                continue
             offset = tuning.camera_offsets.get(
                 mode,
                 tuning.camera_offsets["default"],
@@ -506,7 +502,7 @@ def _required_jump_findings(
             ):
                 passes = True
                 break
-        if passes or exempt:
+        if passes:
             continue
         best = max(observed) if observed else 0.0
         findings.append(
