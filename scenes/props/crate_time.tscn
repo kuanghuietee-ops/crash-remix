@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/props/breakable.tscn" id="1_base"]
+
+[sub_resource type="StandardMaterial3D" id="Material_time"]
+albedo_color = Color(0.18, 0.72, 0.92, 1)
+emission_enabled = true
+emission = Color(0.02, 0.14, 0.24, 1)
+emission_energy_multiplier = 0.62
+
+[node name="CrateTime" instance=ExtResource("1_base")]
+crate_type = &"time"
+time_crate_size = &"small"
+
+[node name="Mesh" parent="." index="0"]
+material_override = SubResource("Material_time")

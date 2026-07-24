@@ -4,6 +4,10 @@ const LOGIC_PATH := "res://src/gameplay/crates/crate_logic.gd"
 const STANDARD_SCENE := "res://scenes/props/crate_standard.tscn"
 const BOUNCE_SCENE := "res://scenes/props/crate_bounce.tscn"
 const IRON_SCENE := "res://scenes/props/crate_iron.tscn"
+const CHECKPOINT_SCENE := "res://scenes/props/crate_checkpoint.tscn"
+const TNT_SCENE := "res://scenes/props/crate_tnt.tscn"
+const AKU_SCENE := "res://scenes/props/crate_aku.tscn"
+const TIME_SCENE := "res://scenes/props/crate_time.tscn"
 const WUMPA_SCENE := "res://scenes/props/wumpa.tscn"
 
 var _catalog: GameplayTuning
@@ -161,11 +165,257 @@ func test_high_bounce_branch_consumes_live_bounce_timing_window() -> void:
 	assert_ne(outside_speed, inside_speed)
 
 
+func test_tnt_spin_detonates_while_touch_and_bounce_start_full_fuse() -> void:
+	var logic := _logic_script()
+	if logic == null:
+		return
+
+	var spin: Dictionary = logic.call(
+		"break_result",
+		&"tnt",
+		&"spin",
+		_economy
+	)
+	assert_true(spin["breaks"])
+	assert_true(spin["detonates"])
+
+	for verb: StringName in [&"touch", &"bounce"]:
+		var contact: Dictionary = logic.call(
+			"tnt_contact_result",
+			verb,
+			_economy
+		)
+		assert_true(contact["starts_fuse"])
+		assert_false(contact["detonates"])
+		assert_eq(contact["fuse_s"], _economy.tnt_fuse_s)
+	assert_true(
+		logic.call(
+			"tnt_contact_result",
+			&"bounce",
+			_economy
+		)["bounces_player"]
+	)
+
+	var crate := _instantiate(TNT_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var detonations: Array[int] = []
+	crate.connect(
+		&"detonated",
+		func(crate_id: int, _origin: Vector3) -> void:
+			detonations.append(crate_id)
+	)
+	crate.call("apply_verb", &"spin", _economy.tnt_fuse_s)
+	assert_eq(detonations.size(), 1)
+
+
+func test_tnt_fuse_uses_simulated_clock_and_exact_tuned_boundary() -> void:
+	var logic := _logic_script()
+	if logic == null:
+		return
+	var started_at_s := _economy.tnt_blast_radius_m
+	var deadline_s: float = logic.call(
+		"tnt_fuse_deadline",
+		started_at_s,
+		_economy
+	)
+
+	assert_eq(
+		deadline_s,
+		started_at_s + _economy.tnt_fuse_s
+	)
+	assert_false(
+		logic.call(
+			"tnt_fuse_elapsed",
+			started_at_s,
+			deadline_s - _input.bounce_timing_s,
+			_economy
+		)
+	)
+	assert_true(
+		logic.call(
+			"tnt_fuse_elapsed",
+			started_at_s,
+			deadline_s,
+			_economy
+		)
+	)
+
+
+func test_tnt_blast_set_uses_tuned_radius_and_inclusive_boundary() -> void:
+	var logic := _logic_script()
+	if logic == null:
+		return
+	var radius := _economy.tnt_blast_radius_m
+	var positions: Dictionary = {
+		1: Vector3(radius - _input.bounce_timing_s, 0.0, 0.0),
+		2: Vector3(radius, 0.0, 0.0),
+		3: Vector3(radius + radius, 0.0, 0.0),
+	}
+
+	var affected: Array = logic.call(
+		"blast_crate_ids",
+		Vector3.ZERO,
+		positions,
+		_economy
+	)
+
+	assert_eq(affected, [1, 2])
+
+
+func test_blast_broken_crates_report_collected_and_chain_tnt_refuses() -> void:
+	var logic := _logic_script()
+	if logic == null:
+		return
+	for crate_type: StringName in [
+		&"standard",
+		&"bounce",
+		&"checkpoint",
+		&"aku",
+		&"time",
+	]:
+		var result: Dictionary = logic.call(
+			"blast_result",
+			crate_type,
+			_economy
+		)
+		assert_true(result["breaks"])
+		assert_true(result["collected"])
+		assert_false(result["starts_fuse"])
+
+	var chained_tnt: Dictionary = logic.call(
+		"blast_result",
+		&"tnt",
+		_economy
+	)
+	assert_false(chained_tnt["breaks"])
+	assert_false(chained_tnt["collected"])
+	assert_true(chained_tnt["starts_fuse"])
+
+
+func test_chained_tnt_runs_its_own_full_fuse_from_blast_time() -> void:
+	var crate := _instantiate(TNT_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var blast_time_s := _economy.tnt_blast_radius_m
+	var detonations: Array[int] = []
+	crate.connect(
+		&"detonated",
+		func(crate_id: int, _origin: Vector3) -> void:
+			detonations.append(crate_id)
+	)
+
+	var blast: Dictionary = crate.call("apply_blast", blast_time_s)
+
+	assert_true(blast["starts_fuse"])
+	assert_true(crate.call("tnt_fuse_active"))
+	assert_eq(
+		crate.call("tnt_fuse_deadline_s"),
+		blast_time_s + _economy.tnt_fuse_s
+	)
+	assert_false(crate.call(
+		"advance_fuse",
+		blast_time_s + _economy.tnt_fuse_s - _input.bounce_timing_s
+	))
+	assert_true(crate.call(
+		"advance_fuse",
+		blast_time_s + _economy.tnt_fuse_s
+	))
+	assert_eq(detonations.size(), 1)
+
+
+func test_checkpoint_break_emits_exactly_once() -> void:
+	var crate := _instantiate(CHECKPOINT_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.set("crate_id", _economy.mercy_mask_death_threshold)
+	crate.call("configure", _economy, _move, _input)
+	var reached: Array[int] = []
+	crate.connect(
+		&"checkpoint_reached",
+		func(crate_id: int) -> void:
+			reached.append(crate_id)
+	)
+
+	crate.call("apply_verb", &"spin")
+	crate.call("apply_verb", &"slam")
+
+	assert_eq(
+		reached,
+		[_economy.mercy_mask_death_threshold]
+	)
+
+
+func test_aku_break_emits_one_mask_grant() -> void:
+	var crate := _instantiate(AKU_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var grants: Array[int] = []
+	crate.connect(
+		&"mask_granted",
+		func(amount: int) -> void:
+			grants.append(amount)
+	)
+
+	crate.call("apply_verb", &"jump_under")
+	crate.call("apply_verb", &"spin")
+
+	assert_eq(grants, [1])
+
+
+func test_time_crate_refuses_normal_mode_and_awards_tuning_in_relic_mode() -> void:
+	var normal_crate := _instantiate(TIME_SCENE)
+	if normal_crate == null:
+		return
+	add_child_autofree(normal_crate)
+	normal_crate.call("configure", _economy, _move, _input, false)
+
+	assert_false(normal_crate.call("is_armed"))
+	assert_false(normal_crate.call("apply_verb", &"spin")["breaks"])
+
+	var relic_crate := _instantiate(TIME_SCENE)
+	if relic_crate == null:
+		return
+	add_child_autofree(relic_crate)
+	relic_crate.call("configure", _economy, _move, _input, true)
+	var awards: Array[float] = []
+	relic_crate.connect(
+		&"time_awarded",
+		func(seconds: float) -> void:
+			awards.append(seconds)
+	)
+
+	assert_true(relic_crate.call("is_armed"))
+	assert_true(relic_crate.call("apply_verb", &"spin")["breaks"])
+	assert_eq(awards, [_economy.time_crate_small_s])
+
+	var logic := _logic_script()
+	assert_eq(
+		logic.call("time_bonus_s", &"medium", _economy),
+		_economy.time_crate_medium_s
+	)
+	assert_eq(
+		logic.call("time_bonus_s", &"large", _economy),
+		_economy.time_crate_large_s
+	)
+
+
 func test_graybox_scenes_keep_type_and_identity_on_live_node_glue() -> void:
 	for scene_case: Array in [
 		[STANDARD_SCENE, &"standard"],
 		[BOUNCE_SCENE, &"bounce"],
 		[IRON_SCENE, &"iron"],
+		[CHECKPOINT_SCENE, &"checkpoint"],
+		[TNT_SCENE, &"tnt"],
+		[AKU_SCENE, &"aku"],
+		[TIME_SCENE, &"time"],
 	]:
 		var crate := _instantiate(scene_case[0])
 		if crate == null:
