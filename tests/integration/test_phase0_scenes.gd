@@ -41,7 +41,11 @@ func test_camera_configure_applies_nondefault_authored_rail_bake_interval() -> v
 		return
 	add_child_autofree(rig)
 	add_child_autofree(player)
-	var catalog: GameplayTuning = load("res://data/tuning/gameplay.tres").duplicate(true)
+	var catalog := load(
+		"res://data/tuning/gameplay.tres"
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	catalog.camera.rail_bake_interval_m = 0.37
 
 	rig.call(

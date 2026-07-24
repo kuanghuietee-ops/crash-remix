@@ -19,10 +19,30 @@ var _input: InputTuning
 func before_each() -> void:
 	_catalog = load(
 		"res://data/tuning/gameplay.tres"
-	).duplicate(true) as GameplayTuning
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	_economy = _catalog.economy
 	_move = _catalog.move
 	_input = _catalog.input
+
+
+func test_catalog_copy_isolates_nested_authored_tuning_resources() -> void:
+	var authored := load(
+		"res://data/tuning/gameplay.tres"
+	) as GameplayTuning
+	var authored_fuse_s := authored.economy.tnt_fuse_s
+
+	_catalog.economy.tnt_fuse_s = authored_fuse_s + 1.0
+	var value_after_copy_mutation := authored.economy.tnt_fuse_s
+	_catalog.economy.tnt_fuse_s = authored_fuse_s
+
+	assert_eq(
+		value_after_copy_mutation,
+		authored_fuse_s,
+		"mutating a test catalog must not poison the cached authored resource"
+	)
+	assert_ne(_catalog.economy, authored.economy)
 
 
 func test_standard_breaks_to_each_attack_and_pays_tuned_wumpa() -> void:

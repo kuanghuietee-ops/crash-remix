@@ -13,7 +13,9 @@ var _meta: LevelMeta
 func before_each() -> void:
 	_catalog = load(
 		"res://data/tuning/gameplay.tres"
-	).duplicate(true) as GameplayTuning
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	_economy = _catalog.economy
 	_meta = load(
 		"res://data/tuning/levels/n_sanity_beach.tres"

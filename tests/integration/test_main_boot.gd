@@ -214,7 +214,9 @@ func test_application_pause_auto_pauses_and_snapshots_active_run() -> void:
 	meta.crate_count = 1
 	var catalog := load(
 		"res://data/tuning/gameplay.tres"
-	).duplicate(true) as GameplayTuning
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	session.configure(meta, &"normal", catalog.economy)
 	session.run_state.record_crate_broken(
 		1,
@@ -352,7 +354,9 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 	meta.crate_count = 2
 	var catalog := load(
 		"res://data/tuning/gameplay.tres"
-	).duplicate(true) as GameplayTuning
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	session.configure(meta, &"normal", catalog.economy)
 	session.run_state.record_crate_broken(
 		1,

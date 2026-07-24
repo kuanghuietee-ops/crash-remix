@@ -11,7 +11,9 @@ func before_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
 	_catalog = load(
 		"res://data/tuning/gameplay.tres"
-	).duplicate(true) as GameplayTuning
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	_meta = load(
 		"res://data/tuning/levels/n_sanity_beach.tres"
 	).duplicate(true) as LevelMeta

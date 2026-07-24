@@ -353,7 +353,9 @@ func test_loaded_paths_include_the_traversal_resources() -> void:
 
 func test_catalog_is_unusable_without_traversal_resources() -> void:
 	var service: RefCounted = _new_service()
-	var catalog: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
 	catalog.set("grind", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
@@ -361,7 +363,9 @@ func test_catalog_is_unusable_without_traversal_resources() -> void:
 
 func test_catalog_is_unusable_without_economy() -> void:
 	var service: RefCounted = _new_service()
-	var catalog: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
 	catalog.set("economy", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
@@ -369,7 +373,9 @@ func test_catalog_is_unusable_without_economy() -> void:
 
 func test_phase05_shaped_override_backfills_economy() -> void:
 	var service: RefCounted = _new_service()
-	var stale: Resource = load(BASE_CATALOG_PATH).duplicate(true)
+	var stale := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
 	stale.set("economy", null)
 	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
 
@@ -384,7 +390,9 @@ func test_phase05_shaped_override_backfills_economy() -> void:
 
 func test_old_shape_override_is_migrated_not_rejected() -> void:
 	var service: RefCounted = _new_service()
-	var stale: GameplayTuning = load(BASE_CATALOG_PATH).duplicate(true)
+	var stale := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	stale.move.gravity_mps2 = 31.0
 	stale.wall_run = null
 	stale.grind = null
@@ -462,7 +470,9 @@ func test_old_swing_override_backfills_the_chain_catch_assist() -> void:
 	assert_not_null(authored)
 	if service == null or authored == null:
 		return
-	var stale: GameplayTuning = authored.duplicate(true)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
 	var legacy_swing := SwingTuning.new()
 	legacy_swing.catch_radius_m = authored.swing.catch_radius_m
 	legacy_swing.rope_length_m = authored.swing.rope_length_m
