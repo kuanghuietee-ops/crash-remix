@@ -764,41 +764,35 @@ def _required_jump_findings(
             )
             continue
         rail_position, corridor_forward = camera_frame
-        passes = False
-        observed: list[float] = []
-        for region in matching_regions:
-            mode = (
+        region_offsets = [
+            _runtime_camera_offset(
                 _string_value(
                     region.properties.get("camera_mode", "")
                 )
-                or "default"
+                or "default",
+                tuning,
             )
-            camera_position = _camera_position(
-                rail_position,
-                corridor_forward,
-                _runtime_camera_offset(mode, tuning),
-            )
-            depression = _jump_depression_degrees(
-                camera_position,
-                landing.world_position,
-            )
-            observed.append(depression)
-            if (
-                depression
-                >= tuning.minimum_jump_depression_degrees
-            ):
-                passes = True
-                break
-        if passes:
+            for region in matching_regions
+        ]
+        blended_offset = _blend_camera_offsets(region_offsets)
+        camera_position = _camera_position(
+            rail_position,
+            corridor_forward,
+            blended_offset,
+        )
+        depression = _jump_depression_degrees(
+            camera_position,
+            landing.world_position,
+        )
+        if depression >= tuning.minimum_jump_depression_degrees:
             continue
-        best = max(observed) if observed else 0.0
         findings.append(
             AuthoringViolation(
                 scene_name,
                 REQUIRED_JUMP_RULE,
                 (
                     f"{required_jump.path} depression is "
-                    f"{best:.3f} degrees; minimum from "
+                    f"{depression:.3f} degrees; minimum from "
                     "CameraTuning is "
                     f"{tuning.minimum_jump_depression_degrees:.3f}"
                 ),
@@ -1160,6 +1154,24 @@ def _runtime_camera_offset(
     if mode == "wall_run":
         return (offset[2], offset[1], offset[0])
     return offset
+
+
+def _blend_camera_offsets(offsets: list[Vector3]) -> Vector3:
+    """Mirror ``CameraBlend.resolve_offset``'s real overlap resolution.
+
+    The runtime does not pick one active region's offset over another:
+    every currently-overlapping ``CameraRegion`` contributes, and the
+    camera uses the plain average of all of them
+    (``camera_blend.gd:resolve_offset``). A jump enclosed by two or
+    more overlapping regions is a jump the real camera sees through
+    that blended average, never through any single region alone —
+    checking each region independently and accepting the best one
+    describes a camera the player never actually gets.
+    """
+    total = ZERO
+    for offset in offsets:
+        total = _add(total, offset)
+    return _multiply(total, 1.0 / len(offsets))
 
 
 def _camera_position(

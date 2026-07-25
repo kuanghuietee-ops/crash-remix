@@ -1,0 +1,52 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="3_camera"]
+
+[sub_resource type="BoxShape3D" id="Shape_region"]
+size = Vector3(100, 100, 100)
+
+[node name="RequiredJumpOverlapBlendBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -25)
+
+[node name="RequiredJump01" type="Node3D" parent="."]
+
+[node name="Takeoff" type="Marker3D" parent="RequiredJump01"]
+
+[node name="Landing" type="Marker3D" parent="RequiredJump01"]
+position = Vector3(0, 0, -20)
+
+[node name="GrindRegion" type="Area3D" parent="."]
+position = Vector3(0, 0, -10)
+script = ExtResource("2_region")
+camera_mode = &"grind"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GrindRegion"]
+shape = SubResource("Shape_region")
+
+[node name="WallRunRegion" type="Area3D" parent="."]
+position = Vector3(0, 0, -10)
+script = ExtResource("2_region")
+camera_mode = &"wall_run"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WallRunRegion"]
+shape = SubResource("Shape_region")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("3_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -25)

@@ -219,6 +219,20 @@ class LevelAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("3.302 degrees", findings[0].detail)
 
+    def test_overlapping_regions_are_blended_like_the_runtime_camera(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT
+            / "level_required_jump_overlap_blend_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn("7.306 degrees", findings[0].detail)
+
     def test_time_crate_outside_relic_group_fires_its_rule(self) -> None:
         self.assertEqual(
             self._rules("level_time_crate_outside_relic_bad.tscn"),
