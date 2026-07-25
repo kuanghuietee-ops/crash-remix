@@ -1472,6 +1472,148 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	)
 
 
+func test_stale_slide_collision_does_not_bounce_after_a_real_respawn_teleport() -> void:
+	# C6: F12's fix (LevelSession._skip_player_crate_collisions_once) exists
+	# because PlayerController._physics_process() short-circuits
+	# ("if advance_respawn(now_s) or is_respawning(): return") BEFORE that
+	# tick's own move_and_slide() runs, on the exact tick a scheduled respawn
+	# resolves and teleports the player -- so get_slide_collision() still
+	# holds whatever contact existed before the teleport. LevelSession's own
+	# _physics_process (a sibling node) would otherwise read that stale
+	# contact as a BRAND NEW top-contact (since _on_player_respawn_started()
+	# clears _active_top_contact_ids the instant it fires) and fire a bounce
+	# attributed to a crate the player has already teleported away from.
+	#
+	# Every existing test for this fix (including this file's own
+	# test_bounce_launch_and_tnt_chain_are_wired_in_scene, "a pre-teleport
+	# collision must not light TNT after respawn") calls player.respawn()
+	# directly. A direct call never goes through advance_respawn()'s
+	# short-circuit, so that tick's move_and_slide() still runs normally and
+	# the collision data is never actually stale -- confirmed by defeating
+	# the fix and running the entire project suite: nothing goes red,
+	# because no test reaches the real race at all. This test drives the
+	# actual production trigger instead: request_respawn() -> (frozen while
+	# is_respawning() is true) -> advance_respawn() resolving the teleport
+	# on a real physics tick.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var bounce := _crate(level, 9)
+	assert_not_null(bounce)
+	if bounce == null:
+		return
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	var bounce_shape := (
+		bounce.get_node("CollisionShape3D").shape
+		as BoxShape3D
+	)
+	assert_not_null(bounce_shape)
+	if bounce_shape == null:
+		return
+
+	# _start_transform (the real respawn destination) is captured inside
+	# configure(), at the player's position at that moment. Re-configuring
+	# with the player already 20m clear of the bounce crate makes the real
+	# respawn destination far enough away that no legitimate contact could
+	# ever land there -- so any bounce observed once the player is back at
+	# this position can only be the stale one.
+	var far_position: Vector3 = (
+		(bounce as Node3D).global_position + Vector3(20.0, 1.0, 20.0)
+	)
+	player.global_position = far_position
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	assert_true(level.configure(
+		level.run_state.meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+
+	player.global_position = Vector3(
+		bounce.global_position.x,
+		bounce.global_position.y
+			+ bounce_shape.size.y * 0.5
+			+ 0.01,
+		bounce.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	watch_signals(bounce)
+
+	# Fire the real production trigger from directly inside the FIRST real
+	# "bounced" handler -- i.e. synchronously, in the same tick's call stack
+	# LevelSession._process_player_crate_collisions() used to read the
+	# collision that produced this exact bounce. Waiting for this signal
+	# (rather than independently re-polling get_slide_collision_count()
+	# from this test) removes any risk of the two disagreeing about which
+	# tick the real contact happened on: the ledger's own raw notes hit
+	# exactly that false-positive shape testing this same fix and had to
+	# correct for it. request_respawn() only SCHEDULES the teleport --
+	# while is_respawning() is true, PlayerController's own short-circuit
+	# stops move_and_slide() from running at all, so this bounce's own
+	# collision stays frozen exactly as it is until advance_respawn()
+	# resolves it several ticks later.
+	bounce.connect(&"bounced", func(_id, _w, _s):
+		if not player.is_respawning():
+			player.request_respawn(MonotonicClock.now_s())
+	)
+
+	var respawn_requested := false
+	for _physics_index: int in range(Engine.physics_ticks_per_second):
+		await wait_physics_frames(1)
+		if player.is_respawning():
+			respawn_requested = true
+			break
+	assert_true(
+		respawn_requested,
+		"the real player must land on and bounce off the crate, scheduling a respawn, before this test's premise holds"
+	)
+
+	var teleport_resolved := false
+	for _physics_index: int in range(Engine.physics_ticks_per_second):
+		await wait_physics_frames(1)
+		if not player.is_respawning():
+			teleport_resolved = true
+			break
+	assert_true(
+		teleport_resolved,
+		"the scheduled respawn must resolve within one real second"
+	)
+	assert_eq(
+		player.global_position,
+		far_position,
+		"the real respawn must teleport back to the far, pre-configured spawn"
+	)
+	# Give any stale processing one more real tick to land before asserting
+	# the final count -- the bug's own shape is "one tick after the
+	# teleport resolves", per the raw finding this test is built from.
+	await wait_physics_frames(1)
+	assert_signal_emit_count(
+		bounce,
+		"bounced",
+		1,
+		(
+			"exactly the one legitimate landing bounce must have fired -- "
+			+ "a second emission means a stale pre-teleport slide collision "
+			+ "was attributed to a crate the player already teleported away from"
+		)
+	)
+
+
 func test_real_app_pause_freezes_invincibility_and_tnt_fuse() -> void:
 	var root := _instantiate_main()
 	if root == null:
