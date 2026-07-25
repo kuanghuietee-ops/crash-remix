@@ -1234,6 +1234,9 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	var bounce := _crate(level, 9)
 	var tnt := _crate(level, 27)
 	var blast_neighbour := _crate(level, 26)
+	# H10: 01-DESIGN.md §5 authors this beat as "one TNT beside a stack" --
+	# i.e. both crates the TNT sits next to, not just one of them.
+	var other_blast_neighbour := _crate(level, 28)
 	var catalog := (
 		root.get("tuning_service").get("catalog")
 		as GameplayTuning
@@ -1241,11 +1244,13 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	assert_not_null(bounce)
 	assert_not_null(tnt)
 	assert_not_null(blast_neighbour)
+	assert_not_null(other_blast_neighbour)
 	assert_not_null(catalog)
 	if (
 		bounce == null
 		or tnt == null
 		or blast_neighbour == null
+		or other_blast_neighbour == null
 		or catalog == null
 	):
 		return
@@ -1457,6 +1462,13 @@ func test_bounce_launch_and_tnt_chain_are_wired_in_scene() -> void:
 	assert_true(
 		blast_neighbour.call("is_broken"),
 		"TNT detonation must reach nearby authored crates"
+	)
+	assert_true(
+		other_blast_neighbour.call("is_broken"),
+		(
+			"the authored 'TNT beside a stack' beat means both neighbours, "
+			+ "not just one, must be reached"
+		)
 	)
 
 

@@ -73,17 +73,17 @@ crate_id = 25
 segment_group = &"TNT Introduction"
 
 [node name="Crate26" parent="." instance=ExtResource("3_standard")]
-position = Vector3(0, 0.5, -46)
+position = Vector3(-1, 0.5, -46)
 crate_id = 26
 segment_group = &"TNT Introduction"
 
 [node name="Crate27" parent="." instance=ExtResource("4_tnt")]
-position = Vector3(1.5, 0.5, -46)
+position = Vector3(0, 0.5, -46)
 crate_id = 27
 segment_group = &"TNT Introduction"
 
 [node name="Crate28" parent="." instance=ExtResource("3_standard")]
-position = Vector3(-1.5, 0.5, -46)
+position = Vector3(1, 0.5, -46)
 crate_id = 28
 segment_group = &"TNT Introduction"
 
