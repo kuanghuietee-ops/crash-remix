@@ -557,7 +557,9 @@ func test_mid_strip_attach_reaches_the_authored_landing_pad() -> void:
 		_catalog.wall_run,
 		_catalog.grind,
 		_catalog.swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 	var strip := segment.get_node("LeftStrip") as Path3D
 	var entered_s := MonotonicClock.now_s()
@@ -777,7 +779,9 @@ func _new_controller_with_strip(strip: Path3D) -> Dictionary:
 		_catalog.wall_run,
 		_catalog.grind,
 		_catalog.swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 	return {
 		"player": player,

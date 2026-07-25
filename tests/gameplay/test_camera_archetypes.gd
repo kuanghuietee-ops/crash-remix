@@ -663,7 +663,9 @@ func test_player_context_reports_the_fixed_swing_frame_center() -> void:
 		_catalog.wall_run,
 		_catalog.grind,
 		_catalog.swing,
-		InputIntentBuffer.new()
+		InputIntentBuffer.new(),
+		null,
+		false
 	)
 	var anchor := SwingAnchor.new()
 	anchor.swing_tuning = _catalog.swing
@@ -837,7 +839,9 @@ func _live_wall_run_camera_frames() -> Array[Dictionary]:
 			_catalog.wall_run,
 			_catalog.grind,
 			_catalog.swing,
-			buffer
+			buffer,
+			null,
+			false
 		)
 		var sample: TraversalSample = strip.call(
 			"sample_at_distance",

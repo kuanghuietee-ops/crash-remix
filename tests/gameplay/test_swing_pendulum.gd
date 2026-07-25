@@ -743,7 +743,9 @@ func _new_controller_with_anchor(anchor: Node3D) -> Dictionary:
 		_catalog.wall_run,
 		_catalog.grind,
 		_catalog.swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 	return {
 		"player": player,
@@ -771,7 +773,9 @@ func _new_authored_swing_setup() -> Dictionary:
 		_catalog.wall_run,
 		_catalog.grind,
 		_catalog.swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 	return {
 		"segment": segment,

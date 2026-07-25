@@ -190,7 +190,9 @@ func test_double_jump_release_uses_its_own_tap_height() -> void:
 		_wall_run,
 		_grind,
 		_swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 	controller.call("advance_logic", 25.0, true, 0.0, Vector3.FORWARD)
 	buffer.push(InputIntent.button(&"jump", true, 25.01, &"touch"))
@@ -519,6 +521,51 @@ func test_phase_press_buffered_while_locked_does_not_fire_once_the_gate_opens() 
 	)
 
 
+func test_configure_gating_params_have_no_silent_default() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	controller.call(
+		"configure",
+		_move,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer,
+		_economy,
+		true
+	)
+	assert_eq(controller.get("_phase_enabled"), true)
+	assert_eq(controller.get("_economy_tuning"), _economy)
+
+	# A call site that omits the gating params (the pre-Task-16 7-arg shape)
+	# must fail loudly, not silently apply false/null and leave state
+	# unchanged from whatever configure() last set it to.
+	controller.callv(
+		"configure",
+		[_move, _input, _depth, _wall_run, _grind, _swing, buffer]
+	)
+
+	assert_engine_error(
+		"Method expected",
+		"omitting configure's gating params must be a real call error, not a silent false/null default"
+	)
+	assert_eq(
+		controller.get("_phase_enabled"),
+		true,
+		"a rejected call must not have silently applied the false default"
+	)
+	assert_eq(
+		controller.get("_economy_tuning"),
+		_economy,
+		"a rejected call must not have silently applied the null default"
+	)
+
+
 func test_phase_tuning_master_blocks_gamepad_at_player_choke_point() -> void:
 	var catalog := load(TUNING_PATH) as GameplayTuning
 	PhaseState.configure(catalog.phase)
@@ -649,7 +696,9 @@ func test_controller_receives_every_traversal_tuning_resource() -> void:
 		_wall_run,
 		_grind,
 		_swing,
-		buffer
+		buffer,
+		null,
+		false
 	)
 
 	assert_eq(controller.get("_wall_run_tuning"), _wall_run)
@@ -746,7 +795,8 @@ func _new_controller() -> Dictionary:
 		_grind,
 		_swing,
 		buffer,
-		_economy
+		_economy,
+		false
 	)
 	return {
 		"controller": controller,

@@ -108,8 +108,8 @@ func configure(
 	grind_tuning: GrindTuning,
 	swing_tuning: SwingTuning,
 	intents: InputIntentBuffer,
-	economy_tuning: EconomyTuning = null,
-	phase_enabled: bool = false
+	economy_tuning: EconomyTuning,
+	phase_enabled: bool
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning

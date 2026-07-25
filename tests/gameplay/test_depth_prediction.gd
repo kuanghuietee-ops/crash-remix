@@ -373,7 +373,9 @@ func test_player_prediction_context_uses_the_exact_wall_detach_arc() -> void:
 		_wall_run,
 		_grind,
 		_swing,
-		InputIntentBuffer.new()
+		InputIntentBuffer.new(),
+		null,
+		false
 	)
 	var sample := TraversalSample.new()
 	sample.position = Vector3(1.0, 2.0, 3.0)
@@ -417,7 +419,9 @@ func test_player_prediction_context_uses_current_swing_release_velocity() -> voi
 		_wall_run,
 		_grind,
 		_swing,
-		InputIntentBuffer.new()
+		InputIntentBuffer.new(),
+		null,
+		false
 	)
 	var anchor := SwingAnchor.new()
 	anchor.swing_tuning = _swing
