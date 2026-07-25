@@ -329,6 +329,27 @@ func _clear_session_snapshot() -> void:
 	active_level_session = null
 
 
+# 01-DESIGN.md §4.4 names four profile-write triggers: level end,
+# gem/relic/flawless award, boss defeat, app-pause. This is the only
+# store_profile() call site in the file, and that is deliberate, not an
+# accident, for three of the four:
+#   - level end: LevelSession.complete_level() is the one place a run
+#     can end (reached both by a normal Finish-area completion and by a
+#     mercy skip that completes the level, see
+#     LevelSession.accept_mercy_skip()); both emit run_completed, which
+#     is the only signal this function is connected to.
+#   - gem / relic / flawless award: never independently knowable before
+#     the run itself ends, so results_model.build()/persisted_profile()
+#     compute and persist them in the same call, for both MODE_NORMAL
+#     and MODE_RELIC.
+#   - boss defeat: genuinely NOT wired anywhere yet.
+#     `boss_defeated.papu_papu` has no production writer repo-wide —
+#     correctly so, since Phase 1 ships no boss level to defeat. Wiring
+#     this belongs with whichever task first builds boss content
+#     (Task 17 / Wave B), not here.
+# The one trigger that is missing and SHOULD exist today is app-pause;
+# see the app-pause snapshot/store_profile wiring near
+# _pause_and_snapshot_active_run().
 func _on_level_session_completed(results: Dictionary) -> void:
 	var meta := _active_level_meta
 	if meta == null and active_level_session != null:
