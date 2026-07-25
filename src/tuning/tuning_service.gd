@@ -34,6 +34,14 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"transfer_minimum_catch_speed_mps",
 		],
 	],
+	&"phase": [
+		[
+			&"missed_crate_outline_color",
+			&"missed_crate_outline_opacity",
+			&"missed_crate_outline_edge_width_uv",
+			&"missed_crate_outline_padding_m",
+		],
+	],
 	&"economy": [
 		[
 			&"mask_hit_invulnerability_s",
@@ -285,6 +293,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or phase.ghost_opacity <= 0.0
 		or phase.ghost_opacity > 1.0
 		or phase.ghost_outline_width_m <= 0.0
+		or phase.missed_crate_outline_opacity <= 0.0
+		or phase.missed_crate_outline_opacity > 1.0
+		or phase.missed_crate_outline_edge_width_uv <= 0.0
+		or phase.missed_crate_outline_edge_width_uv >= 0.5
+		or phase.missed_crate_outline_padding_m <= 0.0
+		or phase.missed_crate_outline_padding_m
+		> move.collision_radius_m
+		or phase.missed_crate_outline_color.a <= 0.0
+		or phase.missed_crate_outline_color.a > 1.0
 	):
 		return false
 

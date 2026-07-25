@@ -1733,8 +1733,124 @@ func test_replay_marks_only_the_previous_runs_missed_crates() -> void:
 		if material != null:
 			assert_eq(
 				material.shader.resource_path,
-				"res://assets/shaders/phase_ghost.gdshader"
+				"res://assets/shaders/missed_crate_outline.gdshader",
+				(
+					"the rejected soft Phase silhouette must not remain the "
+					+ "missed-crate replay marker"
+				)
 			)
+			assert_true(
+				material.shader.code.contains("UV"),
+				"the crate-specific marker must trace the box's face edges"
+			)
+			assert_true(
+				material.shader.code.contains("EMISSION"),
+				"the crate outline must stay high-contrast under baked light"
+			)
+			var phase := (
+				root.get("tuning_service").get("catalog").get("phase")
+				as PhaseTuning
+			)
+			assert_not_null(phase)
+			if phase != null:
+				var outline_color: Variant = phase.get(
+					&"missed_crate_outline_color"
+				)
+				var outline_opacity: Variant = phase.get(
+					&"missed_crate_outline_opacity"
+				)
+				var edge_width_uv: Variant = phase.get(
+					&"missed_crate_outline_edge_width_uv"
+				)
+				var padding_m: Variant = phase.get(
+					&"missed_crate_outline_padding_m"
+				)
+				assert_eq(typeof(outline_color), TYPE_COLOR)
+				assert_eq(typeof(outline_opacity), TYPE_FLOAT)
+				assert_eq(typeof(edge_width_uv), TYPE_FLOAT)
+				assert_eq(typeof(padding_m), TYPE_FLOAT)
+				var dedicated_tuning_exists := (
+					typeof(outline_color) == TYPE_COLOR
+					and typeof(outline_opacity) == TYPE_FLOAT
+					and typeof(edge_width_uv) == TYPE_FLOAT
+					and typeof(padding_m) == TYPE_FLOAT
+				)
+				if dedicated_tuning_exists:
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_color"
+						),
+						outline_color
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_opacity"
+						),
+						outline_opacity
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_edge_width_uv"
+						),
+						edge_width_uv
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_padding_m"
+						),
+						padding_m
+					)
+					assert_gt(
+						float(outline_opacity),
+						phase.ghost_opacity,
+						(
+							"the dedicated outline must be more visible "
+							+ "than the rejected soft Phase ghost"
+						)
+					)
+
+					var live_color := Color(0.15, 0.9, 1.0, 1.0)
+					var live_opacity := 0.8
+					var live_edge_width_uv := 0.09
+					var live_padding_m := 0.06
+					phase.set(&"missed_crate_outline_color", live_color)
+					phase.set(
+						&"missed_crate_outline_opacity",
+						live_opacity
+					)
+					phase.set(
+						&"missed_crate_outline_edge_width_uv",
+						live_edge_width_uv
+					)
+					phase.set(
+						&"missed_crate_outline_padding_m",
+						live_padding_m
+					)
+					root.call("_refresh_ghost_materials", level)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_color"
+						),
+						live_color
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_opacity"
+						),
+						live_opacity
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_edge_width_uv"
+						),
+						live_edge_width_uv
+					)
+					assert_eq(
+						material.get_shader_parameter(
+							&"missed_crate_outline_padding_m"
+						),
+						live_padding_m
+					)
 
 	missed_one.call("apply_verb", &"spin", 1.0)
 	assert_false(ghost_one.visible)

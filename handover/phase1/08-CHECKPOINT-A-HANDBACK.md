@@ -259,3 +259,18 @@ no `.env`, no tokens, no private keys across 206 commits.
   single unbroken run from spawn to exit. That is precisely what you are about to do.
 - Gate F2 remains **WAIVED BY OPERATOR — NOT PASSED**. Likeness gate and Island Cut acceptance
   **NOT RUN**. No gate has been run, judged, scored or inferred by any agent.
+
+---
+
+# ADDENDUM — H15 missed-crate marker verdict
+
+**Date:** 2026-07-25 · **Observed by:** Tee Kuang Huie on the Checkpoint A Beach build
+
+The operator replayed the Beach and reported: **“I cannot see the ghost marker.”**
+
+**H15 verdict: CRATE-SPECIFIC OUTLINE REQUIRED.**
+
+This is a device observation about the missed-crate replay aid, not a pass for Gate F2,
+the likeness gate, or Island Cut acceptance. The reused Phase ghost shader remains the
+rejected Wave A presentation; a dedicated, higher-contrast crate outline is required
+before Wave B.

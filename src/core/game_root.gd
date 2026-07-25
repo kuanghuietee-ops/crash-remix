@@ -36,8 +36,8 @@ const WARP_ROOM_SCENE := preload(
 const N_SANITY_BEACH_META := preload(
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
-const PHASE_GHOST_SHADER := preload(
-	"res://assets/shaders/phase_ghost.gdshader"
+const MISSED_CRATE_OUTLINE_SHADER := preload(
+	"res://assets/shaders/missed_crate_outline.gdshader"
 )
 
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
@@ -1115,15 +1115,8 @@ func _apply_replay_ghost_markers(
 	if missed_crate_ids.is_empty():
 		return
 	var material := ShaderMaterial.new()
-	material.shader = PHASE_GHOST_SHADER
-	material.set_shader_parameter(
-		&"ghost_opacity",
-		tuning_service.catalog.phase.ghost_opacity
-	)
-	material.set_shader_parameter(
-		&"ghost_outline_width_m",
-		tuning_service.catalog.phase.ghost_outline_width_m
-	)
+	material.shader = MISSED_CRATE_OUTLINE_SHADER
+	_apply_missed_crate_outline_parameters(material)
 	for candidate: Node in level.find_children(
 		"*",
 		"StaticBody3D",
@@ -1177,14 +1170,29 @@ func _refresh_ghost_materials(level: Node) -> void:
 		var material := ghost.material_override as ShaderMaterial
 		if material == null:
 			continue
-		material.set_shader_parameter(
-			&"ghost_opacity",
-			tuning_service.catalog.phase.ghost_opacity
-		)
-		material.set_shader_parameter(
-			&"ghost_outline_width_m",
-			tuning_service.catalog.phase.ghost_outline_width_m
-		)
+		_apply_missed_crate_outline_parameters(material)
+
+
+func _apply_missed_crate_outline_parameters(
+	material: ShaderMaterial
+) -> void:
+	var phase := tuning_service.catalog.phase
+	material.set_shader_parameter(
+		&"missed_crate_outline_color",
+		phase.missed_crate_outline_color
+	)
+	material.set_shader_parameter(
+		&"missed_crate_outline_opacity",
+		phase.missed_crate_outline_opacity
+	)
+	material.set_shader_parameter(
+		&"missed_crate_outline_edge_width_uv",
+		phase.missed_crate_outline_edge_width_uv
+	)
+	material.set_shader_parameter(
+		&"missed_crate_outline_padding_m",
+		phase.missed_crate_outline_padding_m
+	)
 
 
 func _level_touch_exclusions() -> Array:

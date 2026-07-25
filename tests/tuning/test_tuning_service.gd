@@ -518,6 +518,131 @@ func test_phase_zero_input_fields_backfill_without_losing_operator_values() -> v
 	)
 
 
+func test_old_phase_override_backfills_dedicated_missed_crate_outline() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var outline_fields: Array[Array] = [
+		[&"missed_crate_outline_color", TYPE_COLOR],
+		[&"missed_crate_outline_opacity", TYPE_FLOAT],
+		[&"missed_crate_outline_edge_width_uv", TYPE_FLOAT],
+		[&"missed_crate_outline_padding_m", TYPE_FLOAT],
+	]
+	var outline_fields_exist := true
+	for field: Array in outline_fields:
+		var property_name := field[0] as StringName
+		var expected_type := int(field[1])
+		var actual_type := typeof(authored.phase.get(property_name))
+		assert_eq(
+			actual_type,
+			expected_type,
+			"%s must be exported by PhaseTuning" % property_name
+		)
+		outline_fields_exist = (
+			outline_fields_exist
+			and actual_type == expected_type
+		)
+	if not outline_fields_exist:
+		return
+
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var phase_defaults := PhaseTuning.new()
+	for field: Array in outline_fields:
+		var property_name := field[0] as StringName
+		stale.phase.set(property_name, phase_defaults.get(property_name))
+	stale.phase.ghost_opacity = 1.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated: GameplayTuning = service.get("catalog")
+	for field: Array in outline_fields:
+		var property_name := field[0] as StringName
+		assert_eq(
+			migrated.phase.get(property_name),
+			authored.phase.get(property_name),
+			"old overrides must receive authored %s" % property_name
+		)
+	assert_eq(
+		migrated.phase.ghost_opacity,
+		1.0,
+		(
+			"migration must preserve every previously valid Phase ghost edit, "
+			+ "including full opacity"
+		)
+	)
+
+
+func test_missed_crate_outline_tuning_is_bounded() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog: GameplayTuning = service.get("catalog")
+	var phase := catalog.phase
+	var required_fields := [
+		&"missed_crate_outline_color",
+		&"missed_crate_outline_opacity",
+		&"missed_crate_outline_edge_width_uv",
+		&"missed_crate_outline_padding_m",
+	]
+	var fields_exist := true
+	for property_name: StringName in required_fields:
+		var value: Variant = phase.get(property_name)
+		assert_ne(
+			value,
+			null,
+			"%s must exist before its bounds can be proved" % property_name
+		)
+		fields_exist = fields_exist and value != null
+	if not fields_exist:
+		return
+
+	var authored_values := {}
+	for property_name: StringName in required_fields:
+		authored_values[property_name] = phase.get(property_name)
+	var invalid_values: Array[Array] = [
+		[
+			&"missed_crate_outline_opacity",
+			0.0,
+		],
+		[&"missed_crate_outline_opacity", 1.01],
+		[&"missed_crate_outline_edge_width_uv", 0.0],
+		[&"missed_crate_outline_edge_width_uv", 0.5],
+		[&"missed_crate_outline_padding_m", 0.0],
+		[
+			&"missed_crate_outline_padding_m",
+			catalog.move.collision_radius_m + 0.01,
+		],
+		[
+			&"missed_crate_outline_color",
+			Color(1.0, 1.0, 1.0, 0.0),
+		],
+	]
+	for invalid_value: Array in invalid_values:
+		var property_name := invalid_value[0] as StringName
+		phase.set(property_name, invalid_value[1])
+		assert_false(
+			service.call("catalog_is_usable"),
+			"%s must reject %s" % [property_name, invalid_value[1]]
+		)
+		phase.set(property_name, authored_values[property_name])
+	assert_true(service.call("catalog_is_usable"))
+
+
 func test_old_swing_override_backfills_the_chain_catch_assist() -> void:
 	var service: RefCounted = _new_service()
 	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
