@@ -393,6 +393,114 @@ func test_hub_touch_exclusions_include_the_debug_drawer() -> void:
 	)
 
 
+func test_loading_overlay_shows_while_the_real_level_load_is_pending() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	# Freeze the consumer so the test can observe the pending state before
+	# GameRoot's own _process gets a chance to finish it (same lesson as
+	# test_boot_hub_level_list_reaches_level_through_threaded_load).
+	root.set_process(false)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	assert_true(
+		root.get_node("UI/LoadingOverlay").visible,
+		"a pending threaded load must show a loading affordance"
+	)
+
+	root.set_process(true)
+	var frames := 0
+	while (
+		not root.has_node("Content/NSanityBeach")
+		and frames < 120
+	):
+		await wait_process_frames(1)
+		frames += 1
+	assert_true(root.has_node("Content/NSanityBeach"))
+	assert_false(
+		root.get_node("UI/LoadingOverlay").visible,
+		"the loading affordance must clear once the level has loaded"
+	)
+	root.queue_free()
+	await wait_process_frames(2)
+
+
+func test_stuck_threaded_load_times_out_instead_of_polling_forever() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": &"wr1_n_sanity_beach",
+			}
+		),
+		OK
+	)
+	# Force the loader to report perpetually in-progress, simulating a
+	# real load that never resolves.
+	root.call(
+		"set_threaded_load_status_override",
+		ResourceLoader.THREAD_LOAD_IN_PROGRESS
+	)
+	root.call("_poll_threaded_level_load", 5.0)
+	assert_eq(
+		root.call("state_name"),
+		&"level",
+		"must not give up before the tuned timeout elapses"
+	)
+	assert_true(
+		root.get_node("UI/LoadingOverlay").visible,
+		"the loading affordance must still show before the timeout"
+	)
+
+	root.call("_poll_threaded_level_load", 20.0)
+
+	assert_eq(
+		root.call("state_name"),
+		&"level",
+		"a timed-out load must not strand the FSM in an ambiguous state"
+	)
+	assert_false(
+		root.has_node("Content/LevelLoading"),
+		"the stuck load's placeholder content must be cleared"
+	)
+	assert_true(
+		root.has_node("Content/LevelPlaceholder"),
+		(
+			"a timed-out load must fall back to a real, escapable "
+			+ "placeholder rather than an unbounded black screen"
+		)
+	)
+	assert_false(
+		root.get_node("UI/LoadingOverlay").visible,
+		"the loading affordance must clear once the load is abandoned"
+	)
+	assert_push_error("Threaded level load timed out.")
+
+
 func _instantiate_room() -> Node:
 	assert_true(
 		ResourceLoader.exists(PORTAL_SCENE_PATH),

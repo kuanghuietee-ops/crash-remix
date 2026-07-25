@@ -55,6 +55,12 @@ const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.LEVEL: &"LevelPlaceholder",
 	GameFlow.State.RESULTS: &"ResultsPlaceholder",
 }
+# §7.1's hub->level budget is <3s, operator-observed on device, not
+# suite-assertable. This is a much larger, purely defensive backstop: a
+# real load that is still THREAD_LOAD_IN_PROGRESS this long is not "slow",
+# it has failed, and must not leave the player on an unbounded black
+# screen with no way out.
+const LEVEL_LOAD_TIMEOUT_S := 20.0
 
 @export var save_dir: String = DEFAULT_SAVE_DIR
 @export_file("*.tres") var tuning_override_path: String = ""
@@ -87,6 +93,9 @@ var _owns_tree_pause: bool = false
 var _threaded_level_path: String = ""
 var _threaded_level_id: StringName = &""
 var _threaded_poll_count: int = 0
+var _threaded_load_elapsed_s: float = 0.0
+var _threaded_load_status_override: Variant = null
+var _loading_overlay: Label
 var _warp_room_instantiate_count: int = 0
 var _suppress_next_warp_room_render: bool = false
 
@@ -165,8 +174,8 @@ func _exit_tree() -> void:
 	_owns_tree_pause = false
 
 
-func _process(_delta_s: float) -> void:
-	_poll_threaded_level_load()
+func _process(delta_s: float) -> void:
+	_poll_threaded_level_load(delta_s)
 
 
 func _notification(what: int) -> void:
@@ -498,6 +507,15 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		"configure",
 		debug_tools_enabled
 	)
+	_loading_overlay = Label.new()
+	_loading_overlay.name = &"LoadingOverlay"
+	_loading_overlay.text = "LOADING..."
+	_loading_overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_loading_overlay.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_loading_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_loading_overlay.visible = false
+	_ui.add_child(_loading_overlay)
 	_sync_ui_visibility()
 	_tuning_debug.move_to_front()
 
@@ -634,6 +652,8 @@ func _begin_threaded_level_load(level_id: StringName) -> void:
 	_threaded_level_path = path
 	_threaded_level_id = level_id
 	_threaded_poll_count = 0
+	_threaded_load_elapsed_s = 0.0
+	_threaded_load_status_override = null
 	var request_error := ResourceLoader.load_threaded_request(
 		path,
 		"",
@@ -657,9 +677,21 @@ func _begin_threaded_level_load(level_id: StringName) -> void:
 	var loading := Node3D.new()
 	loading.name = &"LevelLoading"
 	_content.add_child(loading)
+	if _loading_overlay != null:
+		_loading_overlay.visible = true
 
 
-func _poll_threaded_level_load() -> void:
+func set_threaded_load_status_override(status: Variant) -> void:
+	_threaded_load_status_override = status
+
+
+func _threaded_load_status() -> int:
+	if _threaded_load_status_override != null:
+		return int(_threaded_load_status_override)
+	return ResourceLoader.load_threaded_get_status(_threaded_level_path)
+
+
+func _poll_threaded_level_load(delta_s: float) -> void:
 	if _threaded_level_path.is_empty():
 		return
 	if flow.state == GameFlow.State.PAUSED:
@@ -671,10 +703,14 @@ func _poll_threaded_level_load() -> void:
 		_cancel_pending_level_load()
 		return
 	_threaded_poll_count += 1
-	var status := ResourceLoader.load_threaded_get_status(
-		_threaded_level_path
-	)
+	_threaded_load_elapsed_s += maxf(delta_s, 0.0)
+	var status := _threaded_load_status()
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		if _threaded_load_elapsed_s >= LEVEL_LOAD_TIMEOUT_S:
+			_cancel_pending_level_load()
+			_clear_content()
+			_show_state_placeholder()
+			push_error("Threaded level load timed out.")
 		return
 	if status != ResourceLoader.THREAD_LOAD_LOADED:
 		_cancel_pending_level_load()
@@ -706,6 +742,10 @@ func _poll_threaded_level_load() -> void:
 func _cancel_pending_level_load() -> void:
 	_threaded_level_path = ""
 	_threaded_level_id = &""
+	_threaded_load_elapsed_s = 0.0
+	_threaded_load_status_override = null
+	if _loading_overlay != null:
+		_loading_overlay.visible = false
 
 
 func _level_meta(level_id: StringName) -> LevelMeta:
