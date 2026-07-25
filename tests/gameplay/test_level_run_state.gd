@@ -217,6 +217,33 @@ func test_skip_voids_gem_and_relic_for_the_run() -> void:
 	)
 
 
+func test_relic_completion_never_reports_wumpa_as_banked() -> void:
+	var state := _new_state(&"relic", _relic_meta())
+	if state == null:
+		return
+	state.call("pickup_relic_stopwatch")
+	state.call(
+		"record_crate_broken",
+		1,
+		_economy.wumpa_per_standard_crate
+	)
+
+	var result: Dictionary = state.call(
+		"record_level_complete",
+		_economy
+	)
+
+	assert_eq(
+		result["wumpa_banked"],
+		0,
+		(
+			"relic-mode wumpa is never applied to the lifetime total "
+			+ "(ResultsModel.persisted_profile only banks MODE_NORMAL "
+			+ "results) so the payload must not claim otherwise"
+		)
+	)
+
+
 func test_flawless_cleared_by_first_death() -> void:
 	var state := _new_state(&"normal")
 	if state == null:

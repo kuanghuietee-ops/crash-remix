@@ -212,7 +212,7 @@ func record_level_complete(_economy: EconomyTuning) -> Dictionary:
 			and not gem_void
 		),
 		"flawless": mode == MODE_NORMAL and flawless,
-		"wumpa_banked": wumpa_run,
+		"wumpa_banked": wumpa_run if mode == MODE_NORMAL else 0,
 		"gem_void": gem_void,
 		"relic_void": relic_void,
 		"relic_time_s": relic_time,
