@@ -46,8 +46,14 @@ func _ready() -> void:
 		_on_pause_pressed
 	)
 	_skip_button.pressed.connect(_on_skip_pressed)
+	visibility_changed.connect(_on_visibility_changed)
 	_mercy_panel.visible = false
 	_relic_label.visible = false
+
+
+func _on_visibility_changed() -> void:
+	if not visible:
+		_pause_touch_index = -1
 
 
 func _input(event: InputEvent) -> void:

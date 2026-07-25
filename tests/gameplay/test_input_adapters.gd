@@ -714,6 +714,61 @@ func test_hud_elements_stay_outside_the_touch_control_occlusion_zones() -> void:
 		)
 
 
+func test_hud_pause_touch_index_clears_when_hud_is_hidden_mid_touch() -> void:
+	var packed: PackedScene = load(HUD_SCENE_PATH)
+	assert_not_null(packed, "hud.tscn must exist")
+	if packed == null:
+		return
+	var hud: Control = packed.instantiate()
+	add_child_autofree(hud)
+	await wait_process_frames(1)
+
+	var pause_button := hud.get_node("SafeArea/Pause") as Button
+	var touch_position := pause_button.get_global_rect().get_center()
+
+	var press := InputEventScreenTouch.new()
+	press.index = 7
+	press.position = touch_position
+	press.pressed = true
+	hud.call("_input", press)
+
+	# The level completes mid-touch; GameRoot's _sync_ui_visibility() hides
+	# the HUD for the RESULTS state before the held touch is released.
+	hud.visible = false
+
+	var release := InputEventScreenTouch.new()
+	release.index = 7
+	release.position = touch_position
+	release.pressed = false
+	hud.call("_input", release)
+
+	hud.visible = true
+
+	# Android reuses touch indices after a lift. A later, unrelated touch
+	# far from Pause reuses index 7.
+	var unrelated_press := InputEventScreenTouch.new()
+	unrelated_press.index = 7
+	unrelated_press.position = Vector2(10.0, 10.0)
+	unrelated_press.pressed = true
+	hud.call("_input", unrelated_press)
+
+	watch_signals(hud)
+	var unrelated_release := InputEventScreenTouch.new()
+	unrelated_release.index = 7
+	unrelated_release.position = Vector2(10.0, 10.0)
+	unrelated_release.pressed = false
+	hud.call("_input", unrelated_release)
+
+	assert_signal_not_emitted(
+		hud,
+		"pause_requested",
+		(
+			"a pause touch abandoned while the HUD was hidden must not "
+			+ "hijack an unrelated touch's release once the index is reused"
+		)
+	)
+
+
 func _new_node(script_path: String) -> Variant:
 	var script: Script = load(script_path)
 	assert_not_null(script, script_path + " implementation must exist")
