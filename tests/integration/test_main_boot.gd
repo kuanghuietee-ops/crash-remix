@@ -743,6 +743,116 @@ func test_level_completion_builds_persists_and_presents_results() -> void:
 	assert_true(root.has_node("Content/ResultsPlaceholder"))
 
 
+func test_results_screen_renders_the_real_completion_payload() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	var session := LevelSession.new()
+	root.get_node("Content/LevelPlaceholder").add_child(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	meta.crate_count = 1
+	var catalog := load(
+		"res://data/tuning/gameplay.tres"
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	# Author real relic pars from real economy values so relic-entry
+	# unlock is exercised by something other than its own false default.
+	meta.relic_platinum_s = catalog.economy.time_crate_small_s
+	meta.relic_gold_s = (
+		meta.relic_platinum_s
+		+ catalog.economy.time_crate_medium_s
+	)
+	meta.relic_sapphire_s = (
+		meta.relic_gold_s
+		+ catalog.economy.time_crate_large_s
+	)
+	session.configure(meta, &"normal", catalog.economy)
+	session.run_state.record_crate_broken(
+		1,
+		catalog.economy.wumpa_per_standard_crate
+	)
+	root.call(
+		"set_active_level_session",
+		session,
+		meta,
+		{1: &"Beach Start"}
+	)
+
+	session.complete_level()
+
+	assert_eq(root.call("state_name"), &"results")
+	var payload: Dictionary = root.get("last_results_payload")
+	# The only authored crate was broken: a real clean sweep.
+	assert_eq(payload.get("box_count"), 1)
+	assert_eq(payload.get("crate_count"), 1)
+	assert_true(
+		payload.get("gem"),
+		"breaking every authored crate must award the real gem"
+	)
+	assert_true(payload.get("flawless"))
+	assert_eq(
+		payload.get("wumpa_banked"),
+		catalog.economy.wumpa_per_standard_crate
+	)
+	assert_true(payload.get("relic_entry_available"))
+
+	var results := root.get_node("UI/ResultsScreen")
+	assert_true(results.visible)
+	var summary := results.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Summary"
+	) as Label
+	var misses := results.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Misses"
+	) as Label
+	var relic_trial := results.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Actions/RelicTrial"
+	) as Button
+	assert_eq(
+		summary.text,
+		(
+			"CRATES  %d / %d\nGEM  %s\nFLAWLESS  %s\nWUMPA BANKED  %d"
+			% [
+				int(payload.get("box_count")),
+				int(payload.get("crate_count")),
+				"YES" if bool(payload.get("gem")) else "NO",
+				"YES" if bool(payload.get("flawless")) else "NO",
+				int(payload.get("wumpa_banked")),
+			]
+		),
+		(
+			"the rendered summary must reflect the real completion "
+			+ "payload, not a synthetic one supplied by the test"
+		)
+	)
+	assert_eq(
+		misses.text,
+		"MISSED CRATES  NONE",
+		"a real clean sweep must render no missed crates"
+	)
+	assert_eq(
+		relic_trial.visible,
+		bool(payload.get("relic_entry_available")),
+		"the relic-trial button must mirror the real payload's unlock state"
+	)
+
+
 func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
 	var root := _instantiate_main()
 	if root == null:
