@@ -691,26 +691,60 @@ func _begin_threaded_level_load(level_id: StringName) -> void:
 	_threaded_poll_count = 0
 	_threaded_load_elapsed_s = 0.0
 	_threaded_load_status_override = null
-	var request_error := ResourceLoader.load_threaded_request(
-		path,
-		"",
-		true
-	)
-	if request_error != OK:
-		var existing_status := (
-			ResourceLoader.load_threaded_get_status(path)
+	# An earlier load of this same path can still be outstanding — e.g.
+	# quit_level abandons the poll without ever draining the resource
+	# loader's request (ResourceLoader has no cancel API). Re-requesting
+	# the same path while that request is still IN_PROGRESS/LOADED but
+	# undrained races a second load against the first inside the
+	# RenderingServer's mesh storage (N2: intermittent
+	# `Parameter "m" is null` / "unimplemented base type encountered in
+	# renderer scene cull" / "Condition \"!F\" is true"). Re-attach to
+	# the outstanding request instead of issuing a second one.
+	var already_in_flight := ResourceLoader.load_threaded_get_status(
+		path
+	) in [
+		ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+		ResourceLoader.THREAD_LOAD_LOADED,
+	]
+	if not already_in_flight:
+		# use_sub_threads=false: sub-threaded loading lets separate
+		# worker threads race each other issuing RenderingServer mesh
+		# calls for the level's meshes while this poll's instantiate()
+		# (main thread) also touches them — the other half of the same
+		# N2 race. A single background load thread still keeps the hub
+		# non-blocking; it just stops recursing into extra sub-threads
+		# for dependency resources.
+		# CACHE_MODE_REPLACE: ResourceLoader's default CACHE_MODE_REUSE
+		# hands back the SAME cached PackedScene (and its meshes) on
+		# every load of this path, so a load thread's mesh construction
+		# can overlap an earlier tree's teardown free() of a tree still
+		# referencing that same cached mesh — the other main source of
+		# the N2 race, and reachable in production via quit → re-enter,
+		# not only across tests. REPLACE gives each load its own fresh
+		# copy; deliberately NOT a *_DEEP variant, since forcing that
+		# onto nested script dependencies (segments reference .gd
+		# files) broke class resolution outright in testing.
+		var request_error := ResourceLoader.load_threaded_request(
+			path,
+			"",
+			false,
+			ResourceLoader.CACHE_MODE_REPLACE
 		)
-		if existing_status not in [
-			ResourceLoader.THREAD_LOAD_IN_PROGRESS,
-			ResourceLoader.THREAD_LOAD_LOADED,
-		]:
-			_cancel_pending_level_load()
-			_show_state_placeholder()
-			push_error(
-				"Could not request level load: "
-				+ error_string(request_error)
+		if request_error != OK:
+			var existing_status := (
+				ResourceLoader.load_threaded_get_status(path)
 			)
-			return
+			if existing_status not in [
+				ResourceLoader.THREAD_LOAD_IN_PROGRESS,
+				ResourceLoader.THREAD_LOAD_LOADED,
+			]:
+				_cancel_pending_level_load()
+				_show_state_placeholder()
+				push_error(
+					"Could not request level load: "
+					+ error_string(request_error)
+				)
+				return
 	var loading := Node3D.new()
 	loading.name = &"LevelLoading"
 	_content.add_child(loading)
