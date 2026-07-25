@@ -1,5 +1,11 @@
 class_name PhaseOneSafeArea
 extends Control
+## Not in 02-PLAN's Task 11 file list -- introduced alongside it anyway in
+## 09ca8b4 ("Add the results model, HUD and pause overlays") to give the HUD
+## and overlays a shared safe-area inset. I7 (handover/phase1/06-FIX-LEDGER.md)
+## made it load-bearing by adding the same display-metrics poll `touch_controls.gd`
+## already used, so a sensor-landscape flip no longer leaves it stale. See J6 in
+## that ledger for the plan-vs-code traceability note this comment records.
 
 const TouchControlsType := preload(
 	"res://src/ui/touch_controls.gd"
