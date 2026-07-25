@@ -63,7 +63,7 @@ GUT 9.7.1 is intentionally vendored under `addons/gut/` so the pinned test suite
 does not depend on a per-machine Asset Library installation. The repository-owned
 runner gives each invocation a temporary Godot user-data root, preventing live
 tuning overrides and concurrent worktrees from changing the tests.
-The repository-owned pre-commit hook runs the numeric lint, the Phase 1 content
+The repository-owned pre-commit hook runs the numeric lint, the Phase 2+ content
 vocabulary tripwire, and both authoring lints before Python tests.
 `lint_traversal_authoring.py` parses the `.tscn` authoring data without launching
 Godot: wall strips must be enclosed by wall-run camera regions, their cameras must
