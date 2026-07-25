@@ -125,6 +125,19 @@ func _ready() -> void:
 	_install_task11_ui(debug_tools_enabled)
 
 	profile = save_service.load_profile(save_dir)
+	if save_service.recovered_from_backup:
+		# Non-fatal, unlike refused_future_version below: the backup is
+		# by definition the last known-good write, so boot continues
+		# normally. This is a log-only consumer, deliberately not a
+		# blocking player-facing overlay (the primary/backup rollback
+		# already recovered real, valid progress; there is nothing for
+		# the player to act on), so an operator debugging a device
+		# report can see a rollback happened instead of it being
+		# silently invisible.
+		push_error(
+			"Profile was recovered from backup after the primary "
+			+ "save file failed to load."
+		)
 	if save_service.refused_future_version:
 		boot_error = ERR_UNAVAILABLE
 		_boot_error_overlay.call(

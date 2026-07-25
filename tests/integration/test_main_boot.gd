@@ -184,6 +184,44 @@ func test_future_backup_without_primary_is_preserved_and_does_not_brick_boot() -
 	)
 
 
+func test_recovered_from_backup_is_logged_and_does_not_block_boot() -> void:
+	var primary_path := TEST_SAVE_DIR.path_join("profile.json")
+	var backup_path := TEST_SAVE_DIR.path_join("profile.json.bak")
+	var seeded_service := SaveService.new()
+	var first_profile := SaveModel.fresh()
+	first_profile["lifetime_wumpa"] = 17
+	var second_profile := SaveModel.fresh()
+	second_profile["lifetime_wumpa"] = 31
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, first_profile),
+		OK
+	)
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, second_profile),
+		OK
+	)
+	assert_true(FileAccess.file_exists(backup_path))
+	_write_text(primary_path, "{broken primary")
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	assert_push_error("recovered from backup")
+	assert_eq(
+		root.get("boot_error"),
+		OK,
+		"a backup recovery must not block boot, unlike a future-version refusal"
+	)
+	assert_eq(root.call("state_name"), &"warp_room")
+	assert_eq(
+		root.get("profile"),
+		first_profile,
+		"the older, still-valid backup must be what boot actually loads"
+	)
+
+
 func test_wr4_completion_routes_phase_unlock_to_hub_ui_and_player() -> void:
 	var profile := SaveModel.fresh()
 	var future_level_id := &"wr4_future_fixture"
