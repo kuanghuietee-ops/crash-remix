@@ -72,6 +72,71 @@ func test_wumpa_persists_across_death_q2() -> void:
 	assert_eq(state.get("wumpa_run"), before)
 
 
+func test_resolve_wumpa_mask_rollover_earns_masks_and_keeps_remainder() -> void:
+	var state := _new_state(&"normal")
+	if state == null:
+		return
+	var threshold := _economy.wumpa_mask_threshold
+	state.call(
+		"record_wumpa_collected",
+		threshold * 2 + 1
+	)
+
+	var masks_earned: int = state.call(
+		"resolve_wumpa_mask_rollover",
+		threshold
+	)
+
+	assert_eq(
+		masks_earned,
+		2,
+		"every full threshold of banked wumpa must earn one mask"
+	)
+	assert_eq(
+		state.get("wumpa_run"),
+		1,
+		"only the remainder under threshold should survive rollover"
+	)
+
+
+func test_resolve_wumpa_mask_rollover_is_inert_without_an_active_run() -> void:
+	var script := load(RUN_STATE_PATH) as Script
+	var state := script.new() as RefCounted
+
+	var masks_earned: int = state.call(
+		"resolve_wumpa_mask_rollover",
+		_economy.wumpa_mask_threshold
+	)
+
+	assert_eq(
+		masks_earned,
+		0,
+		"a run that was never started must never roll over into a mask"
+	)
+
+
+func test_resolve_wumpa_mask_rollover_ignores_a_non_positive_threshold() -> void:
+	var state := _new_state(&"normal")
+	if state == null:
+		return
+	state.call(
+		"record_wumpa_collected",
+		_economy.wumpa_per_standard_crate
+	)
+
+	var masks_earned: int = state.call(
+		"resolve_wumpa_mask_rollover",
+		0
+	)
+
+	assert_eq(masks_earned, 0)
+	assert_eq(
+		state.get("wumpa_run"),
+		_economy.wumpa_per_standard_crate,
+		"a disabled (<= 0) threshold must never consume banked wumpa"
+	)
+
+
 func test_masks_reset_on_death_q3() -> void:
 	var state := _new_state(&"normal")
 	if state == null:

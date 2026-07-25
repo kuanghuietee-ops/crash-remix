@@ -302,12 +302,10 @@ func collect_wumpa(amount: int, now_s: float) -> void:
 	):
 		return
 	run_state.record_wumpa_collected(amount)
-	var mask_threshold := _economy.wumpa_mask_threshold
-	if mask_threshold <= 0:
-		wumpa_changed.emit(run_state.wumpa_run)
-		return
-	while run_state.wumpa_run >= mask_threshold:
-		run_state.wumpa_run -= mask_threshold
+	var masks_earned := run_state.resolve_wumpa_mask_rollover(
+		_economy.wumpa_mask_threshold
+	)
+	for _mask_index: int in range(masks_earned):
 		_grant_mask(now_s)
 	wumpa_changed.emit(run_state.wumpa_run)
 

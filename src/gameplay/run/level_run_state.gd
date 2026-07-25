@@ -75,6 +75,16 @@ func record_mask_granted(amount: int) -> void:
 		masks += amount
 
 
+func resolve_wumpa_mask_rollover(mask_threshold: int) -> int:
+	if not run_active or mask_threshold <= 0:
+		return 0
+	var masks_earned := 0
+	while wumpa_run >= mask_threshold:
+		wumpa_run -= mask_threshold
+		masks_earned += 1
+	return masks_earned
+
+
 func record_checkpoint(crate_id: int) -> void:
 	if (
 		not run_active
