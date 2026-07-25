@@ -12,6 +12,7 @@ from scripts.lint_level_authoring import (
     CRATE_AUTHORING_RULE,
     CRATE_ID_RULE,
     REQUIRED_JUMP_RULE,
+    SPAWN_FLOOR_RULE,
     SPINE_ORDER_RULE,
     TIME_CRATE_RULE,
     _flatten_scene,
@@ -443,6 +444,24 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [],
         )
 
+    def test_spawn_with_no_authored_floor_beneath_it_fires_its_rule(
+        self,
+    ) -> None:
+        # R9: P0-2's fix was a single coordinate correction with no
+        # generalized guard -- nothing asserted that floor exists under an
+        # authored spawn, so a future level could silently reintroduce the
+        # exact "spawn over a hole" shape. This fixture authors a Player
+        # with no GrayboxPlatform anywhere in the scene at all.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_spawn_over_a_hole_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [SPAWN_FLOOR_RULE],
+        )
+        self.assertIn("no authored GrayboxPlatform", findings[0].detail)
+
     def test_warp_room_is_not_misclassified_as_a_collectible_level(
         self,
     ) -> None:
@@ -481,7 +500,11 @@ class LevelAuthoringLintTests(unittest.TestCase):
             )
             tuning_root = repo_root / "data" / "tuning"
             tuning_root.mkdir(parents=True)
-            for file_name in ["economy.tres", "camera.tres"]:
+            for file_name in [
+                "economy.tres",
+                "camera.tres",
+                "move.tres",
+            ]:
                 shutil.copy2(
                     REPO_ROOT / "data" / "tuning" / file_name,
                     tuning_root / file_name,

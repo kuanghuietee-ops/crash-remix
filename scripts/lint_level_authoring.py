@@ -55,6 +55,7 @@ CRATE_AUTHORING_RULE = "crate_count_and_segment_membership"
 CRATE_ID_RULE = "crate_id_unique"
 REQUIRED_JUMP_RULE = "required_jump_depression"
 TIME_CRATE_RULE = "time_crate_relic_only"
+SPAWN_FLOOR_RULE = "player_spawn_has_reachable_floor"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -64,6 +65,9 @@ CAMERA_REGION_SCRIPT = (
 )
 CAMERA_RAIL_CONTROLLER_SCRIPT = (
     "res://src/gameplay/camera/camera_rail_controller.gd"
+)
+GRAYBOX_PLATFORM_SCRIPT = (
+    "res://src/graybox/graybox_platform.gd"
 )
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
 PLAYER_CONTROLLER_SCRIPT = (
@@ -170,6 +174,7 @@ class AuthoringTuning:
     minimum_jump_depression_degrees: float
     camera_look_ahead_m: float
     camera_offsets: dict[str, Vector3]
+    respawn_floor_y_m: float
 
 
 def find_authoring_violations(root: Path) -> list[AuthoringViolation]:
@@ -231,6 +236,9 @@ def _level_findings(
         _required_jump_findings(scene_name, nodes, tuning)
     )
     findings.extend(_time_crate_findings(scene_name, nodes))
+    findings.extend(
+        _spawn_floor_findings(scene_name, nodes, tuning)
+    )
     return findings
 
 
@@ -283,6 +291,88 @@ def _spine_extent_gaps(
             _subtract(finish.world_position, spine[-1].world_position)
         )
     return head_gap, tail_gap
+
+
+def _spawn_floor_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    tuning: AuthoringTuning,
+) -> list[AuthoringViolation]:
+    """The root Player's authored spawn must have real floor beneath it.
+
+    P0-2 was a single coordinate correction (a spawn authored past the
+    edge of its floor piece, dropping the player into the void) with no
+    generalized guard: nothing checks that ANY authored spawn actually has
+    floor underneath it, so the next level can silently reintroduce the
+    exact same shape. This walks every authored ``GrayboxPlatform`` in the
+    level and requires at least one whose horizontal footprint covers the
+    spawn's X/Z, with a top surface at or below the spawn and at or above
+    ``move.respawn_floor_y_m`` -- the catalog's own "how far is definitely
+    too far" distance scale (the same value R1 reused for
+    ``checkpoint_respawn_offset``), rather than inventing a fresh
+    tolerance here. A platform whose top sits below that threshold cannot
+    actually be reached: the player would trigger the fall-recovery
+    respawn first, and since the recovery target is this same broken
+    spawn, that is the exact unrecoverable death loop P0-2 was.
+    """
+    player = next(
+        (
+            node
+            for node in nodes
+            if (
+                node.parent == "."
+                and node.script_path == PLAYER_CONTROLLER_SCRIPT
+            )
+        ),
+        None,
+    )
+    if player is None:
+        return []
+    for platform in nodes:
+        if platform.script_path != GRAYBOX_PLATFORM_SCRIPT:
+            continue
+        size = _parse_vector(platform.properties.get("size", ""))
+        if size is None:
+            continue
+        half_size = _multiply(size, 0.5)
+        local_point = _basis_inverse_xform(
+            platform.world_transform.basis,
+            _subtract(
+                player.world_position,
+                platform.world_transform.origin,
+            ),
+        )
+        if local_point is None:
+            continue
+        if (
+            abs(local_point[0]) > half_size[0]
+            or abs(local_point[2]) > half_size[2]
+        ):
+            continue
+        top_center = _add(
+            platform.world_transform.origin,
+            _basis_xform(
+                platform.world_transform.basis,
+                (0.0, half_size[1], 0.0),
+            ),
+        )
+        if (
+            top_center[1] <= player.world_position[1]
+            and top_center[1] >= tuning.respawn_floor_y_m
+        ):
+            return []
+    return [
+        AuthoringViolation(
+            scene_name,
+            SPAWN_FLOOR_RULE,
+            (
+                "no authored GrayboxPlatform has a reachable top surface "
+                f"(between respawn_floor_y_m={tuning.respawn_floor_y_m} "
+                f"and the spawn) beneath the root Player's spawn "
+                f"{player.world_position}"
+            ),
+        )
+    ]
 
 
 def _spine_order_findings(
@@ -1305,6 +1395,11 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
             encoding="utf-8"
         )
     )
+    move = _assignment_values(
+        (repo_root / "data/tuning/move.tres").read_text(
+            encoding="utf-8"
+        )
+    )
     offsets: dict[str, Vector3] = {}
     for mode, property_name in {
         "default": "default_offset",
@@ -1329,6 +1424,7 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
         ),
         camera_look_ahead_m=float(camera["look_ahead_m"]),
         camera_offsets=offsets,
+        respawn_floor_y_m=float(move["respawn_floor_y_m"]),
     )
 
 

@@ -1,10 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_player"]
-[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="3_platform"]
 
-[node name="SpineExtentGapBad" type="Node3D"]
+[node name="SpawnOverAHoleBad" type="Node3D"]
 metadata/level_meta = ExtResource("1_meta")
 
 [node name="Spine" type="Node3D" parent="."]
@@ -12,13 +11,10 @@ metadata/level_meta = ExtResource("1_meta")
 [node name="Start" type="Marker3D" parent="Spine"]
 
 [node name="End" type="Marker3D" parent="Spine"]
-position = Vector3(0, 0, -50)
+position = Vector3(0, 0, -10)
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
-
-[node name="Floor" parent="." instance=ExtResource("3_platform")]
-position = Vector3(0, -0.5, 0)
-size = Vector3(4, 1, 4)
+position = Vector3(0, 0.05, 0)
 
 [node name="Finish" type="Area3D" parent="."]
-position = Vector3(0, 0, -400)
+position = Vector3(0, 0, -10)
