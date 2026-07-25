@@ -356,6 +356,43 @@ func test_quit_during_threaded_load_can_reenter_without_stalling() -> void:
 	await wait_process_frames(2)
 
 
+func test_hub_touch_exclusions_include_the_debug_drawer() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"warp_room")
+	assert_true(root.has_node("Content/WarpRoom1"))
+	if not root.has_node("Content/WarpRoom1"):
+		return
+	var debug_ui := root.get_node("UI/TuningDebug")
+	assert_true(
+		debug_ui.visible,
+		"debug tools must be enabled in this test environment"
+	)
+	var touch := root.get_node("Content/WarpRoom1/UI/TouchControls")
+	var exclusions: Array = touch.get("_touch_exclusion_controls")
+	assert_true(
+		exclusions.has(debug_ui.get_node("HUD")),
+		(
+			"the hub's touch controls must exclude the debug HUD strip, "
+			+ "the same way the level's do (§5.2 occlusion rule)"
+		)
+	)
+	assert_true(
+		exclusions.has(debug_ui.get_node("Drawer")),
+		(
+			"the hub's touch controls must exclude the debug drawer, "
+			+ "the same way the level's do (§5.2 occlusion rule)"
+		)
+	)
+
+
 func _instantiate_room() -> Node:
 	assert_true(
 		ResourceLoader.exists(PORTAL_SCENE_PATH),

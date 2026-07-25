@@ -13,6 +13,7 @@ var _catalog: GameplayTuning
 var _level_metas: Dictionary = {}
 var _phase_available: bool
 var _available_level_ids: Array[StringName] = []
+var _extra_touch_exclusions: Array = []
 
 
 func _ready() -> void:
@@ -27,7 +28,8 @@ func configure(
 	catalog: GameplayTuning,
 	level_metas: Dictionary = {},
 	phase_available: bool = false,
-	available_level_ids: Array[StringName] = []
+	available_level_ids: Array[StringName] = [],
+	extra_touch_exclusions: Array = []
 ) -> void:
 	_profile = (
 		profile.duplicate(true)
@@ -38,6 +40,7 @@ func configure(
 	_level_metas = level_metas.duplicate()
 	_phase_available = phase_available
 	_available_level_ids = available_level_ids.duplicate()
+	_extra_touch_exclusions = extra_touch_exclusions.duplicate()
 	_configure_player()
 	_apply_portal_states()
 
@@ -86,7 +89,9 @@ func _configure_player() -> void:
 		_catalog.input,
 		_phase_available
 	)
-	touch.set_touch_exclusion_controls([$UI/LevelList])
+	touch.set_touch_exclusion_controls(
+		[$UI/LevelList] + _extra_touch_exclusions
+	)
 	player.call(
 		"configure",
 		_catalog.move,

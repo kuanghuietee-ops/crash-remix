@@ -87,6 +87,8 @@ var _owns_tree_pause: bool = false
 var _threaded_level_path: String = ""
 var _threaded_level_id: StringName = &""
 var _threaded_poll_count: int = 0
+var _warp_room_instantiate_count: int = 0
+var _suppress_next_warp_room_render: bool = false
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
@@ -560,7 +562,15 @@ func threaded_level_poll_count() -> int:
 	return _threaded_poll_count
 
 
+func warp_room_instantiate_count() -> int:
+	return _warp_room_instantiate_count
+
+
 func _render_warp_room() -> void:
+	if _suppress_next_warp_room_render:
+		_suppress_next_warp_room_render = false
+		return
+	_warp_room_instantiate_count += 1
 	var room := WARP_ROOM_SCENE.instantiate()
 	_content.add_child(room)
 	room.call(
@@ -569,7 +579,8 @@ func _render_warp_room() -> void:
 		tuning_service.catalog,
 		_hub_level_metas(),
 		_phase_available(),
-		_available_level_ids()
+		_available_level_ids(),
+		_debug_touch_exclusions()
 	)
 	room.connect(
 		&"flow_event_requested",
@@ -593,7 +604,8 @@ func _refresh_warp_room_tuning() -> void:
 		tuning_service.catalog,
 		_hub_level_metas(),
 		_phase_available(),
-		_available_level_ids()
+		_available_level_ids(),
+		_debug_touch_exclusions()
 	)
 
 
@@ -1038,10 +1050,17 @@ func _level_touch_exclusions() -> Array:
 		_pause_overlay,
 		_level_list_overlay,
 	]
-	if _tuning_debug.visible:
-		controls.append(_tuning_debug.get_node("HUD"))
-		controls.append(_tuning_debug.get_node("Drawer"))
+	controls.append_array(_debug_touch_exclusions())
 	return controls
+
+
+func _debug_touch_exclusions() -> Array:
+	if not _tuning_debug.visible:
+		return []
+	return [
+		_tuning_debug.get_node("HUD"),
+		_tuning_debug.get_node("Drawer"),
+	]
 
 
 func _sync_ui_visibility() -> void:
@@ -1116,10 +1135,18 @@ func _on_pause_resume_requested() -> void:
 
 
 func _on_pause_retry_requested() -> void:
+	# Retrying from pause round-trips WARP_ROOM as a same-frame FSM
+	# waypoint on the way back into LEVEL (never a rendered frame), so
+	# there is no need to pay for a real hub scene instantiate just to
+	# discard it immediately after. The flag is always cleared right
+	# after this call, regardless of the path _select_level takes, so
+	# it can never leak into suppressing a later, genuine hub render.
+	_suppress_next_warp_room_render = true
 	_select_level(
 		flow.active_level_id,
 		flow.active_level_mode
 	)
+	_suppress_next_warp_room_render = false
 
 
 func _on_pause_level_list_requested() -> void:
