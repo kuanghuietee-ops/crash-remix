@@ -39,6 +39,19 @@ class LevelAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("88.889s", findings[0].detail)
 
+    def test_spine_stopping_short_of_the_finish_still_fires_spacing(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_spine_extent_gap_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_SPACING_RULE],
+        )
+        self.assertIn("88.889s", findings[0].detail)
+
     def test_checkpoint_links_must_follow_spatial_route_order(self) -> None:
         findings = find_authoring_violations(
             FIXTURE_ROOT / "level_checkpoint_progression_bad.tscn"

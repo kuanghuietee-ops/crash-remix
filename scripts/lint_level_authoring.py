@@ -29,6 +29,11 @@ CAMERA_RAIL_CONTROLLER_SCRIPT = (
     "res://src/gameplay/camera/camera_rail_controller.gd"
 )
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
+PLAYER_CONTROLLER_SCRIPT = (
+    "res://src/gameplay/player/player_controller.gd"
+)
+LEVEL_FINISH_NODE_NAME = "Finish"
+LEVEL_FINISH_NODE_TYPE = "Area3D"
 LEVEL_META_EXEMPT_SCENES = {
     "phase05_gauntlet.tscn",
     "warp_room_1.tscn",
@@ -224,6 +229,57 @@ def _level_findings(
     return findings
 
 
+def _spine_extent_gaps(
+    nodes: list[FlatNode],
+    spine: list[FlatNode],
+) -> tuple[float, float]:
+    """Distance from the spine's own ends to the level's real edges.
+
+    The spine is an authored approximation of the playable route, not
+    the playable extent itself: nothing else ties its first/last point
+    to where the player actually starts or where the level actually
+    ends. When the root ``Player`` and root ``Finish`` trigger the
+    runtime already requires (``LevelSession.configure``) are present,
+    fold the residual straight-line gap into the pacing measurement so
+    a spine that stops short of either real edge cannot hide an
+    unpaced stretch beyond it.
+    """
+    head_gap = 0.0
+    tail_gap = 0.0
+    player = next(
+        (
+            node
+            for node in nodes
+            if (
+                node.parent == "."
+                and node.script_path == PLAYER_CONTROLLER_SCRIPT
+            )
+        ),
+        None,
+    )
+    if player is not None:
+        head_gap = _length(
+            _subtract(player.world_position, spine[0].world_position)
+        )
+    finish = next(
+        (
+            node
+            for node in nodes
+            if (
+                node.parent == "."
+                and node.path == LEVEL_FINISH_NODE_NAME
+                and node.node_type == LEVEL_FINISH_NODE_TYPE
+            )
+        ),
+        None,
+    )
+    if finish is not None:
+        tail_gap = _length(
+            _subtract(finish.world_position, spine[-1].world_position)
+        )
+    return head_gap, tail_gap
+
+
 def _checkpoint_findings(
     scene_name: str,
     nodes: list[FlatNode],
@@ -286,8 +342,13 @@ def _checkpoint_findings(
         distance
         for _, distance in checkpoints_with_distances
     ]
+    head_gap, tail_gap = _spine_extent_gaps(nodes, spine)
     boundaries = sorted(
-        [0.0, *checkpoint_distances, cumulative[-1]]
+        [
+            -head_gap,
+            *checkpoint_distances,
+            cumulative[-1] + tail_gap,
+        ]
     )
     interval_times = [
         (finish - start) / meta.design_pace_mps
