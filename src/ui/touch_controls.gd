@@ -144,8 +144,31 @@ func handle_touch_event(event: InputEvent) -> void:
 func _process(delta_s: float) -> void:
 	if _has_layout_override or _input_tuning == null:
 		return
-	_layout_metrics_poll_elapsed_s += maxf(delta_s, 0.0)
 	var interval_s := _input_tuning.layout_metrics_poll_interval_s
+	if interval_s <= 0.0:
+		# R7: fmod(x, interval_s) with a non-positive interval_s returns
+		# NaN, and every later frame's "elapsed < interval_s" guard would
+		# then compare against NaN -- always false under IEEE 754 -- so
+		# the poll would silently invert into running every frame forever
+		# instead of failing safely. Every reachable production path
+		# already rejects this value (TuningService.catalog_is_usable on
+		# override load and on every live debug-drawer edit); this is
+		# defense for the one path that check doesn't cover, the authored
+		# base tuning resource itself. A non-positive interval means "no
+		# throttling", so poll every frame deliberately, without ever
+		# letting the elapsed accumulator go non-finite.
+		_layout_metrics_poll_elapsed_s = 0.0
+		_layout_metrics_poll_count += 1
+		var degraded_metrics := _viewport_layout_metrics()
+		var degraded_safe_rect: Rect2 = degraded_metrics["safe_rect"]
+		var degraded_dpi: float = degraded_metrics["dpi"]
+		if (
+			degraded_safe_rect != _last_safe_rect
+			or not is_equal_approx(degraded_dpi, _last_dpi)
+		):
+			_recalculate_layout()
+		return
+	_layout_metrics_poll_elapsed_s += maxf(delta_s, 0.0)
 	if _layout_metrics_poll_elapsed_s < interval_s:
 		return
 	_layout_metrics_poll_elapsed_s = fmod(_layout_metrics_poll_elapsed_s, interval_s)

@@ -38,8 +38,24 @@ func set_layout_override(safe_rect: Rect2) -> void:
 func _process(delta_s: float) -> void:
 	if _input_tuning == null:
 		return
-	_layout_metrics_poll_elapsed_s += maxf(delta_s, 0.0)
 	var interval_s := _input_tuning.layout_metrics_poll_interval_s
+	if interval_s <= 0.0:
+		# R7: fmod(x, interval_s) with a non-positive interval_s returns
+		# NaN, and every later frame's "elapsed < interval_s" guard would
+		# then compare against NaN -- always false under IEEE 754 -- so
+		# the poll would silently invert into running every frame
+		# forever instead of failing safely. Every reachable production
+		# path already rejects this value (TuningService.catalog_is_usable
+		# on override load and on every live debug-drawer edit); this is
+		# defense for the one path that check doesn't cover, the authored
+		# base tuning resource itself. A non-positive interval means "no
+		# throttling", so poll every frame deliberately, without ever
+		# letting the elapsed accumulator go non-finite.
+		_layout_metrics_poll_elapsed_s = 0.0
+		if _current_safe_rect() != _last_safe_rect:
+			_apply_safe_area()
+		return
+	_layout_metrics_poll_elapsed_s += maxf(delta_s, 0.0)
 	if _layout_metrics_poll_elapsed_s < interval_s:
 		return
 	_layout_metrics_poll_elapsed_s = fmod(_layout_metrics_poll_elapsed_s, interval_s)

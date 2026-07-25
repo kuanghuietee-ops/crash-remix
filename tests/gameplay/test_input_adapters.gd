@@ -674,6 +674,73 @@ func test_safe_area_repolls_after_a_flip_that_never_fires_size_changed() -> void
 	)
 
 
+func test_safe_area_non_positive_poll_interval_does_not_poison_with_nan() -> void:
+	# R7: fmod(x, interval_s) with a non-positive interval_s returns NaN
+	# (IEEE 754); every subsequent frame's "elapsed < interval_s" guard
+	# then compares against NaN, which is always false, so the throttle
+	# silently inverts from "once per tuned interval" into "every frame
+	# forever" instead of failing safely. Every reachable production path
+	# already rejects this value via TuningService.catalog_is_usable
+	# (override load, live debug-drawer edits) -- this proves the polling
+	# code defends itself too, for the one path that check doesn't cover
+	# (the authored base tuning resource -- see R7's other half).
+	var safe_area: Control = _new_node(SAFE_AREA_SCRIPT_PATH)
+	if safe_area == null:
+		return
+	add_child_autofree(safe_area)
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("layout_metrics_poll_interval_s", 0.0)
+	safe_area.call("configure", tuning)
+	safe_area.set_process(false)
+
+	safe_area.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0))
+	safe_area.call("_apply_safe_area")
+
+	for _frame in range(3):
+		safe_area.call("_process", 0.1)
+	assert_false(
+		is_nan(safe_area.get("_layout_metrics_poll_elapsed_s")),
+		"a non-positive poll interval must not poison elapsed time with NaN"
+	)
+
+	# The safe area must still notice a real layout change instead of
+	# being silently wedged by the bad interval.
+	safe_area.call("set_layout_override", Rect2(100.0, 0.0, 1820.0, 1080.0))
+	safe_area.call("_process", 0.1)
+	assert_eq(
+		safe_area.get("offset_left"),
+		100.0,
+		"a non-positive poll interval must still poll, not silently stop"
+	)
+
+
+func test_touch_controls_non_positive_poll_interval_does_not_poison_with_nan() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("layout_metrics_poll_interval_s", 0.0)
+	router.call("configure", tuning)
+	touch.call("configure", router, tuning, true)
+	touch.set_process(false)
+
+	var initial_count: int = touch.call("layout_metrics_poll_count")
+	for _frame in range(3):
+		touch.call("_process", 0.1)
+	assert_false(
+		is_nan(touch.get("_layout_metrics_poll_elapsed_s")),
+		"a non-positive poll interval must not poison elapsed time with NaN"
+	)
+	assert_gt(
+		touch.call("layout_metrics_poll_count"),
+		initial_count,
+		"a non-positive poll interval must still poll, not silently stop"
+	)
+
+
 func test_hud_elements_stay_outside_the_touch_control_occlusion_zones() -> void:
 	var packed: PackedScene = load(HUD_SCENE_PATH)
 	assert_not_null(packed, "hud.tscn must exist")

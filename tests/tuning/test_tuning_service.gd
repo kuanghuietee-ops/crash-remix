@@ -1299,6 +1299,48 @@ func test_reset_to_authored_deletes_override_and_restores_baseline() -> void:
 	assert_false(service.call("get_loaded_resource_paths").has(TEST_OVERRIDE_PATH))
 
 
+func test_a_corrupt_authored_base_catalog_is_rejected_loudly() -> void:
+	# R7: load_from_paths only ever ran catalog_is_usable against the
+	# OVERRIDE resource -- the authored base catalog was cloned straight
+	# into `catalog` with no validation at all, on every boot, whether or
+	# not an override even exists. A corrupt or mis-authored base .tres
+	# (a bad export, a hand-edit that broke a value, a merge that landed
+	# wrong) would silently become "the usable catalog" with nobody ever
+	# noticing -- the exact "authored, persisted, consumed unchecked"
+	# shape this project exists to prevent.
+	var broken_base_path := "user://test_sandbox/broken_base_catalog.tres"
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	authored.move.run_speed_mps = 0.0
+	assert_eq(ResourceSaver.save(authored, broken_base_path), OK)
+
+	var service: RefCounted = _new_service()
+	assert_not_null(service)
+	if service == null:
+		return
+	var missing_override_path := "user://test_sandbox/no_such_override.tres"
+	assert_false(FileAccess.file_exists(missing_override_path))
+
+	var boot_error: Error = service.call(
+		"load_from_paths", broken_base_path, missing_override_path
+	)
+
+	assert_ne(
+		boot_error,
+		OK,
+		"a corrupt authored base catalog must fail loudly, not load silently"
+	)
+	assert_null(
+		service.get("catalog"),
+		"a rejected base catalog must not remain the effective catalog"
+	)
+
+	DirAccess.remove_absolute(
+		ProjectSettings.globalize_path(broken_base_path)
+	)
+
+
 func _loaded_service() -> RefCounted:
 	var service: RefCounted = _new_service()
 	assert_not_null(service)

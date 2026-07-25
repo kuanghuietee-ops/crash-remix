@@ -69,6 +69,17 @@ func load_from_paths(base_catalog_path: String, override_path: String) -> Error:
 
 	_record_authored_paths(authored, base_catalog_path)
 	catalog = _clone_catalog(authored)
+	if not catalog_is_usable(catalog):
+		# R7: only the OVERRIDE resource ever ran through catalog_is_usable
+		# here -- the authored base catalog was cloned straight into
+		# `catalog` with no validation at all, on every boot, whether or
+		# not an override even exists. A corrupt or mis-authored base
+		# .tres must fail loudly (a real Error return, which
+		# GameRoot._ready() already turns into a push_error and an
+		# aborted boot) instead of silently becoming "the usable catalog"
+		# with nobody ever noticing.
+		catalog = null
+		return ERR_INVALID_DATA
 	if not FileAccess.file_exists(override_path):
 		return OK
 
