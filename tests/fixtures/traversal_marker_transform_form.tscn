@@ -1,0 +1,11 @@
+[gd_scene load_steps=1 format=3]
+
+[node name="TraversalMarkerTransformFixture" type="Node3D"]
+
+[node name="Rail" type="Path3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Rail"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 50)
+
+[node name="Finish" type="Marker3D" parent="Rail"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -50)

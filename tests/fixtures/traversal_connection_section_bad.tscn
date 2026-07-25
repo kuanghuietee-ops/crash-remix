@@ -1,0 +1,12 @@
+[gd_scene load_steps=1 format=3]
+
+[node name="ConnectionSectionBad" type="Node3D"]
+
+[node name="Rail" type="Path3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Rail"]
+
+[node name="Finish" type="Marker3D" parent="Rail"]
+position = Vector3(0, 0, -20)
+
+[connection signal="body_entered" from="Start" to="." method="_on_start_body_entered"]

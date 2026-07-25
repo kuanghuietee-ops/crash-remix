@@ -12,6 +12,31 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+try:
+    from scene_transform_parsing import (
+        PROPERTY_PATTERN,
+        UP,
+        ZERO,
+        Vector3,
+        header_attributes as _header_attributes,
+        parse_transform as _parse_transform,
+        parse_vector as _parse_vector,
+        raise_on_unrecognized_section,
+        resource_id as _resource_id,
+    )
+except ImportError:  # pragma: no cover - exercised via scripts.* imports
+    from scripts.scene_transform_parsing import (
+        PROPERTY_PATTERN,
+        UP,
+        ZERO,
+        Vector3,
+        header_attributes as _header_attributes,
+        parse_transform as _parse_transform,
+        parse_vector as _parse_vector,
+        raise_on_unrecognized_section,
+        resource_id as _resource_id,
+    )
+
 
 WALL_CAMERA_RULE = "wall_run_horizon_stable"
 DETACH_VISIBILITY_RULE = "wall_run_detach_target_visible"
@@ -23,22 +48,8 @@ CAMERA_REGION_SCRIPT = "res://src/gameplay/camera/camera_region.gd"
 WALL_RUN_MODE = "wall_run"
 GRIND_MODE = "grind"
 
-Vector3 = tuple[float, float, float]
-ZERO: Vector3 = (0.0, 0.0, 0.0)
-UP: Vector3 = (0.0, 1.0, 0.0)
-VECTOR_PATTERN = re.compile(
-    r"Vector3\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*,"
-    r"\s*([-+0-9.eE]+)\s*\)"
-)
-RESOURCE_CALL_PATTERN = re.compile(
-    r'(?:ExtResource|SubResource)\("([^"]+)"\)'
-)
 NODE_PATH_PATTERN = re.compile(r'NodePath\("([^"]*)"\)')
 STRING_NAME_PATTERN = re.compile(r'&"([^"]*)"')
-HEADER_ATTRIBUTE_PATTERN = re.compile(
-    r'([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|([^\s]+))'
-)
-PROPERTY_PATTERN = re.compile(r"^([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
 SCREEN_TOLERANCE = 0.02
 MAXIMUM_COMFORT_ROLL_DEGREES = 10.0
 VISIBILITY_SAMPLES = 9
@@ -466,9 +477,26 @@ def _nodes_with_script(
     ]
 
 
+def _node_origin(properties: dict[str, str]) -> Vector3:
+    # R2/P1-1: a saved Transform3D (Godot's re-save format for a
+    # translated node) carries this node's origin as its last three
+    # components; a plain position= is Godot's shorthand for an
+    # identity-basis Transform3D at that origin. Preferring transform=
+    # here mirrors lint_level_authoring.py's _node_transform -- before
+    # this fix, this file's own separately-maintained copy of the same
+    # parser missed the fix P1-1 already landed there, so a routine
+    # editor re-save silently flattened every transform=-saved node's
+    # world position to (0, 0, 0), degrading wall_run_horizon_stable
+    # and rail_readability without warning.
+    authored_transform = _parse_transform(properties.get("transform", ""))
+    if authored_transform is not None:
+        return authored_transform.origin
+    return _parse_vector(properties.get("position", "")) or ZERO
+
+
 def _world_position(scene: ParsedScene, node: SceneNode) -> Vector3:
     nodes = scene.nodes_by_path
-    position = _parse_vector(node.properties.get("position", "")) or ZERO
+    position = _node_origin(node.properties)
     parent_path = node.parent
     visited = {node.path}
     while parent_path:
@@ -476,10 +504,7 @@ def _world_position(scene: ParsedScene, node: SceneNode) -> Vector3:
         if parent is None or parent.path in visited:
             break
         visited.add(parent.path)
-        position = _add(
-            position,
-            _parse_vector(parent.properties.get("position", "")) or ZERO,
-        )
+        position = _add(position, _node_origin(parent.properties))
         parent_path = parent.parent
     return position
 
@@ -504,6 +529,7 @@ def _parse_scene(path: Path) -> ParsedScene:
             current_properties = None
             header = stripped[1:-1]
             section_name = header.split(maxsplit=1)[0]
+            raise_on_unrecognized_section(path, section_name)
             attributes = _header_attributes(header)
             if section_name == "ext_resource":
                 resource_id = attributes.get("id", "")
@@ -539,20 +565,14 @@ def _parse_scene(path: Path) -> ParsedScene:
                 current_properties = node.properties
             continue
         match = PROPERTY_PATTERN.match(stripped)
-        if match is not None and current_properties is not None:
-            current_properties[match.group(1)] = match.group(2).strip()
+        if match is None or current_properties is None:
+            raise ValueError(
+                f"{path}: unclassifiable line outside any parsed "
+                f"section: {stripped!r} — the authoring lint cannot "
+                "silently drop authored content it doesn't recognize"
+            )
+        current_properties[match.group(1)] = match.group(2).strip()
     return ParsedScene(path, ext_resources, sub_resources, nodes)
-
-
-def _header_attributes(header: str) -> dict[str, str]:
-    attributes: dict[str, str] = {}
-    for match in HEADER_ATTRIBUTE_PATTERN.finditer(header):
-        attributes[match.group(1)] = (
-            match.group(2)
-            if match.group(2) is not None
-            else match.group(3)
-        )
-    return attributes
 
 
 def _load_camera_config(repo_root: Path) -> CameraConfig:
@@ -607,18 +627,6 @@ def _display_path(path: Path, repo_root: Path) -> str:
         return path.relative_to(repo_root).as_posix()
     except ValueError:
         return path.as_posix()
-
-
-def _parse_vector(value: str) -> Vector3 | None:
-    match = VECTOR_PATTERN.fullmatch(value.strip())
-    if match is None:
-        return None
-    return tuple(float(match.group(index)) for index in range(1, 4))  # type: ignore[return-value]
-
-
-def _resource_id(value: str) -> str:
-    match = RESOURCE_CALL_PATTERN.fullmatch(value.strip())
-    return match.group(1) if match is not None else ""
 
 
 def _string_name(value: str) -> str:

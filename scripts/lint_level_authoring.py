@@ -11,6 +11,41 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+try:
+    from scene_transform_parsing import (
+        IDENTITY_TRANSFORM,
+        ONE,
+        PROPERTY_PATTERN,
+        UP,
+        Basis3,
+        SpatialTransform,
+        Vector3,
+        ZERO,
+        header_attributes as _header_attributes,
+        parse_basis as _parse_basis,
+        parse_transform as _parse_transform,
+        parse_vector as _parse_vector,
+        raise_on_unrecognized_section,
+        resource_id as _resource_id,
+    )
+except ImportError:  # pragma: no cover - exercised via scripts.* imports
+    from scripts.scene_transform_parsing import (
+        IDENTITY_TRANSFORM,
+        ONE,
+        PROPERTY_PATTERN,
+        UP,
+        Basis3,
+        SpatialTransform,
+        Vector3,
+        ZERO,
+        header_attributes as _header_attributes,
+        parse_basis as _parse_basis,
+        parse_transform as _parse_transform,
+        parse_vector as _parse_vector,
+        raise_on_unrecognized_section,
+        resource_id as _resource_id,
+    )
+
 
 CHECKPOINT_SPACING_RULE = "checkpoint_spacing"
 CHECKPOINT_PROGRESSION_RULE = "checkpoint_progression"
@@ -45,47 +80,9 @@ IRON_CRATE_TYPE = "iron"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
-KNOWN_SCENE_SECTIONS = {"ext_resource", "sub_resource", "node"}
-INERT_SCENE_SECTIONS = {
-    "gd_scene",
-    "gd_resource",
-    # "[editable path="..."]" only toggles whether the Godot editor
-    # shows an instanced sub-scene's internal nodes as editable in the
-    # scene tree dock (Node.set_editable_instance / is_editable_instance,
-    # confirmed by reading Godot 4.7.1's own scene/main/node.cpp and
-    # scene/resources/packed_scene.cpp). It carries no geometry, crate,
-    # checkpoint, or camera data of its own — PackedScene instancing
-    # applies every authored override line unconditionally regardless
-    # of this flag — so it is genuinely inert for authoring purposes.
-    # Confirmed deliberately, per N3, not left unclassified by default.
-    "editable",
-}
 
-Vector3 = tuple[float, float, float]
-Basis3 = tuple[Vector3, Vector3, Vector3]
-ZERO: Vector3 = (0.0, 0.0, 0.0)
-UP: Vector3 = (0.0, 1.0, 0.0)
-ONE: Vector3 = (1.0, 1.0, 1.0)
-IDENTITY_BASIS: Basis3 = (
-    (1.0, 0.0, 0.0),
-    (0.0, 1.0, 0.0),
-    (0.0, 0.0, 1.0),
-)
-VECTOR_PATTERN = re.compile(
-    r"Vector3\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*,"
-    r"\s*([-+0-9.eE]+)\s*\)"
-)
-RESOURCE_CALL_PATTERN = re.compile(
-    r'(?:ExtResource|SubResource)\("([^"]+)"\)'
-)
 STRING_PATTERN = re.compile(r'(?:&)?"([^"]*)"')
-HEADER_ATTRIBUTE_PATTERN = re.compile(
-    r'([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|([^\s]+))'
-)
 GROUPS_PATTERN = re.compile(r"groups=\[([^\]]*)\]")
-PROPERTY_PATTERN = re.compile(
-    r"^([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$"
-)
 
 
 @dataclass(frozen=True)
@@ -125,15 +122,6 @@ class ParsedScene:
     ext_resources: dict[str, ResourceReference]
     sub_resources: dict[str, SubResource]
     nodes: list[SceneNode]
-
-
-@dataclass(frozen=True)
-class SpatialTransform:
-    basis: Basis3
-    origin: Vector3
-
-
-IDENTITY_TRANSFORM = SpatialTransform(IDENTITY_BASIS, ZERO)
 
 
 @dataclass
@@ -993,18 +981,7 @@ def _parse_scene(path: Path) -> ParsedScene:
             current_properties = None
             header = stripped[1:-1]
             section_name = header.split(maxsplit=1)[0]
-            if (
-                section_name not in KNOWN_SCENE_SECTIONS
-                and section_name not in INERT_SCENE_SECTIONS
-            ):
-                raise ValueError(
-                    f"{path}: unrecognized scene section "
-                    f"[{section_name}] — the authoring lint has no "
-                    "rule for this syntax and cannot silently ignore "
-                    "it; teach the parser about it or confirm it "
-                    "carries no authoring-relevant data before adding "
-                    "it to INERT_SCENE_SECTIONS"
-                )
+            raise_on_unrecognized_section(path, section_name)
             attributes = _header_attributes(header)
             if section_name == "ext_resource":
                 resource_id = attributes.get("id", "")
@@ -1444,17 +1421,6 @@ def _resource_path(
     return owning_scene.parent / authored_path
 
 
-def _header_attributes(header: str) -> dict[str, str]:
-    attributes: dict[str, str] = {}
-    for match in HEADER_ATTRIBUTE_PATTERN.finditer(header):
-        attributes[match.group(1)] = (
-            match.group(2)
-            if match.group(2) is not None
-            else match.group(3)
-        )
-    return attributes
-
-
 def _header_groups(header: str) -> set[str]:
     match = GROUPS_PATTERN.search(header)
     if match is None:
@@ -1505,73 +1471,6 @@ def _display_path(path: Path, repo_root: Path) -> str:
         return path.as_posix()
 
 
-def _parse_vector(value: str) -> Vector3 | None:
-    match = VECTOR_PATTERN.fullmatch(value.strip())
-    if match is None:
-        return None
-    return tuple(
-        float(match.group(index))
-        for index in range(1, 4)
-    )  # type: ignore[return-value]
-
-
-def _parse_constructor_components(
-    value: str,
-    constructor: str,
-    count: int,
-) -> tuple[float, ...] | None:
-    stripped = value.strip()
-    prefix = constructor + "("
-    if not stripped.startswith(prefix) or not stripped.endswith(")"):
-        return None
-    raw_components = stripped[len(prefix) : -1].split(",")
-    if len(raw_components) != count:
-        return None
-    try:
-        components = tuple(
-            float(component.strip())
-            for component in raw_components
-        )
-    except ValueError:
-        return None
-    if not all(math.isfinite(component) for component in components):
-        return None
-    return components
-
-
-def _parse_basis(value: str) -> Basis3 | None:
-    components = _parse_constructor_components(value, "Basis", 9)
-    if components is None:
-        return None
-    return (
-        (components[0], components[3], components[6]),
-        (components[1], components[4], components[7]),
-        (components[2], components[5], components[8]),
-    )
-
-
-def _parse_transform(value: str) -> SpatialTransform | None:
-    components = _parse_constructor_components(
-        value,
-        "Transform3D",
-        12,
-    )
-    if components is None:
-        return None
-    return SpatialTransform(
-        basis=(
-            (components[0], components[3], components[6]),
-            (components[1], components[4], components[7]),
-            (components[2], components[5], components[8]),
-        ),
-        origin=(
-            components[9],
-            components[10],
-            components[11],
-        ),
-    )
-
-
 def _node_transform(
     properties: dict[str, str],
 ) -> SpatialTransform:
@@ -1613,11 +1512,6 @@ def _node_transform(
         ),
         origin,
     )
-
-
-def _resource_id(value: str) -> str:
-    match = RESOURCE_CALL_PATTERN.fullmatch(value.strip())
-    return match.group(1) if match is not None else ""
 
 
 def _string_value(value: str) -> str:

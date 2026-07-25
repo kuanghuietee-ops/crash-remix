@@ -417,6 +417,17 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 REPO_ROOT / "scripts" / "lint_level_authoring.py",
                 repo_root / "scripts" / "lint_level_authoring.py",
             )
+            # R2: lint_level_authoring.py's low-level parsing primitives
+            # (transform/vector parsing, known-vs-inert scene section
+            # classification) now live in a small shared module so this
+            # lint's sibling (lint_traversal_authoring.py) cannot drift
+            # out of sync with them again -- this sandboxed mini-repo
+            # needs its own copy for the subprocess CLI run below to
+            # import successfully.
+            shutil.copy2(
+                REPO_ROOT / "scripts" / "scene_transform_parsing.py",
+                repo_root / "scripts" / "scene_transform_parsing.py",
+            )
             tuning_root = repo_root / "data" / "tuning"
             tuning_root.mkdir(parents=True)
             for file_name in ["economy.tres", "camera.tres"]:
