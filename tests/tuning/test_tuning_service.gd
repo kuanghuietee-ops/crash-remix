@@ -808,6 +808,99 @@ func test_phase_zero_baseline_field_set_is_frozen() -> void:
 	)
 
 
+## R4: the sha256 freeze above is a speed bump, not a barrier — recomputing
+## it to match whatever PHASE0_BASELINE_FIELDS_BY_SECTION currently says is
+## a purely mechanical paste of the value the failing test itself prints,
+## with no judgment about whether a field genuinely predates migration.
+## Executed proof (see the R4 fix report): mis-register a real
+## LEGACY_FIELD_GROUPS_BY_SECTION field (e.g. phase_button_diameter_mm)
+## into the input baseline instead, paste the new hash, and both
+## test_every_exported_field_has_override_migration_coverage and
+## test_phase_zero_baseline_field_set_is_frozen go green while a real old
+## override predating that field would still silently lose its authored
+## value.
+##
+## PHASE0_INPUT_OVERRIDE_PATH is not just a name — it is a real, committed
+## resource authored in the exact Phase-0 shape (predating the
+## phase_button_* fields), driven through the real production load path by
+## test_phase_zero_input_fields_backfill_without_losing_operator_values
+## above. This test derives the input section's baseline directly from
+## which fields are textually present in that real artifact and requires
+## PHASE0_BASELINE_FIELDS_BY_SECTION[&"input"] to match it exactly, field
+## for field. Unlike the sha256 freeze, there is no hash to silently
+## recompute here: a mis-registered field disagrees with a real committed
+## file's actual content, not with a claim about itself.
+##
+## This does not extend to the other 8 sections: no equivalent real
+## Phase-0-era artifact is committed for move/camera/depth/wall_run/grind/
+## swing/phase/economy today. Authoring one now would not be "real" in the
+## same sense — it would just be another hand-typed claim about the past
+## wearing a .tres extension, providing no more protection than the
+## existing sha256 freeze already does. Those sections keep the frozen
+## hash as the strongest available guard until a genuine historical
+## artifact exists for them too.
+func test_input_phase_zero_baseline_matches_the_real_committed_artifact() -> void:
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	var artifact_fields := _tres_subresource_field_names(
+		PHASE0_INPUT_OVERRIDE_PATH
+	)
+	assert_gt(
+		artifact_fields.size(),
+		0,
+		"the real Phase 0 artifact must actually author some input fields"
+	)
+	var artifact_field_set := {}
+	for field_name: StringName in artifact_fields:
+		artifact_field_set[field_name] = true
+
+	var claimed_baseline: Array = PHASE0_BASELINE_FIELDS_BY_SECTION.get(
+		&"input", []
+	)
+	for exported_field: StringName in _exported_property_names(authored.input):
+		assert_eq(
+			claimed_baseline.has(exported_field),
+			artifact_field_set.has(exported_field),
+			(
+				"input.%s's baseline-vs-legacy classification does not "
+				+ "match the real Phase 0 artifact — a field present in "
+				+ "PHASE0_INPUT_OVERRIDE_PATH belongs in the baseline; one "
+				+ "absent from it (added since) belongs in "
+				+ "LEGACY_FIELD_GROUPS_BY_SECTION instead (see R4)"
+			) % exported_field
+		)
+
+
+## Reads which properties are textually assigned inside a .tres file's
+## [sub_resource] block(s), skipping the `script =` assignment itself.
+## Scoped to fixtures shaped like PHASE0_INPUT_OVERRIDE_PATH (a single
+## sub_resource carrying one section's fields) — not a general .tres
+## parser.
+func _tres_subresource_field_names(artifact_path: String) -> Array[StringName]:
+	var field_names: Array[StringName] = []
+	var text := FileAccess.get_file_as_string(artifact_path)
+	var inside_sub_resource := false
+	for raw_line: String in text.split("\n"):
+		var line := raw_line.strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		if line.begins_with("["):
+			inside_sub_resource = line.begins_with("[sub_resource")
+			continue
+		if not inside_sub_resource:
+			continue
+		var equals_index := line.find(" = ")
+		if equals_index == -1:
+			continue
+		var property_name := line.substr(0, equals_index)
+		if property_name == "script":
+			continue
+		field_names.append(StringName(property_name))
+	return field_names
+
+
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:
 	var service: RefCounted = _new_service()
 	assert_not_null(service)
