@@ -1177,6 +1177,45 @@ func test_pause_overlay_retry_button_restarts_the_active_level_fresh() -> void:
 	)
 
 
+func test_pause_overlay_retry_does_not_strand_the_player_at_the_hub() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	var overlay := root.get_node("UI/PauseOverlay")
+
+	overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Retry"
+	).emit_signal(&"pressed")
+	await _wait_for_authored_level(root)
+
+	assert_eq(
+		root.call("state_name"),
+		&"level",
+		(
+			"retry must land back in a playable level, "
+			+ "not strand the player at the hub"
+		)
+	)
+	assert_false(
+		root.has_node("Content/WarpRoom1"),
+		"the hub must not be the terminal content after a retry"
+	)
+	assert_true(
+		root.get_node("UI/HUD").visible,
+		"the level HUD, not the hub, must be what the player sees after retry"
+	)
+	assert_false(root.get_node("UI/LevelListOverlay").visible)
+	assert_false(root.get_node("UI/PauseOverlay").visible)
+
+
 func test_pause_overlay_level_list_button_opens_the_level_list() -> void:
 	var root := _instantiate_main()
 	if root == null:
