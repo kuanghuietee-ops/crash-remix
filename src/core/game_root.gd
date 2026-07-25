@@ -339,7 +339,18 @@ func _on_tuning_changed(_fingerprint: String) -> void:
 
 
 func _pause_and_snapshot_active_run() -> void:
-	if flow.state == GameFlow.State.LEVEL:
+	# R3: LEVEL and WARP_ROOM are the only two states with real,
+	# PROCESS_MODE_PAUSABLE-gated gameplay content underneath them
+	# (LevelSession / WarpRoom respectively) that must actually stop
+	# simulating when the OS backgrounds the app. Gating this on LEVEL
+	# alone left the hub's own pausable content running for as long as
+	# Godot keeps ticking frames in the background -- the commonest
+	# real-device trigger of exactly the condition I15 was written to
+	# prevent for the Level List modal.
+	if (
+		flow.state == GameFlow.State.LEVEL
+		or flow.state == GameFlow.State.WARP_ROOM
+	):
 		dispatch({"type": GameFlow.EVENT_PAUSE})
 	elif flow.state != GameFlow.State.PAUSED:
 		return

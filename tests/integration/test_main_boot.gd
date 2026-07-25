@@ -642,6 +642,61 @@ func test_hub_level_list_actually_pauses_warp_room_gameplay() -> void:
 	)
 
 
+func test_application_pause_while_idling_in_the_hub_pauses_gameplay() -> void:
+	# R3: _pause_and_snapshot_active_run() only ever dispatched EVENT_PAUSE
+	# when flow.state == LEVEL. Backgrounding the app while simply standing
+	# in the hub (no Level List modal open, flow.state == WARP_ROOM) hit the
+	# `WARP_ROOM != PAUSED` branch and returned without ever pausing the
+	# tree -- defeating I15's WarpRoom.process_mode = PROCESS_MODE_PAUSABLE
+	# guard for the single most common real-device trigger.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call("state_name"),
+		&"warp_room",
+		"sanity: must be idling in the hub before this test's premise holds"
+	)
+	var room := root.get_node("Content/WarpRoom1")
+	var player := room.get_node("Player")
+	var router := room.get_node("Input/InputRouter")
+	var gamepad := room.get_node("Input/GamepadInput")
+	var touch := room.get_node("UI/TouchControls")
+	assert_true(
+		player.can_process(),
+		"sanity: the hub Player must process before the app is backgrounded"
+	)
+
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+
+	assert_eq(
+		root.call("state_name"),
+		&"paused",
+		"backgrounding the app while idling in the hub must pause the FSM"
+	)
+	assert_true(
+		get_tree().paused,
+		"backgrounding the app while idling in the hub must pause the tree"
+	)
+	assert_false(
+		player.can_process(),
+		"the hub Player must stop processing when the app is backgrounded"
+	)
+	assert_false(
+		router.can_process(),
+		"the hub InputRouter must stop processing when the app is backgrounded"
+	)
+	assert_false(
+		gamepad.can_process(),
+		"the hub GamepadInput must stop processing when the app is backgrounded"
+	)
+	assert_false(
+		touch.can_process(),
+		"the hub TouchControls must stop processing when the app is backgrounded"
+	)
+
+
 func test_hub_touch_exclusions_include_the_level_list_overlay() -> void:
 	var root := _instantiate_main()
 	if root == null:
