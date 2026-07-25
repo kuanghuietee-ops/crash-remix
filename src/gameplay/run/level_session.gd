@@ -12,7 +12,6 @@ const PlayerStateMachineType := preload(
 )
 const CHECKPOINT_NEXT_ID_META := &"next_checkpoint_id"
 
-signal respawn_requested(outcome: Dictionary)
 signal run_completed(results: Dictionary)
 signal run_exited
 signal wumpa_changed(wumpa_count: int)
@@ -379,8 +378,14 @@ func _record_death() -> Dictionary:
 		_reset_relic_stopwatch()
 		_reset_placed_wumpa()
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
-	# Task 17 adds the enemy authored-spawn reset at this same death hook.
-	respawn_requested.emit(outcome)
+	# F16: a `respawn_requested(outcome)` signal used to fire here with no
+	# consumer anywhere in the repo (dead-wired, same class as P1-5/P1-9/
+	# P1-17) -- removed rather than kept, since every field `outcome` carries
+	# is already fully applied above in this same function and the only
+	# documented reason for a generic "a respawn just happened" broadcast is
+	# Task 17's enemy authored-spawn reset, which is out of scope here. Task
+	# 17 should add its own signal (or a direct call) at this hook when it
+	# actually needs one, so it ships with a real consumer from day one.
 	return outcome
 
 
