@@ -844,21 +844,12 @@ func test_layout_critical_override_values_are_rejected_before_replacing_authored
 	assert_gt(service.get("catalog").get("input").get("control_scale"), 0.0)
 
 
-func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
-	var directory_error := DirAccess.make_dir_recursive_absolute(
-		ProjectSettings.globalize_path(
-			TEST_OVERRIDE_PATH.get_base_dir()
-		)
-	)
-	assert_true(
-		directory_error in [OK, ERR_ALREADY_EXISTS],
-		"the override scenario must create its real sandbox"
-	)
-	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
-	assert_not_null(authored)
-	if authored == null:
-		return
-	var invalid_values: Array[Array] = [
+## Shared by test_every_invalid_economy_field_is_rejected_from_disk and
+## test_every_exported_economy_field_has_a_rejection_case (N1's guard-the-
+## guard check) so a field can never gain "coverage" without a real,
+## behaviorally-asserted bad value.
+func _economy_invalid_values(authored: GameplayTuning) -> Array[Array]:
+	return [
 		[&"wumpa_per_standard_crate", 0],
 		[&"wumpa_per_pickup", 0],
 		[&"wumpa_collect_radius_m", 0.0],
@@ -871,6 +862,16 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		[&"bounce_crate_max_bounces", 0],
 		[&"bounce_crate_wumpa_per_bounce", 0],
 		[&"bounce_launch_height_m", 0.0],
+		# N1: not the literal sentinel, since that value equals this field's
+		# own script default and its legacy cohort is a lone field — the
+		# real backfill path would silently heal it before catalog_is_usable
+		# ever runs, which would make this specific case a false rejection.
+		# A value at the tuned fall floor is fatal without being the
+		# sentinel, so it reaches catalog_is_usable unmigrated.
+		[
+			&"checkpoint_respawn_offset",
+			Vector3(0.0, authored.move.respawn_floor_y_m, 0.0),
+		],
 		[&"checkpoint_spacing_limit_s", 0.0],
 		[&"mercy_mask_death_threshold", 0],
 		[&"mercy_skip_death_threshold", 0],
@@ -891,7 +892,23 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 			authored.economy.time_crate_medium_s,
 		],
 	]
-	for invalid_value: Array in invalid_values:
+
+
+func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(
+			TEST_OVERRIDE_PATH.get_base_dir()
+		)
+	)
+	assert_true(
+		directory_error in [OK, ERR_ALREADY_EXISTS],
+		"the override scenario must create its real sandbox"
+	)
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	for invalid_value: Array in _economy_invalid_values(authored):
 		var override := load(
 			BASE_CATALOG_PATH
 		).duplicate_deep(
@@ -920,6 +937,30 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		assert_false(service.get("override_active"))
 
 
+## Guard-the-guard for N1: proves every exported EconomyTuning field has a
+## real, behaviorally-asserted bad value in _economy_invalid_values (and
+## therefore gets exercised by test_every_invalid_economy_field_is_rejected_
+## from_disk above), so a new field can never go unbounded the way
+## checkpoint_respawn_offset did.
+func test_every_exported_economy_field_has_a_rejection_case() -> void:
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	var covered_fields := {}
+	for invalid_value: Array in _economy_invalid_values(authored):
+		covered_fields[invalid_value[0] as StringName] = true
+	for exported_field: StringName in _exported_property_names(authored.economy):
+		assert_true(
+			covered_fields.has(exported_field),
+			(
+				"%s has no rejection case in _economy_invalid_values — an "
+				+ "unbounded economy field can silently carry its sentinel "
+				+ "default straight into play (see N1)"
+			) % exported_field
+		)
+
+
 func test_playability_critical_soft_brick_values_are_rejected() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:
@@ -933,6 +974,23 @@ func test_playability_critical_soft_brick_values_are_rejected() -> void:
 		[catalog.input, &"action_buffer_s", -0.01],
 		[catalog.input, &"coyote_time_s", -0.01],
 		[catalog.input, &"layout_metrics_poll_interval_s", 0.0],
+		# N1: the sentinel default must never be usable — a stale on-device
+		# override whose backfill cohort does not match (e.g. a future
+		# field rename) would otherwise leave this exact value in play and
+		# respawn the player ~999 km under the world on every checkpoint.
+		[
+			catalog.economy,
+			&"checkpoint_respawn_offset",
+			Vector3(-999999.0, -999999.0, -999999.0),
+		],
+		# N1: an offset at or below the tuned fall floor is just as fatal —
+		# e.g. an operator dragging the drawer's Y slider far down — and is
+		# not the sentinel, so backfill would not touch it either.
+		[
+			catalog.economy,
+			&"checkpoint_respawn_offset",
+			Vector3(0.0, catalog.move.respawn_floor_y_m, 0.0),
+		],
 	]
 
 	for invalid_value: Array in invalid_values:

@@ -276,6 +276,12 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or economy.bounce_crate_max_bounces <= 0
 		or economy.bounce_crate_wumpa_per_bounce <= 0
 		or economy.bounce_launch_height_m <= 0.0
+		# A respawn offset at or below the tuned fall floor drops the
+		# player back through the floor on every checkpoint respawn — an
+		# unrecoverable death loop. This also catches the field's own
+		# sentinel default (Vector3(-999999,...)), which is finite and so
+		# passes _resource_values_are_finite unnoticed.
+		or economy.checkpoint_respawn_offset.y <= move.respawn_floor_y_m
 		or economy.checkpoint_spacing_limit_s <= 0.0
 		or economy.mercy_mask_death_threshold <= 0
 		or economy.mercy_skip_death_threshold
