@@ -586,6 +586,58 @@ func test_application_pause_auto_pauses_and_snapshots_active_run() -> void:
 		assert_eq(stored.get("crates_broken"), [1.0])
 
 
+func test_wm_close_request_auto_pauses_and_snapshots_active_run() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	var session := LevelSession.new()
+	root.add_child(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	meta.crate_count = 1
+	var catalog := load(
+		"res://data/tuning/gameplay.tres"
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	session.configure(meta, &"normal", catalog.economy)
+	session.run_state.record_crate_broken(
+		1,
+		catalog.economy.wumpa_per_standard_crate
+	)
+	root.call("set_active_level_session", session)
+
+	# Android/desktop window managers deliver a close request (task-kill,
+	# window X button) as NOTIFICATION_WM_CLOSE_REQUEST, not
+	# NOTIFICATION_APPLICATION_PAUSED — the run must be saved either way.
+	root.notification(NOTIFICATION_WM_CLOSE_REQUEST)
+
+	assert_eq(root.call("state_name"), &"paused")
+	var stored: Variant = JSON.parse_string(
+		FileAccess.get_file_as_string(
+			TEST_SAVE_DIR.path_join("session.json")
+		)
+	)
+	assert_true(stored is Dictionary)
+	if stored is Dictionary:
+		assert_eq(stored.get("crates_broken"), [1.0])
+
+
 func test_level_completion_deletes_session_snapshot() -> void:
 	var root := _instantiate_main()
 	if root == null:
