@@ -925,10 +925,37 @@ func _economy_invalid_values(authored: GameplayTuning) -> Array[Array]:
 		# real backfill path would silently heal it before catalog_is_usable
 		# ever runs, which would make this specific case a false rejection.
 		# A value at the tuned fall floor is fatal without being the
-		# sentinel, so it reaches catalog_is_usable unmigrated.
+		# sentinel, so it reaches catalog_is_usable unmigrated. Every other
+		# axis is held at its authored value so this case isolates .y (see
+		# R1's guard-the-guard: a case that also moves an untested axis
+		# away from baseline cannot prove that axis is bounded).
 		[
 			&"checkpoint_respawn_offset",
-			Vector3(0.0, authored.move.respawn_floor_y_m, 0.0),
+			Vector3(
+				authored.economy.checkpoint_respawn_offset.x,
+				authored.move.respawn_floor_y_m,
+				authored.economy.checkpoint_respawn_offset.z,
+			),
+		],
+		# R1: .x and .z were completely unbounded — catalog_is_usable used
+		# to check only .y against move.respawn_floor_y_m. Each case here
+		# isolates its own axis so the per-component bound is genuinely
+		# proven, not just asserted for the field as a whole.
+		[
+			&"checkpoint_respawn_offset",
+			Vector3(
+				absf(authored.move.respawn_floor_y_m) + 1.0,
+				authored.economy.checkpoint_respawn_offset.y,
+				authored.economy.checkpoint_respawn_offset.z,
+			),
+		],
+		[
+			&"checkpoint_respawn_offset",
+			Vector3(
+				authored.economy.checkpoint_respawn_offset.x,
+				authored.economy.checkpoint_respawn_offset.y,
+				absf(authored.move.respawn_floor_y_m) + 1.0,
+			),
 		],
 		[&"checkpoint_spacing_limit_s", 0.0],
 		[&"mercy_mask_death_threshold", 0],
@@ -995,19 +1022,42 @@ func test_every_invalid_economy_field_is_rejected_from_disk() -> void:
 		assert_false(service.get("override_active"))
 
 
-## Guard-the-guard for N1: proves every exported EconomyTuning field has a
-## real, behaviorally-asserted bad value in _economy_invalid_values (and
+## Guard-the-guard for N1/R1: proves every exported EconomyTuning field has
+## a real, behaviorally-asserted bad value in _economy_invalid_values (and
 ## therefore gets exercised by test_every_invalid_economy_field_is_rejected_
 ## from_disk above), so a new field can never go unbounded the way
-## checkpoint_respawn_offset did.
+## checkpoint_respawn_offset did. R1: field-name coverage alone is not
+## enough for a Vector3 field -- one case whose bad value happens to touch
+## only one axis (e.g. Vector3(0, floor, 0), which incidentally also moves
+## .z away from its authored value) can satisfy "the field is covered"
+## while a sibling axis (.x here) stays completely unbounded. So for every
+## Vector3-typed field, also demand a case per axis that ISOLATES that
+## axis -- every other component held at its authored value -- proving the
+## bound genuinely holds component-by-component, not just field-by-field.
 func test_every_exported_economy_field_has_a_rejection_case() -> void:
 	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
 	assert_not_null(authored)
 	if authored == null:
 		return
 	var covered_fields := {}
+	var isolated_axes_by_field := {}
 	for invalid_value: Array in _economy_invalid_values(authored):
-		covered_fields[invalid_value[0] as StringName] = true
+		var field_name := invalid_value[0] as StringName
+		covered_fields[field_name] = true
+		var bad_value: Variant = invalid_value[1]
+		if bad_value is Vector3:
+			var baseline: Vector3 = authored.economy.get(field_name)
+			var differing_axes: Array[int] = []
+			for axis in range(3):
+				if not is_equal_approx(bad_value[axis], baseline[axis]):
+					differing_axes.append(axis)
+			if differing_axes.size() == 1:
+				var axes: Dictionary = isolated_axes_by_field.get(
+					field_name, {}
+				)
+				axes[differing_axes[0]] = true
+				isolated_axes_by_field[field_name] = axes
+	var axis_names := ["x", "y", "z"]
 	for exported_field: StringName in _exported_property_names(authored.economy):
 		assert_true(
 			covered_fields.has(exported_field),
@@ -1017,6 +1067,22 @@ func test_every_exported_economy_field_has_a_rejection_case() -> void:
 				+ "default straight into play (see N1)"
 			) % exported_field
 		)
+		var field_value: Variant = authored.economy.get(exported_field)
+		if field_value is Vector3:
+			var covered_axes: Dictionary = isolated_axes_by_field.get(
+				exported_field, {}
+			)
+			for axis in range(3):
+				assert_true(
+					covered_axes.has(axis),
+					(
+						"%s.%s has no rejection case that isolates that "
+						+ "axis (every other component held at its "
+						+ "authored value) -- a field-name-only case can "
+						+ "leave one axis completely unbounded while the "
+						+ "field is reported 'covered' (see R1)"
+					) % [exported_field, axis_names[axis]]
+				)
 
 
 func test_playability_critical_soft_brick_values_are_rejected() -> void:
@@ -1062,6 +1128,56 @@ func test_playability_critical_soft_brick_values_are_rejected() -> void:
 		)
 		resource.set(property_name, original_value)
 
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_checkpoint_respawn_offset_x_and_z_axes_are_bounded_like_y() -> void:
+	# R1: catalog_is_usable only ever bounded checkpoint_respawn_offset.y
+	# against move.respawn_floor_y_m. The on-device drawer's SpinBox for
+	# this field allows +-1,000,000 on every axis (tuning_debug_ui.gd), so
+	# an operator (or a stale override) could leave .x/.z completely
+	# unbounded while .y stays just inside the old check -- landing the
+	# player a million meters sideways from every checkpoint on respawn,
+	# reproducing P0-2's unrecoverable death-loop shape sideways instead
+	# of downward.
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog: GameplayTuning = service.get("catalog")
+	var authored_offset := catalog.economy.checkpoint_respawn_offset
+	assert_true(service.call("catalog_is_usable"))
+
+	# Exact repro from the recheck: y stays just inside the old floor
+	# check, x/z are set to the on-device drawer's own max magnitude.
+	catalog.economy.checkpoint_respawn_offset = Vector3(
+		1000000.0, authored_offset.y, 1000000.0
+	)
+	assert_false(
+		service.call("catalog_is_usable"),
+		(
+			"a checkpoint respawn offset with huge x/z must be rejected "
+			+ "even when y alone clears the fall floor"
+		)
+	)
+
+	# Isolate each axis in turn against an otherwise-authored offset, so a
+	# future regression confined to a single axis is caught here too.
+	catalog.economy.checkpoint_respawn_offset = Vector3(
+		1000000.0, authored_offset.y, authored_offset.z
+	)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"checkpoint_respawn_offset.x alone must be bounded"
+	)
+	catalog.economy.checkpoint_respawn_offset = Vector3(
+		authored_offset.x, authored_offset.y, 1000000.0
+	)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"checkpoint_respawn_offset.z alone must be bounded"
+	)
+
+	catalog.economy.checkpoint_respawn_offset = authored_offset
 	assert_true(service.call("catalog_is_usable"))
 
 

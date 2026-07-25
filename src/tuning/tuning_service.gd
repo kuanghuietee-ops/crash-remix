@@ -274,6 +274,13 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		return false
 
 	var economy := checked.economy
+	# R1: a checkpoint respawn offset is only ever meant to nudge the
+	# spawn point to just beside its checkpoint, so it must stay modest on
+	# every axis, not merely clear the kill floor on .y. move.respawn_
+	# floor_y_m is the only tuned "how far is definitely too far" distance
+	# scale already in the catalog, so its magnitude bounds .x/.z (and the
+	# top of .y) instead of introducing an unrelated new magic number.
+	var respawn_offset_limit_m := absf(move.respawn_floor_y_m)
 	if (
 		economy.wumpa_per_standard_crate <= 0
 		or economy.wumpa_per_pickup <= 0
@@ -293,6 +300,13 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# sentinel default (Vector3(-999999,...)), which is finite and so
 		# passes _resource_values_are_finite unnoticed.
 		or economy.checkpoint_respawn_offset.y <= move.respawn_floor_y_m
+		# R1: .x/.z (and the top of .y) were completely unbounded and
+		# reachable from the on-device drawer's SpinBox (range
+		# +-1,000,000), reproducing P0-2's death-loop shape sideways or
+		# upward instead of only downward.
+		or absf(economy.checkpoint_respawn_offset.x) > respawn_offset_limit_m
+		or absf(economy.checkpoint_respawn_offset.y) > respawn_offset_limit_m
+		or absf(economy.checkpoint_respawn_offset.z) > respawn_offset_limit_m
 		or economy.checkpoint_spacing_limit_s <= 0.0
 		or economy.mercy_mask_death_threshold <= 0
 		or economy.mercy_skip_death_threshold
