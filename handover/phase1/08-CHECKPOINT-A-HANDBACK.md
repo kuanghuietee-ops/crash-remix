@@ -169,3 +169,93 @@ and confirm the loop feels right before content multiplies across two more level
 
 Install: `build/crash-remix-debug.apk` (sha256 above).
 </content>
+
+---
+
+# ADDENDUM — independent recheck, and the build that supersedes the one above
+
+**Date:** 2026-07-25 (later same day) · **Commit:** `4f5bab9`
+
+Everything above this line was written at commit `1f3fd41` and is preserved unaltered as the
+record of that moment. **The APK named above is superseded — do not install it.** The operator
+then asked for a fresh-eyes recheck of *both* fix lanes before playing, which is what produced
+everything below.
+
+## What the recheck was
+
+Eight independent agents over the full 99-file, +9,759/−699 diff of both lanes — the earlier
+agent's 70 commits and this session's 60 — under one rule: **check into the code, do not believe
+the surface.** Every claim was executed, not read. Findings in
+`docs/audits/2026-07-25-phase1-recheck/`.
+
+It found **17 issues, two of them P1**, in work that had already been reported clean.
+
+## The two P1s
+
+**R1 was mine, and it was a partial fix wearing a complete one's clothes.** The N1 guard I had
+personally approved bounded one axis of three: `.x` and `.z` of the checkpoint respawn offset
+were unbounded and reachable from the on-device drawer's ±1,000,000 spinboxes. Two agents found
+it independently. `Vector3(1000000, -7.99, 1000000)` passed validation — P0-2's unrecoverable
+death loop, sideways instead of downward. The guard-the-guard test could not catch it because it
+demanded only *a* bad value per field *name*.
+
+**R2 was a duplicated parser nobody had looked at.** `lint_traversal_authoring.py` carries its
+own copy of the scene parser and had received *neither* fix applied to its twin — still blind to
+Godot's `transform =` save format, still silently dropping unclassifiable sections. Dormant only
+because wall-run content happens to be `position =`-only today.
+
+## What held up
+
+The two P0s that nearly shipped were re-broken and re-caught. `P1-11`'s twelve cells — a table
+of tests the original audit had *already proven vacuous* — were each re-mutated to their literal
+original shape, and **all twelve now genuinely catch their bug**. All three `REJECTED` rows hold
+when re-read at `5e49d77`. All five `DEFERRED` rows are genuinely deferred. A sweep of all 155
+exported tuning fields found exactly one with no runtime consumer, and it is legitimately
+lint-only.
+
+## Loop closure
+
+Ten fixes were made in response, then **audited by a further fresh-eyes pass** — each re-broken,
+its named test confirmed RED, the file restored byte-identical. All ten hold: no regressions, no
+vacuous tests, no scope creep. That extra pass exists because R1 is proof that a fix reviewed
+only by the session that commissioned it is not reviewed.
+
+Eleven P3-class items remain, each deferred in writing with its specific unblocker. Zero open.
+
+## Superseding verification
+
+```
+GUT: 464 tests / 4,471 asserts (was 454 / 4,293; 415 / 4,032 at session start).
+Python: 75 tests (was 47).
+Lints: gameplay-numbers / content-vocabulary / traversal-authoring / level-authoring — all EXIT=0.
+Export tuning smoke: EXIT=0.
+git diff --check: EXIT=0.
+
+APK: sha256 8ab0c8c20f8d8c4199b28a99ccdf4ddfed4fdc4da281348fcc2f424b012c56af
+  built from commit 080546b with a clean tree.
+```
+
+**Suite nondeterminism (N2) improved again:** 0 red in 14 consecutive full-suite runs, against
+2-in-25 before the recheck fixes and 4-in-24 originally. Still not claimed as proven
+deterministic — 14 clean runs is evidence, not proof, and the row stays DEFERRED with its
+recommended structural fix recorded.
+
+## The repo is now public
+
+By operator decision on 2026-07-25 this repo has a public remote,
+`https://github.com/kuanghuietee-ops/crash-remix`, with the APK attached to release
+`v0.1.0-checkpoint-a`. `CLAUDE.md` was corrected to describe that reality rather than the
+"stays local / never distributed" rules it superseded. History was scanned before publication:
+no `.env`, no tokens, no private keys across 206 commits.
+
+## What is still NOT established
+
+- **Feel, thermals, load-time budgets, touch ergonomics** — only the phone answers these.
+  `CACHE_MODE_REPLACE` (the N2 fix) reloads a level from disk on re-entry, so watch the
+  §7.1 sub-3s hub→level budget on retry.
+- **One continuous witnessed spawn-to-Finish playthrough.** The real player was proven to walk
+  into the real Finish and complete with a real profile write; the one required jump has a 2.5×
+  margin (2.0 m gap vs 5.57 m range); all seven segment floors connect. But no agent watched a
+  single unbroken run from spawn to exit. That is precisely what you are about to do.
+- Gate F2 remains **WAIVED BY OPERATOR — NOT PASSED**. Likeness gate and Island Cut acceptance
+  **NOT RUN**. No gate has been run, judged, scored or inferred by any agent.
