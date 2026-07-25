@@ -1,0 +1,17 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
+
+[node name="RequiredJumpMissingChildrenBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -25)
+
+[node name="RequiredJump01" type="Node3D" parent="."]
+
+[node name="Takeoff" type="Marker3D" parent="RequiredJump01"]

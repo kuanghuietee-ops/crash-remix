@@ -30,6 +30,52 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CHECKPOINT_SPACING_RULE],
         )
 
+    def test_spine_with_fewer_than_two_markers_fires_the_spacing_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_spine_too_short_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_SPACING_RULE],
+        )
+        self.assertIn(
+            "at least two ordered Spine Marker3D nodes",
+            findings[0].detail,
+        )
+
+    def test_nonpositive_design_pace_fires_the_spacing_rule(
+        self,
+    ) -> None:
+        self.assertEqual(
+            self._rules("level_zero_pace_bad.tscn"),
+            [CHECKPOINT_SPACING_RULE],
+        )
+
+    def test_zero_length_spine_fires_the_spacing_rule(self) -> None:
+        self.assertEqual(
+            self._rules("level_spine_zero_length_bad.tscn"),
+            [CHECKPOINT_SPACING_RULE],
+        )
+
+    def test_final_checkpoint_linking_forward_fires_progression_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_checkpoint_final_link_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_PROGRESSION_RULE],
+        )
+        self.assertIn(
+            "final checkpoint 20 must not link to checkpoint 10",
+            findings[0].detail,
+        )
+
     def test_editor_transform_form_drives_checkpoint_distance(self) -> None:
         findings = find_authoring_violations(
             FIXTURE_ROOT / "level_checkpoint_transform_bad.tscn"
@@ -232,6 +278,71 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [REQUIRED_JUMP_RULE],
         )
         self.assertIn("7.306 degrees", findings[0].detail)
+
+    def test_required_jump_missing_a_child_marker_fires_its_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT
+            / "level_required_jump_missing_children_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn(
+            "needs direct Takeoff and Landing Marker3D children",
+            findings[0].detail,
+        )
+
+    def test_required_jump_with_no_enclosing_region_fires_its_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_required_jump_no_region_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn(
+            "is not enclosed by one camera region",
+            findings[0].detail,
+        )
+
+    def test_required_jump_with_no_usable_rail_fires_its_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_required_jump_no_rail_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [REQUIRED_JUMP_RULE],
+        )
+        self.assertIn(
+            "has no usable CameraRailController Rail",
+            findings[0].detail,
+        )
+
+    def test_crate_with_no_authored_id_fires_the_identity_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_crate_missing_id_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CRATE_ID_RULE],
+        )
+        self.assertIn(
+            "missing/invalid crate_id",
+            findings[0].detail,
+        )
 
     def test_time_crate_outside_relic_group_fires_its_rule(self) -> None:
         self.assertEqual(

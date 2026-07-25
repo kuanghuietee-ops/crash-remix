@@ -1,0 +1,12 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
+
+[node name="SpineZeroLengthBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="AlsoStart" type="Marker3D" parent="Spine"]
