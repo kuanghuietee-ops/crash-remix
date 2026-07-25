@@ -15,7 +15,6 @@ const SEGMENT_NAMES: Array[StringName] = [
 	&"PlantGauntlet",
 	&"Crescendo",
 ]
-const EXPECTED_COLLECTIBLE_CRATES := 40
 const EXPECTED_CHECKPOINTS := 2
 const EXPECTED_IRON_CRATES := 3
 
@@ -31,7 +30,7 @@ func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
 	assert_not_null(meta)
 	if meta != null:
 		assert_eq(meta.level_id, &"wr1_n_sanity_beach")
-		assert_eq(meta.crate_count, EXPECTED_COLLECTIBLE_CRATES)
+		assert_eq(meta.crate_count, _authored_crate_count())
 	assert_true(level is LevelSession)
 	assert_not_null(level.get_node_or_null("Player"))
 	assert_not_null(level.get_node_or_null("CameraRig"))
@@ -165,7 +164,7 @@ func test_level_has_collectible_counts_optional_iron_and_no_enemies() -> void:
 
 	assert_eq(
 		collectible_ids.size(),
-		EXPECTED_COLLECTIBLE_CRATES
+		_authored_crate_count()
 	)
 	assert_eq(checkpoint_count, EXPECTED_CHECKPOINTS)
 	assert_eq(iron_count, EXPECTED_IRON_CRATES)
@@ -240,6 +239,24 @@ func _instantiate_level() -> Node:
 	var packed := load(LEVEL_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	return packed.instantiate() if packed != null else null
+
+
+# H7: read the authored crate count from the real LevelMeta resource instead
+# of re-declaring it as a literal here. A hardcoded copy can silently drift
+# from the authoritative `.tres` file -- proved by mutation: bumping
+# n_sanity_beach.tres's crate_count while leaving the scene's real crate
+# count untouched left the old hardcoded-literal assertions green, entirely
+# blind to the authoritative field having moved. Reading it here means any
+# future crate-count change is picked up automatically, and a genuine
+# mismatch between the authored count and the real scene's crates is what
+# fails the test, not a forgotten manual edit to this file.
+func _authored_crate_count() -> int:
+	var meta := load(LEVEL_META_PATH) as LevelMeta
+	assert_not_null(
+		meta,
+		"N. Sanity Beach's LevelMeta must load before its crate_count can be checked"
+	)
+	return meta.crate_count if meta != null else -1
 
 
 func _segment(level: Node, index: int) -> Node3D:
