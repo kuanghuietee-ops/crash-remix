@@ -39,7 +39,7 @@ GODOT_SILENCE_ROOT_WARNING=1 XDG_DATA_HOME="$temp_dir/user" "$godot_bin" \
     --main-pack "$pack_path" \
     -s res://src/debug/export_level_meta_smoke.gd 2>&1 | tee "$runtime_log"
 
-if grep -qE "No loader found|Phase 0 tuning failed to load" "$runtime_log"; then
+if grep -qE "No loader found|Phase [0-9]+ tuning failed to load" "$runtime_log"; then
     echo "Exported build failed to load authored tuning resources" >&2
     exit 1
 fi
