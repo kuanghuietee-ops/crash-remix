@@ -82,7 +82,8 @@ func relic_entry_available(
 
 func persisted_profile(
 	profile: Dictionary,
-	payload: Dictionary
+	payload: Dictionary,
+	level_meta: LevelMeta
 ) -> Dictionary:
 	if not SaveModel.validate(profile):
 		return {}
@@ -137,25 +138,20 @@ func persisted_profile(
 			var relic_time_value: Variant = payload.get(
 				"relic_time_s"
 			)
-			var relic_tier_value: Variant = payload.get(
-				"relic_tier"
-			)
 			if (
-				(
-					typeof(relic_time_value) != TYPE_FLOAT
-					and typeof(relic_time_value) != TYPE_INT
-				)
-				or (
-					typeof(relic_tier_value) != TYPE_STRING
-					and typeof(relic_tier_value)
-					!= TYPE_STRING_NAME
-				)
+				typeof(relic_time_value) != TYPE_FLOAT
+				and typeof(relic_time_value) != TYPE_INT
+			):
+				return {}
+			if (
+				level_meta == null
+				or level_meta.level_id != level_id
 			):
 				return {}
 			record = SaveModel.improved_relic_record(
 				record,
 				float(relic_time_value),
-				StringName(relic_tier_value)
+				level_meta
 			)
 			if record.is_empty():
 				return {}

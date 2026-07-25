@@ -89,7 +89,8 @@ func test_persisted_result_drives_the_next_replays_ghost_markers() -> void:
 	var updated: Dictionary = model.call(
 		"persisted_profile",
 		profile,
-		payload
+		payload,
+		_meta
 	)
 	var saved_record := SaveModel.level_record(
 		updated,

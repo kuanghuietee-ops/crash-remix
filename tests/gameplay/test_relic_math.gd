@@ -430,12 +430,47 @@ func test_relic_completion_reports_effective_time_and_tier() -> void:
 	assert_false(result["flawless"])
 
 
+func test_persisted_relic_tier_is_always_derived_from_best_time() -> void:
+	var model := ResultsModel.new()
+	var profile := _completed_profile(true)
+
+	# The elapsed time here qualifies for platinum, but the payload's
+	# own relic_tier claims "gold" -- as if produced by a bug, or by
+	# pars re-tuned after the payload was built. The persisted tier
+	# must be derived from best_relic_time_ms against the level's own
+	# current pars, never trusted verbatim from the payload, or the
+	# save can end up with a tier that disagrees with its own time.
+	var updated := model.persisted_profile(
+		profile,
+		_relic_payload(_meta.relic_platinum_s, &"gold"),
+		_meta
+	)
+	var record := SaveModel.level_record(
+		updated,
+		_meta.level_id
+	)
+
+	assert_eq(
+		record["best_relic_time_ms"],
+		roundi(_meta.relic_platinum_s * 1000.0)
+	)
+	assert_eq(
+		record["relic_tier"],
+		"platinum",
+		(
+			"relic_tier must be re-derived from best_relic_time_ms, "
+			+ "never trusted from the payload"
+		)
+	)
+
+
 func test_best_time_only_improves_and_keeps_matching_tier() -> void:
 	var model := ResultsModel.new()
 	var profile := _completed_profile(true)
 	var first := model.persisted_profile(
 		profile,
-		_relic_payload(_meta.relic_gold_s, &"gold")
+		_relic_payload(_meta.relic_gold_s, &"gold"),
+		_meta
 	)
 	var first_record := SaveModel.level_record(
 		first,
@@ -457,7 +492,8 @@ func test_best_time_only_improves_and_keeps_matching_tier() -> void:
 			_meta.relic_gold_s
 			+ _economy.time_crate_small_s,
 			&"gold"
-		)
+		),
+		_meta
 	)
 	var slower_record := SaveModel.level_record(
 		slower,
@@ -474,7 +510,8 @@ func test_best_time_only_improves_and_keeps_matching_tier() -> void:
 		_relic_payload(
 			_meta.relic_platinum_s,
 			&"platinum"
-		)
+		),
+		_meta
 	)
 	var faster_record := SaveModel.level_record(
 		faster,
@@ -537,7 +574,8 @@ func test_relic_run_does_not_change_saved_flawless_state() -> void:
 
 		var updated := model.persisted_profile(
 			profile,
-			_relic_payload(_meta.relic_gold_s, &"gold")
+			_relic_payload(_meta.relic_gold_s, &"gold"),
+			_meta
 		)
 
 		assert_eq(

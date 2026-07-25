@@ -349,7 +349,8 @@ func _on_level_session_completed(results: Dictionary) -> void:
 
 	var updated_profile := results_model.persisted_profile(
 		profile,
-		payload
+		payload,
+		meta
 	)
 	if updated_profile.is_empty():
 		last_save_error = ERR_INVALID_DATA

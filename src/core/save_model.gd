@@ -100,13 +100,13 @@ static func level_record(data: Dictionary, level_id: StringName) -> Dictionary:
 static func improved_relic_record(
 	record: Dictionary,
 	elapsed_s: float,
-	tier: StringName
+	level_meta: LevelMeta
 ) -> Dictionary:
 	if (
 		not _validate_level_record(record)
 		or not is_finite(elapsed_s)
 		or elapsed_s < 0.0
-		or String(tier) not in _RELIC_TIERS
+		or level_meta == null
 	):
 		return {}
 	var updated := record.duplicate(true)
@@ -119,7 +119,17 @@ static func improved_relic_record(
 	)
 	if existing_ms == 0 or candidate_ms < existing_ms:
 		updated["best_relic_time_ms"] = candidate_ms
-		updated["relic_tier"] = String(tier)
+	# relic_tier is always re-derived from best_relic_time_ms against
+	# the level's current pars -- never trusted from a caller -- so it
+	# can never disagree with the time it is supposed to describe, and
+	# self-heals a tier stored before the level's pars were re-tuned.
+	updated["relic_tier"] = String(
+		LevelRunState.relic_tier_for_time(
+			int(updated["best_relic_time_ms"])
+			/ _MILLISECONDS_PER_SECOND,
+			level_meta
+		)
+	)
 	return updated if _validate_level_record(updated) else {}
 
 
