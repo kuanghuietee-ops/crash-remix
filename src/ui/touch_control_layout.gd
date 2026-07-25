@@ -32,8 +32,18 @@ static func calculate(
 		* pixels_per_mm
 	)
 
+	# R6: stick_region_top_exclusion_ratio/jump_catchall_top_ratio are HEIGHT
+	# RATIOS -- on a short enough safe rect they resolve to fewer pixels
+	# from the top than hud.tscn's pixel-anchored top panels occupy, so the
+	# two touch regions and the HUD would silently overlap. hud_reserved_top_px
+	# is the single authoritative floor (see input_tuning.gd) both regions'
+	# tops are clamped to, independent of safe rect height.
+	var hud_floor_y := safe_rect.position.y + input_tuning.hud_reserved_top_px
 	var stick_width := safe_rect.size.x * input_tuning.stick_region_width_ratio
-	var stick_top := safe_rect.position.y + safe_rect.size.y * input_tuning.stick_region_top_exclusion_ratio
+	var stick_top := maxf(
+		safe_rect.position.y + safe_rect.size.y * input_tuning.stick_region_top_exclusion_ratio,
+		hud_floor_y
+	)
 	var stick_x := safe_end.x - stick_width if actions_on_left else safe_rect.position.x
 	var stick_region := Rect2(
 		Vector2(stick_x, stick_top),
@@ -43,7 +53,10 @@ static func calculate(
 		safe_rect.size.x * input_tuning.jump_catchall_width_ratio
 	)
 	var catchall_x := safe_rect.position.x if actions_on_left else safe_end.x - catchall_width
-	var catchall_top := safe_rect.position.y + safe_rect.size.y * input_tuning.jump_catchall_top_ratio
+	var catchall_top := maxf(
+		safe_rect.position.y + safe_rect.size.y * input_tuning.jump_catchall_top_ratio,
+		hud_floor_y
+	)
 
 	var layout := {
 		"safe_rect": safe_rect,

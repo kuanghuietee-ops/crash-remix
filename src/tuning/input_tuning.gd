@@ -57,3 +57,14 @@ extends Resource
 
 @export_category("Platform Layout")
 @export var layout_metrics_poll_interval_s: float
+# R6: hud.tscn's top-anchored panels (Stats/RelicTimer/MercyPanel/Pause) are
+# pixel-offset from the safe area's top edge, while TouchControlLayout's
+# stick/jump-catchall regions start at a HEIGHT RATIO of the safe rect. The
+# two only avoided overlapping at the one safe rect a test happened to use
+# (1920x1080); below ~920px safe height they genuinely overlap. This field
+# is the single authoritative floor, in pixels, that TouchControlLayout
+# clamps the top of both touch regions to -- regardless of safe rect
+# height -- so no top-anchored HUD panel up to this height can ever be
+# occluded. A test ties this value to the real, authored hud.tscn geometry
+# so the two cannot silently drift apart again.
+@export var hud_reserved_top_px: float

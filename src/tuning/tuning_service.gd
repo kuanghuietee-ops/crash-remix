@@ -21,6 +21,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"phase_button_arc_offset_mm",
 			&"phase_button_unlocked",
 		],
+		[
+			&"hud_reserved_top_px",
+		],
 	],
 	&"swing": [
 		[
@@ -222,6 +225,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 			+ input.jump_catchall_width_ratio
 			> 1.0
 		)
+		or input.hud_reserved_top_px < 0.0
 	):
 		return false
 

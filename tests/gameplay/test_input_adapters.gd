@@ -742,27 +742,78 @@ func test_touch_controls_non_positive_poll_interval_does_not_poison_with_nan() -
 
 
 func test_hud_elements_stay_outside_the_touch_control_occlusion_zones() -> void:
+	# R6: the original version of this test only ever checked ONE safe rect
+	# (1920x1080). hud.tscn's top-anchored panels are pixel-offset from the
+	# safe area's top, while TouchControlLayout's regions start at a HEIGHT
+	# RATIO of the safe rect -- the two only avoided overlapping because of
+	# that one rect's proportions, not because of any enforced relationship.
+	# Sweeping a range of realistic phone safe-rect heights (down to a
+	# foldable-hinge-shaped 480px) proves the invariant holds generally, not
+	# just at the one aspect ratio a test happened to pick.
 	var packed: PackedScene = load(HUD_SCENE_PATH)
 	assert_not_null(packed, "hud.tscn must exist")
 	if packed == null:
 		return
 	var hud: Control = packed.instantiate()
 	add_child_autofree(hud)
-	var safe_rect := Rect2(0.0, 0.0, 1920.0, 1080.0)
 	var safe_area := hud.get_node("SafeArea")
-	safe_area.call("set_layout_override", safe_rect)
-	safe_area.call("_apply_safe_area")
-	await wait_process_frames(1)
-
 	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
-	var layout: Dictionary = layout_script.call(
-		"calculate", safe_rect, 254.0, _input_tuning, true
-	)
-	# §5.2: left-thumb stick zone and the bottom-right button wedge — the
-	# two touch-control regions no HUD element may be drawn over.
-	var stick_region: Rect2 = layout["stick_region"]
-	var button_zone: Rect2 = layout["jump_catchall_region"]
 
+	for safe_height: float in [1080.0, 950.0, 900.0, 850.0, 800.0, 700.0, 600.0, 480.0]:
+		var safe_rect := Rect2(0.0, 0.0, 1920.0, safe_height)
+		safe_area.call("set_layout_override", safe_rect)
+		safe_area.call("_apply_safe_area")
+		await wait_process_frames(1)
+
+		var layout: Dictionary = layout_script.call(
+			"calculate", safe_rect, 254.0, _input_tuning, true
+		)
+		# §5.2: left-thumb stick zone and the bottom-right button wedge — the
+		# two touch-control regions no HUD element may be drawn over.
+		var stick_region: Rect2 = layout["stick_region"]
+		var button_zone: Rect2 = layout["jump_catchall_region"]
+
+		for element_path: String in [
+			"SafeArea/Stats",
+			"SafeArea/RelicTimer",
+			"SafeArea/MercyPanel",
+			"SafeArea/Pause",
+		]:
+			var element := hud.get_node(element_path) as Control
+			var element_rect := element.get_global_rect()
+			assert_false(
+				element_rect.intersects(stick_region),
+				(
+					"%s must not overlap the left-thumb stick zone (§5.2) "
+					+ "at safe height %s"
+				) % [element_path, safe_height]
+			)
+			assert_false(
+				element_rect.intersects(button_zone),
+				(
+					"%s must not overlap the right-thumb button zone (§5.2) "
+					+ "at safe height %s"
+				) % [element_path, safe_height]
+			)
+
+
+func test_hud_reserved_top_px_covers_the_tallest_authored_top_anchored_panel() -> void:
+	# R6: hud_reserved_top_px is the tuning-authored floor TouchControlLayout
+	# clamps both touch regions' tops to. If hud.tscn ever authors a taller
+	# top-anchored panel than this field covers, the two would silently
+	# drift apart again -- the same "two independently-tuned numbers with
+	# no invariant tying them together" shape as R1 and I17. This test ties
+	# them together structurally: it reads the REAL hud.tscn geometry and
+	# fails if it ever outgrows the tuned floor, rather than trusting two
+	# numbers that merely happen to agree today.
+	var packed: PackedScene = load(HUD_SCENE_PATH)
+	assert_not_null(packed, "hud.tscn must exist")
+	if packed == null:
+		return
+	var hud: Control = packed.instantiate()
+	add_child_autofree(hud)
+
+	var tallest_offset_bottom := 0.0
 	for element_path: String in [
 		"SafeArea/Stats",
 		"SafeArea/RelicTimer",
@@ -770,15 +821,19 @@ func test_hud_elements_stay_outside_the_touch_control_occlusion_zones() -> void:
 		"SafeArea/Pause",
 	]:
 		var element := hud.get_node(element_path) as Control
-		var element_rect := element.get_global_rect()
-		assert_false(
-			element_rect.intersects(stick_region),
-			"%s must not overlap the left-thumb stick zone (§5.2)" % element_path
+		tallest_offset_bottom = maxf(
+			tallest_offset_bottom,
+			element.offset_bottom
 		)
-		assert_false(
-			element_rect.intersects(button_zone),
-			"%s must not overlap the right-thumb button zone (§5.2)" % element_path
-		)
+
+	assert_true(
+		_input_tuning.hud_reserved_top_px >= tallest_offset_bottom,
+		(
+			"hud_reserved_top_px (%s) must cover the tallest authored "
+			+ "top-anchored HUD panel (%s), or the touch regions can "
+			+ "overlap it again at a short safe height"
+		) % [_input_tuning.hud_reserved_top_px, tallest_offset_bottom]
+	)
 
 
 func test_hud_pause_touch_index_clears_when_hud_is_hidden_mid_touch() -> void:
