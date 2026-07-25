@@ -913,20 +913,10 @@ func _sync_crate_visuals(reset_unbroken: bool) -> void:
 
 
 func _set_crate_visual(crate: Node, broken: bool) -> void:
-	crate.set("_broken", broken)
-	crate.set("_bounce_count", 0)
-	crate.set("_fuse_active", false)
-	if crate.has_method("set_relic_context"):
-		crate.call(
-			"set_relic_context",
-			run_state.mode == LevelRunState.MODE_RELIC
-		)
-	var mesh := crate.get_node_or_null("Mesh") as Node3D
-	if mesh != null:
-		mesh.visible = not broken
-	var collision := (
-		crate.get_node_or_null("CollisionShape3D")
-		as CollisionShape3D
+	if not crate.has_method("sync_break_state"):
+		return
+	crate.call(
+		"sync_break_state",
+		broken,
+		run_state.mode == LevelRunState.MODE_RELIC
 	)
-	if collision != null:
-		collision.set_deferred(&"disabled", broken)

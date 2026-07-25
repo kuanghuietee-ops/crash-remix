@@ -589,6 +589,82 @@ func test_standard_node_emits_tuned_break_payload_once() -> void:
 	)
 
 
+func test_finish_break_guard_blocks_a_second_broken_emission() -> void:
+	# apply_verb/apply_bounce/apply_blast/_detonate all already check
+	# _broken before ever reaching _finish_break, so this backstop guard
+	# is never exercised through the public API. Calling it directly
+	# proves the guard itself holds independent of those outer checks --
+	# load-bearing for any future caller (e.g. a re-sync path) that
+	# reaches _finish_break without going through them.
+	var crate := _instantiate(STANDARD_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var emissions: Array[int] = []
+	crate.connect(
+		&"broken",
+		func(_crate_id: int, wumpa: int) -> void:
+			emissions.append(wumpa)
+	)
+
+	crate.call("_finish_break", 5)
+	crate.call("_finish_break", 9)
+
+	assert_eq(
+		emissions,
+		[5],
+		"_finish_break's own guard must block a second emission on repeat calls"
+	)
+
+
+func test_sync_break_state_honestly_marks_broken_and_rearms() -> void:
+	var crate := _instantiate(BOUNCE_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+
+	crate.call("sync_break_state", true, false)
+	await wait_physics_frames(1)
+	assert_true(crate.call("is_broken"))
+	assert_true(crate.get_node("CollisionShape3D").disabled)
+	assert_false(crate.get_node("Mesh").visible)
+	assert_false(
+		crate.call("apply_bounce", false)["breaks"],
+		"an already-broken crate must not pay out or break again"
+	)
+
+	crate.call("sync_break_state", false, false)
+	await wait_physics_frames(1)
+	assert_false(
+		crate.call("is_broken"),
+		"the honest re-arm path must clear the broken flag"
+	)
+	assert_false(
+		crate.get_node("CollisionShape3D").disabled,
+		"a re-armed crate must regain live collision"
+	)
+	assert_true(
+		crate.get_node("Mesh").visible,
+		"a re-armed crate must regain its visible mesh"
+	)
+
+	# The bounce counter must be genuinely reset, not just the broken flag --
+	# a fresh first bounce after re-arming must pay out exactly like a
+	# brand-new crate, proving _bounce_count was really cleared rather
+	# than just flipping _broken back to false.
+	var fresh := _instantiate(BOUNCE_SCENE)
+	if fresh == null:
+		return
+	add_child_autofree(fresh)
+	fresh.call("configure", _economy, _move, _input)
+	var fresh_first: Dictionary = fresh.call("apply_bounce", false)
+	var rearmed_first: Dictionary = crate.call("apply_bounce", false)
+	assert_eq(rearmed_first["wumpa"], fresh_first["wumpa"])
+	assert_false(rearmed_first["breaks"])
+
+
 func _logic_script() -> Script:
 	assert_true(
 		ResourceLoader.exists(LOGIC_PATH),

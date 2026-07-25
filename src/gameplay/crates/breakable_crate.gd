@@ -196,6 +196,20 @@ func is_broken() -> bool:
 	return _broken
 
 
+## Synchronizes this crate's break state and visuals to match a run-state
+## snapshot (restore-from-save, or a relic-mode death's full reset) without
+## going through the scoring path -- callers own that decision separately.
+## The crate resets/restores its own fields; nothing outside this class
+## should reach into them directly.
+func sync_break_state(broken: bool, relic_mode: bool) -> void:
+	_broken = broken
+	_bounce_count = 0
+	_fuse_active = false
+	set_relic_context(relic_mode)
+	$Mesh.visible = not broken
+	$CollisionShape3D.set_deferred(&"disabled", broken)
+
+
 func _detonate() -> void:
 	if _broken:
 		return
