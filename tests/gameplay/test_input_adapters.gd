@@ -5,6 +5,7 @@ const ROUTER_SCRIPT_PATH := "res://src/gameplay/input/input_router.gd"
 const GAMEPAD_SCRIPT_PATH := "res://src/gameplay/input/gamepad_input.gd"
 const TOUCH_SCRIPT_PATH := "res://src/ui/touch_controls.gd"
 const LAYOUT_SCRIPT_PATH := "res://src/ui/touch_control_layout.gd"
+const SAFE_AREA_SCRIPT_PATH := "res://src/ui/safe_area_control.gd"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
 
 var _input_tuning: Resource
@@ -634,6 +635,42 @@ func test_touch_layout_metrics_are_polled_only_at_configured_interval() -> void:
 
 	assert_eq(before_interval, initial_count)
 	assert_eq(touch.call("layout_metrics_poll_count"), initial_count + 1)
+
+
+func test_safe_area_repolls_after_a_flip_that_never_fires_size_changed() -> void:
+	var safe_area: Control = _new_node(SAFE_AREA_SCRIPT_PATH)
+	if safe_area == null:
+		return
+	add_child_autofree(safe_area)
+	var tuning: Resource = _input_tuning.duplicate()
+	tuning.set("layout_metrics_poll_interval_s", 0.5)
+	safe_area.call("configure", tuning)
+	safe_area.set_process(false)
+
+	safe_area.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0))
+	safe_area.call("_apply_safe_area")
+	assert_eq(safe_area.get("offset_left"), 0.0)
+	assert_eq(safe_area.get("offset_right"), 1920.0)
+
+	# A sensor-landscape 180 degree flip moves the notch to the opposite
+	# edge without changing the logical viewport size, so no
+	# viewport.size_changed signal fires. Only GameRoot's own tuned poll
+	# interval should notice.
+	safe_area.call("set_layout_override", Rect2(100.0, 0.0, 1820.0, 1080.0))
+
+	safe_area.call("_process", 0.49)
+	assert_eq(
+		safe_area.get("offset_left"),
+		0.0,
+		"must not react before the tuned poll interval elapses"
+	)
+
+	safe_area.call("_process", 0.01)
+	assert_eq(
+		safe_area.get("offset_left"),
+		100.0,
+		"the tuned poll interval must pick up a flip with no resize signal"
+	)
 
 
 func _new_node(script_path: String) -> Variant:

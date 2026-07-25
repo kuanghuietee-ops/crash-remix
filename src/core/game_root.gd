@@ -443,6 +443,9 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		_boot_error_overlay,
 	]:
 		_ui.add_child(screen)
+		var safe_area := screen.get_node_or_null("SafeArea")
+		if safe_area != null:
+			safe_area.call("configure", tuning_service.catalog.input)
 
 	_hud.connect(
 		&"pause_requested",
