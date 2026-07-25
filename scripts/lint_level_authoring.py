@@ -15,6 +15,7 @@ from typing import Iterable, Sequence
 CHECKPOINT_SPACING_RULE = "checkpoint_spacing"
 CHECKPOINT_PROGRESSION_RULE = "checkpoint_progression"
 SPINE_ORDER_RULE = "spine_document_order"
+CHECKPOINT_OFF_SPINE_RULE = "checkpoint_off_spine"
 CRATE_AUTHORING_RULE = "crate_count_and_segment_membership"
 CRATE_ID_RULE = "crate_id_unique"
 REQUIRED_JUMP_RULE = "required_jump_depression"
@@ -402,6 +403,13 @@ def _checkpoint_findings(
             checkpoints_with_distances,
         )
     )
+    findings.extend(
+        _checkpoint_off_spine_findings(
+            scene_name,
+            nodes,
+            checkpoints_with_distances,
+        )
+    )
     checkpoint_distances = [
         distance
         for _, distance in checkpoints_with_distances
@@ -437,6 +445,54 @@ def _checkpoint_findings(
             )
         )
     return findings
+
+
+def _camera_region_bounds(nodes: list[FlatNode]) -> list[Bounds]:
+    return [
+        bounds
+        for node in nodes
+        if node.script_path == CAMERA_REGION_SCRIPT
+        for bounds in (_collision_bounds(node, nodes),)
+        if bounds is not None
+    ]
+
+
+def _checkpoint_off_spine_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    checkpoints_with_distances: list[tuple[FlatNode, float]],
+) -> list[AuthoringViolation]:
+    """A checkpoint's "distance so far" is only ever a projection onto
+    the spine polyline — nothing checks the checkpoint is actually
+    near that polyline. §5.2 of the design doc is explicit that "a
+    trail bending off-spine always means something" for crates and
+    wumpa, but a checkpoint anchors pacing and death respawn, so it
+    cannot legitimately be one of those excursions.
+
+    Reuses the same authored, per-segment CameraRegion geometry (and
+    the same enclosure check) rule (c) already uses to decide whether
+    a required jump sits on the intended route — not a new numeric
+    constant, the level's own authored corridor.
+    """
+    region_bounds = _camera_region_bounds(nodes)
+    if not region_bounds:
+        return []
+    return [
+        AuthoringViolation(
+            scene_name,
+            CHECKPOINT_OFF_SPINE_RULE,
+            (
+                f"{checkpoint.path} is not enclosed by any authored "
+                "CameraRegion; it is too far from the level's Spine "
+                "to be a valid checkpoint"
+            ),
+        )
+        for checkpoint, _ in checkpoints_with_distances
+        if not any(
+            bounds.contains(checkpoint.world_position)
+            for bounds in region_bounds
+        )
+    ]
 
 
 def _checkpoint_progression_findings(

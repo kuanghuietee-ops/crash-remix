@@ -1,0 +1,35 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_checkpoint_off_spine_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_checkpoint.tscn" id="2_checkpoint"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="3_region"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(18, 12, 100)
+
+[node name="CheckpointOffSpineBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -100)
+
+[node name="Segment" type="Node3D" parent="."]
+
+[node name="CameraRegion" type="Area3D" parent="Segment"]
+position = Vector3(0, 3, -50)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("3_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Segment/CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="Sidetrack" parent="Segment" instance=ExtResource("2_checkpoint")]
+position = Vector3(50, 0.5, -50)
+crate_id = 1
+segment_group = &"Segment"

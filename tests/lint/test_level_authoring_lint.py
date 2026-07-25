@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.lint_level_authoring import (
+    CHECKPOINT_OFF_SPINE_RULE,
     CHECKPOINT_PROGRESSION_RULE,
     CHECKPOINT_SPACING_RULE,
     CRATE_AUTHORING_RULE,
@@ -52,6 +53,17 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CHECKPOINT_SPACING_RULE],
         )
         self.assertIn("88.889s", findings[0].detail)
+
+    def test_checkpoint_far_off_the_spine_fires_its_own_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_checkpoint_off_spine_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHECKPOINT_OFF_SPINE_RULE],
+        )
+        self.assertIn("Sidetrack", findings[0].detail)
 
     def test_spine_marker_declared_out_of_spatial_order_fires_its_rule(
         self,
