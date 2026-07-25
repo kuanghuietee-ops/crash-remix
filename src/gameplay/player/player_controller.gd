@@ -250,16 +250,15 @@ func advance_logic(
 		_swing_attach_blocked = null
 	_update_rail_neighbour_context()
 	_apply_late_bounce_press(now_s)
+	var phase_press := _intents.consume_pressed(
+		InputIntent.ACTION_PHASE,
+		now_s,
+		_input_tuning.action_buffer_s
+	)
 	if (
 		_phase_enabled
 		and _input_tuning.phase_button_unlocked
-		and
-		_intents.consume_pressed(
-			InputIntent.ACTION_PHASE,
-			now_s,
-			_input_tuning.action_buffer_s
-		)
-		!= null
+		and phase_press != null
 	):
 		PhaseState.request_toggle(now_s)
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()

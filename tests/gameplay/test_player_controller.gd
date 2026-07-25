@@ -446,6 +446,79 @@ func test_phase_intent_is_ignored_when_disabled_and_honored_when_enabled() -> vo
 			assert_eq(PhaseState.active_set(), before)
 
 
+func test_phase_press_buffered_while_locked_does_not_fire_once_the_gate_opens() -> void:
+	var catalog := load(TUNING_PATH) as GameplayTuning
+	PhaseState.configure(catalog.phase)
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	controller.call(
+		"configure",
+		_move,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer,
+		null,
+		false
+	)
+	PhaseState.reset_to_authored_set()
+	var before := PhaseState.active_set()
+	var press_s := 70.0
+	buffer.push(InputIntent.button(
+		InputIntent.ACTION_PHASE,
+		true,
+		press_s,
+		InputIntent.SOURCE_GAMEPAD
+	))
+
+	controller.call(
+		"advance_logic",
+		press_s,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(
+		PhaseState.active_set(),
+		before,
+		"a press made while PHASE is locked must not toggle it"
+	)
+
+	# The gate opens on the very next frame, still inside the buffer window
+	# the earlier, locked press was made in.
+	controller.call(
+		"configure",
+		_move,
+		_input,
+		_depth,
+		_wall_run,
+		_grind,
+		_swing,
+		buffer,
+		null,
+		true
+	)
+	controller.call(
+		"advance_logic",
+		press_s + _input.action_buffer_s * 0.5,
+		false,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(
+		PhaseState.active_set(),
+		before,
+		"a press buffered while PHASE was locked must not leak through the instant the gate opens"
+	)
+
+
 func test_phase_tuning_master_blocks_gamepad_at_player_choke_point() -> void:
 	var catalog := load(TUNING_PATH) as GameplayTuning
 	PhaseState.configure(catalog.phase)
