@@ -187,6 +187,8 @@ func delay_invincibility(duration_s: float) -> void:
 func receive_hit(now_s: float) -> bool:
 	if is_invincible(now_s):
 		return false
+	if is_respawning():
+		return false
 	if _invincible_until_s >= 0.0:
 		_invincible_until_s = -1.0
 	if _mask_count > 0:

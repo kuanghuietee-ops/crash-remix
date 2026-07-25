@@ -633,6 +633,32 @@ func test_respawn_waits_for_authored_delay_and_accepts_exact_boundary() -> void:
 	assert_false(controller.call("is_respawning"))
 
 
+func test_receive_hit_does_not_consume_masks_while_already_dying() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	controller.call("grant_mask", 10.0)
+	assert_eq(controller.call("mask_count"), 1)
+
+	# A death unrelated to masks (falling off the level) schedules a
+	# respawn without touching the mask stack.
+	controller.call("request_respawn", 10.0)
+	assert_true(controller.call("is_respawning"))
+
+	# A second, distinct hit lands while the respawn is already scheduled
+	# and pending (e.g. a hazard the player is still overlapping before
+	# respawn() repositions them away). The outcome is already decided;
+	# it must not additionally drain the mask stack for a death that was
+	# never going to be prevented.
+	assert_false(controller.call("receive_hit", 10.05))
+	assert_eq(
+		controller.call("mask_count"),
+		1,
+		"a hit landing while already dying must not consume a mask"
+	)
+
+
 func test_respawn_restores_default_jump_release_profile() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():
