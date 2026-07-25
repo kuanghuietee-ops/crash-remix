@@ -163,8 +163,15 @@ func record_death(economy: EconomyTuning) -> Dictionary:
 	return outcome
 
 
-func accept_mercy_skip(next_checkpoint_id: int) -> bool:
-	if not run_active or mode != MODE_NORMAL:
+func accept_mercy_skip(
+	next_checkpoint_id: int,
+	economy: EconomyTuning
+) -> bool:
+	if (
+		not run_active
+		or mode != MODE_NORMAL
+		or deaths_at_checkpoint < economy.mercy_skip_death_threshold
+	):
 		return false
 	checkpoint_id = next_checkpoint_id
 	deaths_at_checkpoint = 0

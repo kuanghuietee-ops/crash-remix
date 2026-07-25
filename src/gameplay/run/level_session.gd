@@ -318,7 +318,8 @@ func accept_mercy_skip() -> bool:
 		_offered_skip_checkpoint_id
 		== LevelRunState.START_CHECKPOINT
 		or not run_state.accept_mercy_skip(
-			_offered_skip_checkpoint_id
+			_offered_skip_checkpoint_id,
+			_economy
 		)
 	):
 		return false

@@ -162,17 +162,53 @@ func test_third_death_grants_mask_and_sixth_offers_skip() -> void:
 	)
 
 
+func test_accept_mercy_skip_rejects_a_skip_that_was_never_offered() -> void:
+	var state := _new_state(&"normal")
+	if state == null:
+		return
+
+	var accepted: bool = state.call(
+		"accept_mercy_skip",
+		_economy.mercy_skip_death_threshold,
+		_economy
+	)
+
+	assert_false(
+		accepted,
+		(
+			"a skip must never be accepted before deaths_at_checkpoint "
+			+ "reaches mercy_skip_death_threshold"
+		)
+	)
+	assert_false(state.get("gem_void"))
+	assert_false(state.get("relic_void"))
+	assert_eq(
+		state.get("checkpoint_id"),
+		LevelRunState.START_CHECKPOINT
+	)
+
+
 func test_skip_voids_gem_and_relic_for_the_run() -> void:
 	var state := _new_state(&"normal")
 	if state == null:
 		return
-	state.call(
-		"accept_mercy_skip",
+	for _death_index: int in range(
 		_economy.mercy_skip_death_threshold
+	):
+		state.call("record_death", _economy)
+
+	var accepted: bool = state.call(
+		"accept_mercy_skip",
+		_economy.mercy_skip_death_threshold,
+		_economy
 	)
 
 	state.call("record_death", _economy)
 
+	assert_true(
+		accepted,
+		"a skip legitimately offered at the threshold must be accepted"
+	)
 	assert_true(state.get("gem_void"))
 	assert_true(state.get("relic_void"))
 	assert_eq(
@@ -306,9 +342,14 @@ func test_exit_discards_run_state_q2() -> void:
 		"record_checkpoint",
 		_economy.mercy_mask_death_threshold
 	)
+	for _death_index: int in range(
+		_economy.mercy_skip_death_threshold
+	):
+		state.call("record_death", _economy)
 	state.call(
 		"accept_mercy_skip",
-		_economy.mercy_skip_death_threshold
+		_economy.mercy_skip_death_threshold,
+		_economy
 	)
 
 	state.call("record_exit")
