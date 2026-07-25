@@ -8,6 +8,18 @@ const PHASE0_INPUT_OVERRIDE_PATH := (
 )
 # Frozen at the field shape understood when cohort migration was introduced.
 # A later field belongs in LEGACY_FIELD_GROUPS_BY_SECTION, not in this baseline.
+#
+# A8: this dictionary is hand-maintained and freely editable, so nothing
+# stops a genuinely new field from being added here instead of to the real
+# LEGACY_FIELD_GROUPS_BY_SECTION cohort in tuning_service.gd — the coverage
+# loop in test_every_exported_field_has_override_migration_coverage cannot
+# tell the difference, even though only a legacy cohort is ever actually
+# backfilled at runtime. An on-device override that predates such a
+# wrongly-baselined field would silently keep its raw script default
+# forever. PHASE0_BASELINE_FIELD_SET_SHA256 below freezes the exact
+# (section, field) set so that can never happen silently: growing this
+# dictionary requires deliberately recomputing that hash, and a genuinely
+# new field belongs in a legacy cohort instead, which is verified for real.
 const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 	&"move": [
 		&"player_height_m",
@@ -179,6 +191,15 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"time_crate_large_s",
 	],
 }
+# See A8 comment above PHASE0_BASELINE_FIELDS_BY_SECTION. Computed as the
+# sha256 of the sorted "section.field" lines for every entry in that
+# dictionary — recompute deliberately (see
+# test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
+# ever legitimately needs to change, never to make a wrongly-placed new
+# field pass unnoticed.
+const PHASE0_BASELINE_FIELD_SET_SHA256 := (
+	"82ca926b700d262fde76f28c96159bedc47883bba9e12497c20e7c4ac46a1386"
+)
 
 
 func before_each() -> void:
@@ -748,6 +769,43 @@ func test_every_exported_field_has_override_migration_coverage() -> void:
 			"%s migration coverage must exactly match its exports"
 			% section_name
 		)
+
+
+## A8: the coverage loop above treats "listed in PHASE0_BASELINE_FIELDS_BY_
+## SECTION" and "listed in a LEGACY_FIELD_GROUPS_BY_SECTION cohort" as
+## equally valid coverage, but only a legacy cohort is ever actually
+## backfilled at runtime (see _backfill_legacy_field_groups). A field that
+## genuinely needs migration but is added to the baseline dictionary
+## instead — trivial to do, since it is just a hand-typed test constant —
+## would still satisfy every assertion above, while an on-device override
+## that predates it would silently keep the field's raw script default
+## forever. This test closes that hole: the exact (section, field) set in
+## PHASE0_BASELINE_FIELDS_BY_SECTION is frozen against a signature, so
+## growing it can never be silent. Proved by mutation (see the A8 fix
+## report): temporarily adding a real legacy-registered field's name to
+## this dictionary — the exact shape of the hole — turns this test red.
+func test_phase_zero_baseline_field_set_is_frozen() -> void:
+	var baseline_signature_lines := PackedStringArray()
+	for section_value: Variant in PHASE0_BASELINE_FIELDS_BY_SECTION:
+		var section_name := StringName(section_value)
+		for field_name: StringName in (
+			PHASE0_BASELINE_FIELDS_BY_SECTION[section_name]
+		):
+			baseline_signature_lines.append(
+				String(section_name) + "." + String(field_name)
+			)
+	baseline_signature_lines.sort()
+	assert_eq(
+		"\n".join(baseline_signature_lines).sha256_text(),
+		PHASE0_BASELINE_FIELD_SET_SHA256,
+		(
+			"the Phase 0 baseline field set changed — a field belongs "
+			+ "here ONLY if it never needed migration; a genuinely new "
+			+ "field belongs in LEGACY_FIELD_GROUPS_BY_SECTION instead, "
+			+ "where it gets real, functionally-proven backfill coverage, "
+			+ "not just a name in a list (see A8)"
+		)
+	)
 
 
 func test_effective_catalog_is_detached_and_reports_every_authored_path() -> void:
