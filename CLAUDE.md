@@ -2,13 +2,38 @@
 
 Rules for any agent (Claude or Codex) working in this repo. `/root/CLAUDE.md` still
 applies on top of this — especially: this tree is shared, never `git add -A`, never
-`git checkout -- <path>`, stage explicit paths only, and this repo stays **local**
-(no remote, no push, no PRs).
+`git checkout -- <path>`, and stage explicit paths only.
+
+**This repo has a public remote.** `origin` is
+`https://github.com/kuanghuietee-ops/crash-remix` (public), added by operator decision
+on 2026-07-25 to distribute the Checkpoint A build. It supersedes the previous
+"stays local — no remote, no push, no PRs" rule, which no longer describes reality.
+
+What that changes for an agent:
+
+- **Still never push without being asked.** The operator pushes, or explicitly asks an
+  agent to. A remote existing is not standing authorisation to use it.
+- **Everything you commit is permanently public.** Pushed history is cached and indexed
+  by third parties and cannot be truly deleted. Before adding any file, assume it is
+  going to be read by strangers forever.
+- **Never commit secrets, credentials, `.env` files, tokens, or real keystore material.**
+  The one committed keystore (`scripts/android_debug_keystore.b64`) is the universal
+  Android *debug* keystore (`androiddebugkey`/`android`) — non-secret by construction and
+  documented in `README.md`. Nothing else of that shape belongs here.
+- Releases carry the APK. Record the SHA-256 and the source commit in the release notes,
+  and build from a clean tree so the two actually correspond.
 
 ## What this is
 
 A 3D mascot platformer for Android in Godot 4 — a greatest-hits rebuild of the
-Crash Bandicoot PS1 trilogy. **Personal fan project, sideload only, never distributed.**
+Crash Bandicoot PS1 trilogy. **Personal, non-commercial fan project. Sideload only —
+never sold, never monetised, and never presented as an official or affiliated product.**
+
+It is now **publicly distributed** as source plus a sideload APK at the remote above.
+That is a deliberate operator decision, and it raises the stakes on the asset rule below
+rather than relaxing it: public distribution of a fan project using a living
+rightsholder's characters invites takedown, and the only real defence is that every
+byte here is original. Keep it that way.
 
 Design doc: `docs/superpowers/specs/2026-07-23-crash-remix-design.md`. It is the source
 of truth. If the code and the spec disagree, that is a bug in one of them — say which,
@@ -48,6 +73,14 @@ a real phone, by thumb — or by named friends in the blind-transfer and likenes
 Report the gate is ready to run and stop. No level content, art or systems work starts
 before Gate F passes.
 
+A narrow operator waiver is distinct from a pass. It is valid only when the operator
+explicitly accepts the risk in a dated, dedicated waiver document that names the gate
+and the downstream scope it unlocks. The waiver must say **NOT PASSED**, preserve the
+underlying QA record, and list unresolved evidence. An agent may transcribe an explicit
+operator directive into that separate document, but may never alter a result table or
+describe the waived gate as passed. Downstream work may proceed only within the waiver's
+named scope; every other human gate remains in force.
+
 ### 4. Never claim a thing works without having run it.
 
 Report test counts. Report what you did not test. "Should work" is not a status.
@@ -65,6 +98,10 @@ Report test counts. Report what you did not test. "Should work" is not a status.
 - Grep every call site of a changed function signature before calling the change done.
 - Assets: nothing extracted from any shipped Crash game, ever. CC0 base meshes are fine
   for graybox only; final assets are hand-made. This will be tempting around hour 400.
+  **Now that the repo is public this is no longer just an ethics rule — it is the
+  project's only real legal defence.** One ripped mesh, texture, audio clip or font in
+  public history is not removable by deleting the file, because the history is already
+  mirrored. If you are ever unsure whether an asset is clean, do not commit it.
 
 ## Layout
 
