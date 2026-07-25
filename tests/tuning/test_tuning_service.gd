@@ -1065,6 +1065,43 @@ func test_playability_critical_soft_brick_values_are_rejected() -> void:
 	assert_true(service.call("catalog_is_usable"))
 
 
+func test_stick_region_and_jump_catchall_overlap_is_rejected() -> void:
+	# I17: stick_region_width_ratio and jump_catchall_width_ratio are each
+	# bounded to (0.0, 1.0] independently, but both regions are carved
+	# from opposite edges of the same safe_rect.size.x (touch_control_
+	# layout.gd) -- once their sum exceeds 1.0 the regions overlap, and
+	# TouchControlLayout resolves every touch in the overlap as a jump
+	# (the jump catchall check runs first), so the player can never
+	# start a movement drag there. Same shape as N1: per-field bounds
+	# both pass while the cross-field invariant silently does not hold.
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog: GameplayTuning = service.get("catalog")
+	assert_true(service.call("catalog_is_usable"))
+
+	var authored_catchall := catalog.input.jump_catchall_width_ratio
+	# Stays inside jump_catchall_width_ratio's own (0.0, 1.0] bound but
+	# pushes the sum past 1.0 against the real authored stick ratio --
+	# this is the same combination verified against the real
+	# TouchControlLayout.calculate() during this finding's derivation
+	# (real input.tres stick=0.42, catchall raised to 0.7 -> a real
+	# 124,416 px^2 overlap where a live TouchControls resolves JUMP and
+	# stick_touch_index() stays -1).
+	catalog.input.jump_catchall_width_ratio = clampf(
+		1.0 - catalog.input.stick_region_width_ratio + 0.1,
+		0.0001,
+		1.0
+	)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a stick region and jump catchall that overlap must be rejected"
+	)
+	catalog.input.jump_catchall_width_ratio = authored_catchall
+
+	assert_true(service.call("catalog_is_usable"))
+
+
 func test_zero_run_speed_and_action_buffers_are_rejected() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

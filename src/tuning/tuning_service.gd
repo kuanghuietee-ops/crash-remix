@@ -200,6 +200,17 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or input.jump_catchall_width_ratio > 1.0
 		or input.jump_catchall_top_ratio < 0.0
 		or input.jump_catchall_top_ratio >= 1.0
+		# I17: both ratios are independently bounded to (0.0, 1.0] above,
+		# but TouchControlLayout carves the stick region and the jump
+		# catchall from opposite edges of the same safe_rect.size.x — if
+		# their sum exceeds 1.0 the two regions overlap, and inside the
+		# overlap the catchall always wins, so the player can only ever
+		# jump and can never start a movement drag there.
+		or (
+			input.stick_region_width_ratio
+			+ input.jump_catchall_width_ratio
+			> 1.0
+		)
 	):
 		return false
 
