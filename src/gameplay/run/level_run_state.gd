@@ -276,9 +276,9 @@ static func restore(
 
 	var authored_value: Variant = saved.get("authored_crate_ids")
 	if authored_value is Array:
-		restored.register_authored_crate_ids(
-			_int_array(authored_value)
-		)
+		var saved_authored_ids := _int_array(authored_value)
+		if not saved_authored_ids.is_empty():
+			restored.register_authored_crate_ids(saved_authored_ids)
 
 	if restored_mode == MODE_RELIC:
 		restored.relic_void = true

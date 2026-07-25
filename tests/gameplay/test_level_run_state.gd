@@ -423,6 +423,38 @@ func test_snapshot_restore_preserves_normal_run_state() -> void:
 	)
 
 
+func test_restore_recovers_broken_crates_when_saved_authored_ids_is_empty() -> void:
+	var state := _new_state(&"normal")
+	if state == null:
+		return
+	state.call(
+		"record_crate_broken",
+		1,
+		_economy.wumpa_per_standard_crate
+	)
+	var snapshot: Dictionary = state.call("snapshot")
+	# Simulate a stale/corrupt save whose authored_crate_ids field is an
+	# empty array rather than the real authored set recorded at save time.
+	snapshot["authored_crate_ids"] = []
+	var script := load(RUN_STATE_PATH) as Script
+
+	var restored: RefCounted = script.call(
+		"restore",
+		snapshot,
+		_meta
+	)
+
+	assert_eq(
+		restored.get("broken_crate_ids"),
+		[1],
+		(
+			"an empty saved authored_crate_ids must fall back to the "
+			+ "authoritative set LevelMeta derives, not silently drop "
+			+ "every already-broken crate on resume"
+		)
+	)
+
+
 func test_level_session_wires_crate_checkpoint_and_single_death_record() -> void:
 	assert_true(
 		ResourceLoader.exists(LEVEL_SESSION_PATH),
