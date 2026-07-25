@@ -1057,6 +1057,73 @@ func test_results_screen_renders_the_real_completion_payload() -> void:
 	)
 
 
+func test_results_screen_renders_missed_crates_without_array_syntax() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	var session := LevelSession.new()
+	root.get_node("Content/LevelPlaceholder").add_child(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var meta := load(
+		"res://data/tuning/levels/n_sanity_beach.tres"
+	).duplicate(true) as LevelMeta
+	meta.crate_count = 3
+	var catalog := load(
+		"res://data/tuning/gameplay.tres"
+	).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	session.configure(meta, &"normal", catalog.economy)
+	# Break only crate 1; crates 2 and 3 are left missing, so this is a
+	# real, non-perfect completion -- I10's own test only ever exercised
+	# the empty "MISSED CRATES  NONE" case.
+	session.run_state.record_crate_broken(
+		1,
+		catalog.economy.wumpa_per_standard_crate
+	)
+	root.call(
+		"set_active_level_session",
+		session,
+		meta,
+		{2: &"Beach Landing", 3: &"Beach Landing"}
+	)
+
+	session.complete_level()
+
+	assert_eq(root.call("state_name"), &"results")
+	var payload: Dictionary = root.get("last_results_payload")
+	assert_eq(
+		payload.get("missed_crate_ids_by_segment"),
+		{"Beach Landing": [2, 3]},
+		"sanity: the real run must leave exactly crates 2 and 3 missing"
+	)
+
+	var misses := root.get_node(
+		"UI/ResultsScreen/SafeArea/Center/Panel/Margin/Rows/Misses"
+	) as Label
+	assert_eq(
+		misses.text,
+		"MISSED CRATES\nBeach Landing: 2, 3",
+		(
+			"a real non-perfect completion must render readable crate "
+			+ "ids, not raw GDScript array syntax like '[2, 3]'"
+		)
+	)
+
+
 func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
 	var root := _instantiate_main()
 	if root == null:

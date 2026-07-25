@@ -81,7 +81,16 @@ func _missed_segments_text(value: Variant) -> String:
 		lines.append(
 			"%s: %s" % [
 				segment_name,
-				str(grouped[segment_name]),
+				_crate_id_list_text(grouped[segment_name]),
 			]
 		)
 	return "\n".join(lines)
+
+
+func _crate_id_list_text(ids: Variant) -> String:
+	if not ids is Array:
+		return str(ids)
+	var parts := PackedStringArray()
+	for id_value: Variant in (ids as Array):
+		parts.append(str(id_value))
+	return ", ".join(parts)
