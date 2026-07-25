@@ -77,7 +77,24 @@ func test_debug_drawer_renders_every_runtime_economy_field() -> void:
 			& PROPERTY_USAGE_SCRIPT_VARIABLE
 			and property_info["name"] != &"checkpoint_spacing_limit_s"
 		):
-			expected_economy_fields.append(property_info["name"])
+			var field_name: StringName = property_info["name"]
+			var field_type: int = property_info["type"]
+			if field_type == TYPE_VECTOR3:
+				for component_name: String in ["x", "y", "z"]:
+					expected_economy_fields.append(
+						StringName(
+							String(field_name) + "." + component_name
+						)
+					)
+			elif field_type == TYPE_COLOR:
+				for component_name: String in ["r", "g", "b", "a"]:
+					expected_economy_fields.append(
+						StringName(
+							String(field_name) + "." + component_name
+						)
+					)
+			else:
+				expected_economy_fields.append(field_name)
 	expected_economy_fields.sort()
 	rendered_economy_fields.sort()
 	assert_gt(expected_economy_fields.size(), 0)

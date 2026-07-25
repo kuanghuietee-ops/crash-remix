@@ -460,9 +460,18 @@ func test_skip_offer_repeats_and_acceptance_moves_to_next_checkpoint() -> void:
 	assert_eq(run_state.get("deaths_at_checkpoint"), 0)
 	assert_true(run_state.get("gem_void"))
 	assert_true(run_state.get("relic_void"))
+	var expected_checkpoint_spawn := second_checkpoint.global_transform
+	expected_checkpoint_spawn.origin += (
+		expected_checkpoint_spawn.basis
+		* _economy.checkpoint_respawn_offset
+	)
 	assert_eq(
 		player.global_transform,
-		second_checkpoint.get_node("Spawn").global_transform
+		expected_checkpoint_spawn,
+		(
+			"respawn must be derived from the live tuned "
+			+ "checkpoint_respawn_offset, not an authored scene marker"
+		)
 	)
 
 
@@ -494,9 +503,18 @@ func test_skip_follows_authored_checkpoint_link_when_ids_descend() -> void:
 	assert_true(session.call("accept_mercy_skip"))
 	var run_state: RefCounted = session.get("run_state")
 	assert_eq(run_state.get("checkpoint_id"), 1)
+	var expected_checkpoint_spawn := second_checkpoint.global_transform
+	expected_checkpoint_spawn.origin += (
+		expected_checkpoint_spawn.basis
+		* _economy.checkpoint_respawn_offset
+	)
 	assert_eq(
 		player.global_transform,
-		second_checkpoint.get_node("Spawn").global_transform
+		expected_checkpoint_spawn,
+		(
+			"respawn must be derived from the live tuned "
+			+ "checkpoint_respawn_offset, not an authored scene marker"
+		)
 	)
 
 

@@ -1,0 +1,100 @@
+# Phase 1 Wave A — audit-fix ledger
+
+Source audit: `docs/audits/2026-07-24-phase1-wave-a-audit.md`
+Started from: `975df4e` (D8 complete). P0/P1 and 30 P2 findings already landed in
+commits `7172115..975df4e` (70 commits).
+
+**This file is the source of truth for what remains.** Update the row the moment a
+finding reaches a terminal status. Statuses: `OPEN` · `VERIFIED` (read the code, it is
+real) · `REJECTED` (read the code, it is not) · `FIXED` (evidence = test name) ·
+`DEFERRED` (evidence = why + unblocker) · `NOT APPLICABLE` (evidence).
+
+Rules in force: one finding at a time, failing test first, never weaken a test or lint,
+no gameplay numbers in `src/gameplay/**`, explicit-path staging only, stop at
+Checkpoint A (do not start Task 17 / Wave B), never touch `docs/qa/phase05-gate-f2.md`.
+
+---
+
+## P2 — 9 remaining (D9 FIXED)
+
+| ID | File | Claim | Status | Evidence |
+|----|------|-------|--------|----------|
+| D9 | `scenes/props/crate_checkpoint.tscn` | respawn offset `Vector3(0,-0.45,2)` authored in the scene — invisible to the numeric lint, untunable on device | FIXED | `test_checkpoint_respawn_transform_follows_tuned_offset` (`tests/integration/test_island_slice.gd`) — real level, real checkpoint crate 14; mutates `EconomyTuning.checkpoint_respawn_offset` and proves the actual respawn transform tracks it (and would NOT match the old scene-authored value). Added `EconomyTuning.checkpoint_respawn_offset` (consumed in `LevelSession._checkpoint_spawn_transform`), removed the dead `Spawn` marker from the scene, registered the field in `TuningService`'s legacy-migration cohorts, fixed 2 pre-existing tests that were circularly asserting against the same scene marker the runtime read (`test_level_run_state.gd`, `test_mercy_and_masks.gd`), and fixed the debug-drawer field-count test's expectation logic which assumed every economy field renders as one row (Vector3 renders as 3 component rows). Full suite green: GUT 416/416 (4,053 asserts), Python 47/47, all 4 lints EXIT=0.|
+| I7 | `src/ui/safe_area_control.gd` | does not poll; a sensor-landscape 180° flip leaves it stale (A8 pattern in `touch_controls.gd` already polls) | OPEN | |
+| I8 | `scenes/ui/hud.tscn` | §5.2 occlusion rule holds but is unasserted; `_hud` missing from `_level_touch_exclusions` | OPEN | |
+| I9 | `src/ui/results_screen.gd` | `present()` is `pass` | OPEN | |
+| I10 | `src/ui/results_screen.gd` | HUD/results counters unasserted | OPEN | |
+| I11 | `src/ui/pause_overlay.gd` | no test emits any pause-overlay signal; deleting quit-to-hub stays green | OPEN | |
+| I12 | `src/ui/pause_overlay.gd` | retry-without-hub unasserted | OPEN | |
+| I14 | `tests/integration/test_warp_room.gd` | Task 15's own poll assertion races `GameRoot`'s `load_threaded_get`, red ~1 run in 3 | OPEN | |
+| A8 | `src/tuning/tuning_service.gd` | N2 migration-coverage guard accepts baseline registration as a cohort → new economy field silently discarded from an older override, guard stays green | OPEN | |
+| A9 | `scripts/verify_exported_tuning.sh:43` | greps for "Phase 0 tuning failed to load"; Phase 1 boot emits "Phase 1", so the failure string can never match | OPEN | |
+
+## P3 — 47 remaining
+
+| ID | File | Claim | Status | Evidence |
+|----|------|-------|--------|----------|
+| E6 | `src/gameplay/run/level_run_state.gd` | `accept_mercy_skip()` has no precondition and voids a run never offered a skip; its test exercises that illegal path | OPEN | |
+| E7 | `src/gameplay/run/level_run_state.gd` | relic completion reports `wumpa_banked` that is never banked | OPEN | |
+| E8 | `src/gameplay/run/level_run_state.gd` | `restore()` silently drops broken crates when `authored_crate_ids` is `[]` | OPEN | |
+| E9 | `src/gameplay/run/level_run_state.gd` | the pure model's invariants are enforced by the Node glue, not the model | OPEN | |
+| E10 | `src/gameplay/run/level_run_state.gd` | `record_death(economy)` dereferences `economy` with no null guard | OPEN | |
+| E11 | `src/gameplay/run/level_run_state.gd` | `relic_tier` can go stale against `best_relic_time_ms` | OPEN | |
+| B11 | `src/core/game_root.gd` | design §4.4 lists app-pause as a profile write trigger; `store_profile` is never called on app pause | OPEN | |
+| B12 | `src/core/save_service.gd` | `recovered_from_backup` is set and read by nothing — a rollback is invisible | OPEN | |
+| J3 | `src/gameplay/player/player_controller.gd` | a locked `ACTION_PHASE` press is not consumed and can fire on the frame the gate opens | OPEN | |
+| J4 | `src/gameplay/player/player_controller.gd` | new gating params default to `false`/`null`, defeating the compiler backstop behind "grep every call site" | OPEN | |
+| J5 | git history | all 16 commits authored by generic `root` | OPEN | |
+| J6 | `src/ui/safe_area_control.gd` | unplanned file — not in 02-PLAN's file list | OPEN | |
+| J9 | `build/` | a stale `.idsig` sits beside the APK | OPEN | |
+| J10 | `android/` | a debug keystore is committed (predates this range) | OPEN | |
+| J14 | `handover/phase1/` | the entire Phase 1 authorisation package is untracked | OPEN | |
+| G8 | `scripts/lint_level_authoring.py` | spine ≠ playable extent | OPEN | |
+| G9 | `scripts/lint_level_authoring.py` | spine ordered by document order | OPEN | |
+| G10 | `scripts/lint_level_authoring.py` | no off-spine projection check | OPEN | |
+| G11 | `scripts/lint_level_authoring.py` | region bounds ignore rotation/scale | OPEN | |
+| G12 | `scripts/lint_level_authoring.py` | overlap resolution differs from runtime | OPEN | |
+| G13 | `scripts/lint_level_authoring.py` | parser drops unclassifiable lines silently | OPEN | |
+| G14 | `tests/lint/test_level_authoring_lint.py` | rule-edge test gaps | OPEN | |
+| C11 | `src/core/game_root.gd` | `NOTIFICATION_WM_CLOSE_REQUEST` is untested — removing it costs nothing | OPEN | |
+| C16 | `src/core/game_root.gd` | §4.4's several write triggers collapse to one `store_profile` call site | OPEN | |
+| C17 | `src/gameplay/player/player_controller.gd` | `configure`'s new params default, blunting Task 16's own discipline | OPEN | |
+| C18 | `src/ui/hud.gd`, `src/core/game_root.gd` | stale mercy banner across runs; hub touch exclusions omit the drawer; retry-from-pause round-trips a full hub instantiate | OPEN | |
+| C19 | `src/core/game_root.gd` | the load poll is unbounded with no timeout and no loading affordance | OPEN | |
+| F16 | `src/gameplay/run/level_session.gd` | `respawn_requested` is emitted and never consumed | OPEN | |
+| F17 | `tests/gameplay/*` | a test launders `tnt_blast_radius_m`/`mask_stack_maximum` and can go vacuous | OPEN | |
+| F18 | `tests/gameplay/*` | no `after_each`; fixture early-returns leak nodes | OPEN | |
+| F20 | `src/gameplay/player/player_controller.gd` | `receive_hit()` keeps consuming masks while already dying | OPEN | |
+| H7 | `tests/integration/test_level_scenes.gd` | re-declares crate counts as the literal `40` in three places instead of reading `LevelMeta` | OPEN | |
+| H8 | `tests/integration/test_level_scenes.gd` | the enemy-free assertion is vacuous — nothing joins the `enemy` group (re-introduces Phase 0 M8) | OPEN | |
+| H9 | `scenes/segments/*` | only 1 of 3 enemy-bearing segments carries the "ENEMIES IN TASK 17" disclosure | OPEN | |
+| H10 | `scenes/levels/wr1_n_sanity_beach.tscn` | §5's "TNT beside a stack" authored as a flat row → 2.0 m blast reaches 1 of 2 neighbours; test written to geometry not the design beat | OPEN | |
+| A12 | `README.md:66` | still advertises the retired "Phase 1 content vocabulary tripwire" | OPEN | |
+| A13 | `src/core/scalar_math.gd` | open numeric-laundering channel into `src/gameplay/**` the lint's default scope cannot see (no instance yet) | OPEN | |
+| D10 | `src/gameplay/crates/crate_logic.gd` | `_finish_break`'s guard untested; `_set_crate_visual` re-arms crates by poking private fields | OPEN | |
+| D11 | `src/gameplay/crates/crate_logic.gd` | bounce `> max` and `<= 0` branches unreachable and untested | OPEN | |
+| D13 | design vs canon | landing on a standard crate does nothing — code matches plan; plan may not match canon (operator call) | OPEN | |
+| I15 | hub/UI | minor | OPEN | |
+| I16 | hub/UI | minor | OPEN | |
+| I17 | hub/UI | minor | OPEN | |
+| I18 | hub/UI | minor | OPEN | |
+| I19 | hub/UI | minor | OPEN | |
+| I20 | hub/UI | minor | OPEN | |
+| I21 | hub/UI | minor | OPEN | |
+
+## Final
+
+| ID | Item | Status | Evidence |
+|----|------|--------|----------|
+| CKA | Checkpoint A verification + handback (full suite green count, APK SHA-256, handback doc) | OPEN | |
+
+---
+
+## Notes
+
+- `I15`–`I21` and `G8`–`G14` are collapsed ranges in the audit's P3 prose. Their
+  individual claims must be recovered from the raw auditor notes or re-derived by
+  reading the code before they can leave `OPEN`.
+- Anything a fix round raises that is new goes in as a new row, not a footnote.
+</content>
+</invoke>

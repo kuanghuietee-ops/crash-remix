@@ -19,6 +19,15 @@ extends Resource
 @export var bounce_crate_wumpa_per_bounce: int
 @export var bounce_launch_height_m: float
 
+@export_category("Checkpoints")
+# Sentinel default (matches the -1 convention above): any real authored
+# offset is small, so this implausible vector lets the tuning service
+# tell "a legacy override predating this field" apart from a
+# deliberate value.
+@export var checkpoint_respawn_offset := Vector3(
+	-999999.0, -999999.0, -999999.0
+)
+
 @export_category("Authoring")
 @export var checkpoint_spacing_limit_s: float
 

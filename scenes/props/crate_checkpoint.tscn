@@ -13,6 +13,3 @@ crate_type = &"checkpoint"
 
 [node name="Mesh" parent="." index="0"]
 material_override = SubResource("Material_checkpoint")
-
-[node name="Spawn" type="Marker3D" parent="."]
-position = Vector3(0, -0.45, 2)

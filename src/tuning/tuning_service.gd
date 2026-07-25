@@ -41,6 +41,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"mercy_banner_duration_s",
 		],
+		[
+			&"checkpoint_respawn_offset",
+		],
 	],
 }
 

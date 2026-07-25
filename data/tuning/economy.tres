@@ -16,6 +16,7 @@ tnt_blast_radius_m = 2.0
 bounce_crate_max_bounces = 5
 bounce_crate_wumpa_per_bounce = 1
 bounce_launch_height_m = 2.6
+checkpoint_respawn_offset = Vector3(0, -0.45, 2)
 checkpoint_spacing_limit_s = 60.0
 mercy_mask_death_threshold = 3
 mercy_skip_death_threshold = 6

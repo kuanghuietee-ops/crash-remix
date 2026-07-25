@@ -37,6 +37,73 @@ func test_real_scene_spawn_stays_on_authored_floor_without_death() -> void:
 	assert_eq(level.run_state.deaths_at_checkpoint, 0)
 
 
+func test_checkpoint_respawn_transform_follows_tuned_offset() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var checkpoint := _crate(level, 14)
+	assert_not_null(checkpoint)
+	if checkpoint == null:
+		return
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	var economy := catalog.economy
+	assert_not_null(economy)
+	if economy == null:
+		return
+
+	var stale_offset := economy.checkpoint_respawn_offset
+	var tuned_offset := Vector3(1.75, -0.9, 4.25)
+	economy.checkpoint_respawn_offset = tuned_offset
+	assert_true(level.configure(
+		level.run_state.meta,
+		LevelRunState.MODE_NORMAL,
+		economy,
+		player,
+		catalog.move,
+		catalog.input
+	))
+	await wait_process_frames(1)
+
+	checkpoint.call("apply_verb", &"spin", 1.0)
+	await wait_process_frames(1)
+	assert_eq(
+		level.run_state.checkpoint_id,
+		14,
+		"the real checkpoint crate must still establish itself as reached"
+	)
+
+	var checkpoint_transform := (checkpoint as Node3D).global_transform
+	var tuned_spawn := checkpoint_transform
+	tuned_spawn.origin += checkpoint_transform.basis * tuned_offset
+	var stale_spawn := checkpoint_transform
+	stale_spawn.origin += checkpoint_transform.basis * stale_offset
+
+	var actual_spawn: Transform3D = player.get("_spawn_transform")
+	assert_true(
+		actual_spawn.origin.is_equal_approx(tuned_spawn.origin),
+		(
+			"the real respawn must land where the live-tuned economy "
+			+ "offset says, got %s expected %s"
+			% [actual_spawn.origin, tuned_spawn.origin]
+		)
+	)
+	assert_false(
+		actual_spawn.origin.is_equal_approx(stale_spawn.origin),
+		"changing the tuned offset must actually move the real respawn point"
+	)
+
+
 func test_real_player_walking_into_finish_completes_level() -> void:
 	var root := _instantiate_main()
 	if root == null:

@@ -404,9 +404,20 @@ func test_level_session_wires_crate_checkpoint_and_single_death_record() -> void
 	assert_eq(run_state.get("broken_crate_ids"), [1, 2])
 	assert_eq(run_state.get("deaths_at_checkpoint"), 1)
 	assert_eq(outcome["respawn_checkpoint"], 2)
+	var expected_checkpoint_spawn := (
+		checkpoint as Node3D
+	).global_transform
+	expected_checkpoint_spawn.origin += (
+		expected_checkpoint_spawn.basis
+		* _economy.checkpoint_respawn_offset
+	)
 	assert_eq(
 		player.spawn_transform,
-		checkpoint.get_node("Spawn").global_transform
+		expected_checkpoint_spawn,
+		(
+			"respawn must be derived from the live tuned "
+			+ "checkpoint_respawn_offset, not an authored scene marker"
+		)
 	)
 	assert_false(standard.get_node("Mesh").visible)
 

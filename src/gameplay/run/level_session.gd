@@ -891,10 +891,14 @@ func _set_player_spawn(target_checkpoint_id: int) -> void:
 
 
 func _checkpoint_spawn_transform(crate: Node) -> Transform3D:
-	var spawn := crate.get_node_or_null("Spawn") as Node3D
-	if spawn != null:
-		return spawn.global_transform
-	return (crate as Node3D).global_transform
+	var crate_transform := (crate as Node3D).global_transform
+	if _economy == null:
+		return crate_transform
+	crate_transform.origin += (
+		crate_transform.basis
+		* _economy.checkpoint_respawn_offset
+	)
+	return crate_transform
 
 
 func _sync_crate_visuals(reset_unbroken: bool) -> void:
