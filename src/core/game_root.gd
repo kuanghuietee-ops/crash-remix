@@ -64,6 +64,7 @@ const LEVEL_LOAD_TIMEOUT_S := 20.0
 
 @export var save_dir: String = DEFAULT_SAVE_DIR
 @export_file("*.tres") var tuning_override_path: String = ""
+@export_file("*.tres") var base_tuning_path: String = BASE_TUNING_PATH
 
 var tuning_service: TuningServiceType = TuningServiceType.new()
 var save_service: SaveServiceType = SaveServiceType.new()
@@ -107,12 +108,28 @@ static func should_enable_debug_tools(is_debug_build: bool) -> bool:
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Input.set_use_accumulated_input(false)
+	# R5: install the boot-error overlay before anything that can refuse to
+	# boot runs, so every refusal path -- including ones that fire before
+	# tuning even loads -- has somewhere to show the player real text
+	# instead of an invisible push_error and a black screen.
+	_boot_error_overlay = (
+		BOOT_ERROR_OVERLAY_SCENE.instantiate() as Control
+	)
+	_ui.add_child(_boot_error_overlay)
+
 	var override_path := _resolved_tuning_override_path()
 	boot_error = tuning_service.load_from_paths(
-		BASE_TUNING_PATH,
+		base_tuning_path,
 		override_path
 	)
 	if boot_error != OK:
+		_boot_error_overlay.call(
+			"present",
+			(
+				"Crash Remix could not load its core game data and "
+				+ "cannot start.\nPlease reinstall the app."
+			)
+		)
 		push_error("Phase 1 tuning failed to load: " + error_string(boot_error))
 		return
 
@@ -475,26 +492,32 @@ func _disconnect_active_level_session() -> void:
 
 
 func _install_task11_ui(debug_tools_enabled: bool) -> void:
+	# R5: _boot_error_overlay is instantiated and added to the tree earlier,
+	# in _ready(), before tuning even loads -- it must not be re-instantiated
+	# or re-added here (add_child on an already-parented node is an error).
+	# It still needs its SafeArea configured now, once tuning is available,
+	# same as every other screen below.
 	_hud = HUD_SCENE.instantiate() as Control
 	_results_screen = RESULTS_SCREEN_SCENE.instantiate() as Control
 	_pause_overlay = PAUSE_OVERLAY_SCENE.instantiate() as Control
 	_level_list_overlay = (
 		LEVEL_LIST_OVERLAY_SCENE.instantiate() as Control
 	)
-	_boot_error_overlay = (
-		BOOT_ERROR_OVERLAY_SCENE.instantiate() as Control
-	)
 	for screen: Control in [
 		_hud,
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
-		_boot_error_overlay,
 	]:
 		_ui.add_child(screen)
 		var safe_area := screen.get_node_or_null("SafeArea")
 		if safe_area != null:
 			safe_area.call("configure", tuning_service.catalog.input)
+	var boot_error_safe_area := _boot_error_overlay.get_node_or_null(
+		"SafeArea"
+	)
+	if boot_error_safe_area != null:
+		boot_error_safe_area.call("configure", tuning_service.catalog.input)
 
 	_hud.connect(
 		&"pause_requested",

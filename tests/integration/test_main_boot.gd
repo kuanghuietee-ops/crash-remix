@@ -150,6 +150,88 @@ func test_future_profile_refuses_real_boot_without_overwrite() -> void:
 	)
 
 
+func test_wrong_typed_base_tuning_catalog_shows_a_player_facing_boot_error() -> void:
+	# R5: the base-tuning-load failure returns before Task 11's _install_task11_ui()
+	# ever ran, so _boot_error_overlay did not exist yet -- a total black screen
+	# with no text, worse than the Q9 case this same overlay already covers.
+	# Points base_tuning_path at a real, cleanly-loadable resource of the WRONG
+	# type (a LevelMeta, not a GameplayTuning) rather than a nonexistent path:
+	# `load_from_paths` rejects it the identical way (`not authored is
+	# GameplayTuning`), without a genuinely missing file provoking spurious
+	# engine-level load errors unrelated to what this test is proving.
+	var root := _instantiate_main_with_base_tuning_path(
+		N_SANITY_META_PATH
+	)
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	assert_push_error("Phase 1 tuning failed to load")
+	assert_ne(root.get("boot_error"), OK)
+	assert_eq(root.call("state_name"), &"boot")
+	assert_false(root.has_node("Content/WarpRoom1"))
+	var boot_error_overlay := root.get_node_or_null(
+		"UI/BootError"
+	) as Control
+	assert_not_null(
+		boot_error_overlay,
+		"a missing base tuning catalog must still show a player-visible boot error"
+	)
+	if boot_error_overlay == null:
+		return
+	assert_true(boot_error_overlay.visible)
+	var message := boot_error_overlay.call("message_text") as String
+	assert_false(
+		message.is_empty(),
+		"the overlay must render real text, not stay blank"
+	)
+
+
+func test_unusable_authored_base_catalog_shows_a_player_facing_boot_error() -> void:
+	# R7 added a second cause of the same early return: catalog_is_usable()
+	# rejecting the authored base itself (not just a missing/corrupt file).
+	# Both causes share the one early return in _ready() and both must reach
+	# the player, not just push_error into an invisible engine log.
+	var broken_base_path := TEST_SAVE_DIR.path_join(
+		"broken_base_catalog.tres"
+	)
+	assert_eq(
+		DirAccess.make_dir_recursive_absolute(
+			ProjectSettings.globalize_path(TEST_SAVE_DIR)
+		),
+		OK
+	)
+	var authored: GameplayTuning = (
+		load(BASE_TUNING_PATH).duplicate_deep(Resource.DEEP_DUPLICATE_ALL)
+	)
+	authored.move.run_speed_mps = 0.0
+	assert_eq(ResourceSaver.save(authored, broken_base_path), OK)
+
+	var root := _instantiate_main_with_base_tuning_path(broken_base_path)
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	assert_push_error("Phase 1 tuning failed to load")
+	assert_ne(root.get("boot_error"), OK)
+	assert_eq(root.call("state_name"), &"boot")
+	var boot_error_overlay := root.get_node_or_null(
+		"UI/BootError"
+	) as Control
+	assert_not_null(
+		boot_error_overlay,
+		"an unusable authored base catalog must still show a player-visible boot error"
+	)
+	if boot_error_overlay == null:
+		return
+	assert_true(boot_error_overlay.visible)
+	var message := boot_error_overlay.call("message_text") as String
+	assert_false(
+		message.is_empty(),
+		"the overlay must render real text, not stay blank"
+	)
+
+
 func test_future_backup_without_primary_is_preserved_and_does_not_brick_boot() -> void:
 	var backup_path := TEST_SAVE_DIR.path_join(
 		"profile.json.bak"
@@ -1615,6 +1697,18 @@ func _instantiate_main() -> Node:
 		return null
 	var root := packed.instantiate()
 	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	return root
+
+
+func _instantiate_main_with_base_tuning_path(path: String) -> Node:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return null
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	root.set("base_tuning_path", path)
 	add_child_autofree(root)
 	return root
 
