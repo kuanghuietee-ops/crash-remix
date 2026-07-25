@@ -538,7 +538,15 @@ func _new_session(
 	assert_not_null(session_script)
 	if session_script == null or not session_script.can_instantiate():
 		return {}
+	# F18: register `session` for autofree the instant it exists, and add
+	# every subsequently-created node as its child immediately (rather than
+	# only once every fixture step below has succeeded) -- so any early
+	# return from here on frees whatever was already built through `session`
+	# instead of leaking it. `session`'s own auto-free cascades to every
+	# child already attached to it, so nothing built below needs its own
+	# separate autofree call.
 	var session := session_script.new() as Node
+	add_child_autofree(session)
 	var finish := Area3D.new()
 	finish.name = "Finish"
 	session.add_child(finish)
@@ -546,7 +554,11 @@ func _new_session(
 	var second_checkpoint: Node3D
 	if with_checkpoints:
 		first_checkpoint = _instantiate(CHECKPOINT_SCENE)
+		if first_checkpoint != null:
+			session.add_child(first_checkpoint)
 		second_checkpoint = _instantiate(CHECKPOINT_SCENE) as Node3D
+		if second_checkpoint != null:
+			session.add_child(second_checkpoint)
 		if first_checkpoint == null or second_checkpoint == null:
 			return {}
 		var first_checkpoint_id := (
@@ -566,8 +578,6 @@ func _new_session(
 			0.0,
 			0.0
 		)
-		session.add_child(first_checkpoint)
-		session.add_child(second_checkpoint)
 
 	var wumpa: Area3D
 	var wumpa_pickups: Array[Area3D] = []
@@ -584,7 +594,6 @@ func _new_session(
 	if player == null:
 		return {}
 	session.add_child(player)
-	add_child_autofree(session)
 	_configure_player(player)
 	session.call(
 		"configure",
