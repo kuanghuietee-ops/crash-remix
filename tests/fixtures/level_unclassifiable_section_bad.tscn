@@ -12,4 +12,4 @@ metadata/level_meta = ExtResource("1_meta")
 [node name="End" type="Marker3D" parent="Spine"]
 position = Vector3(0, 0, -400)
 
-[editable path="Start"]
+[wholly_unrecognized_section path="Start"]

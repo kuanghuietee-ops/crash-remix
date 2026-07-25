@@ -499,10 +499,37 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 FIXTURE_ROOT / "level_unclassifiable_section_bad.tscn"
             )
 
-        self.assertIn("editable", str(raised.exception))
+        self.assertIn("wholly_unrecognized_section", str(raised.exception))
         self.assertIn(
             "unrecognized scene section",
             str(raised.exception),
+        )
+
+    def test_editable_children_directive_is_recognized_as_inert(
+        self,
+    ) -> None:
+        # [editable path="..."] only toggles the Godot editor's
+        # "Editable Children" display for an instanced sub-scene node
+        # (Node.set_editable_instance / is_editable_instance in
+        # Godot 4.7.1's own scene/main/node.cpp) so a designer can see
+        # and tweak the instance's internal nodes in the scene tree
+        # dock. It carries no geometry, crate, checkpoint, or camera
+        # data of its own for the authoring rules to act on, and
+        # PackedScene instancing applies every override line in the
+        # file unconditionally regardless of this flag. The real
+        # scenes/segments/seg_phase_gauntlet.tscn authors four of
+        # these; the lint must parse it cleanly, not choke on it, once
+        # Task 17 reconnects that content (see N3).
+        segment_path = (
+            REPO_ROOT
+            / "scenes"
+            / "segments"
+            / "seg_phase_gauntlet.tscn"
+        )
+        self.assertTrue(segment_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(segment_path),
+            [],
         )
 
     def test_parser_fails_loudly_on_a_line_it_cannot_classify(

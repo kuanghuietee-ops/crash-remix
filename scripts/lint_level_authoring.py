@@ -46,7 +46,20 @@ CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
 KNOWN_SCENE_SECTIONS = {"ext_resource", "sub_resource", "node"}
-INERT_SCENE_SECTIONS = {"gd_scene", "gd_resource"}
+INERT_SCENE_SECTIONS = {
+    "gd_scene",
+    "gd_resource",
+    # "[editable path="..."]" only toggles whether the Godot editor
+    # shows an instanced sub-scene's internal nodes as editable in the
+    # scene tree dock (Node.set_editable_instance / is_editable_instance,
+    # confirmed by reading Godot 4.7.1's own scene/main/node.cpp and
+    # scene/resources/packed_scene.cpp). It carries no geometry, crate,
+    # checkpoint, or camera data of its own — PackedScene instancing
+    # applies every authored override line unconditionally regardless
+    # of this flag — so it is genuinely inert for authoring purposes.
+    # Confirmed deliberately, per N3, not left unclassified by default.
+    "editable",
+}
 
 Vector3 = tuple[float, float, float]
 Basis3 = tuple[Vector3, Vector3, Vector3]
