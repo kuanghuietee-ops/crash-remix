@@ -986,6 +986,31 @@ func test_hud_pause_button_reaches_the_real_pause_overlay() -> void:
 	assert_true(get_tree().paused)
 
 
+func test_level_touch_exclusions_include_the_mercy_panel() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var mercy_panel := root.get_node_or_null(
+		"UI/HUD/SafeArea/MercyPanel"
+	)
+	assert_not_null(
+		mercy_panel,
+		"the live HUD must expose the mercy panel"
+	)
+	if mercy_panel == null:
+		return
+	var exclusions: Array = root.call("_level_touch_exclusions")
+	assert_true(
+		exclusions.has(mercy_panel),
+		(
+			"a visible mercy panel drawn over the touch controls "
+			+ "must be excluded from gameplay touch, the same way "
+			+ "the pause button already is (§5.2 occlusion rule)"
+		)
+	)
+
+
 func _instantiate_main() -> Node:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)

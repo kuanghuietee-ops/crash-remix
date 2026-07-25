@@ -6,6 +6,7 @@ const GAMEPAD_SCRIPT_PATH := "res://src/gameplay/input/gamepad_input.gd"
 const TOUCH_SCRIPT_PATH := "res://src/ui/touch_controls.gd"
 const LAYOUT_SCRIPT_PATH := "res://src/ui/touch_control_layout.gd"
 const SAFE_AREA_SCRIPT_PATH := "res://src/ui/safe_area_control.gd"
+const HUD_SCENE_PATH := "res://scenes/ui/hud.tscn"
 const TUNING_PATH := "res://data/tuning/gameplay.tres"
 
 var _input_tuning: Resource
@@ -671,6 +672,46 @@ func test_safe_area_repolls_after_a_flip_that_never_fires_size_changed() -> void
 		100.0,
 		"the tuned poll interval must pick up a flip with no resize signal"
 	)
+
+
+func test_hud_elements_stay_outside_the_touch_control_occlusion_zones() -> void:
+	var packed: PackedScene = load(HUD_SCENE_PATH)
+	assert_not_null(packed, "hud.tscn must exist")
+	if packed == null:
+		return
+	var hud: Control = packed.instantiate()
+	add_child_autofree(hud)
+	var safe_rect := Rect2(0.0, 0.0, 1920.0, 1080.0)
+	var safe_area := hud.get_node("SafeArea")
+	safe_area.call("set_layout_override", safe_rect)
+	safe_area.call("_apply_safe_area")
+	await wait_process_frames(1)
+
+	var layout_script: Script = load(LAYOUT_SCRIPT_PATH)
+	var layout: Dictionary = layout_script.call(
+		"calculate", safe_rect, 254.0, _input_tuning, true
+	)
+	# §5.2: left-thumb stick zone and the bottom-right button wedge — the
+	# two touch-control regions no HUD element may be drawn over.
+	var stick_region: Rect2 = layout["stick_region"]
+	var button_zone: Rect2 = layout["jump_catchall_region"]
+
+	for element_path: String in [
+		"SafeArea/Stats",
+		"SafeArea/RelicTimer",
+		"SafeArea/MercyPanel",
+		"SafeArea/Pause",
+	]:
+		var element := hud.get_node(element_path) as Control
+		var element_rect := element.get_global_rect()
+		assert_false(
+			element_rect.intersects(stick_region),
+			"%s must not overlap the left-thumb stick zone (§5.2)" % element_path
+		)
+		assert_false(
+			element_rect.intersects(button_zone),
+			"%s must not overlap the right-thumb button zone (§5.2)" % element_path
+		)
 
 
 func _new_node(script_path: String) -> Variant:

@@ -1032,6 +1032,7 @@ func _refresh_ghost_materials(level: Node) -> void:
 func _level_touch_exclusions() -> Array:
 	var controls: Array = [
 		_hud.get_node("SafeArea/Pause"),
+		_hud.get_node("SafeArea/MercyPanel"),
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
