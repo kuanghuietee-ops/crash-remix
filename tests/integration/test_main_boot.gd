@@ -515,6 +515,86 @@ func test_real_level_list_opens_toybox_with_one_tuning_owner() -> void:
 	)
 
 
+func test_hub_level_list_actually_pauses_warp_room_gameplay() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var player := room.get_node("Player")
+	var router := room.get_node("Input/InputRouter")
+	var gamepad := room.get_node("Input/GamepadInput")
+	var touch := room.get_node("UI/TouchControls")
+	assert_true(
+		player.can_process(),
+		"sanity: the hub Player must process before the modal opens"
+	)
+	assert_true(
+		touch.can_process(),
+		"sanity: hub touch controls must process before the modal opens"
+	)
+
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_true(
+		get_tree().paused,
+		"opening the hub level list must actually pause the tree"
+	)
+	assert_false(
+		player.can_process(),
+		"the hub Player must stop processing under the level list modal"
+	)
+	assert_false(
+		router.can_process(),
+		"the hub InputRouter must stop processing under the modal"
+	)
+	assert_false(
+		gamepad.can_process(),
+		"the hub GamepadInput must stop processing under the modal"
+	)
+	assert_false(
+		touch.can_process(),
+		"the hub TouchControls must stop processing under the modal"
+	)
+
+
+func test_hub_touch_exclusions_include_the_level_list_overlay() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var overlay := root.get_node("UI/LevelListOverlay") as Control
+	assert_true(
+		overlay.visible,
+		"sanity: the real level list overlay must be open"
+	)
+
+	var touch := room.get_node("UI/TouchControls")
+	var layout: Dictionary = touch.call("current_layout")
+	var stick_region: Rect2 = layout["stick_region"]
+	var press := InputEventScreenTouch.new()
+	press.index = 41
+	press.position = stick_region.get_center()
+	press.pressed = true
+	touch.call("handle_touch_event", press)
+
+	assert_eq(
+		touch.call("stick_touch_index"),
+		-1,
+		(
+			"a tap aimed at the full-screen level list overlay must not "
+			+ "also register as hub movement input underneath it"
+		)
+	)
+
+
 func test_project_boots_the_new_main_scene() -> void:
 	assert_eq(
 		ProjectSettings.get_setting("application/run/main_scene"),

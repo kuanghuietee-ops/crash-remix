@@ -17,6 +17,11 @@ var _extra_touch_exclusions: Array = []
 
 
 func _ready() -> void:
+	# Mirrors LevelSession.configure()'s PROCESS_MODE_PAUSABLE: without
+	# this, WarpRoom inherits GameRoot's PROCESS_MODE_ALWAYS, so the
+	# Player/InputRouter/GamepadInput/TouchControls underneath the hub
+	# keep running while the Level List modal has get_tree().paused set.
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	$UI/LevelList.pressed.connect(
 		func() -> void: level_list_requested.emit()
 	)

@@ -635,7 +635,7 @@ func _render_warp_room() -> void:
 		_hub_level_metas(),
 		_phase_available(),
 		_available_level_ids(),
-		_debug_touch_exclusions()
+		_warp_room_touch_exclusions()
 	)
 	room.connect(
 		&"flow_event_requested",
@@ -660,7 +660,7 @@ func _refresh_warp_room_tuning() -> void:
 		_hub_level_metas(),
 		_phase_available(),
 		_available_level_ids(),
-		_debug_touch_exclusions()
+		_warp_room_touch_exclusions()
 	)
 
 
@@ -1172,6 +1172,16 @@ func _debug_touch_exclusions() -> Array:
 		_tuning_debug.get_node("HUD"),
 		_tuning_debug.get_node("Drawer"),
 	]
+
+
+func _warp_room_touch_exclusions() -> Array:
+	# The Level List overlay is a full-screen Control GameRoot draws on
+	# top of the hub (I15's second half): without this, a tap aimed at
+	# the overlay also lands on WarpRoom's own TouchControls underneath,
+	# doubling as hub movement/jump input.
+	var controls: Array = [_level_list_overlay]
+	controls.append_array(_debug_touch_exclusions())
+	return controls
 
 
 func _sync_ui_visibility() -> void:
