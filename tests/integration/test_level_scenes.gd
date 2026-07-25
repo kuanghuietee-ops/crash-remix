@@ -168,16 +168,44 @@ func test_level_has_collectible_counts_optional_iron_and_no_enemies() -> void:
 	)
 	assert_eq(checkpoint_count, EXPECTED_CHECKPOINTS)
 	assert_eq(iron_count, EXPECTED_IRON_CRATES)
-	var enemy_count := 0
-	for candidate: Node in level.get_tree().get_nodes_in_group(
-		&"enemy"
-	):
-		if level.is_ancestor_of(candidate):
-			enemy_count += 1
 	assert_eq(
-		enemy_count,
+		_enemy_count_within(level),
 		0,
 		"Task 13 is intentionally enemy-free"
+	)
+
+
+# H8: nothing in this repo can currently join the "enemy" group -- Task 13
+# is enemy-free by design, and Task 17 (out of scope here) is what will
+# first add real enemy content. That makes the assertion above unable to
+# fail today, the same shape as Phase 0's M8. This proves the *detection
+# mechanism* is real without authoring any enemy content: a throwaway,
+# test-only probe node joins the group under the real level and must be
+# counted, then is discarded before any claim is made about the real,
+# committed level. If a future change ever broke `_enemy_count_within`
+# (e.g. dropped the `is_ancestor_of` scoping, or read the wrong group),
+# this test would catch it even while the level itself stays enemy-free.
+func test_enemy_free_assertion_can_detect_a_real_enemy_group_member() -> void:
+	var level := _instantiate_level()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	assert_eq(
+		_enemy_count_within(level),
+		0,
+		"the real, committed level must start genuinely enemy-free"
+	)
+
+	var probe := Node.new()
+	probe.add_to_group(&"enemy")
+	level.add_child(probe)
+
+	assert_eq(
+		_enemy_count_within(level),
+		1,
+		"a real 'enemy' group member under the level must be counted"
 	)
 
 
@@ -276,6 +304,16 @@ func _crates(level: Node) -> Array[Node]:
 		if candidate.has_method("apply_verb"):
 			result.append(candidate)
 	return result
+
+
+func _enemy_count_within(level: Node) -> int:
+	var enemy_count := 0
+	for candidate: Node in level.get_tree().get_nodes_in_group(
+		&"enemy"
+	):
+		if level.is_ancestor_of(candidate):
+			enemy_count += 1
+	return enemy_count
 
 
 func _full_aabbs_overlap(
