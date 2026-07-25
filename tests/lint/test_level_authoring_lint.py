@@ -11,6 +11,7 @@ from scripts.lint_level_authoring import (
     CRATE_AUTHORING_RULE,
     CRATE_ID_RULE,
     REQUIRED_JUMP_RULE,
+    SPINE_ORDER_RULE,
     TIME_CRATE_RULE,
     _flatten_scene,
     find_authoring_violations,
@@ -51,6 +52,20 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [CHECKPOINT_SPACING_RULE],
         )
         self.assertIn("88.889s", findings[0].detail)
+
+    def test_spine_marker_declared_out_of_spatial_order_fires_its_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_spine_order_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [SPINE_ORDER_RULE],
+        )
+        self.assertIn("Doubleback", findings[0].detail)
+        self.assertIn("Overshoot", findings[0].detail)
 
     def test_checkpoint_links_must_follow_spatial_route_order(self) -> None:
         findings = find_authoring_violations(

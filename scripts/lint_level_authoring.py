@@ -14,6 +14,7 @@ from typing import Iterable, Sequence
 
 CHECKPOINT_SPACING_RULE = "checkpoint_spacing"
 CHECKPOINT_PROGRESSION_RULE = "checkpoint_progression"
+SPINE_ORDER_RULE = "spine_document_order"
 CRATE_AUTHORING_RULE = "crate_count_and_segment_membership"
 CRATE_ID_RULE = "crate_id_unique"
 REQUIRED_JUMP_RULE = "required_jump_depression"
@@ -280,6 +281,66 @@ def _spine_extent_gaps(
     return head_gap, tail_gap
 
 
+def _spine_order_findings(
+    scene_name: str,
+    spine: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Cross-check the spine's declared order against its own geometry.
+
+    Every distance-along-the-route computation trusts that sorting the
+    spine's Marker3D nodes by ``order`` (the order they were declared
+    in their scene file) reproduces the level's real, spatial
+    traversal order. Nothing else confirms the two agree, so a segment
+    (or a marker within one) that is authored out of sequence — a
+    reordered instance line, a copy-paste, a shuffled marker — silently
+    corrupts every checkpoint's "distance so far" with no error.
+
+    This walks the declared order and asserts each marker makes
+    non-negative progress along the chord from the spine's own first
+    point to its own last point; a marker that lands behind an earlier
+    one is out of order.
+    """
+    chord = _subtract(
+        spine[-1].world_position,
+        spine[0].world_position,
+    )
+    chord_length_squared = _dot(chord, chord)
+    if math.isclose(chord_length_squared, 0.0):
+        return []
+    findings: list[AuthoringViolation] = []
+    previous_progress = 0.0
+    previous_node = spine[0]
+    for node in spine[1:]:
+        progress = (
+            _dot(
+                _subtract(
+                    node.world_position,
+                    spine[0].world_position,
+                ),
+                chord,
+            )
+            / chord_length_squared
+        )
+        if progress < previous_progress and not math.isclose(
+            progress,
+            previous_progress,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    SPINE_ORDER_RULE,
+                    (
+                        f"{node.path} is declared after "
+                        f"{previous_node.path} but sits earlier "
+                        "along the spine's start-to-end route"
+                    ),
+                )
+            )
+        previous_progress = progress
+        previous_node = node
+    return findings
+
+
 def _checkpoint_findings(
     scene_name: str,
     nodes: list[FlatNode],
@@ -303,8 +364,9 @@ def _checkpoint_findings(
                 "level needs at least two ordered Spine Marker3D nodes",
             )
         ]
+    findings = _spine_order_findings(scene_name, spine)
     if meta.design_pace_mps <= 0.0:
-        return [
+        return findings + [
             AuthoringViolation(
                 scene_name,
                 CHECKPOINT_SPACING_RULE,
@@ -315,7 +377,7 @@ def _checkpoint_findings(
     points = [node.world_position for node in spine]
     cumulative = _polyline_cumulative_lengths(points)
     if not cumulative or math.isclose(cumulative[-1], 0.0):
-        return [
+        return findings + [
             AuthoringViolation(
                 scene_name,
                 CHECKPOINT_SPACING_RULE,
@@ -334,9 +396,11 @@ def _checkpoint_findings(
         for node in _crate_nodes(nodes)
         if _crate_type(node) == CHECKPOINT_CRATE_TYPE
     ]
-    findings = _checkpoint_progression_findings(
-        scene_name,
-        checkpoints_with_distances,
+    findings.extend(
+        _checkpoint_progression_findings(
+            scene_name,
+            checkpoints_with_distances,
+        )
     )
     checkpoint_distances = [
         distance
