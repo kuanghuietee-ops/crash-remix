@@ -12,7 +12,7 @@ size = Vector3(18, 12, 100)
 
 [node name="Title" type="Label3D" parent="."]
 position = Vector3(0, 2.5, -4)
-text = "CRATE CADENCE"
+text = "CRATE CADENCE — ENEMIES IN TASK 17"
 font_size = 48
 outline_size = 10
 

@@ -17,6 +17,16 @@ const SEGMENT_NAMES: Array[StringName] = [
 ]
 const EXPECTED_CHECKPOINTS := 2
 const EXPECTED_IRON_CRATES := 3
+# H9: per 01-DESIGN.md §5, these three segments are the ones designated to
+# receive an enemy once Task 17 builds them (jungle corridor = skink,
+# crate cadence = crab, plant gauntlet = plant) -- the other four segments
+# are not.
+const ENEMY_BEARING_SEGMENTS: Array[StringName] = [
+	&"JungleCorridor",
+	&"CrateCadence",
+	&"PlantGauntlet",
+]
+const TASK_17_DISCLOSURE := "ENEMIES IN TASK 17"
 
 
 func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
@@ -207,6 +217,37 @@ func test_enemy_free_assertion_can_detect_a_real_enemy_group_member() -> void:
 		1,
 		"a real 'enemy' group member under the level must be counted"
 	)
+
+
+# H9: content-honesty guard -- a segment designated for a future enemy must
+# not look enemy-free to a player or a fresh-eyes reviewer. Only
+# PlantGauntlet carried the disclosure; JungleCorridor and CrateCadence did
+# not, even though 01-DESIGN.md §5 designates all three for an enemy once
+# Task 17 builds them.
+func test_enemy_bearing_segments_consistently_disclose_task_17() -> void:
+	var level := _instantiate_level()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	for segment_name: StringName in ENEMY_BEARING_SEGMENTS:
+		var title := level.get_node_or_null(
+			"Segments/%s/Title" % segment_name
+		) as Label3D
+		assert_not_null(
+			title,
+			"%s must author a Title label" % segment_name
+		)
+		if title == null:
+			continue
+		assert_true(
+			title.text.contains(TASK_17_DISCLOSURE),
+			(
+				"%s is designated to receive an enemy in Task 17 and must "
+				+ "disclose it, like the other enemy-bearing segments"
+			) % segment_name
+		)
 
 
 func test_required_jump_is_authored_inside_a_camera_region() -> void:
