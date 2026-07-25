@@ -45,6 +45,8 @@ IRON_CRATE_TYPE = "iron"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
+KNOWN_SCENE_SECTIONS = {"ext_resource", "sub_resource", "node"}
+INERT_SCENE_SECTIONS = {"gd_scene", "gd_resource"}
 
 Vector3 = tuple[float, float, float]
 Basis3 = tuple[Vector3, Vector3, Vector3]
@@ -978,6 +980,18 @@ def _parse_scene(path: Path) -> ParsedScene:
             current_properties = None
             header = stripped[1:-1]
             section_name = header.split(maxsplit=1)[0]
+            if (
+                section_name not in KNOWN_SCENE_SECTIONS
+                and section_name not in INERT_SCENE_SECTIONS
+            ):
+                raise ValueError(
+                    f"{path}: unrecognized scene section "
+                    f"[{section_name}] — the authoring lint has no "
+                    "rule for this syntax and cannot silently ignore "
+                    "it; teach the parser about it or confirm it "
+                    "carries no authoring-relevant data before adding "
+                    "it to INERT_SCENE_SECTIONS"
+                )
             attributes = _header_attributes(header)
             if section_name == "ext_resource":
                 resource_id = attributes.get("id", "")
@@ -1020,10 +1034,13 @@ def _parse_scene(path: Path) -> ParsedScene:
                 current_properties = node.properties
             continue
         match = PROPERTY_PATTERN.match(stripped)
-        if match is not None and current_properties is not None:
-            current_properties[match.group(1)] = (
-                match.group(2).strip()
+        if match is None or current_properties is None:
+            raise ValueError(
+                f"{path}: unclassifiable line outside any parsed "
+                f"section: {stripped!r} — the authoring lint cannot "
+                "silently drop authored content it doesn't recognize"
             )
+        current_properties[match.group(1)] = match.group(2).strip()
     return ParsedScene(path, ext_resources, sub_resources, nodes)
 
 

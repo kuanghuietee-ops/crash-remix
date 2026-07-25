@@ -380,6 +380,31 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 completed.stdout,
             )
 
+    def test_parser_fails_loudly_on_an_unrecognized_scene_section(
+        self,
+    ) -> None:
+        with self.assertRaises(ValueError) as raised:
+            find_authoring_violations(
+                FIXTURE_ROOT / "level_unclassifiable_section_bad.tscn"
+            )
+
+        self.assertIn("editable", str(raised.exception))
+        self.assertIn(
+            "unrecognized scene section",
+            str(raised.exception),
+        )
+
+    def test_parser_fails_loudly_on_a_line_it_cannot_classify(
+        self,
+    ) -> None:
+        with self.assertRaises(ValueError) as raised:
+            find_authoring_violations(
+                FIXTURE_ROOT / "level_unclassifiable_line_bad.tscn"
+            )
+
+        self.assertIn("mystery_field", str(raised.exception))
+        self.assertIn("unclassifiable line", str(raised.exception))
+
     def test_cli_fails_closed_for_an_unresolvable_requested_path(
         self,
     ) -> None:
