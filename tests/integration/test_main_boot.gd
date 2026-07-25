@@ -638,6 +638,40 @@ func test_wm_close_request_auto_pauses_and_snapshots_active_run() -> void:
 		assert_eq(stored.get("crates_broken"), [1.0])
 
 
+func test_app_pause_persists_the_in_memory_profile() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	# Simulate progress that only lives in the in-memory profile so far
+	# (01-DESIGN.md §4.4 names app-pause as its own independent
+	# profile-write trigger, not contingent on a level having just ended).
+	var modified_profile: Dictionary = (
+		root.get("profile").duplicate(true)
+	)
+	modified_profile["lifetime_wumpa"] = 4242
+	root.set("profile", modified_profile)
+
+	root.notification(NOTIFICATION_APPLICATION_PAUSED)
+
+	var stored: Variant = JSON.parse_string(
+		FileAccess.get_file_as_string(
+			TEST_SAVE_DIR.path_join("profile.json")
+		)
+	)
+	assert_true(
+		stored is Dictionary,
+		"app-pause must write profile.json even if no level has ended yet"
+	)
+	if stored is Dictionary:
+		assert_eq(
+			int(stored.get("lifetime_wumpa", -1)),
+			4242,
+			"app-pause must persist the current in-memory profile, not a stale one"
+		)
+
+
 func test_level_completion_deletes_session_snapshot() -> void:
 	var root := _instantiate_main()
 	if root == null:

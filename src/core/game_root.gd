@@ -185,6 +185,12 @@ func _notification(what: int) -> void:
 		what == NOTIFICATION_APPLICATION_PAUSED
 		or what == NOTIFICATION_WM_CLOSE_REQUEST
 	):
+		# 01-DESIGN.md §4.4: app-pause is its own profile-write trigger,
+		# independent of the session snapshot below (that covers the
+		# active run's checkpoint state; this covers whatever the
+		# in-memory profile already holds, in case the OS kills the app
+		# before another trigger gets a chance to persist it).
+		last_save_error = save_service.store_profile(save_dir, profile)
 		_pause_and_snapshot_active_run()
 
 
@@ -330,9 +336,9 @@ func _clear_session_snapshot() -> void:
 
 
 # 01-DESIGN.md §4.4 names four profile-write triggers: level end,
-# gem/relic/flawless award, boss defeat, app-pause. This is the only
-# store_profile() call site in the file, and that is deliberate, not an
-# accident, for three of the four:
+# gem/relic/flawless award, boss defeat, app-pause. This call site
+# covers three of the four (app-pause has its own call site in
+# _notification()):
 #   - level end: LevelSession.complete_level() is the one place a run
 #     can end (reached both by a normal Finish-area completion and by a
 #     mercy skip that completes the level, see
@@ -347,9 +353,6 @@ func _clear_session_snapshot() -> void:
 #     correctly so, since Phase 1 ships no boss level to defeat. Wiring
 #     this belongs with whichever task first builds boss content
 #     (Task 17 / Wave B), not here.
-# The one trigger that is missing and SHOULD exist today is app-pause;
-# see the app-pause snapshot/store_profile wiring near
-# _pause_and_snapshot_active_run().
 func _on_level_session_completed(results: Dictionary) -> void:
 	var meta := _active_level_meta
 	if meta == null and active_level_session != null:
