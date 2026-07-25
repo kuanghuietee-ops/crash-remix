@@ -150,20 +150,16 @@ static func time_bonus_s(
 	return 0.0
 
 
+## The sole caller (BreakableCrate.apply_bounce) always increments
+## _bounce_count from 0 immediately before calling this, and its own
+## _broken guard stops it from calling again once max_bounces is reached
+## -- so bounce_count is always in [1, max_bounces] here. See D11 in
+## handover/phase1/06-FIX-LEDGER.md for why the out-of-range guards this
+## used to carry were removed instead of speculatively tested.
 static func bounce_step(
 	bounce_count: int,
 	economy: EconomyTuning
 ) -> Dictionary:
-	if bounce_count <= 0:
-		return {
-			"wumpa": 0,
-			"breaks": false,
-		}
-	if bounce_count > economy.bounce_crate_max_bounces:
-		return {
-			"wumpa": 0,
-			"breaks": true,
-		}
 	return {
 		"wumpa": economy.bounce_crate_wumpa_per_bounce,
 		"breaks": bounce_count >= economy.bounce_crate_max_bounces,
