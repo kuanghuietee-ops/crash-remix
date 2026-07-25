@@ -371,6 +371,57 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 [],
             )
 
+    def test_scan_root_fails_closed_when_scenes_levels_does_not_resolve(
+        self,
+    ) -> None:
+        # R11: P1-10's fix was only ever proven for the recursion half
+        # (rglob vs glob); the scan-root PATH STRING half ("levels") was
+        # unprotected -- sabotaging it (e.g. to "levelz") leaves
+        # scenes/levels unresolved, and the old fallback silently widened
+        # the scan to the whole tree instead of failing. That "safety"
+        # was a coincidence of the broad fallback (real level content
+        # still happened to be nested somewhere underneath), not a
+        # verified mechanism, and it let unrelated content (e.g.
+        # addons/gut/**) reach rules it was never meant to be checked
+        # against. A scenes/ tree that exists but has no levels/ child
+        # must fail loudly instead of silently scanning something else.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            sandbox_root = Path(temporary_directory)
+            unrelated_root = sandbox_root / "scenes" / "segments"
+            unrelated_root.mkdir(parents=True)
+            (unrelated_root / "unrelated.tscn").write_text(
+                "\n".join(
+                    [
+                        "[gd_scene load_steps=1 format=3]",
+                        "",
+                        "[node name=\"Unrelated\" type=\"Node3D\"]",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as raised:
+                find_authoring_violations(sandbox_root)
+
+            self.assertIn("scenes", str(raised.exception))
+            self.assertIn("levels", str(raised.exception))
+
+    def test_scan_root_fails_closed_on_an_empty_levels_directory(
+        self,
+    ) -> None:
+        # A real scenes/levels/ directory that resolves but contains zero
+        # scenes is just as silently-wrong a signal as a scan root that
+        # fails to resolve at all -- fail closed instead of reporting
+        # zero violations for zero scanned files.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            sandbox_root = Path(temporary_directory)
+            (sandbox_root / "scenes" / "levels").mkdir(parents=True)
+
+            with self.assertRaises(ValueError) as raised:
+                find_authoring_violations(sandbox_root)
+
+            self.assertIn("levels", str(raised.exception))
+
     def test_collectible_level_without_meta_still_fires(self) -> None:
         self.assertEqual(
             self._rules("levels/level_no_meta_bad.tscn"),

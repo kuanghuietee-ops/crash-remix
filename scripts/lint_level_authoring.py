@@ -1445,12 +1445,41 @@ def _scene_files(root: Path) -> Iterable[Path]:
         if root.suffix == ".tscn":
             yield root
         return
-    scan_root = (
-        root / "scenes" / "levels"
-        if (root / "scenes" / "levels").is_dir()
-        else root
-    )
-    yield from sorted(scan_root.rglob("*.tscn"))
+    levels_root = root / "scenes" / "levels"
+    if levels_root.is_dir():
+        scene_files = sorted(levels_root.rglob("*.tscn"))
+        if not scene_files:
+            # R11: a scan root that exists but contains zero scenes is
+            # just as silently-wrong a signal as one that fails to
+            # resolve at all -- fail closed instead of reporting zero
+            # violations for zero scanned files.
+            raise ValueError(
+                f"{levels_root}: exists but contains no .tscn files -- "
+                "a real level set should never scan empty; fix the "
+                "directory contents instead of silently reporting zero "
+                "violations"
+            )
+        yield from scene_files
+        return
+    if (root / "scenes").is_dir():
+        # R11: P1-10's scan-root fix only ever proved the recursion half
+        # (rglob vs glob) is caught; the path STRING half ("levels")
+        # was not -- a one-character sabotage of that segment (or a
+        # genuine directory-structure regression) leaves scenes/levels/
+        # unresolved. The old fallback silently widened the scan to the
+        # whole `root` tree in that case, which happened to still find
+        # real level content nested somewhere underneath (a coincidence
+        # of the broad fallback, not a verified mechanism) while also
+        # picking up unrelated content (e.g. addons/gut/**) this lint
+        # has no rule for. `scenes/` existing without its expected
+        # `levels/` child is exactly that sabotage's shape, so fail
+        # loudly here instead of silently scanning the wrong root.
+        raise ValueError(
+            f"{root}: scenes/ exists but scenes/levels/ does not -- the "
+            "authoring lint's scan root failed to resolve to real level "
+            "content; fix the path or the directory structure instead "
+            "of letting the scan silently widen to the whole tree"
+        )
 
 
 def _find_repo_root(root: Path) -> Path:
