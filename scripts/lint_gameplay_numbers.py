@@ -30,7 +30,11 @@ class UnscannableSourceError(Exception):
         self.detail = detail
 
 
-def find_numeric_literals(source: str, path: str) -> list[NumericLiteralFinding]:
+def find_numeric_literals(
+    source: str,
+    path: str,
+    allowed_values: tuple[Decimal, ...] = (Decimal(0), Decimal(1)),
+) -> list[NumericLiteralFinding]:
     """Return disallowed numeric tokens, ignoring comments and string contents."""
     findings: list[NumericLiteralFinding] = []
     token_stream = tokenize.generate_tokens(io.StringIO(source).readline)
@@ -38,7 +42,7 @@ def find_numeric_literals(source: str, path: str) -> list[NumericLiteralFinding]
         for token in token_stream:
             if token.type != tokenize.NUMBER:
                 continue
-            if _is_allowed_literal(token.string):
+            if _is_allowed_literal(token.string, allowed_values):
                 continue
             findings.append(
                 NumericLiteralFinding(
@@ -71,7 +75,7 @@ def _gdscript_files(paths: Iterable[Path]) -> set[Path]:
     return files
 
 
-def _is_allowed_literal(literal: str) -> bool:
+def _is_allowed_literal(literal: str, allowed_values: tuple[Decimal, ...]) -> bool:
     normalized = literal.replace("_", "").lower()
     try:
         if normalized.startswith(("0x", "0b", "0o")):
@@ -80,7 +84,32 @@ def _is_allowed_literal(literal: str) -> bool:
             value = Decimal(normalized)
     except (InvalidOperation, ValueError):
         return False
-    return value in (Decimal(0), Decimal(1))
+    return value in allowed_values
+
+
+# A13: src/core/scalar_math.gd sits outside src/gameplay/** (this lint's
+# default scan root below), but src/gameplay/** code preloads it and
+# references its named constants (e.g. ScalarMathType.HALF) instead of a
+# bare numeric literal -- the scan above can never see a value defined
+# there. scalar_math.gd is a deliberately closed set of pure mathematical
+# identities (half, double -- the same category as Godot's own built-in
+# PI/TAU), not a general escape hatch for gameplay tuning values, so this
+# frozen allow-list closes the channel: any literal in that file outside
+# this exact set fails loudly, the same way a gameplay literal violation
+# does, instead of silently laundering a new gameplay-affecting number
+# past src/gameplay/**'s scan.
+SCALAR_MATH_PATH = Path(__file__).resolve().parent.parent / "src" / "core" / "scalar_math.gd"
+SCALAR_MATH_ALLOWED_VALUES = (Decimal("0.5"), Decimal("2.0"))
+
+
+def check_scalar_math_channel(
+    path: Path = SCALAR_MATH_PATH,
+) -> list[NumericLiteralFinding]:
+    """Return any scalar_math.gd literal outside its frozen allow-list."""
+    if not path.is_file():
+        return []
+    source = path.read_text(encoding="utf-8")
+    return find_numeric_literals(source, path.as_posix(), SCALAR_MATH_ALLOWED_VALUES)
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -99,6 +128,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parse_args(sys.argv[1:] if argv is None else argv)
     try:
         findings = lint_paths(arguments.paths)
+        # Always checked regardless of the caller's scan paths: this is a
+        # fixed policy check on the one known numeric-laundering channel
+        # into src/gameplay/**, not a directory the caller opts into (A13).
+        findings += check_scalar_math_channel()
     except UnscannableSourceError as error:
         print(error, file=sys.stderr)
         print("Gameplay numeric-literal lint failed closed: source was not fully scanned.")

@@ -2,9 +2,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from decimal import Decimal
 from pathlib import Path
 
-from scripts.lint_gameplay_numbers import find_numeric_literals
+from scripts.lint_gameplay_numbers import (
+    SCALAR_MATH_ALLOWED_VALUES,
+    check_scalar_math_channel,
+    find_numeric_literals,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -72,6 +77,111 @@ var explanation := """A multiline string containing 99."""
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(source_path.as_posix(), result.stdout + result.stderr)
         self.assertIn("unscannable", (result.stdout + result.stderr).lower())
+
+
+class ScalarMathLaunderingChannelTests(unittest.TestCase):
+    """A13: src/core/scalar_math.gd sits outside src/gameplay/** (this
+    lint's default scan root), but src/gameplay/** code preloads it and
+    references its named constants (e.g. ScalarMathType.HALF) -- a bare
+    numeric literal never appears in src/gameplay/** for these values, so
+    the directory scan above cannot see them. These tests cover the
+    closed, frozen allow-list check that closes that channel.
+    """
+
+    def test_allowed_values_are_frozen_to_exactly_half_and_double(self) -> None:
+        # Guard the guard: if this ever silently grows, the channel is
+        # open again in spirit even though the mechanism still runs.
+        self.assertEqual(
+            SCALAR_MATH_ALLOWED_VALUES,
+            (Decimal("0.5"), Decimal("2.0")),
+        )
+
+    def test_source_matching_the_allow_list_is_accepted(self) -> None:
+        source = (
+            "class_name ScalarMath\n"
+            "extends RefCounted\n"
+            "\n"
+            "const HALF := 0.5\n"
+            "const DOUBLE := 2.0\n"
+        )
+
+        self.assertEqual(
+            find_numeric_literals(
+                source,
+                "scalar_math.gd",
+                SCALAR_MATH_ALLOWED_VALUES,
+            ),
+            [],
+        )
+
+    def test_a_value_outside_the_allow_list_is_rejected(self) -> None:
+        # Simulates the exact abuse this finding is worried about: a
+        # future contributor laundering a real gameplay-tunable number
+        # (here, 7.0) past src/gameplay/**'s literal scan via this file.
+        source = (
+            "class_name ScalarMath\n"
+            "extends RefCounted\n"
+            "\n"
+            "const HALF := 0.5\n"
+            "const DOUBLE := 2.0\n"
+            "const SEVEN := 7.0\n"
+        )
+
+        findings = find_numeric_literals(
+            source,
+            "scalar_math.gd",
+            SCALAR_MATH_ALLOWED_VALUES,
+        )
+
+        self.assertEqual([finding.literal for finding in findings], ["7.0"])
+
+    def test_the_real_scalar_math_file_matches_its_own_frozen_allow_list(
+        self,
+    ) -> None:
+        # The audit's own claim: no instance of abuse exists yet. This is
+        # that verification, pinned as a permanent regression instead of
+        # a one-off manual check.
+        self.assertEqual(check_scalar_math_channel(), [])
+
+    def test_check_scalar_math_channel_flags_a_rogue_constant(self) -> None:
+        # Exercises the same synthetic-file seam check_scalar_math_channel
+        # itself uses, without ever touching the real repo file on disk.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            rogue_path = Path(temporary_directory) / "scalar_math.gd"
+            rogue_path.write_text(
+                (
+                    "class_name ScalarMath\n"
+                    "extends RefCounted\n"
+                    "\n"
+                    "const HALF := 0.5\n"
+                    "const DOUBLE := 2.0\n"
+                    "const SEVEN := 7.0\n"
+                ),
+                encoding="utf-8",
+            )
+
+            findings = check_scalar_math_channel(rogue_path)
+
+        self.assertEqual([finding.literal for finding in findings], ["7.0"])
+
+    def test_check_scalar_math_channel_is_a_noop_for_a_missing_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            missing_path = Path(temporary_directory) / "does_not_exist.gd"
+
+            self.assertEqual(check_scalar_math_channel(missing_path), [])
+
+    def test_cli_passes_on_the_real_repository_unmodified(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(LINT_SCRIPT)],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
