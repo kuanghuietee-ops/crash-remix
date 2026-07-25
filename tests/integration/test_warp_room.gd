@@ -218,6 +218,45 @@ func test_real_boss_portal_requires_each_level_clear_individually() -> void:
 		assert_false(boss.monitoring)
 
 
+func test_portal_with_no_authored_display_name_falls_back_and_warns() -> void:
+	# I18: scenes/props/portal.tscn's own base already authors
+	# metadata/display_name = "" -- the key EXISTS with an empty value,
+	# so get_meta("display_name", portal_id)'s default argument never
+	# fires for a portal that omits the override. Simulates a future
+	# portal instance that forgets the override.
+	var room := _instantiate_room()
+	if room == null:
+		return
+	await wait_process_frames(1)
+	_configure_room(room, SaveModel.fresh())
+	var portal := _portal_for(
+		_portals(room),
+		&"wr1_n_sanity_beach"
+	)
+	assert_not_null(portal)
+	if portal == null:
+		return
+	portal.set_meta("display_name", "")
+
+	_configure_room(room, SaveModel.fresh())
+
+	assert_push_error("is missing an authored display_name")
+	var label := portal.get_node("Label") as Label3D
+	assert_ne(
+		label.text,
+		"",
+		"a portal missing its display name must never render blank"
+	)
+	assert_eq(
+		label.text,
+		"wr1_n_sanity_beach",
+		(
+			"a portal missing its display name must fall back to "
+			+ "something visible in the 3D world, not a blank label"
+		)
+	)
+
+
 func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 	if not ResourceLoader.exists(MAIN_SCENE_PATH):
 		assert_true(false, "main scene must exist")

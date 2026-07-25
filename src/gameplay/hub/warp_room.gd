@@ -169,9 +169,31 @@ func _apply_portal_states() -> void:
 		_configure_relic_trigger(portal, state)
 		var label := portal.get_node_or_null("Label") as Label3D
 		if label != null:
-			label.text = String(
-				portal.get_meta("display_name", portal_id)
-			)
+			label.text = _display_name_for(portal, portal_id)
+
+
+func _display_name_for(
+	portal: Area3D,
+	portal_id: StringName
+) -> String:
+	# scenes/props/portal.tscn's own base already authors
+	# metadata/display_name = "" -- the key EXISTS with an empty value,
+	# so get_meta's default argument (portal_id) never fires for a
+	# portal instance that forgets to override it. Fail loudly (so a
+	# missing authored name is caught, not silently shipped) while still
+	# falling back to something visible in the 3D world instead of a
+	# blank label.
+	var display_name := String(
+		portal.get_meta("display_name", portal_id)
+	)
+	if not display_name.is_empty():
+		return display_name
+	push_error(
+		"Portal '%s' is missing an authored display_name; "
+		% [portal_id]
+		+ "falling back to the level id."
+	)
+	return String(portal_id)
 
 
 func _configure_relic_trigger(
