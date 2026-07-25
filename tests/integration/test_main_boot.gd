@@ -1096,6 +1096,146 @@ func test_hud_pause_button_reaches_the_real_pause_overlay() -> void:
 	assert_true(get_tree().paused)
 
 
+func test_pause_overlay_resume_button_returns_to_the_same_level() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	var overlay := root.get_node("UI/PauseOverlay")
+	watch_signals(overlay)
+
+	overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Resume"
+	).emit_signal(&"pressed")
+
+	assert_signal_emitted(overlay, &"resume_requested")
+	assert_eq(root.call("state_name"), &"level")
+	assert_false(get_tree().paused)
+	assert_same(
+		root.get_node_or_null("Content/NSanityBeach"),
+		level,
+		"resume must return to the same in-progress level, not reload it"
+	)
+
+
+func test_pause_overlay_retry_button_restarts_the_active_level_fresh() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var first_crate := _crate(level, 1)
+	assert_not_null(first_crate, "the real level must author crate 1")
+	if first_crate == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	player.get_node("SpinArea").emit_signal(
+		&"body_entered",
+		first_crate
+	)
+	await wait_process_frames(1)
+	assert_true(
+		level.run_state.broken_crate_ids.size() > 0,
+		"the retry proof needs a real crate broken before retrying"
+	)
+
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	var overlay := root.get_node("UI/PauseOverlay")
+	watch_signals(overlay)
+
+	overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Retry"
+	).emit_signal(&"pressed")
+
+	assert_signal_emitted(overlay, &"retry_requested")
+	var fresh_level := await _wait_for_authored_level(root)
+	assert_eq(root.call("state_name"), &"level")
+	assert_not_null(fresh_level)
+	if fresh_level == null:
+		return
+	assert_not_same(
+		fresh_level,
+		level,
+		"retry must throw away the in-progress level, not resume it"
+	)
+	assert_eq(
+		fresh_level.run_state.broken_crate_ids,
+		[],
+		"a real retry must not carry over the previous run's broken crates"
+	)
+
+
+func test_pause_overlay_level_list_button_opens_the_level_list() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{
+				"type": &"portal_enter",
+				"level_id": PLACEHOLDER_LEVEL_ID,
+			}
+		),
+		OK
+	)
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	var overlay := root.get_node("UI/PauseOverlay")
+	watch_signals(overlay)
+
+	overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/LevelList"
+	).emit_signal(&"pressed")
+
+	assert_signal_emitted(overlay, &"level_list_requested")
+	assert_eq(root.call("state_name"), &"paused")
+	assert_true(root.get_node("UI/LevelListOverlay").visible)
+	assert_false(
+		overlay.visible,
+		"opening the level list from pause must hide the pause overlay"
+	)
+
+
+func test_pause_overlay_quit_button_returns_to_the_hub() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	assert_eq(
+		root.call("dispatch", {"type": &"pause"}),
+		OK
+	)
+	var overlay := root.get_node("UI/PauseOverlay")
+	watch_signals(overlay)
+
+	overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Quit"
+	).emit_signal(&"pressed")
+
+	assert_signal_emitted(overlay, &"quit_requested")
+	assert_eq(root.call("state_name"), &"warp_room")
+	assert_false(get_tree().paused)
+
+
 func test_level_touch_exclusions_include_the_mercy_panel() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -1175,6 +1315,21 @@ func _wait_for_authored_level(root: Node) -> LevelSession:
 			return level
 		await wait_process_frames(1)
 	assert_true(false, "the authored level must finish threaded loading")
+	return null
+
+
+func _crate(level: Node, crate_id: int) -> Node:
+	for candidate: Node in level.find_children(
+		"*",
+		"StaticBody3D",
+		true,
+		false
+	):
+		if (
+			candidate.has_method("apply_verb")
+			and int(candidate.get("crate_id")) == crate_id
+		):
+			return candidate
 	return null
 
 
