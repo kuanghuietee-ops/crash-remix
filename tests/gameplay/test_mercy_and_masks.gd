@@ -4,6 +4,14 @@ const PLAYER_SCENE := "res://scenes/player/player.tscn"
 const LEVEL_SESSION_PATH := "res://src/gameplay/run/level_session.gd"
 const CHECKPOINT_SCENE := "res://scenes/props/crate_checkpoint.tscn"
 const WUMPA_SCENE := "res://scenes/props/wumpa.tscn"
+# F17: deliberately different from data/tuning/economy.tres's authored
+# mask_stack_maximum (2) so these tests assert against a value the
+# implementation could only produce by genuinely reading the tuned field at
+# run time, not by re-reading the same live resource the assertion also
+# reads (which would stay green even if the cap were hardcoded to the
+# authored default) -- see handover/phase1/06-FIX-LEDGER.md F17 and the D5
+# precedent (commit c176279) this follows.
+const LIVE_MASK_STACK_PROBE := 5
 
 var _catalog: GameplayTuning
 var _economy: EconomyTuning
@@ -232,16 +240,17 @@ func test_mask_absorbs_exactly_one_hit_before_one_hit_death() -> void:
 func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
 	var tuned_hit_grace_s := 0.75
 	_economy.mask_hit_invulnerability_s = tuned_hit_grace_s
+	_economy.mask_stack_maximum = LIVE_MASK_STACK_PROBE
 	var setup := _new_session()
 	if setup.is_empty():
 		return
 	var player: CharacterBody3D = setup["player"]
 	var contact_at_s := 20.0
-	for _mask_index: int in range(_economy.mask_stack_maximum):
+	for _mask_index: int in range(LIVE_MASK_STACK_PROBE):
 		player.call("grant_mask", contact_at_s)
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum
+		LIVE_MASK_STACK_PROBE
 	)
 
 	assert_false(player.call("receive_hit", contact_at_s))
@@ -250,7 +259,7 @@ func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
 
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum - 1,
+		LIVE_MASK_STACK_PROBE - 1,
 		"one contact instant must consume exactly one mask"
 	)
 	assert_false(
@@ -270,7 +279,7 @@ func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
 	))
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum - 1
+		LIVE_MASK_STACK_PROBE - 1
 	)
 	assert_false(player.call(
 		"receive_hit",
@@ -278,7 +287,7 @@ func test_one_contact_instant_cannot_drain_the_mask_stack() -> void:
 	))
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum - 2,
+		LIVE_MASK_STACK_PROBE - 2,
 		"the exact tuned boundary must permit the next distinct hit"
 	)
 
@@ -329,6 +338,7 @@ func test_real_hurtbox_routes_tagged_damage_contact_into_mask_absorb() -> void:
 
 
 func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void:
+	_economy.mask_stack_maximum = LIVE_MASK_STACK_PROBE
 	var setup := _new_session()
 	if setup.is_empty():
 		return
@@ -344,17 +354,17 @@ func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void
 		if not player.has_method(method_name):
 			return
 	var started_at_s := 30.0
-	for _mask: int in range(_economy.mask_stack_maximum):
+	for _mask: int in range(LIVE_MASK_STACK_PROBE):
 		assert_false(player.call("grant_mask", started_at_s))
 
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum
+		LIVE_MASK_STACK_PROBE
 	)
 	assert_true(player.call("grant_mask", started_at_s))
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum
+		LIVE_MASK_STACK_PROBE
 	)
 	assert_almost_eq(
 		player.call(
@@ -372,7 +382,7 @@ func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void
 	assert_false(player.call("receive_hit", during_s))
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum
+		LIVE_MASK_STACK_PROBE
 	)
 	assert_false(player.call("is_respawning"))
 
@@ -384,7 +394,7 @@ func test_third_mask_starts_tuned_invincibility_and_keeps_stack_capped() -> void
 	assert_false(player.call("receive_hit", expiry_s))
 	assert_eq(
 		player.call("mask_count"),
-		_economy.mask_stack_maximum - 1
+		LIVE_MASK_STACK_PROBE - 1
 	)
 
 
