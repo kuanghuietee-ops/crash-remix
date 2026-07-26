@@ -82,7 +82,8 @@ func _ready() -> void:
 		catalog.swing,
 		router.get("buffer"),
 		catalog.economy,
-		true
+		true,
+		catalog.hog
 	)
 	var phase_reset_callback := Callable(
 		PhaseState,
@@ -143,7 +144,8 @@ func refresh_tuning() -> void:
 		catalog.swing,
 		router.get("buffer"),
 		catalog.economy,
-		true
+		true,
+		catalog.hog
 	)
 	_refresh_traversal_rails(catalog.camera)
 	_refresh_swing_anchors(catalog.swing)

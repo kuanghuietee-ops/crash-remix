@@ -1,0 +1,95 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(22, 12, 132)
+
+[node name="HogDismountFinish" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 3, -7)
+text = "FINAL LINE — DISMOUNT AHEAD"
+font_size = 43
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="RewardLine" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -58)
+
+[node name="DismountLine" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -112)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -128)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(18, 1, 12)
+color = Color(0.32, 0.18, 0.05, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -64)
+size = Vector3(18, 1, 116)
+color = Color(0.38, 0.22, 0.07, 1)
+
+[node name="DismountArchLeft" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-7.2, 2, -112)
+size = Vector3(2.4, 5, 3)
+color = Color(0.16, 0.58, 0.24, 1)
+
+[node name="DismountArchRight" parent="." instance=ExtResource("1_platform")]
+position = Vector3(7.2, 2, -112)
+size = Vector3(2.4, 5, 3)
+color = Color(0.16, 0.58, 0.24, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -124)
+size = Vector3(18, 1, 12)
+color = Color(0.42, 0.26, 0.09, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -64)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="Crate29" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-3.5, 0.5, -34)
+crate_id = 29
+segment_group = &"Hog Dismount Finish"
+break_on_touch = true
+
+[node name="Crate30" parent="." instance=ExtResource("3_crate")]
+position = Vector3(3.5, 0.5, -52)
+crate_id = 30
+segment_group = &"Hog Dismount Finish"
+break_on_touch = true
+
+[node name="Crate31" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-3.5, 0.5, -72)
+crate_id = 31
+segment_group = &"Hog Dismount Finish"
+break_on_touch = true
+
+[node name="Crate32" parent="." instance=ExtResource("3_crate")]
+position = Vector3(3.5, 0.5, -92)
+crate_id = 32
+segment_group = &"Hog Dismount Finish"
+break_on_touch = true
+
+[node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(-3.5, 1, -40)
+
+[node name="WumpaB" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(3.5, 1, -58)

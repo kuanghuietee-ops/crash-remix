@@ -1,0 +1,103 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(22, 12, 132)
+
+[node name="HogCrescendo" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 3, -7)
+text = "CRESCENDO — THREE FAST READS"
+font_size = 42
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="ReadA" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -28)
+
+[node name="ReadB" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -62)
+
+[node name="ReadC" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -96)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -128)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(18, 1, 12)
+color = Color(0.34, 0.19, 0.055, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -64)
+size = Vector3(18, 1, 116)
+color = Color(0.3, 0.16, 0.045, 1)
+
+[node name="LeftBlockA" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-5.8, 1.7, -28)
+size = Vector3(6.4, 4.4, 3.2)
+color = Color(0.13, 0.3, 0.1, 1)
+
+[node name="RightBlockB" parent="." instance=ExtResource("1_platform")]
+position = Vector3(5.8, 1.7, -62)
+size = Vector3(6.4, 4.4, 3.2)
+color = Color(0.13, 0.3, 0.1, 1)
+
+[node name="LeftBlockC" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-5.8, 1.7, -96)
+size = Vector3(6.4, 4.4, 3.2)
+color = Color(0.13, 0.3, 0.1, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -124)
+size = Vector3(18, 1, 12)
+color = Color(0.34, 0.19, 0.055, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -64)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="Crate25" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4.2, 0.5, -26)
+crate_id = 25
+segment_group = &"Hog Crescendo"
+break_on_touch = true
+
+[node name="Crate26" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-4.2, 0.5, -60)
+crate_id = 26
+segment_group = &"Hog Crescendo"
+break_on_touch = true
+
+[node name="Crate27" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4.2, 0.5, -94)
+crate_id = 27
+segment_group = &"Hog Crescendo"
+break_on_touch = true
+
+[node name="Crate28" parent="." instance=ExtResource("3_crate")]
+position = Vector3(0, 0.5, -114)
+crate_id = 28
+segment_group = &"Hog Crescendo"
+break_on_touch = true
+
+[node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(4.2, 1, -32)
+
+[node name="WumpaB" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(-4.2, 1, -66)

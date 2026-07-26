@@ -1,0 +1,103 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(22, 12, 132)
+
+[node name="HogWeaveGates" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 3, -7)
+text = "WEAVE GATES — PURE STEERING"
+font_size = 44
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="GateA" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -30)
+
+[node name="GateB" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -64)
+
+[node name="GateC" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -98)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -128)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(18, 1, 12)
+color = Color(0.46, 0.26, 0.09, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -64)
+size = Vector3(18, 1, 116)
+color = Color(0.38, 0.22, 0.08, 1)
+
+[node name="LeftGateA" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-5.8, 1.8, -30)
+size = Vector3(6.4, 4.6, 3.4)
+color = Color(0.16, 0.36, 0.12, 1)
+
+[node name="RightGateB" parent="." instance=ExtResource("1_platform")]
+position = Vector3(5.8, 1.8, -64)
+size = Vector3(6.4, 4.6, 3.4)
+color = Color(0.16, 0.36, 0.12, 1)
+
+[node name="LeftGateC" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-5.8, 1.8, -98)
+size = Vector3(6.4, 4.6, 3.4)
+color = Color(0.16, 0.36, 0.12, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -124)
+size = Vector3(18, 1, 12)
+color = Color(0.43, 0.25, 0.09, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -64)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="Crate5" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4.5, 0.5, -28)
+crate_id = 5
+segment_group = &"Hog Weave Gates"
+break_on_touch = true
+
+[node name="Crate6" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-4.5, 0.5, -62)
+crate_id = 6
+segment_group = &"Hog Weave Gates"
+break_on_touch = true
+
+[node name="Crate7" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4.5, 0.5, -96)
+crate_id = 7
+segment_group = &"Hog Weave Gates"
+break_on_touch = true
+
+[node name="Crate8" parent="." instance=ExtResource("3_crate")]
+position = Vector3(0, 0.5, -116)
+crate_id = 8
+segment_group = &"Hog Weave Gates"
+break_on_touch = true
+
+[node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(4.5, 1, -32)
+
+[node name="WumpaB" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(-4.5, 1, -66)

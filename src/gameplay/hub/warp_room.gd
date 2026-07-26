@@ -107,7 +107,8 @@ func _configure_player() -> void:
 		_catalog.swing,
 		router.buffer,
 		_catalog.economy,
-		_phase_available
+		_phase_available,
+		_catalog.hog
 	)
 	player.call("set_spawn_transform", player.global_transform)
 	player.get_node("BlobShadow").call(

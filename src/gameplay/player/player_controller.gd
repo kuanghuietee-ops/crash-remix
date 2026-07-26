@@ -44,6 +44,7 @@ var _wall_run_tuning: WallRunTuning
 var _grind_tuning: GrindTuning
 var _swing_tuning: SwingTuning
 var _economy_tuning: EconomyTuning
+var _hog_tuning: HogTuning
 var _intents: InputIntentBuffer
 var _phase_enabled: bool
 var _state_machine: PlayerStateMachineType = PlayerStateMachineType.new()
@@ -55,6 +56,7 @@ var _spin_area: Area3D
 var _slam_area: Area3D
 var _corridor_forward := Vector3.FORWARD
 var _chase_auto_run_remaining_s: float
+var _ride_mounted: bool
 var _spawn_transform := Transform3D.IDENTITY
 var _last_state := &""
 var _last_spin_active: bool
@@ -110,7 +112,8 @@ func configure(
 	swing_tuning: SwingTuning,
 	intents: InputIntentBuffer,
 	economy_tuning: EconomyTuning,
-	phase_enabled: bool
+	phase_enabled: bool,
+	hog_tuning: HogTuning = null
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning
@@ -119,6 +122,7 @@ func configure(
 	_grind_tuning = grind_tuning
 	_swing_tuning = swing_tuning
 	_economy_tuning = economy_tuning
+	_hog_tuning = hog_tuning
 	_phase_enabled = phase_enabled
 	if is_instance_valid(_active_swing_anchor):
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
@@ -140,6 +144,44 @@ func set_corridor_forward(forward: Vector3) -> void:
 
 func set_chase_auto_run_duration(duration_s: float) -> void:
 	_chase_auto_run_remaining_s = maxf(duration_s, 0.0)
+
+
+func mount_hog() -> void:
+	if _hog_tuning == null:
+		return
+	_ride_mounted = true
+	_chase_auto_run_remaining_s = 0.0
+	_clear_rail_state()
+	_clear_wall_run_state()
+	_clear_swing_state()
+	_clear_bounce_timing_window()
+	_state_machine.enter_ride(MonotonicClockType.now_s())
+	_apply_character_dimensions(_state_machine.state)
+	_apply_motion_mode(_state_machine.state)
+	_emit_state_changes(
+		_state_machine.state,
+		_state_machine.is_spinning
+	)
+
+
+func dismount_hog() -> void:
+	if not _ride_mounted:
+		return
+	_ride_mounted = false
+	_state_machine.exit_ride(
+		MonotonicClockType.now_s(),
+		is_on_floor()
+	)
+	_apply_character_dimensions(_state_machine.state)
+	_apply_motion_mode(_state_machine.state)
+	_emit_state_changes(
+		_state_machine.state,
+		_state_machine.is_spinning
+	)
+
+
+func is_hog_mounted() -> bool:
+	return _ride_mounted
 
 
 func set_spawn_transform(spawn_transform: Transform3D) -> void:
@@ -264,7 +306,8 @@ func advance_logic(
 		_input_tuning.action_buffer_s
 	)
 	if (
-		_phase_enabled
+		not _ride_mounted
+		and _phase_enabled
 		and _input_tuning.phase_button_unlocked
 		and phase_press != null
 	):
@@ -292,7 +335,8 @@ func advance_logic(
 		decision.state,
 		delta_s,
 		_corridor_forward,
-		_move_tuning
+		_move_tuning,
+		_hog_tuning
 	)
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
@@ -312,11 +356,13 @@ func advance_logic(
 				decision.impulse,
 				velocity,
 				_corridor_forward,
-				_move_tuning
+				_move_tuning,
+				_hog_tuning
 			)
 		var tap_height_m := tap_height_for_impulse(
 			decision.impulse,
-			_move_tuning
+			_move_tuning,
+			_hog_tuning
 		)
 		if decision.impulse != PlayerFrameDecisionType.IMPULSE_BODY_SLAM:
 			_active_jump_tap_height_m = tap_height_m
@@ -508,13 +554,17 @@ static func edge_nudge_directions(
 
 static func tap_height_for_impulse(
 	impulse: StringName,
-	move_tuning: MoveTuning
+	move_tuning: MoveTuning,
+	hog_tuning: HogTuning = null
 ) -> float:
 	match impulse:
 		PlayerFrameDecisionType.IMPULSE_DOUBLE_JUMP:
 			return move_tuning.double_jump_tap_height_m
 		PlayerFrameDecisionType.IMPULSE_JUMP:
 			return move_tuning.jump_tap_height_m
+		PlayerFrameDecisionType.IMPULSE_RIDE_JUMP:
+			if hog_tuning != null:
+				return hog_tuning.hog_jump_height_m
 	return 0.0
 
 
@@ -603,6 +653,10 @@ func respawn() -> void:
 	_clear_swing_state()
 	_clear_bounce_timing_window()
 	_state_machine = PlayerStateMachineType.new()
+	if _ride_mounted and _hog_tuning != null:
+		_state_machine.enter_ride(
+			MonotonicClockType.now_s()
+		)
 	_last_state = &""
 	_last_spin_active = false
 	_fall_apex_y = global_position.y

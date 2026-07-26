@@ -59,7 +59,7 @@ fi
 
 grep -qE '^TUNING FINGERPRINT$' "$runtime_log"
 grep -qE '^[0-9a-f]{64}$' "$runtime_log"
-for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase; do
+for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase hog; do
     grep -qE "^res://data/tuning/${tuning_path}\\.tres$" "$runtime_log"
 done
 grep -qE '^LEVEL META$' "$runtime_log"
@@ -67,5 +67,6 @@ grep -qE '^res://data/tuning/levels/n_sanity_beach\.tres$' "$runtime_log"
 grep -qE '^FINGERPRINT [0-9a-f]{12}$' "$runtime_log"
 grep -qE '^EXPORTED LEVEL META SMOKE READY$' "$runtime_log"
 grep -qE '^EXPORTED BOULDERS SMOKE READY$' "$runtime_log"
+grep -qE '^EXPORTED HOG WILD SMOKE READY$' "$runtime_log"
 
 echo "Exported tuning smoke passed"

@@ -35,6 +35,7 @@ var _player: Node
 var _crates_by_id: Dictionary = {}
 var _enemies: Array[Node] = []
 var _chase_hazards: Array[Node] = []
+var _hog_mounts: Array[Node] = []
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -82,6 +83,7 @@ func configure(
 	_crates_by_id.clear()
 	_enemies.clear()
 	_chase_hazards.clear()
+	_hog_mounts.clear()
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
@@ -141,6 +143,7 @@ func configure(
 	if _player is Node3D:
 		_start_transform = (_player as Node3D).global_transform
 	_discover_and_configure_chase_hazards()
+	_discover_and_configure_hog_mounts()
 	if _player != null and _player.has_signal(&"respawn_started"):
 		if not _player.is_connected(
 			&"respawn_started",
@@ -232,6 +235,33 @@ func _collect_chase_hazard_descendants(parent: Node) -> void:
 		):
 			_chase_hazards.append(child)
 		_collect_chase_hazard_descendants(child)
+
+
+func _discover_and_configure_hog_mounts() -> void:
+	_hog_mounts.clear()
+	_collect_hog_mount_descendants(self)
+	for mount: Node in _hog_mounts:
+		if (
+			is_instance_valid(mount)
+			and mount.has_method("configure")
+			and _player is Node3D
+		):
+			mount.call(
+				"configure",
+				_player as Node3D
+			)
+
+
+func _collect_hog_mount_descendants(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if (
+			child.is_in_group(&"hog_mount")
+			and child.has_method(
+				"reset_for_player_position"
+			)
+		):
+			_hog_mounts.append(child)
+		_collect_hog_mount_descendants(child)
 
 
 func _collect_enemy_descendants(parent: Node) -> void:
@@ -1197,9 +1227,15 @@ func _connect_once(
 func _set_player_spawn(target_checkpoint_id: int) -> void:
 	if _player == null or not _player.has_method("set_spawn_transform"):
 		return
+	var spawn_transform := _spawn_transform_for_checkpoint(
+		target_checkpoint_id
+	)
 	_player.call(
 		"set_spawn_transform",
-		_spawn_transform_for_checkpoint(target_checkpoint_id)
+		spawn_transform
+	)
+	_reset_hog_mounts_for_position(
+		spawn_transform.origin
 	)
 
 
@@ -1225,6 +1261,22 @@ func _reset_chase_hazards_for_checkpoint(
 			hazard.call(
 				"reset_for_player_position",
 				spawn_position
+			)
+
+
+func _reset_hog_mounts_for_position(
+	player_position: Vector3
+) -> void:
+	for mount: Node in _hog_mounts:
+		if (
+			is_instance_valid(mount)
+			and mount.has_method(
+				"reset_for_player_position"
+			)
+		):
+			mount.call(
+				"reset_for_player_position",
+				player_position
 			)
 
 

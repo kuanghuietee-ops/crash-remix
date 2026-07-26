@@ -222,18 +222,23 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"boulder_kill_distance_m",
 		&"boulder_start_gap_m",
 	],
+	&"hog": [
+		&"ride_speed_mps",
+		&"steer_lateral_speed_mps",
+		&"hog_jump_height_m",
+	],
 }
-# Task 17 adds whole enemy sections, which _backfill_missing_sections
-# migrates atomically for every pre-enemy override. Their initial fields
-# therefore join this baseline; later fields inside those sections still
-# belong in a legacy cohort. Computed as the
+# Tasks 17, 19, and 20 add whole enemy, chase, and hog sections, which
+# _backfill_missing_sections migrates atomically for every older override.
+# Their initial fields therefore join this baseline; later fields inside
+# those sections still belong in a legacy cohort. Computed as the
 # sha256 of the sorted "section.field" lines for every entry in that
 # dictionary — recompute deliberately (see
 # test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
 # ever legitimately needs to change, never to make a wrongly-placed new
 # field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"b2e90ef3864f661683761ce419d61d755f949ed9c11ce880503fd7cce81ad68c"
+	"4943bdf335e6432df4440e9830a581447083ce318ad2af82b6260ff15fe8f5c8"
 )
 
 
@@ -271,6 +276,7 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("enemy_skink")), "EnemyTuning")
 	assert_eq(_global_class_name(catalog.get("enemy_plant")), "EnemyTuning")
 	assert_eq(_global_class_name(catalog.get("chase")), "ChaseTuning")
+	assert_eq(_global_class_name(catalog.get("hog")), "HogTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -429,6 +435,117 @@ func test_service_catalog_exposes_chase_section() -> void:
 			chase.get("opening_auto_run_duration_s"),
 			3.0
 		)
+
+
+func test_service_catalog_exposes_hog_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var hog := service.get("catalog").get("hog") as Resource
+
+	assert_not_null(
+		hog,
+		"clone dropped hog — ride tuning is dead-wired"
+	)
+	if hog == null:
+		return
+	assert_eq(_global_class_name(hog), "HogTuning")
+	assert_eq(hog.get("ride_speed_mps"), 9.0)
+	assert_eq(hog.get("steer_lateral_speed_mps"), 5.0)
+	assert_eq(hog.get("hog_jump_height_m"), 2.0)
+
+
+func test_fingerprint_moves_when_a_hog_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var hog := service.get("catalog").get("hog") as Resource
+	assert_not_null(hog)
+	if hog == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	hog.set(
+		"ride_speed_mps",
+		float(hog.get("ride_speed_mps")) + 0.1
+	)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"hog values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_hog_override_backfills_hog_and_preserves_existing_edits() -> void:
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	var authored_hog := authored.get("hog") as Resource
+	assert_not_null(
+		authored_hog,
+		"the authored hog section must exist before migration can be proved"
+	)
+	if authored_hog == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("hog", null)
+	stale.chase.boulder_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	var service: RefCounted = _new_service()
+	assert_not_null(service)
+	if service == null:
+		return
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+	assert_true(
+		service.get("override_active"),
+		"a pre-hog phone override must migrate, not reset"
+	)
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("hog"))
+	assert_eq(
+		migrated.get("hog").get("ride_speed_mps"),
+		authored_hog.get("ride_speed_mps")
+	)
+	assert_eq(
+		migrated.chase.boulder_speed_mps,
+		stale.chase.boulder_speed_mps,
+		"hog backfill must preserve existing operator tuning"
+	)
+
+
+func test_hog_tuning_rejects_nonpositive_ride_contracts() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var hog := service.get("catalog").get("hog") as Resource
+	assert_not_null(hog)
+	if hog == null:
+		return
+	for property_name: StringName in [
+		&"ride_speed_mps",
+		&"steer_lateral_speed_mps",
+		&"hog_jump_height_m",
+	]:
+		var authored_value: Variant = hog.get(property_name)
+		hog.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"%s must reject zero" % property_name
+		)
+		hog.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
 
 
 func test_fingerprint_moves_when_a_chase_value_changes() -> void:
@@ -832,6 +949,7 @@ func test_loaded_paths_include_the_traversal_resources() -> void:
 	assert_true(joined.contains("enemy_skink.tres"))
 	assert_true(joined.contains("enemy_plant.tres"))
 	assert_true(joined.contains("chase.tres"))
+	assert_true(joined.contains("hog.tres"))
 
 
 func test_catalog_is_unusable_without_traversal_resources() -> void:
@@ -884,6 +1002,19 @@ func test_catalog_is_unusable_without_chase() -> void:
 		Resource.DEEP_DUPLICATE_ALL
 	)
 	catalog.set("chase", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_catalog_is_unusable_without_hog() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("hog"))
+	if catalog.get("hog") == null:
+		return
+	catalog.set("hog", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
 
@@ -1535,6 +1666,7 @@ func test_effective_catalog_is_detached_and_reports_every_authored_path() -> voi
 	assert_has(loaded_paths, "res://data/tuning/camera.tres")
 	assert_has(loaded_paths, "res://data/tuning/depth.tres")
 	assert_has(loaded_paths, "res://data/tuning/economy.tres")
+	assert_has(loaded_paths, "res://data/tuning/hog.tres")
 
 
 func test_fingerprint_changes_when_an_effective_value_changes() -> void:

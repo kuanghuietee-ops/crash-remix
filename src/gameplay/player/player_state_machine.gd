@@ -10,6 +10,7 @@ const STATE_SLAM_RECOVERY := &"slam_recovery"
 const STATE_GRIND := &"grind"
 const STATE_WALL_RUN := &"wall_run"
 const STATE_SWING := &"swing"
+const STATE_RIDE := &"ride"
 
 var state := STATE_AIRBORNE
 var is_spinning: bool
@@ -66,7 +67,14 @@ func step(
 		move_tuning
 	)
 
-	if state == STATE_GRIND:
+	if state == STATE_RIDE:
+		_process_ride_actions(
+			now_s,
+			effective_grounded,
+			intents,
+			input_tuning
+		)
+	elif state == STATE_GRIND:
 		_process_grind_jump(
 			now_s,
 			intents,
@@ -126,6 +134,57 @@ func enter_airborne(now_s: float) -> void:
 	_ground_jump_available = false
 	_wall_run_maximum_duration_s = -1.0
 	_set_state(STATE_AIRBORNE, now_s)
+
+
+func enter_ride(now_s: float) -> void:
+	_ground_jump_available = false
+	_double_jump_available = false
+	_air_spin_available = false
+	is_spinning = false
+	_spin_ends_s = -1.0
+	_set_state(STATE_RIDE, now_s)
+
+
+func exit_ride(now_s: float, grounded: bool) -> void:
+	_ground_jump_available = grounded
+	_double_jump_available = true
+	_air_spin_available = true
+	_set_state(
+		STATE_GROUNDED if grounded else STATE_AIRBORNE,
+		now_s
+	)
+
+
+func _process_ride_actions(
+	now_s: float,
+	grounded: bool,
+	intents: InputIntentBuffer,
+	input_tuning: InputTuning
+) -> void:
+	intents.consume_pressed(
+		InputIntent.ACTION_DOWN,
+		now_s,
+		input_tuning.action_buffer_s
+	)
+	intents.consume_pressed(
+		InputIntent.ACTION_SPIN,
+		now_s,
+		input_tuning.action_buffer_s
+	)
+	if not grounded:
+		return
+	if not intents.has_buffered_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	):
+		return
+	intents.consume_pressed(
+		InputIntent.ACTION_JUMP,
+		now_s,
+		input_tuning.jump_buffer_s
+	)
+	_pending_impulse = PlayerFrameDecision.IMPULSE_RIDE_JUMP
 
 
 func _process_grind_jump(

@@ -81,6 +81,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "BOULDERS  [WAVE C]"
 
+[node name="HogWild" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "HOG WILD  [WAVE D]"
+
 [node name="Toybox" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2

@@ -1,0 +1,224 @@
+[gd_scene load_steps=24 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
+[ext_resource type="Resource" path="res://data/tuning/levels/hog_wild.tres" id="2_meta"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3_player"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="4_camera"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="5_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_mount_start.tscn" id="8_mount"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_weave_gates.tscn" id="9_weave"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_jump_gaps.tscn" id="10_jump"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_plant_chomp.tscn" id="11_plant"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_crate_slalom.tscn" id="12_crates"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_gap_combine.tscn" id="13_combine"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_crescendo.tscn" id="14_crescendo"]
+[ext_resource type="PackedScene" path="res://scenes/segments/hog_dismount_finish.tscn" id="15_finish_segment"]
+[ext_resource type="Script" path="res://src/gameplay/ride/hog_mount.gd" id="16_hog_mount"]
+
+[sub_resource type="Environment" id="Environment_hog"]
+background_mode = 1
+background_color = Color(0.14, 0.25, 0.08, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.82, 0.7, 0.38, 1)
+ambient_light_energy = 0.82
+tonemap_mode = 2
+
+[sub_resource type="BoxShape3D" id="Shape_ride_trigger"]
+size = Vector3(18, 6, 4)
+
+[sub_resource type="StandardMaterial3D" id="Material_hog_graybox"]
+albedo_color = Color(0.46, 0.29, 0.18, 1)
+roughness = 0.92
+
+[sub_resource type="CapsuleMesh" id="Mesh_hog_graybox"]
+material = SubResource("Material_hog_graybox")
+radius = 0.62
+height = 1.9
+radial_segments = 16
+rings = 8
+
+[sub_resource type="BoxShape3D" id="Shape_finish"]
+size = Vector3(18, 3, 5)
+
+[sub_resource type="StandardMaterial3D" id="Material_finish"]
+shading_mode = 0
+albedo_color = Color(0.18, 0.94, 0.5, 0.82)
+emission_enabled = true
+emission = Color(0.03, 0.36, 0.12, 1)
+emission_energy_multiplier = 1.25
+
+[sub_resource type="BoxMesh" id="Mesh_finish"]
+material = SubResource("Material_finish")
+size = Vector3(18, 3, 0.15)
+
+[node name="HogWild" type="Node3D"]
+script = ExtResource("1_session")
+metadata/level_meta = ExtResource("2_meta")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_hog")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, 24, 0)
+light_color = Color(1, 0.82, 0.52, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Segments" type="Node3D" parent="."]
+
+[node name="HogMountStart" parent="Segments" instance=ExtResource("8_mount")]
+
+[node name="HogWeaveGates" parent="Segments" instance=ExtResource("9_weave")]
+position = Vector3(0, 0, -128)
+
+[node name="HogJumpGaps" parent="Segments" instance=ExtResource("10_jump")]
+position = Vector3(0, 0, -256)
+
+[node name="HogPlantChomp" parent="Segments" instance=ExtResource("11_plant")]
+position = Vector3(0, 0, -384)
+
+[node name="HogCrateSlalom" parent="Segments" instance=ExtResource("12_crates")]
+position = Vector3(0, 0, -512)
+
+[node name="HogGapCombine" parent="Segments" instance=ExtResource("13_combine")]
+position = Vector3(0, 0, -640)
+
+[node name="HogCrescendo" parent="Segments" instance=ExtResource("14_crescendo")]
+position = Vector3(0, 0, -768)
+
+[node name="HogDismountFinish" parent="Segments" instance=ExtResource("15_finish_segment")]
+position = Vector3(0, 0, -896)
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+position = Vector3(0, 0.05, 0)
+
+[node name="HogRide" type="Node3D" parent="."]
+script = ExtResource("16_hog_mount")
+ride_path_path = NodePath("Path")
+mount_trigger_path = NodePath("MountTrigger")
+dismount_trigger_path = NodePath("DismountTrigger")
+hog_visual_path = NodePath("HogVisual")
+mounted_visual_offset = Vector3(0, -0.35, 0)
+
+[node name="Path" type="Path3D" parent="HogRide"]
+
+[node name="MountStart" type="Marker3D" parent="HogRide/Path"]
+
+[node name="WeaveEnd" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(0, 0, -256)
+
+[node name="PlantEnd" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(0, 0, -512)
+
+[node name="CombineEnd" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(0, 0, -768)
+
+[node name="DismountFinish" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(0, 0, -1024)
+
+[node name="MountTrigger" type="Area3D" parent="HogRide"]
+position = Vector3(0, 2, 0)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HogRide/MountTrigger"]
+shape = SubResource("Shape_ride_trigger")
+
+[node name="DismountTrigger" type="Area3D" parent="HogRide"]
+position = Vector3(0, 2, -1019)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HogRide/DismountTrigger"]
+shape = SubResource("Shape_ride_trigger")
+
+[node name="HogVisual" type="Node3D" parent="HogRide"]
+position = Vector3(0, 0.65, 0)
+
+[node name="Capsule" type="MeshInstance3D" parent="HogRide/HogVisual"]
+position = Vector3(0, -0.45, 0)
+rotation_degrees = Vector3(90, 0, 0)
+mesh = SubResource("Mesh_hog_graybox")
+
+[node name="GrayboxNotice" type="Label3D" parent="HogRide/HogVisual"]
+position = Vector3(0, 1.55, 0)
+text = "HOG — GRAYBOX CAPSULE"
+font_size = 44
+outline_size = 10
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="MountEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -128)
+
+[node name="WeaveEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -256)
+
+[node name="JumpEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -384)
+
+[node name="PlantEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -512)
+
+[node name="CrateEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -640)
+
+[node name="CombineEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -768)
+
+[node name="CrescendoEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -896)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -1024)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
+current = true
+fov = 58.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("5_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("6_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_touch")
+
+[node name="Finish" type="Area3D" parent="."]
+position = Vector3(0, 1.5, -1019)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Finish"]
+shape = SubResource("Shape_finish")
+
+[node name="Marker" type="MeshInstance3D" parent="Finish"]
+cast_shadow = 0
+mesh = SubResource("Mesh_finish")
+
+[node name="Label" type="Label3D" parent="Finish"]
+position = Vector3(0, 2.2, 0)
+text = "HOG WILD EXIT"
+font_size = 58
+outline_size = 12

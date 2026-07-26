@@ -15,6 +15,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"enemy_skink",
 	&"enemy_plant",
 	&"chase",
+	&"hog",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -429,6 +430,14 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or chase.boulder_start_gap_m
 		<= chase.boulder_kill_distance_m
 		or chase.opening_auto_run_duration_s < 0.0
+	):
+		return false
+
+	var hog := checked.hog
+	if (
+		hog.ride_speed_mps <= 0.0
+		or hog.steer_lateral_speed_mps <= 0.0
+		or hog.hog_jump_height_m <= 0.0
 	):
 		return false
 

@@ -9,6 +9,9 @@ const N_SANITY_SCENE_PATH := (
 const BOULDERS_SCENE_PATH := (
 	"res://scenes/levels/wr1_boulders.tscn"
 )
+const HOG_WILD_SCENE_PATH := (
+	"res://scenes/levels/wr1_hog_wild.tscn"
+)
 const TEST_SAVE_DIR := "user://test_sandbox/task15_warp_room"
 const LEVEL_IDS: Array[StringName] = [
 	&"wr1_n_sanity_beach",
@@ -18,6 +21,7 @@ const LEVEL_IDS: Array[StringName] = [
 const AVAILABLE_LEVEL_IDS: Array[StringName] = [
 	&"wr1_n_sanity_beach",
 	&"wr1_boulders",
+	&"wr1_hog_wild",
 ]
 const BOSS_ID := &"wr1_papu_papu"
 
@@ -91,7 +95,7 @@ func test_entering_a_portal_emits_the_exact_flow_event_payload() -> void:
 	assert_eq(received[0].get("mode"), &"normal")
 
 
-func test_unbuilt_portal_stays_in_warp_room_when_player_enters_its_volume() -> void:
+func test_unbuilt_boss_stays_in_warp_room_when_player_enters_its_volume() -> void:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	if packed == null:
@@ -106,14 +110,14 @@ func test_unbuilt_portal_stays_in_warp_room_when_player_enters_its_volume() -> v
 		return
 	var portal := _portal_for(
 		_portals(room),
-		&"wr1_hog_wild"
+		BOSS_ID
 	)
 	assert_not_null(portal)
 	if portal == null:
 		return
 	assert_false(
 		portal.monitoring,
-		"an unbuilt level portal must not monitor player bodies"
+		"the unbuilt boss portal must not monitor player bodies"
 	)
 	var player := room.get_node("Player") as CharacterBody3D
 	player.global_position = portal.global_position
@@ -364,6 +368,51 @@ func test_boot_hub_level_list_reaches_boulders_scene() -> void:
 	assert_true(
 		root.has_node("Content/Boulders"),
 		"the Boulders button must load the real authored scene"
+	)
+
+
+func test_boot_hub_level_list_reaches_hog_wild_scene() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+	var room := root.get_node_or_null("Content/WarpRoom1")
+	assert_not_null(room)
+	if room == null:
+		return
+
+	room.get_node("UI/LevelList").emit_signal(&"pressed")
+	var list := root.get_node("UI/LevelListOverlay")
+	var button := list.get_node_or_null(
+		"SafeArea/Center/Panel/Margin/Rows/HogWild"
+	) as Button
+	assert_not_null(
+		button,
+		"the player-facing level list must expose Hog Wild"
+	)
+	if button == null:
+		return
+	button.emit_signal(&"pressed")
+
+	assert_eq(root.call("state_name"), &"level")
+	assert_eq(
+		root.call("threaded_level_path"),
+		HOG_WILD_SCENE_PATH
+	)
+	var frames := 0
+	while (
+		not root.has_node("Content/HogWild")
+		and frames < 120
+	):
+		await wait_process_frames(1)
+		frames += 1
+	assert_true(
+		root.has_node("Content/HogWild"),
+		"the Hog Wild button must load the real authored scene"
 	)
 
 
@@ -623,6 +672,9 @@ func _configure_room(room: Node, profile: Dictionary) -> void:
 	var boulders_meta := load(
 		"res://data/tuning/levels/boulders.tres"
 	) as LevelMeta
+	var hog_wild_meta := load(
+		"res://data/tuning/levels/hog_wild.tres"
+	) as LevelMeta
 	room.call(
 		"configure",
 		profile,
@@ -630,6 +682,7 @@ func _configure_room(room: Node, profile: Dictionary) -> void:
 		{
 			&"wr1_n_sanity_beach": meta,
 			&"wr1_boulders": boulders_meta,
+			&"wr1_hog_wild": hog_wild_meta,
 		},
 		false,
 		AVAILABLE_LEVEL_IDS

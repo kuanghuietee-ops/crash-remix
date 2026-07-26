@@ -12,6 +12,12 @@ const BOULDERS_LEVEL_SCENE_PATH := (
 const BOULDERS_LEVEL_META_PATH := (
 	"res://data/tuning/levels/boulders.tres"
 )
+const HOG_WILD_LEVEL_SCENE_PATH := (
+	"res://scenes/levels/wr1_hog_wild.tscn"
+)
+const HOG_WILD_LEVEL_META_PATH := (
+	"res://data/tuning/levels/hog_wild.tres"
+)
 const BASE_CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const SEGMENT_NAMES: Array[StringName] = [
 	&"BeachLanding",
@@ -65,6 +71,17 @@ const BOULDERS_TOWARD_CAMERA_SEGMENTS: Array[StringName] = [
 	&"FinalSprint",
 ]
 const BOULDERS_EXPECTED_CHECKPOINTS := 2
+const HOG_WILD_SEGMENT_NAMES: Array[StringName] = [
+	&"HogMountStart",
+	&"HogWeaveGates",
+	&"HogJumpGaps",
+	&"HogPlantChomp",
+	&"HogCrateSlalom",
+	&"HogGapCombine",
+	&"HogCrescendo",
+	&"HogDismountFinish",
+]
+const HOG_WILD_EXPECTED_CHECKPOINTS := 2
 const CHASE_GAP_TOLERANCE_M := 0.001
 const TOWARD_CAMERA_OPPOSITION_DOT := -0.9
 const TOWARD_CAMERA_MINIMUM_DEPRESSION_DEGREES := 30.0
@@ -1042,6 +1059,284 @@ func test_boulders_obstacles_author_binary_reads_and_early_previews() -> void:
 		)
 
 
+func test_hog_wild_has_the_eight_segment_graybox_contract() -> void:
+	var level := _instantiate_hog_wild()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	var meta := level.get_meta(&"level_meta") as LevelMeta
+	var mount := level.get_node_or_null("HogRide")
+	var graybox_label := level.get_node_or_null(
+		"HogRide/HogVisual/GrayboxNotice"
+	) as Label3D
+	assert_not_null(meta)
+	assert_true(level is LevelSession)
+	assert_not_null(level.get_node_or_null("Player"))
+	assert_not_null(level.get_node_or_null("CameraRig"))
+	assert_not_null(level.get_node_or_null("Input/InputRouter"))
+	assert_not_null(level.get_node_or_null("UI/TouchControls"))
+	assert_not_null(level.get_node_or_null("Finish"))
+	assert_not_null(mount, "Hog Wild needs the real runtime mount")
+	assert_not_null(graybox_label)
+	if meta != null:
+		assert_eq(meta.level_id, &"wr1_hog_wild")
+		assert_eq(meta.crate_count, _hog_wild_authored_crate_count())
+	if graybox_label != null:
+		assert_eq(
+			graybox_label.text,
+			"HOG — GRAYBOX CAPSULE",
+			"the placeholder must identify itself honestly"
+		)
+
+	for segment_name: StringName in HOG_WILD_SEGMENT_NAMES:
+		assert_not_null(
+			level.get_node_or_null(
+				"Segments/%s" % segment_name
+			),
+			"%s must be instanced into the Hog Wild route"
+			% segment_name
+		)
+
+
+func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
+	var level := _instantiate_hog_wild()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	for index: int in range(
+		HOG_WILD_SEGMENT_NAMES.size() - 1
+	):
+		var current := _hog_wild_segment(level, index)
+		var next := _hog_wild_segment(level, index + 1)
+		if current == null or next == null:
+			continue
+		var exit_surface := (
+			current.get_node_or_null("ExitSurface") as Node3D
+		)
+		var entry_surface := (
+			next.get_node_or_null("EntrySurface") as Node3D
+		)
+		var exit_marker := (
+			current.get_node_or_null("Spine/Exit") as Marker3D
+		)
+		var entry_marker := (
+			next.get_node_or_null("Spine/Entry") as Marker3D
+		)
+		assert_not_null(exit_surface)
+		assert_not_null(entry_surface)
+		assert_not_null(exit_marker)
+		assert_not_null(entry_marker)
+		if (
+			exit_surface == null
+			or entry_surface == null
+			or exit_marker == null
+			or entry_marker == null
+		):
+			continue
+		assert_true(
+			exit_marker.global_position.is_equal_approx(
+				entry_marker.global_position
+			),
+			"%s → %s spine markers must meet exactly"
+			% [current.name, next.name]
+		)
+		assert_true(
+			_full_aabbs_overlap(exit_surface, entry_surface),
+			"%s → %s must overlap in X, Y, and Z"
+			% [current.name, next.name]
+		)
+
+
+func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var mount := level.get_node_or_null("HogRide")
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var router := level.get_node_or_null(
+		"Input/InputRouter"
+	) as InputRouter
+	var hog_visual := player.get_node_or_null(
+		"HogVisual"
+	) as Node3D
+	var dismount_trigger := level.get_node_or_null(
+		"HogRide/DismountTrigger"
+	) as Area3D
+	var finish := level.get_node_or_null("Finish") as Area3D
+	assert_not_null(catalog)
+	assert_not_null(mount)
+	assert_not_null(player)
+	assert_not_null(router)
+	assert_not_null(hog_visual)
+	assert_not_null(dismount_trigger)
+	assert_not_null(finish)
+	if (
+		catalog == null
+		or mount == null
+		or player == null
+		or router == null
+		or hog_visual == null
+		or dismount_trigger == null
+		or finish == null
+	):
+		return
+	assert_true(
+		dismount_trigger.global_position.is_equal_approx(
+			Vector3(
+				finish.global_position.x,
+				dismount_trigger.global_position.y,
+				finish.global_position.z
+			)
+		),
+		"dismount must coincide with finish so manual braking cannot stall the run"
+	)
+
+	assert_true(mount.call("is_mounted"))
+	assert_true(player.call("is_hog_mounted"))
+	assert_eq(player.call("current_state"), &"ride")
+	assert_eq(hog_visual.get_parent(), player)
+	router.push_move(
+		Vector2(0.5, 0.0),
+		5.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	player.velocity = Vector3.ZERO
+	player.call(
+		"advance_logic",
+		5.0,
+		true,
+		1.0 / 60.0,
+		Vector3.FORWARD
+	)
+	assert_almost_eq(
+		player.velocity.dot(Vector3.FORWARD),
+		catalog.hog.ride_speed_mps,
+		CHASE_GAP_TOLERANCE_M,
+		"the real level must force the authored ride pace"
+	)
+	assert_almost_eq(
+		player.velocity.x,
+		catalog.hog.steer_lateral_speed_mps * 0.5,
+		CHASE_GAP_TOLERANCE_M,
+		"the real level must preserve analog lateral steering"
+	)
+
+	mount.call("_on_dismount_trigger_body_entered", player)
+
+	assert_false(mount.call("is_mounted"))
+	assert_false(player.call("is_hog_mounted"))
+	assert_ne(player.call("current_state"), &"ride")
+	assert_eq(hog_visual.get_parent(), mount)
+
+
+func test_hog_wild_crate_lines_break_on_touch() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var checkpoints := 0
+	var collectible_count := 0
+
+	for crate: Node in _crates(level):
+		var crate_type := StringName(crate.get("crate_type"))
+		if crate_type in [&"time", &"iron"]:
+			continue
+		collectible_count += 1
+		if crate_type == &"checkpoint":
+			checkpoints += 1
+		assert_true(
+			bool(crate.get("break_on_touch")),
+			"%s is in the forced-run line and must pass through"
+			% crate.name
+		)
+		var result: Dictionary = crate.call(
+			"apply_verb",
+			&"touch",
+			1.0
+		)
+		assert_true(
+			bool(result.get("breaks", false)),
+			"%s must really break on mounted contact" % crate.name
+		)
+
+	assert_eq(
+		collectible_count,
+		_hog_wild_authored_crate_count()
+	)
+	assert_eq(checkpoints, HOG_WILD_EXPECTED_CHECKPOINTS)
+
+
+func test_hog_wild_checkpoint_death_respawns_mounted() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var checkpoint := _hog_wild_checkpoint(level, 1)
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var mount := level.get_node_or_null("HogRide")
+	assert_not_null(checkpoint)
+	assert_not_null(player)
+	assert_not_null(mount)
+	if checkpoint == null or player == null or mount == null:
+		return
+	checkpoint.call("apply_verb", &"touch", 1.0)
+	var expected_spawn: Transform3D = player.get(
+		"_spawn_transform"
+	)
+	player.global_position += Vector3(4.0, 0.0, -20.0)
+
+	player.call("respawn")
+
+	assert_true(mount.call("is_mounted"))
+	assert_true(player.call("is_hog_mounted"))
+	assert_eq(player.call("current_state"), &"ride")
+	assert_true(
+		player.global_position.is_equal_approx(
+			expected_spawn.origin
+		),
+		"checkpoint death must restore the mounted spawn"
+	)
+
+
+func test_hog_wild_uses_ride_pace_and_authors_required_jumps() -> void:
+	var level := _instantiate_hog_wild()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var meta := level.get_meta(&"level_meta") as LevelMeta
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var required_jumps := level.find_children(
+		"RequiredJump*",
+		"Node3D",
+		true,
+		false
+	)
+	assert_not_null(meta)
+	assert_not_null(catalog)
+	if meta != null and catalog != null:
+		assert_eq(
+			meta.design_pace_mps,
+			catalog.hog.ride_speed_mps,
+			"checkpoint lint pace must match the forced ride"
+		)
+	assert_gt(
+		required_jumps.size(),
+		0,
+		"Hog Wild needs authored jump reads, not a flat corridor"
+	)
+	for required_jump: Node in required_jumps:
+		assert_not_null(required_jump.get_node_or_null("Takeoff"))
+		assert_not_null(required_jump.get_node_or_null("Landing"))
+
+
 func _instantiate_level() -> Node:
 	assert_true(
 		ResourceLoader.exists(LEVEL_SCENE_PATH),
@@ -1062,6 +1357,18 @@ func _instantiate_boulders() -> Node:
 	if not ResourceLoader.exists(BOULDERS_LEVEL_SCENE_PATH):
 		return null
 	var packed := load(BOULDERS_LEVEL_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	return packed.instantiate() if packed != null else null
+
+
+func _instantiate_hog_wild() -> Node:
+	assert_true(
+		ResourceLoader.exists(HOG_WILD_LEVEL_SCENE_PATH),
+		"Hog Wild must be authored before this test can pass"
+	)
+	if not ResourceLoader.exists(HOG_WILD_LEVEL_SCENE_PATH):
+		return null
+	var packed := load(HOG_WILD_LEVEL_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	return packed.instantiate() if packed != null else null
 
@@ -1114,11 +1421,69 @@ func _configured_boulders() -> LevelSession:
 	return level
 
 
+func _configured_hog_wild() -> LevelSession:
+	var level := _instantiate_hog_wild() as LevelSession
+	if level == null:
+		return null
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var meta := load(HOG_WILD_LEVEL_META_PATH) as LevelMeta
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null("Player")
+	var router := level.get_node_or_null(
+		"Input/InputRouter"
+	)
+	assert_not_null(meta)
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(router)
+	if (
+		meta == null
+		or catalog == null
+		or player == null
+		or router == null
+	):
+		return null
+	router.call("configure", catalog.input)
+	player.call(
+		"configure",
+		catalog.move,
+		catalog.input,
+		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
+		router.get("buffer"),
+		catalog.economy,
+		true,
+		catalog.hog
+	)
+	assert_true(level.configure(
+		meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input,
+		catalog
+	))
+	return level
+
+
 func _boulders_authored_crate_count() -> int:
 	var meta := load(BOULDERS_LEVEL_META_PATH) as LevelMeta
 	assert_not_null(
 		meta,
 		"Boulders LevelMeta must load before its crates are checked"
+	)
+	return meta.crate_count if meta != null else -1
+
+
+func _hog_wild_authored_crate_count() -> int:
+	var meta := load(HOG_WILD_LEVEL_META_PATH) as LevelMeta
+	assert_not_null(
+		meta,
+		"Hog Wild LevelMeta must load before its crates are checked"
 	)
 	return meta.crate_count if meta != null else -1
 
@@ -1129,7 +1494,33 @@ func _boulders_segment(level: Node, index: int) -> Node3D:
 	) as Node3D
 
 
+func _hog_wild_segment(level: Node, index: int) -> Node3D:
+	return level.get_node_or_null(
+		"Segments/%s" % HOG_WILD_SEGMENT_NAMES[index]
+	) as Node3D
+
+
 func _boulders_checkpoint(
+	level: Node,
+	index: int
+) -> Node:
+	var checkpoints: Array[Node] = []
+	for crate: Node in _crates(level):
+		if StringName(crate.get("crate_type")) == &"checkpoint":
+			checkpoints.append(crate)
+	checkpoints.sort_custom(
+		func(first: Node, second: Node) -> bool:
+			return (
+				(first as Node3D).global_position.z
+				> (second as Node3D).global_position.z
+			)
+	)
+	if index < 0 or index >= checkpoints.size():
+		return null
+	return checkpoints[index]
+
+
+func _hog_wild_checkpoint(
 	level: Node,
 	index: int
 ) -> Node:

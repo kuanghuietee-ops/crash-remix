@@ -339,11 +339,16 @@ func test_traversal_state_and_impulse_vocabulary_is_declared() -> void:
 	assert_eq(state_constants.get("STATE_GRIND"), &"grind")
 	assert_eq(state_constants.get("STATE_WALL_RUN"), &"wall_run")
 	assert_eq(state_constants.get("STATE_SWING"), &"swing")
+	assert_eq(state_constants.get("STATE_RIDE"), &"ride")
 	assert_eq(decision_constants.get("IMPULSE_RAIL_HOP"), &"rail_hop")
 	assert_eq(decision_constants.get("IMPULSE_RAIL_EXIT"), &"rail_exit")
 	assert_eq(
 		decision_constants.get("IMPULSE_WALL_DETACH"),
 		&"wall_detach"
+	)
+	assert_eq(
+		decision_constants.get("IMPULSE_RIDE_JUMP"),
+		&"ride_jump"
 	)
 
 

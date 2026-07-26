@@ -15,6 +15,10 @@ func _ready() -> void:
 		func() -> void:
 			level_requested.emit(&"wr1_boulders")
 	)
+	$SafeArea/Center/Panel/Margin/Rows/HogWild.pressed.connect(
+		func() -> void:
+			level_requested.emit(&"wr1_hog_wild")
+	)
 	$SafeArea/Center/Panel/Margin/Rows/Toybox.pressed.connect(
 		func() -> void: toybox_requested.emit()
 	)

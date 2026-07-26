@@ -806,12 +806,13 @@ func test_edge_nudge_directions_are_corridor_relative_and_bias_against_travel() 
 	assert_true(directions.has(corridor_forward.cross(Vector3.UP).normalized()))
 
 
-func test_controller_receives_every_traversal_tuning_resource() -> void:
+func test_controller_receives_every_movement_tuning_resource() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():
 		return
 	var controller: CharacterBody3D = setup["controller"]
 	var buffer: InputIntentBuffer = setup["buffer"]
+	var catalog := load(TUNING_PATH) as GameplayTuning
 
 	controller.call(
 		"configure",
@@ -823,12 +824,14 @@ func test_controller_receives_every_traversal_tuning_resource() -> void:
 		_swing,
 		buffer,
 		null,
-		false
+		false,
+		catalog.hog
 	)
 
 	assert_eq(controller.get("_wall_run_tuning"), _wall_run)
 	assert_eq(controller.get("_grind_tuning"), _grind)
 	assert_eq(controller.get("_swing_tuning"), _swing)
+	assert_eq(controller.get("_hog_tuning"), catalog.hog)
 
 
 func test_spline_states_suppress_gravity_and_use_floating_motion() -> void:

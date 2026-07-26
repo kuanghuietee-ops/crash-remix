@@ -10,12 +10,14 @@ const STATE_SLIDING := &"sliding"
 const STATE_GRIND := &"grind"
 const STATE_WALL_RUN := &"wall_run"
 const STATE_SWING := &"swing"
+const STATE_RIDE := &"ride"
 
 const IMPULSE_JUMP := &"jump"
 const IMPULSE_DOUBLE_JUMP := &"double_jump"
 const IMPULSE_HIGH_JUMP := &"high_jump"
 const IMPULSE_SLIDE_JUMP := &"slide_jump"
 const IMPULSE_BODY_SLAM := &"body_slam"
+const IMPULSE_RIDE_JUMP := &"ride_jump"
 
 
 static func uses_airborne_momentum_model(state: StringName) -> bool:
@@ -43,7 +45,8 @@ static func horizontal_velocity(
 	state: StringName,
 	delta_s: float,
 	forward_axis: Vector3,
-	move_tuning: MoveTuning
+	move_tuning: MoveTuning,
+	hog_tuning: HogTuning = null
 ) -> Vector3:
 	if uses_spline_motion(state):
 		return Vector3.ZERO
@@ -52,6 +55,15 @@ static func horizontal_velocity(
 	if forward.is_zero_approx():
 		forward = Vector3.FORWARD
 	var right := forward.cross(Vector3.UP).normalized()
+	if state == STATE_RIDE:
+		if hog_tuning == null:
+			return Vector3.ZERO
+		return (
+			forward * hog_tuning.ride_speed_mps
+			+ right
+			* clampf(input_vector.x, -1.0, 1.0)
+			* hog_tuning.steer_lateral_speed_mps
+		)
 	var desired_direction := right * input_vector.x - forward * input_vector.y
 	if not desired_direction.is_zero_approx():
 		desired_direction = desired_direction.normalized()
@@ -120,7 +132,8 @@ static func impulse_velocity(
 	impulse: StringName,
 	current_velocity: Vector3,
 	forward_axis: Vector3,
-	move_tuning: MoveTuning
+	move_tuning: MoveTuning,
+	hog_tuning: HogTuning = null
 ) -> Vector3:
 	var result := current_velocity
 	match impulse:
@@ -155,4 +168,10 @@ static func impulse_velocity(
 			)
 		IMPULSE_BODY_SLAM:
 			result.y = -move_tuning.body_slam_speed_mps
+		IMPULSE_RIDE_JUMP:
+			if hog_tuning != null:
+				result.y = JumpKinematicsType.upward_speed_for_height(
+					hog_tuning.hog_jump_height_m,
+					move_tuning
+				)
 	return result

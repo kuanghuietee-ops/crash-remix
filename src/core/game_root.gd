@@ -39,6 +39,9 @@ const N_SANITY_BEACH_META := preload(
 const BOULDERS_META := preload(
 	"res://data/tuning/levels/boulders.tres"
 )
+const HOG_WILD_META := preload(
+	"res://data/tuning/levels/hog_wild.tres"
+)
 const MISSED_CRATE_OUTLINE_SHADER := preload(
 	"res://assets/shaders/missed_crate_outline.gdshader"
 )
@@ -54,9 +57,14 @@ const BOULDERS_LEVEL_ID := &"wr1_boulders"
 const BOULDERS_SCENE_PATH := (
 	"res://scenes/levels/wr1_boulders.tscn"
 )
+const HOG_WILD_LEVEL_ID := &"wr1_hog_wild"
+const HOG_WILD_SCENE_PATH := (
+	"res://scenes/levels/wr1_hog_wild.tscn"
+)
 const _LEVEL_SCENE_PATHS: Dictionary = {
 	N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_SCENE_PATH,
 	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
+	HOG_WILD_LEVEL_ID: HOG_WILD_SCENE_PATH,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -710,6 +718,7 @@ func _hub_level_metas() -> Dictionary:
 	return {
 		N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_META,
 		BOULDERS_LEVEL_ID: BOULDERS_META,
+		HOG_WILD_LEVEL_ID: HOG_WILD_META,
 	}
 
 
@@ -867,6 +876,8 @@ func _level_meta(level_id: StringName) -> LevelMeta:
 		return N_SANITY_BEACH_META
 	if level_id == BOULDERS_LEVEL_ID:
 		return BOULDERS_META
+	if level_id == HOG_WILD_LEVEL_ID:
+		return HOG_WILD_META
 	return null
 
 
@@ -911,7 +922,8 @@ func _configure_authored_level(
 		catalog.swing,
 		router.get("buffer"),
 		catalog.economy,
-		_phase_available()
+		_phase_available(),
+		catalog.hog
 	)
 	var phase_reset_callback := Callable(
 		PhaseState,
@@ -1022,7 +1034,8 @@ func _refresh_active_level_tuning() -> void:
 			catalog.swing,
 			router.get("buffer"),
 			catalog.economy,
-			_phase_available()
+			_phase_available(),
+			catalog.hog
 		)
 		_refresh_level_traversal(level, catalog)
 		player.get_node("BlobShadow").call(

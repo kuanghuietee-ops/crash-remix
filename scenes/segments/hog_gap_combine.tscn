@@ -1,0 +1,115 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_checkpoint.tscn" id="4_checkpoint"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="5_wumpa"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(22, 12, 132)
+
+[node name="HogGapCombine" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 3, -7)
+text = "DOUBLE GAP — STEER IN THE AIR"
+font_size = 43
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="GapA" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -37)
+
+[node name="GapB" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -76)
+
+[node name="CheckpointLine" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -108)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -128)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(18, 1, 12)
+color = Color(0.36, 0.2, 0.06, 1)
+
+[node name="RunA" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -24)
+size = Vector3(18, 1, 28)
+color = Color(0.31, 0.17, 0.055, 1)
+
+[node name="RunB" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -60)
+size = Vector3(18, 1, 34)
+color = Color(0.36, 0.2, 0.06, 1)
+
+[node name="RunC" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -100)
+size = Vector3(18, 1, 36)
+color = Color(0.31, 0.17, 0.055, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -124)
+size = Vector3(18, 1, 12)
+color = Color(0.36, 0.2, 0.06, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -64)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="RequiredJumpA" type="Node3D" parent="."]
+
+[node name="Takeoff" type="Marker3D" parent="RequiredJumpA"]
+position = Vector3(0, 0, -37)
+
+[node name="Landing" type="Marker3D" parent="RequiredJumpA"]
+position = Vector3(0, 0, -44)
+
+[node name="RequiredJumpB" type="Node3D" parent="."]
+
+[node name="Takeoff" type="Marker3D" parent="RequiredJumpB"]
+position = Vector3(0, 0, -76)
+
+[node name="Landing" type="Marker3D" parent="RequiredJumpB"]
+position = Vector3(0, 0, -83)
+
+[node name="Crate21" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-3.5, 0.5, -22)
+crate_id = 21
+segment_group = &"Hog Gap Combine"
+break_on_touch = true
+
+[node name="Crate22" parent="." instance=ExtResource("3_crate")]
+position = Vector3(3.5, 0.5, -58)
+crate_id = 22
+segment_group = &"Hog Gap Combine"
+break_on_touch = true
+
+[node name="Crate23" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-3.5, 0.5, -96)
+crate_id = 23
+segment_group = &"Hog Gap Combine"
+break_on_touch = true
+
+[node name="Checkpoint24" parent="." instance=ExtResource("4_checkpoint")]
+position = Vector3(0, 0.5, -108)
+crate_id = 24
+segment_group = &"Hog Gap Combine"
+break_on_touch = true
+
+[node name="WumpaA" parent="." instance=ExtResource("5_wumpa")]
+position = Vector3(0, 1.5, -40)
+
+[node name="WumpaB" parent="." instance=ExtResource("5_wumpa")]
+position = Vector3(0, 1.5, -79)
