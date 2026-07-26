@@ -171,7 +171,11 @@ func _process_ride_actions(
 		now_s,
 		input_tuning.action_buffer_s
 	)
-	if not grounded:
+	if grounded:
+		_ground_jump_available = true
+	# The shared expiry path applies InputTuning.coyote_time_s before
+	# ride actions run, so this remains available briefly past a ledge.
+	if not _ground_jump_available:
 		return
 	if not intents.has_buffered_pressed(
 		InputIntent.ACTION_JUMP,
@@ -185,6 +189,7 @@ func _process_ride_actions(
 		input_tuning.jump_buffer_s
 	)
 	_pending_impulse = PlayerFrameDecision.IMPULSE_RIDE_JUMP
+	_ground_jump_available = false
 
 
 func _process_grind_jump(

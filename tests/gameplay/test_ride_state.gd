@@ -139,6 +139,104 @@ func test_ride_state_accepts_jump_and_keeps_every_other_verb_inert() -> void:
 	assert_eq(landing.get("state"), &"ride")
 
 
+func test_ride_jump_reuses_input_coyote_window() -> void:
+	var fsm_script := load(FSM_SCRIPT_PATH) as Script
+	assert_not_null(fsm_script)
+	assert_not_null(_input)
+	if fsm_script == null or _input == null:
+		return
+	var input_tuning := _input.duplicate(true) as InputTuning
+	input_tuning.coyote_time_s = FRAME_DELTA_S * 3.0
+	var coyote_s := input_tuning.coyote_time_s
+	var inside_fsm := fsm_script.new() as RefCounted
+	var inside_buffer := InputIntentBuffer.new()
+	inside_fsm.call("enter_ride", 1.0)
+	inside_fsm.call(
+		"step",
+		1.0,
+		true,
+		0.0,
+		inside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+	inside_fsm.call(
+		"step",
+		1.0 + FRAME_DELTA_S,
+		false,
+		0.0,
+		inside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+	inside_buffer.push(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		1.0 + coyote_s,
+		InputIntent.SOURCE_TOUCH
+	))
+
+	var inside_decision: RefCounted = inside_fsm.call(
+		"step",
+		1.0 + coyote_s,
+		false,
+		0.0,
+		inside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+
+	assert_eq(inside_decision.get("impulse"), &"ride_jump")
+	assert_eq(inside_decision.get("state"), &"ride")
+
+	var outside_fsm := fsm_script.new() as RefCounted
+	var outside_buffer := InputIntentBuffer.new()
+	outside_fsm.call("enter_ride", 2.0)
+	outside_fsm.call(
+		"step",
+		2.0,
+		true,
+		0.0,
+		outside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+	outside_fsm.call(
+		"step",
+		2.0 + FRAME_DELTA_S,
+		false,
+		0.0,
+		outside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+	outside_buffer.push(InputIntent.button(
+		InputIntent.ACTION_JUMP,
+		true,
+		2.0 + coyote_s + FRAME_DELTA_S,
+		InputIntent.SOURCE_TOUCH
+	))
+
+	var outside_decision: RefCounted = outside_fsm.call(
+		"step",
+		2.0 + coyote_s + FRAME_DELTA_S,
+		false,
+		0.0,
+		outside_buffer,
+		_move,
+		input_tuning,
+		false
+	)
+
+	assert_eq(outside_decision.get("impulse"), &"none")
+	assert_eq(outside_decision.get("state"), &"ride")
+
+
 func test_ride_motor_forces_forward_and_steers_only_laterally() -> void:
 	var motor := load(MOTOR_SCRIPT_PATH) as Script
 	assert_not_null(motor)
