@@ -574,21 +574,32 @@ func _new_real_hazard() -> Dictionary:
 	var player := level.get_node_or_null(
 		"Player"
 	) as Node3D
+	var input_router := level.get_node_or_null(
+		"Input/InputRouter"
+	)
 	assert_not_null(hazard)
 	assert_not_null(path)
 	assert_not_null(player)
-	if hazard == null or path == null or player == null:
+	assert_not_null(input_router)
+	if (
+		hazard == null
+		or path == null
+		or player == null
+		or input_router == null
+	):
 		return {}
 	hazard.call(
 		"configure",
 		catalog.chase,
-		player
+		player,
+		input_router
 	)
 	return {
 		&"level": level,
 		&"hazard": hazard,
 		&"path": path,
 		&"player": player,
+		&"input_router": input_router,
 		&"catalog": catalog,
 		&"tuning": catalog.chase,
 	}

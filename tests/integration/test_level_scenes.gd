@@ -672,6 +672,135 @@ func test_boulders_live_camera_basis_faces_back_down_corridor() -> void:
 	)
 
 
+func test_boulders_chase_auto_runs_with_screen_normal_lateral_control() -> void:
+	var level := await _configured_boulders()
+	if level == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var hazard := level.get_node_or_null("ChaseHazard")
+	var router := level.get_node_or_null(
+		"Input/InputRouter"
+	) as InputRouter
+	var controller := level.get_node_or_null(
+		"CameraRig"
+	) as Node3D
+	var rail := level.get_node_or_null(
+		"CameraRig/Rail"
+	) as Path3D
+	var camera := level.get_node_or_null(
+		"CameraRig/Camera3D"
+	) as Camera3D
+	var region := level.get_node_or_null(
+		"Segments/ChaseLeft/CameraRegion"
+	) as CameraRegion
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(hazard)
+	assert_not_null(router)
+	assert_not_null(controller)
+	assert_not_null(rail)
+	assert_not_null(camera)
+	assert_not_null(region)
+	if (
+		catalog == null
+		or player == null
+		or hazard == null
+		or router == null
+		or controller == null
+		or rail == null
+		or camera == null
+		or region == null
+	):
+		return
+	var regions: Array = []
+	for candidate: Node in level.find_children(
+		"*",
+		"",
+		true,
+		false
+	):
+		if candidate is CameraRegion:
+			regions.append(candidate)
+	player.global_position = Vector3(
+		region.global_position.x,
+		player.global_position.y,
+		region.global_position.z
+	)
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		catalog.camera,
+		regions,
+		router
+	)
+	router.push_move(
+		Vector2.RIGHT,
+		1.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	hazard.call(
+		"start_at_progress",
+		hazard.call(
+			"progress_for_position",
+			player.global_position
+		)
+	)
+	controller.call(
+		"_on_region_body_entered",
+		player,
+		region
+	)
+	for _settle_step: int in range(4):
+		controller.call(
+			"update_camera",
+			catalog.camera.region_blend_s
+		)
+	var corridor_forward := (
+		controller.call("corridor_forward") as Vector3
+	).normalized()
+	player.velocity = Vector3.ZERO
+	player.call(
+		"advance_logic",
+		2.0,
+		true,
+		1.0,
+		corridor_forward
+	)
+	var screen_origin := camera.unproject_position(
+		player.global_position
+	)
+	var screen_motion := camera.unproject_position(
+		player.global_position + player.velocity
+	) - screen_origin
+
+	assert_almost_eq(
+		player.velocity.dot(corridor_forward),
+		catalog.move.run_speed_mps,
+		CHASE_GAP_TOLERANCE_M,
+		"the real chase trigger must supply full forward auto-run"
+	)
+	assert_gt(
+		screen_motion.x,
+		0.0,
+		"a held screen-right gesture must still move right after "
+		+ "the chase camera reverses"
+	)
+	hazard.call("stop")
+	assert_false(
+		bool(player.get("_chase_auto_run_enabled")),
+		"the stop trigger must return the player to manual movement"
+	)
+	assert_false(
+		bool(router.get("_screen_relative_tracking_enabled")),
+		"the stop trigger must restore gesture-stable camera mapping"
+	)
+
+
 func test_boulders_checkpoints_are_collectible_pass_through_crates() -> void:
 	var level := _instantiate_boulders()
 	if level == null:

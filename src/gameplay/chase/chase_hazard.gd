@@ -11,6 +11,7 @@ const EVENT_STOP := &"stop"
 
 var _tuning: ChaseTuning
 var _player: Node3D
+var _input_router: Node
 var _chase_path: Path3D
 var _boulder_visual: Node3D
 var _start_trigger: Area3D
@@ -30,6 +31,7 @@ func _ready() -> void:
 
 
 func configure_logic(chase_tuning: ChaseTuning) -> void:
+	_set_chase_mode(false)
 	_tuning = chase_tuning
 	_boulder_progress_m = 0.0
 	_active = false
@@ -39,10 +41,12 @@ func configure_logic(chase_tuning: ChaseTuning) -> void:
 
 func configure(
 	chase_tuning: ChaseTuning,
-	player: Node3D
+	player: Node3D,
+	input_router: Node
 ) -> void:
 	configure_logic(chase_tuning)
 	_player = player
+	_input_router = input_router
 	_resolve_scene_nodes()
 	_ensure_curve_from_markers()
 	_connect_segment_triggers()
@@ -63,6 +67,7 @@ func start_at_progress(player_progress_m: float) -> void:
 		_active = false
 		_caught = false
 		_stopped = false
+		_set_chase_mode(false)
 		_set_visual_visible(false)
 		push_error(
 			"%s cannot start without a usable chase path"
@@ -76,16 +81,19 @@ func start_at_progress(player_progress_m: float) -> void:
 	_active = true
 	_caught = false
 	_stopped = false
+	_set_chase_mode(true)
 	_set_visual_visible(true)
 	_sync_visual()
 
 
 func stop() -> void:
 	if _stopped:
+		_set_chase_mode(false)
 		return
 	_active = false
 	_caught = false
 	_stopped = true
+	_set_chase_mode(false)
 	_set_visual_visible(false)
 
 
@@ -148,6 +156,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 		_caught = false
 		_stopped = false
 		_boulder_progress_m = 0.0
+		_set_chase_mode(false)
 		_set_visual_visible(true)
 		_sync_visual()
 		return
@@ -171,6 +180,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 			- _tuning.boulder_start_gap_m,
 			0.0
 		)
+		_set_chase_mode(false)
 		_set_visual_visible(true)
 		_sync_visual()
 		return
@@ -179,6 +189,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 		_caught = false
 		_stopped = true
 		_boulder_progress_m = stop_progress_m
+		_set_chase_mode(false)
 		_set_visual_visible(false)
 		_sync_visual()
 		return
@@ -190,6 +201,7 @@ func reset_before_start() -> void:
 	_caught = false
 	_stopped = false
 	_boulder_progress_m = 0.0
+	_set_chase_mode(false)
 	_set_visual_visible(true)
 	_sync_visual()
 
@@ -218,6 +230,24 @@ func progress_for_position(world_position: Vector3) -> float:
 	return _chase_path.curve.get_closest_offset(
 		_chase_path.to_local(world_position)
 	)
+
+
+func _set_chase_mode(enabled: bool) -> void:
+	if (
+		_player != null
+		and _player.has_method("set_chase_auto_run_enabled")
+	):
+		_player.call("set_chase_auto_run_enabled", enabled)
+	if (
+		_input_router != null
+		and _input_router.has_method(
+			"set_screen_relative_tracking_enabled"
+		)
+	):
+		_input_router.call(
+			"set_screen_relative_tracking_enabled",
+			enabled
+		)
 
 
 func _resolve_scene_nodes() -> void:

@@ -58,6 +58,79 @@ func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> voi
 	)
 
 
+func test_chase_auto_run_keeps_full_forward_speed_while_steering() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	assert_true(
+		controller.has_method("set_chase_auto_run_enabled"),
+		"the Boulders trigger needs a named auto-run mode"
+	)
+	if not controller.has_method("set_chase_auto_run_enabled"):
+		return
+	controller.call(
+		"advance_logic",
+		10.0,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+	controller.call("set_chase_auto_run_enabled", true)
+	buffer.push(InputIntent.move(
+		Vector2.RIGHT,
+		10.1,
+		InputIntent.SOURCE_TOUCH
+	))
+	controller.velocity = Vector3.ZERO
+
+	controller.call(
+		"advance_logic",
+		10.1,
+		true,
+		1.0,
+		Vector3.FORWARD
+	)
+
+	var corridor_right := Vector3.FORWARD.cross(
+		Vector3.UP
+	).normalized()
+	assert_almost_eq(
+		controller.velocity.dot(Vector3.FORWARD),
+		_move.run_speed_mps,
+		0.0001,
+		"lateral dodging must not reduce auto-run below boulder speed"
+	)
+	assert_almost_eq(
+		controller.velocity.dot(corridor_right),
+		_move.run_speed_mps,
+		0.0001,
+		"full lateral input must remain available during auto-run"
+	)
+	assert_true(bool(controller.get("_chase_auto_run_enabled")))
+
+	controller.call("set_chase_auto_run_enabled", false)
+	buffer.push(InputIntent.move(
+		Vector2.ZERO,
+		10.2,
+		InputIntent.SOURCE_TOUCH
+	))
+	controller.velocity = Vector3.ZERO
+	controller.call(
+		"advance_logic",
+		10.2,
+		true,
+		1.0,
+		Vector3.FORWARD
+	)
+	assert_eq(
+		controller.velocity,
+		Vector3.ZERO,
+		"leaving the chase must restore ordinary manual movement"
+	)
+
+
 func test_controller_applies_variable_release_and_terminal_fall_speed() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():

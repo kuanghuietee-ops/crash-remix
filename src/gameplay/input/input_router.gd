@@ -15,6 +15,7 @@ var _gesture_corridor_axis := Vector2.UP
 var _screen_movement := Vector2.ZERO
 var _movement_timestamp_s: float
 var _movement_source := &""
+var _screen_relative_tracking_enabled: bool
 
 
 func configure(input_tuning: InputTuning) -> void:
@@ -62,10 +63,21 @@ func set_corridor_axis(axis: Vector2) -> void:
 	if next_axis.is_equal_approx(_corridor_axis):
 		return
 	_corridor_axis = next_axis
+	if _screen_relative_tracking_enabled:
+		_gesture_corridor_axis = _corridor_axis
+		_route_screen_movement()
 
 
 func corridor_axis() -> Vector2:
 	return _corridor_axis
+
+
+func set_screen_relative_tracking_enabled(enabled: bool) -> void:
+	if enabled == _screen_relative_tracking_enabled:
+		return
+	_screen_relative_tracking_enabled = enabled
+	_gesture_corridor_axis = _corridor_axis
+	_route_screen_movement()
 
 
 func tuning() -> InputTuning:

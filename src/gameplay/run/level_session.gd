@@ -206,6 +206,9 @@ func _discover_and_configure_chase_hazards() -> void:
 	_collect_chase_hazard_descendants(self)
 	if _gameplay_tuning == null:
 		return
+	var input_router := get_node_or_null(
+		"Input/InputRouter"
+	)
 	for hazard: Node in _chase_hazards:
 		if (
 			is_instance_valid(hazard)
@@ -215,7 +218,8 @@ func _discover_and_configure_chase_hazards() -> void:
 			hazard.call(
 				"configure",
 				_gameplay_tuning.chase,
-				_player as Node3D
+				_player as Node3D,
+				input_router
 			)
 
 

@@ -54,6 +54,7 @@ var _spin_visual_pivot: Node3D
 var _spin_area: Area3D
 var _slam_area: Area3D
 var _corridor_forward := Vector3.FORWARD
+var _chase_auto_run_enabled: bool
 var _spawn_transform := Transform3D.IDENTITY
 var _last_state := &""
 var _last_spin_active: bool
@@ -134,6 +135,10 @@ func set_corridor_forward(forward: Vector3) -> void:
 	var horizontal_forward := Vector3(forward.x, 0.0, forward.z)
 	if not horizontal_forward.is_zero_approx():
 		_corridor_forward = horizontal_forward.normalized()
+
+
+func set_chase_auto_run_enabled(enabled: bool) -> void:
+	_chase_auto_run_enabled = enabled
 
 
 func set_spawn_transform(spawn_transform: Transform3D) -> void:
@@ -273,9 +278,12 @@ func advance_logic(
 		_input_tuning,
 		_traversal_neighbour_available
 	)
+	var movement_input := _intents.movement()
+	if _chase_auto_run_enabled:
+		movement_input.y = -1.0
 	var next_horizontal := PlayerMotorType.horizontal_velocity(
 		velocity,
-		_intents.movement(),
+		movement_input,
 		decision.state,
 		delta_s,
 		_corridor_forward,

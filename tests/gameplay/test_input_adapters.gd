@@ -137,6 +137,48 @@ func test_router_keeps_held_stick_stable_when_camera_axis_changes() -> void:
 	)
 
 
+func test_router_tracks_held_stick_during_screen_relative_chase() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	if router == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	router.call("set_corridor_axis", Vector2.UP)
+	router.call(
+		"push_move",
+		Vector2.RIGHT,
+		1.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.RIGHT
+	)
+	assert_true(
+		router.has_method("set_screen_relative_tracking_enabled"),
+		"the reversing chase camera needs an explicit live-axis input mode"
+	)
+	if not router.has_method("set_screen_relative_tracking_enabled"):
+		return
+
+	router.call("set_screen_relative_tracking_enabled", true)
+	router.call("set_corridor_axis", Vector2.DOWN)
+
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.LEFT,
+		"a held screen-right gesture must flip its world-relative lateral "
+		+ "command when the chase camera reverses"
+	)
+	router.call("set_screen_relative_tracking_enabled", false)
+	router.call("set_corridor_axis", Vector2.UP)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.LEFT,
+		"ordinary camera motion must become gesture-stable again after chase"
+	)
+
+
 func test_gamepad_disables_magnet_above_configured_magnitude() -> void:
 	var script: Script = load(FILTER_SCRIPT_PATH)
 	assert_not_null(script, "InputVectorFilter implementation must exist")
