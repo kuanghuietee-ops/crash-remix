@@ -34,6 +34,7 @@ var _gameplay_tuning: GameplayTuning
 var _player: Node
 var _crates_by_id: Dictionary = {}
 var _enemies: Array[Node] = []
+var _chase_hazards: Array[Node] = []
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -80,6 +81,7 @@ func configure(
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
 	_enemies.clear()
+	_chase_hazards.clear()
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
@@ -138,6 +140,7 @@ func configure(
 
 	if _player is Node3D:
 		_start_transform = (_player as Node3D).global_transform
+	_discover_and_configure_chase_hazards()
 	if _player != null and _player.has_signal(&"respawn_started"):
 		if not _player.is_connected(
 			&"respawn_started",
@@ -196,6 +199,35 @@ func _discover_and_configure_enemies() -> void:
 			&"attack_contact",
 			_on_enemy_attack_contact
 		)
+
+
+func _discover_and_configure_chase_hazards() -> void:
+	_chase_hazards.clear()
+	_collect_chase_hazard_descendants(self)
+	if _gameplay_tuning == null:
+		return
+	for hazard: Node in _chase_hazards:
+		if (
+			is_instance_valid(hazard)
+			and hazard.has_method("configure")
+			and _player is Node3D
+		):
+			hazard.call(
+				"configure",
+				_gameplay_tuning.chase,
+				_player as Node3D
+			)
+
+
+func _collect_chase_hazard_descendants(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if (
+			child.is_in_group(&"chase_hazard")
+			and child.has_method("advance_runtime")
+			and child.has_method("reset_for_player_position")
+		):
+			_chase_hazards.append(child)
+		_collect_chase_hazard_descendants(child)
 
 
 func _collect_enemy_descendants(parent: Node) -> void:
@@ -298,6 +330,16 @@ func refresh_tuning(
 			)
 	for enemy: Node in _enemies:
 		_refresh_enemy_tuning(enemy)
+	if _gameplay_tuning != null:
+		for hazard: Node in _chase_hazards:
+			if (
+				is_instance_valid(hazard)
+				and hazard.has_method("refresh_tuning")
+			):
+				hazard.call(
+					"refresh_tuning",
+					_gameplay_tuning.chase
+				)
 
 
 func restore_snapshot(saved: Dictionary) -> bool:
@@ -327,6 +369,9 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	run_state = restored
 	_sync_crate_visuals(true)
 	_set_player_spawn(run_state.checkpoint_id)
+	_reset_chase_hazards_for_checkpoint(
+		run_state.checkpoint_id
+	)
 	if _player != null and _player.has_method("clear_masks"):
 		_player.call("clear_masks")
 	for _mask_index: int in range(restored_mask_count):
@@ -342,6 +387,7 @@ func _physics_process(delta_s: float) -> void:
 		return
 	run_state.advance_relic_timer(delta_s)
 	var now_s := MonotonicClockType.now_s()
+	_advance_chase_hazards(delta_s, now_s)
 	_advance_enemy_logic(now_s)
 	for crate_value: Variant in _crates_by_id.values():
 		var crate := crate_value as Node
@@ -351,6 +397,35 @@ func _physics_process(delta_s: float) -> void:
 		_skip_player_crate_collisions_once = false
 		return
 	_process_player_crate_collisions(now_s)
+
+
+func _advance_chase_hazards(
+	delta_s: float,
+	now_s: float
+) -> void:
+	if _player == null or not _player.has_method("receive_hit"):
+		return
+	for hazard: Node in _chase_hazards:
+		if (
+			not is_instance_valid(hazard)
+			or not hazard.has_method("advance_runtime")
+		):
+			continue
+		var outcome: Dictionary = hazard.call(
+			"advance_runtime",
+			delta_s
+		)
+		if not bool(outcome.get(&"caught", false)):
+			continue
+		var player_died := bool(_player.call(
+			"receive_hit",
+			now_s
+		))
+		if hazard.has_method("resolve_player_contact"):
+			hazard.call(
+				"resolve_player_contact",
+				player_died
+			)
 
 
 func _advance_enemy_logic(now_s: float) -> void:
@@ -421,6 +496,9 @@ func accept_mercy_skip() -> bool:
 	):
 		return false
 	_set_player_spawn(_offered_skip_checkpoint_id)
+	_reset_chase_hazards_for_checkpoint(
+		_offered_skip_checkpoint_id
+	)
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_offered_skip_completes_level = false
 	if completes_level:
@@ -479,6 +557,9 @@ func _record_death() -> Dictionary:
 		_reset_placed_wumpa()
 	_reset_enemies_to_authored_spawn()
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
+	_reset_chase_hazards_for_checkpoint(
+		int(outcome["respawn_checkpoint"])
+	)
 	# F16: a `respawn_requested(outcome)` signal used to fire here with no
 	# consumer anywhere in the repo (dead-wired, same class as P1-5/P1-9/
 	# P1-17) -- removed rather than kept, since every field `outcome` carries
@@ -510,6 +591,7 @@ func _on_player_respawn_started() -> void:
 	):
 		respawn_checkpoint = LevelRunState.START_CHECKPOINT
 	_set_player_spawn(respawn_checkpoint)
+	_reset_chase_hazards_for_checkpoint(respawn_checkpoint)
 
 
 func _arm_death_recorded_pending_respawn() -> int:
@@ -1111,10 +1193,35 @@ func _connect_once(
 func _set_player_spawn(target_checkpoint_id: int) -> void:
 	if _player == null or not _player.has_method("set_spawn_transform"):
 		return
-	var target := _start_transform
+	_player.call(
+		"set_spawn_transform",
+		_spawn_transform_for_checkpoint(target_checkpoint_id)
+	)
+
+
+func _spawn_transform_for_checkpoint(
+	target_checkpoint_id: int
+) -> Transform3D:
 	if _checkpoint_transforms.has(target_checkpoint_id):
-		target = _checkpoint_transforms[target_checkpoint_id]
-	_player.call("set_spawn_transform", target)
+		return _checkpoint_transforms[target_checkpoint_id]
+	return _start_transform
+
+
+func _reset_chase_hazards_for_checkpoint(
+	target_checkpoint_id: int
+) -> void:
+	var spawn_position := _spawn_transform_for_checkpoint(
+		target_checkpoint_id
+	).origin
+	for hazard: Node in _chase_hazards:
+		if (
+			is_instance_valid(hazard)
+			and hazard.has_method("reset_for_player_position")
+		):
+			hazard.call(
+				"reset_for_player_position",
+				spawn_position
+			)
 
 
 func _checkpoint_spawn_transform(crate: Node) -> Transform3D:

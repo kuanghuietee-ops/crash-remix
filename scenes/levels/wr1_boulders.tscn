@@ -1,0 +1,273 @@
+[gd_scene load_steps=29 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
+[ext_resource type="Resource" path="res://data/tuning/levels/boulders.tres" id="2_meta"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3_player"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="4_camera"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="5_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_intro.tscn" id="8_intro"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_gate.tscn" id="9_gate"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_left.tscn" id="10_left"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_right.tscn" id="11_right"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_weave.tscn" id="12_weave"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_breather.tscn" id="13_breather"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_final_sprint.tscn" id="14_sprint"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_drop_gate.tscn" id="15_drop"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_coda.tscn" id="16_coda"]
+[ext_resource type="Script" path="res://src/gameplay/chase/chase_hazard.gd" id="17_chase"]
+
+[sub_resource type="Environment" id="Environment_boulders"]
+background_mode = 1
+background_color = Color(0.11, 0.075, 0.055, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.74, 0.56, 0.4, 1)
+ambient_light_energy = 0.78
+tonemap_mode = 2
+
+[sub_resource type="BoxShape3D" id="Shape_trigger"]
+size = Vector3(16, 6, 3)
+
+[sub_resource type="StandardMaterial3D" id="Material_boulder"]
+albedo_color = Color(0.25, 0.24, 0.23, 1)
+roughness = 0.96
+
+[sub_resource type="SphereMesh" id="Mesh_boulder"]
+material = SubResource("Material_boulder")
+radius = 3.2
+height = 6.4
+radial_segments = 20
+rings = 12
+
+[sub_resource type="StandardMaterial3D" id="Material_boulder_band"]
+shading_mode = 0
+albedo_color = Color(0.72, 0.16, 0.08, 1)
+emission_enabled = true
+emission = Color(0.3, 0.025, 0.01, 1)
+emission_energy_multiplier = 1.2
+
+[sub_resource type="TorusMesh" id="Mesh_boulder_band"]
+material = SubResource("Material_boulder_band")
+inner_radius = 2.75
+outer_radius = 3.05
+rings = 24
+ring_segments = 8
+
+[sub_resource type="StandardMaterial3D" id="Material_chase_shadow"]
+shading_mode = 0
+albedo_color = Color(0.01, 0.008, 0.006, 0.68)
+transparency = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_chase_shadow"]
+material = SubResource("Material_chase_shadow")
+top_radius = 3.5
+bottom_radius = 3.5
+height = 0.03
+
+[sub_resource type="BoxShape3D" id="Shape_finish"]
+size = Vector3(16, 3, 5)
+
+[sub_resource type="StandardMaterial3D" id="Material_finish"]
+shading_mode = 0
+albedo_color = Color(0.18, 0.94, 0.5, 0.82)
+emission_enabled = true
+emission = Color(0.03, 0.36, 0.12, 1)
+emission_energy_multiplier = 1.25
+
+[sub_resource type="BoxMesh" id="Mesh_finish"]
+material = SubResource("Material_finish")
+size = Vector3(16, 3, 0.15)
+
+[node name="Boulders" type="Node3D"]
+script = ExtResource("1_session")
+metadata/level_meta = ExtResource("2_meta")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_boulders")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, 26, 0)
+light_color = Color(1, 0.77, 0.52, 1)
+light_energy = 1.35
+shadow_enabled = true
+
+[node name="Segments" type="Node3D" parent="."]
+
+[node name="BouldersIntro" parent="Segments" instance=ExtResource("8_intro")]
+
+[node name="ChaseGate" parent="Segments" instance=ExtResource("9_gate")]
+position = Vector3(0, 0, -64)
+
+[node name="ChaseLeft" parent="Segments" instance=ExtResource("10_left")]
+position = Vector3(0, 0, -128)
+
+[node name="ChaseRight" parent="Segments" instance=ExtResource("11_right")]
+position = Vector3(0, 0, -192)
+
+[node name="ChaseWeave" parent="Segments" instance=ExtResource("12_weave")]
+position = Vector3(0, 0, -256)
+
+[node name="ChaseBreather" parent="Segments" instance=ExtResource("13_breather")]
+position = Vector3(0, 0, -320)
+
+[node name="FinalSprint" parent="Segments" instance=ExtResource("14_sprint")]
+position = Vector3(0, 0, -384)
+
+[node name="BoulderDropGate" parent="Segments" instance=ExtResource("15_drop")]
+position = Vector3(0, 0, -448)
+
+[node name="CodaCorridor" parent="Segments" instance=ExtResource("16_coda")]
+position = Vector3(0, 0, -512)
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+position = Vector3(0, 0.05, 0)
+
+[node name="ChaseHazard" type="Node3D" parent="."]
+script = ExtResource("17_chase")
+chase_path_path = NodePath("Path")
+boulder_visual_path = NodePath("BoulderVisual")
+start_trigger_path = NodePath("StartTrigger")
+stop_trigger_path = NodePath("StopTrigger")
+
+[node name="Path" type="Path3D" parent="ChaseHazard"]
+
+[node name="ChaseStart" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -64)
+
+[node name="GateEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -128)
+
+[node name="LeftEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -192)
+
+[node name="RightEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -256)
+
+[node name="WeaveEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -320)
+
+[node name="BreatherEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -384)
+
+[node name="SprintEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -448)
+
+[node name="DropEnd" type="Marker3D" parent="ChaseHazard/Path"]
+position = Vector3(0, 3.2, -510)
+
+[node name="BoulderVisual" type="Node3D" parent="ChaseHazard"]
+position = Vector3(0, 3.2, -64)
+
+[node name="Rock" type="MeshInstance3D" parent="ChaseHazard/BoulderVisual"]
+mesh = SubResource("Mesh_boulder")
+
+[node name="WarningBand" type="MeshInstance3D" parent="ChaseHazard/BoulderVisual"]
+rotation_degrees = Vector3(90, 0, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_boulder_band")
+
+[node name="Shadow" type="MeshInstance3D" parent="ChaseHazard/BoulderVisual"]
+position = Vector3(0, -3.17, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_chase_shadow")
+
+[node name="Label" type="Label3D" parent="ChaseHazard/BoulderVisual"]
+position = Vector3(0, 4.2, 0)
+text = "BOULDER"
+font_size = 54
+outline_size = 12
+
+[node name="StartTrigger" type="Area3D" parent="ChaseHazard"]
+position = Vector3(0, 2, -70)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ChaseHazard/StartTrigger"]
+shape = SubResource("Shape_trigger")
+
+[node name="StopTrigger" type="Area3D" parent="ChaseHazard"]
+position = Vector3(0, 2, -506)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ChaseHazard/StopTrigger"]
+shape = SubResource("Shape_trigger")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="IntroEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -64)
+
+[node name="GateEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -128)
+
+[node name="LeftEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -192)
+
+[node name="RightEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -256)
+
+[node name="WeaveEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -320)
+
+[node name="BreatherEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -384)
+
+[node name="SprintEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -448)
+
+[node name="DropEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -512)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -576)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
+current = true
+fov = 58.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("5_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("6_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_touch")
+
+[node name="Finish" type="Area3D" parent="."]
+position = Vector3(0, 1.5, -570)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Finish"]
+shape = SubResource("Shape_finish")
+
+[node name="Marker" type="MeshInstance3D" parent="Finish"]
+cast_shadow = 0
+mesh = SubResource("Mesh_finish")
+
+[node name="Label" type="Label3D" parent="Finish"]
+position = Vector3(0, 2.2, 0)
+text = "BOULDERS EXIT"
+font_size = 58
+outline_size = 12

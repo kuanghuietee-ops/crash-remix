@@ -11,6 +11,10 @@ func _ready() -> void:
 		func() -> void:
 			level_requested.emit(&"wr1_n_sanity_beach")
 	)
+	$SafeArea/Center/Panel/Margin/Rows/Boulders.pressed.connect(
+		func() -> void:
+			level_requested.emit(&"wr1_boulders")
+	)
 	$SafeArea/Center/Panel/Margin/Rows/Toybox.pressed.connect(
 		func() -> void: toybox_requested.emit()
 	)

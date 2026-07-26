@@ -48,7 +48,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="SafeArea/Center"]
-custom_minimum_size = Vector2(660, 520)
+custom_minimum_size = Vector2(660, 610)
 layout_mode = 2
 theme_override_styles/panel = SubResource("Panel_list")
 
@@ -74,6 +74,12 @@ custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "N. SANITY BEACH"
+
+[node name="Boulders" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "BOULDERS  [WAVE C]"
 
 [node name="Toybox" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 78)

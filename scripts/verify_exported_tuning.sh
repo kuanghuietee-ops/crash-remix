@@ -66,5 +66,6 @@ grep -qE '^LEVEL META$' "$runtime_log"
 grep -qE '^res://data/tuning/levels/n_sanity_beach\.tres$' "$runtime_log"
 grep -qE '^FINGERPRINT [0-9a-f]{12}$' "$runtime_log"
 grep -qE '^EXPORTED LEVEL META SMOKE READY$' "$runtime_log"
+grep -qE '^EXPORTED BOULDERS SMOKE READY$' "$runtime_log"
 
 echo "Exported tuning smoke passed"

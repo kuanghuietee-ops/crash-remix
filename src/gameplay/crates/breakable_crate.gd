@@ -17,6 +17,7 @@ const CrateLogicType := preload(
 @export var segment_group: StringName
 @export var crate_type: StringName = CrateLogicType.TYPE_STANDARD
 @export var time_crate_size: StringName = CrateLogicType.TIME_SMALL
+@export var break_on_touch: bool = false
 
 var _economy: EconomyTuning
 var _move: MoveTuning
@@ -50,14 +51,22 @@ func apply_verb(
 ) -> Dictionary:
 	if _broken or not _armed or _economy == null:
 		return _inactive_result()
+	var resolved_verb := (
+		CrateLogicType.VERB_SPIN
+		if (
+			break_on_touch
+			and verb == CrateLogicType.VERB_TOUCH
+		)
+		else verb
+	)
 	var result := CrateLogicType.break_result(
 		crate_type,
-		verb,
+		resolved_verb,
 		_economy
 	)
 	if crate_type == CrateLogicType.TYPE_TNT:
 		var contact := CrateLogicType.tnt_contact_result(
-			verb,
+			resolved_verb,
 			_economy
 		)
 		if contact["starts_fuse"]:

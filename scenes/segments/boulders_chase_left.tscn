@@ -1,0 +1,90 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+[ext_resource type="PackedScene" path="res://scenes/segments/boulders_chase_obstacle.tscn" id="5_obstacle"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(20, 12, 68)
+
+[node name="ChaseLeft" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(0, 3, -5)
+text = "LEFT / RIGHT READS"
+font_size = 44
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="LeftRead" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -28)
+
+[node name="RightRead" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -50)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -64)
+
+[node name="EntrySurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -4)
+size = Vector3(16, 1, 12)
+color = Color(0.28, 0.17, 0.12, 1)
+
+[node name="MainRun" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -32)
+size = Vector3(16, 1, 52)
+color = Color(0.34, 0.2, 0.13, 1)
+
+[node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
+position = Vector3(0, -0.5, -60)
+size = Vector3(16, 1, 12)
+color = Color(0.31, 0.19, 0.12, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(0, 3, -32)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"toward_camera"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
+
+[node name="LeftBlockA" parent="." instance=ExtResource("5_obstacle")]
+position = Vector3(-4.5, 0, -28)
+metadata/blocked_lane = &"left"
+
+[node name="RightBlockB" parent="." instance=ExtResource("5_obstacle")]
+position = Vector3(4.5, 0, -50)
+metadata/blocked_lane = &"right"
+
+[node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(4.2, 1, -28)
+
+[node name="WumpaB" parent="." instance=ExtResource("4_wumpa")]
+position = Vector3(-4.2, 1, -50)
+
+[node name="Crate9" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4, 0.5, -18)
+crate_id = 9
+segment_group = &"Chase Left"
+
+[node name="Crate10" parent="." instance=ExtResource("3_crate")]
+position = Vector3(4, 0.5, -30)
+crate_id = 10
+segment_group = &"Chase Left"
+
+[node name="Crate11" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-4, 0.5, -48)
+crate_id = 11
+segment_group = &"Chase Left"
+
+[node name="Crate12" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-4, 0.5, -58)
+crate_id = 12
+segment_group = &"Chase Left"

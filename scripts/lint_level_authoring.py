@@ -1408,6 +1408,7 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
         "grind": "grind_offset",
         "wall_run": "wall_run_offset",
         "swing": "swing_offset",
+        "toward_camera": "toward_camera_offset",
     }.items():
         parsed = _parse_vector(camera[property_name])
         if parsed is None:

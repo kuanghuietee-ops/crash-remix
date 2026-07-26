@@ -6,6 +6,9 @@ const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const N_SANITY_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
 )
+const BOULDERS_SCENE_PATH := (
+	"res://scenes/levels/wr1_boulders.tscn"
+)
 const TEST_SAVE_DIR := "user://test_sandbox/task15_warp_room"
 const LEVEL_IDS: Array[StringName] = [
 	&"wr1_n_sanity_beach",
@@ -14,6 +17,7 @@ const LEVEL_IDS: Array[StringName] = [
 ]
 const AVAILABLE_LEVEL_IDS: Array[StringName] = [
 	&"wr1_n_sanity_beach",
+	&"wr1_boulders",
 ]
 const BOSS_ID := &"wr1_papu_papu"
 
@@ -41,7 +45,7 @@ func test_warp_room_authors_all_portals_but_locks_unbuilt_levels() -> void:
 		var portal := _portal_for(portals, level_id)
 		assert_not_null(portal, "%s portal must be authored" % level_id)
 		if portal != null:
-			var expected_open := level_id == &"wr1_n_sanity_beach"
+			var expected_open := level_id in AVAILABLE_LEVEL_IDS
 			assert_eq(
 				portal.get_meta("unlocked", false),
 				expected_open
@@ -102,7 +106,7 @@ func test_unbuilt_portal_stays_in_warp_room_when_player_enters_its_volume() -> v
 		return
 	var portal := _portal_for(
 		_portals(room),
-		&"wr1_boulders"
+		&"wr1_hog_wild"
 	)
 	assert_not_null(portal)
 	if portal == null:
@@ -316,6 +320,51 @@ func test_boot_hub_level_list_reaches_level_through_threaded_load() -> void:
 	)
 	root.queue_free()
 	await wait_process_frames(2)
+
+
+func test_boot_hub_level_list_reaches_boulders_scene() -> void:
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+	var room := root.get_node_or_null("Content/WarpRoom1")
+	assert_not_null(room)
+	if room == null:
+		return
+
+	room.get_node("UI/LevelList").emit_signal(&"pressed")
+	var list := root.get_node("UI/LevelListOverlay")
+	var button := list.get_node_or_null(
+		"SafeArea/Center/Panel/Margin/Rows/Boulders"
+	) as Button
+	assert_not_null(
+		button,
+		"the player-facing level list must expose Boulders"
+	)
+	if button == null:
+		return
+	button.emit_signal(&"pressed")
+
+	assert_eq(root.call("state_name"), &"level")
+	assert_eq(
+		root.call("threaded_level_path"),
+		BOULDERS_SCENE_PATH
+	)
+	var frames := 0
+	while (
+		not root.has_node("Content/Boulders")
+		and frames < 120
+	):
+		await wait_process_frames(1)
+		frames += 1
+	assert_true(
+		root.has_node("Content/Boulders"),
+		"the Boulders button must load the real authored scene"
+	)
 
 
 func test_app_pause_during_real_level_load_resumes_into_authored_scene() -> void:
@@ -571,11 +620,17 @@ func _configure_room(room: Node, profile: Dictionary) -> void:
 	var meta := load(
 		"res://data/tuning/levels/n_sanity_beach.tres"
 	) as LevelMeta
+	var boulders_meta := load(
+		"res://data/tuning/levels/boulders.tres"
+	) as LevelMeta
 	room.call(
 		"configure",
 		profile,
 		catalog,
-		{&"wr1_n_sanity_beach": meta},
+		{
+			&"wr1_n_sanity_beach": meta,
+			&"wr1_boulders": boulders_meta,
+		},
 		false,
 		AVAILABLE_LEVEL_IDS
 	)

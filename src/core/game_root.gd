@@ -36,6 +36,9 @@ const WARP_ROOM_SCENE := preload(
 const N_SANITY_BEACH_META := preload(
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+const BOULDERS_META := preload(
+	"res://data/tuning/levels/boulders.tres"
+)
 const MISSED_CRATE_OUTLINE_SHADER := preload(
 	"res://assets/shaders/missed_crate_outline.gdshader"
 )
@@ -47,8 +50,13 @@ const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
 )
+const BOULDERS_LEVEL_ID := &"wr1_boulders"
+const BOULDERS_SCENE_PATH := (
+	"res://scenes/levels/wr1_boulders.tscn"
+)
 const _LEVEL_SCENE_PATHS: Dictionary = {
 	N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_SCENE_PATH,
+	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -701,6 +709,7 @@ func _refresh_warp_room_tuning() -> void:
 func _hub_level_metas() -> Dictionary:
 	return {
 		N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_META,
+		BOULDERS_LEVEL_ID: BOULDERS_META,
 	}
 
 
@@ -856,6 +865,8 @@ func _cancel_pending_level_load() -> void:
 func _level_meta(level_id: StringName) -> LevelMeta:
 	if level_id == N_SANITY_BEACH_LEVEL_ID:
 		return N_SANITY_BEACH_META
+	if level_id == BOULDERS_LEVEL_ID:
+		return BOULDERS_META
 	return null
 
 

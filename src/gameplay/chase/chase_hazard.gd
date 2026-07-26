@@ -136,6 +136,11 @@ func advance_runtime(delta_s: float) -> Dictionary:
 	)
 
 
+func resolve_player_contact(player_died: bool) -> void:
+	if not player_died:
+		_caught = false
+
+
 func reset_for_player_position(player_position: Vector3) -> void:
 	if _tuning == null or not _path_is_usable():
 		_active = false

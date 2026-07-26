@@ -444,6 +444,21 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [],
         )
 
+    def test_real_boulders_level_passes_the_authoring_lint(
+        self,
+    ) -> None:
+        level_path = (
+            REPO_ROOT
+            / "scenes"
+            / "levels"
+            / "wr1_boulders.tscn"
+        )
+        self.assertTrue(level_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(level_path),
+            [],
+        )
+
     def test_spawn_with_no_authored_floor_beneath_it_fires_its_rule(
         self,
     ) -> None:

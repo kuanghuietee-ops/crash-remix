@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="LevelMeta" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/level_meta.gd" id="1_meta"]
+
+[resource]
+script = ExtResource("1_meta")
+level_id = &"wr1_boulders"
+display_name = "Boulders"
+crate_count = 36
+wumpa_total = 52
+design_pace_mps = 4.5
+relic_sapphire_s = 0.0
+relic_gold_s = 0.0
+relic_platinum_s = 0.0

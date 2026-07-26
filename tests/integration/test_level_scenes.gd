@@ -6,6 +6,12 @@ const LEVEL_SCENE_PATH := (
 const LEVEL_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+const BOULDERS_LEVEL_SCENE_PATH := (
+	"res://scenes/levels/wr1_boulders.tscn"
+)
+const BOULDERS_LEVEL_META_PATH := (
+	"res://data/tuning/levels/boulders.tres"
+)
 const BASE_CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const SEGMENT_NAMES: Array[StringName] = [
 	&"BeachLanding",
@@ -39,6 +45,27 @@ const EXPECTED_ENEMIES_BY_SEGMENT := {
 	},
 }
 const EXPECTED_ENEMY_TOTAL := 5
+const BOULDERS_SEGMENT_NAMES: Array[StringName] = [
+	&"BouldersIntro",
+	&"ChaseGate",
+	&"ChaseLeft",
+	&"ChaseRight",
+	&"ChaseWeave",
+	&"ChaseBreather",
+	&"FinalSprint",
+	&"BoulderDropGate",
+	&"CodaCorridor",
+]
+const BOULDERS_TOWARD_CAMERA_SEGMENTS: Array[StringName] = [
+	&"ChaseGate",
+	&"ChaseLeft",
+	&"ChaseRight",
+	&"ChaseWeave",
+	&"ChaseBreather",
+	&"FinalSprint",
+]
+const BOULDERS_EXPECTED_CHECKPOINTS := 2
+const CHASE_GAP_TOLERANCE_M := 0.001
 
 
 func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
@@ -406,6 +433,304 @@ func test_required_jump_is_authored_inside_a_camera_region() -> void:
 		)
 
 
+func test_boulders_has_the_nine_segment_chase_contract() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	var meta := level.get_meta(&"level_meta") as LevelMeta
+	assert_not_null(meta)
+	if meta != null:
+		assert_eq(meta.level_id, &"wr1_boulders")
+		assert_eq(
+			meta.crate_count,
+			_boulders_authored_crate_count()
+		)
+	assert_true(level is LevelSession)
+	assert_not_null(level.get_node_or_null("Player"))
+	assert_not_null(level.get_node_or_null("CameraRig"))
+	assert_not_null(level.get_node_or_null("ChaseHazard"))
+	assert_not_null(level.get_node_or_null("Finish"))
+
+	for segment_name: StringName in BOULDERS_SEGMENT_NAMES:
+		assert_not_null(
+			level.get_node_or_null(
+				"Segments/%s" % segment_name
+			),
+			"%s must be instanced into the Boulders route"
+			% segment_name
+		)
+
+
+func test_boulders_handoffs_overlap_on_all_three_axes() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	for index: int in range(
+		BOULDERS_SEGMENT_NAMES.size() - 1
+	):
+		var current := _boulders_segment(level, index)
+		var next := _boulders_segment(level, index + 1)
+		if current == null or next == null:
+			continue
+		var exit_surface := (
+			current.get_node_or_null("ExitSurface") as Node3D
+		)
+		var entry_surface := (
+			next.get_node_or_null("EntrySurface") as Node3D
+		)
+		var exit_marker := (
+			current.get_node_or_null("Spine/Exit") as Marker3D
+		)
+		var entry_marker := (
+			next.get_node_or_null("Spine/Entry") as Marker3D
+		)
+		assert_not_null(exit_surface)
+		assert_not_null(entry_surface)
+		assert_not_null(exit_marker)
+		assert_not_null(entry_marker)
+		if (
+			exit_surface == null
+			or entry_surface == null
+			or exit_marker == null
+			or entry_marker == null
+		):
+			continue
+		assert_true(
+			exit_marker.global_position.is_equal_approx(
+				entry_marker.global_position
+			),
+			"%s → %s spine markers must meet exactly"
+			% [current.name, next.name]
+		)
+		assert_true(
+			_full_aabbs_overlap(exit_surface, entry_surface),
+			"%s → %s must overlap in X, Y, and Z"
+			% [current.name, next.name]
+		)
+
+
+func test_boulders_real_chase_segments_use_toward_camera() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+
+	for segment_name: StringName in (
+		BOULDERS_TOWARD_CAMERA_SEGMENTS
+	):
+		var region := level.get_node_or_null(
+			"Segments/%s/CameraRegion" % segment_name
+		) as CameraRegion
+		assert_not_null(
+			region,
+			"%s needs a real CameraRegion" % segment_name
+		)
+		if region == null:
+			continue
+		assert_eq(
+			region.camera_mode,
+			CameraRegion.MODE_TOWARD_CAMERA
+		)
+		assert_eq(
+			region.offset_for(catalog.camera),
+			catalog.camera.toward_camera_offset,
+			"the assembled scene must resolve the live chase shot"
+		)
+
+
+func test_boulders_checkpoints_are_collectible_pass_through_crates() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var checkpoints: Array[Node] = []
+	var collectible_ids: Array[int] = []
+
+	for crate: Node in _crates(level):
+		var crate_type := StringName(crate.get("crate_type"))
+		if crate_type != &"time" and crate_type != &"iron":
+			collectible_ids.append(int(crate.get("crate_id")))
+		if crate_type == &"checkpoint":
+			checkpoints.append(crate)
+
+	assert_eq(
+		collectible_ids.size(),
+		_boulders_authored_crate_count()
+	)
+	assert_eq(
+		checkpoints.size(),
+		BOULDERS_EXPECTED_CHECKPOINTS
+	)
+	for checkpoint: Node in checkpoints:
+		assert_true(
+			bool(checkpoint.get("break_on_touch")),
+			"chase-line checkpoints must opt into pass-through"
+		)
+
+
+func test_boulders_checkpoint_breaks_during_real_pass_through() -> void:
+	var level := await _configured_boulders()
+	if level == null:
+		return
+	var checkpoint := _boulders_checkpoint(level, 0)
+	assert_not_null(checkpoint)
+	if checkpoint == null:
+		return
+
+	var result: Dictionary = checkpoint.call(
+		"apply_verb",
+		&"touch",
+		1.0
+	)
+
+	assert_true(
+		bool(result.get("breaks", false)),
+		"touching the chase-line checkpoint must break it"
+	)
+	assert_true(checkpoint.call("is_broken"))
+	assert_eq(
+		level.run_state.checkpoint_id,
+		int(checkpoint.get("crate_id")),
+		"pass-through must establish the respawn checkpoint"
+	)
+
+
+func test_boulders_death_mid_chase_restarts_behind_checkpoint() -> void:
+	var level := await _configured_boulders()
+	if level == null:
+		return
+	var checkpoint := _boulders_checkpoint(level, 1)
+	var player := level.get_node_or_null("Player") as Node3D
+	var hazard := level.get_node_or_null("ChaseHazard")
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(checkpoint)
+	assert_not_null(player)
+	assert_not_null(hazard)
+	assert_not_null(catalog)
+	if (
+		checkpoint == null
+		or player == null
+		or hazard == null
+		or catalog == null
+	):
+		return
+	checkpoint.call("apply_verb", &"touch", 1.0)
+	var respawn_transform: Transform3D = player.get(
+		"_spawn_transform"
+	)
+	player.global_transform = respawn_transform
+	player.reset_physics_interpolation()
+	var checkpoint_progress_m := float(hazard.call(
+		"progress_for_position",
+		respawn_transform.origin
+	))
+	hazard.call(
+		"start_at_progress",
+		checkpoint_progress_m
+	)
+	var catch_delta_s := (
+		catalog.chase.boulder_start_gap_m
+		- catalog.chase.boulder_kill_distance_m
+		+ CHASE_GAP_TOLERANCE_M
+	) / catalog.chase.boulder_speed_mps
+	level.call(
+		"_physics_process",
+		catch_delta_s
+	)
+	var advanced_progress_m := float(
+		hazard.call("boulder_progress_m")
+	)
+	assert_true(
+		player.call("is_respawning"),
+		"the real boulder catch must request a player death"
+	)
+
+	player.call("respawn")
+
+	assert_true(
+		hazard.call("is_active"),
+		"a mid-chase checkpoint respawn must restart the chase"
+	)
+	assert_lt(
+		float(hazard.call("boulder_progress_m")),
+		advanced_progress_m,
+		"death must rewind the advanced boulder"
+	)
+	assert_almost_eq(
+		float(hazard.call(
+			"gap_to_position_m",
+			respawn_transform.origin
+		)),
+		catalog.chase.boulder_start_gap_m,
+		CHASE_GAP_TOLERANCE_M,
+		"the restarted boulder must sit the tuned gap behind spawn"
+	)
+
+
+func test_boulders_obstacles_author_binary_reads_and_early_previews() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var obstacles: Array[Node] = []
+	for candidate: Node in level.get_tree().get_nodes_in_group(
+		&"chase_obstacle"
+	):
+		if level.is_ancestor_of(candidate):
+			obstacles.append(candidate)
+	assert_gt(
+		obstacles.size(),
+		0,
+		"the chase needs authored obstacle reads"
+	)
+
+	for obstacle: Node in obstacles:
+		var lane := StringName(
+			obstacle.get_meta(&"blocked_lane", &"")
+		)
+		var geometry := obstacle.get_node_or_null(
+			"Geometry"
+		) as Node3D
+		var shadow := obstacle.get_node_or_null(
+			"BlobShadowPreview"
+		) as Node3D
+		var edge := obstacle.get_node_or_null(
+			"GroundEdgePreview"
+		) as Node3D
+		assert_true(
+			lane in [&"left", &"right"],
+			"%s must encode a binary lane read" % obstacle.name
+		)
+		assert_not_null(geometry)
+		assert_not_null(shadow)
+		assert_not_null(edge)
+		if geometry == null or shadow == null or edge == null:
+			continue
+		assert_gt(
+			shadow.global_position.z,
+			geometry.global_position.z,
+			"the blob shadow must enter before obstacle geometry"
+		)
+		assert_gt(
+			edge.global_position.z,
+			geometry.global_position.z,
+			"the ground-edge highlight must preview the obstacle"
+		)
+
+
 func _instantiate_level() -> Node:
 	assert_true(
 		ResourceLoader.exists(LEVEL_SCENE_PATH),
@@ -416,6 +741,101 @@ func _instantiate_level() -> Node:
 	var packed := load(LEVEL_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	return packed.instantiate() if packed != null else null
+
+
+func _instantiate_boulders() -> Node:
+	assert_true(
+		ResourceLoader.exists(BOULDERS_LEVEL_SCENE_PATH),
+		"Boulders must be authored before this test can pass"
+	)
+	if not ResourceLoader.exists(BOULDERS_LEVEL_SCENE_PATH):
+		return null
+	var packed := load(BOULDERS_LEVEL_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	return packed.instantiate() if packed != null else null
+
+
+func _configured_boulders() -> LevelSession:
+	var level := _instantiate_boulders() as LevelSession
+	if level == null:
+		return null
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var meta := load(BOULDERS_LEVEL_META_PATH) as LevelMeta
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null("Player")
+	var router := level.get_node_or_null(
+		"Input/InputRouter"
+	)
+	assert_not_null(meta)
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(router)
+	if (
+		meta == null
+		or catalog == null
+		or player == null
+		or router == null
+	):
+		return null
+	router.call("configure", catalog.input)
+	player.call(
+		"configure",
+		catalog.move,
+		catalog.input,
+		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
+		router.get("buffer"),
+		catalog.economy,
+		true
+	)
+	assert_true(level.configure(
+		meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input,
+		catalog
+	))
+	return level
+
+
+func _boulders_authored_crate_count() -> int:
+	var meta := load(BOULDERS_LEVEL_META_PATH) as LevelMeta
+	assert_not_null(
+		meta,
+		"Boulders LevelMeta must load before its crates are checked"
+	)
+	return meta.crate_count if meta != null else -1
+
+
+func _boulders_segment(level: Node, index: int) -> Node3D:
+	return level.get_node_or_null(
+		"Segments/%s" % BOULDERS_SEGMENT_NAMES[index]
+	) as Node3D
+
+
+func _boulders_checkpoint(
+	level: Node,
+	index: int
+) -> Node:
+	var checkpoints: Array[Node] = []
+	for crate: Node in _crates(level):
+		if StringName(crate.get("crate_type")) == &"checkpoint":
+			checkpoints.append(crate)
+	checkpoints.sort_custom(
+		func(first: Node, second: Node) -> bool:
+			return (
+				(first as Node3D).global_position.z
+				> (second as Node3D).global_position.z
+			)
+	)
+	if index < 0 or index >= checkpoints.size():
+		return null
+	return checkpoints[index]
 
 
 # H7: read the authored crate count from the real LevelMeta resource instead
