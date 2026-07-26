@@ -403,6 +403,9 @@ func restore_snapshot(saved: Dictionary) -> bool:
 	run_state = restored
 	_sync_crate_visuals(true)
 	_set_player_spawn(run_state.checkpoint_id)
+	_reset_hog_mounts_for_checkpoint(
+		run_state.checkpoint_id
+	)
 	_reset_chase_hazards_for_checkpoint(
 		run_state.checkpoint_id
 	)
@@ -530,6 +533,9 @@ func accept_mercy_skip() -> bool:
 	):
 		return false
 	_set_player_spawn(_offered_skip_checkpoint_id)
+	_reset_hog_mounts_for_checkpoint(
+		_offered_skip_checkpoint_id
+	)
 	_reset_chase_hazards_for_checkpoint(
 		_offered_skip_checkpoint_id
 	)
@@ -591,6 +597,9 @@ func _record_death() -> Dictionary:
 		_reset_placed_wumpa()
 	_reset_enemies_to_authored_spawn()
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
+	_reset_hog_mounts_for_checkpoint(
+		int(outcome["respawn_checkpoint"])
+	)
 	_reset_chase_hazards_for_checkpoint(
 		int(outcome["respawn_checkpoint"])
 	)
@@ -625,6 +634,7 @@ func _on_player_respawn_started() -> void:
 	):
 		respawn_checkpoint = LevelRunState.START_CHECKPOINT
 	_set_player_spawn(respawn_checkpoint)
+	_reset_hog_mounts_for_checkpoint(respawn_checkpoint)
 	_reset_chase_hazards_for_checkpoint(respawn_checkpoint)
 
 
@@ -1234,9 +1244,6 @@ func _set_player_spawn(target_checkpoint_id: int) -> void:
 		"set_spawn_transform",
 		spawn_transform
 	)
-	_reset_hog_mounts_for_position(
-		spawn_transform.origin
-	)
 
 
 func _spawn_transform_for_checkpoint(
@@ -1278,6 +1285,16 @@ func _reset_hog_mounts_for_position(
 				"reset_for_player_position",
 				player_position
 			)
+
+
+func _reset_hog_mounts_for_checkpoint(
+	target_checkpoint_id: int
+) -> void:
+	_reset_hog_mounts_for_position(
+		_spawn_transform_for_checkpoint(
+			target_checkpoint_id
+		).origin
+	)
 
 
 func _checkpoint_spawn_transform(crate: Node) -> Transform3D:

@@ -21,6 +21,16 @@ class FakePlayer:
 		spawn_transform = value
 
 
+class FakeHogMount:
+	extends Node
+
+	var reset_positions: Array[Vector3] = []
+
+
+	func reset_for_player_position(player_position: Vector3) -> void:
+		reset_positions.append(player_position)
+
+
 func before_each() -> void:
 	_catalog = load(
 		"res://data/tuning/gameplay.tres"
@@ -585,6 +595,60 @@ func test_level_session_wires_crate_checkpoint_and_single_death_record() -> void
 		)
 	)
 	assert_false(standard.get_node("Mesh").visible)
+
+
+func test_checkpoint_updates_spawn_without_resetting_hog_until_respawn() -> void:
+	var session_script := load(LEVEL_SESSION_PATH) as Script
+	var session := session_script.new() as Node
+	add_child_autofree(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var player := FakePlayer.new()
+	session.add_child(player)
+	var mount := FakeHogMount.new()
+	session.add_child(mount)
+	assert_true(session.call(
+		"configure",
+		_meta,
+		&"normal",
+		_economy,
+		player,
+		_catalog.move,
+		_catalog.input
+	))
+	var checkpoint_id := _economy.mercy_mask_death_threshold
+	var checkpoint_transform := Transform3D(
+		Basis.IDENTITY,
+		Vector3(
+			_economy.tnt_blast_radius_m,
+			0.0,
+			-_economy.tnt_blast_radius_m
+		)
+	)
+	session.set(
+		"_checkpoint_transforms",
+		{checkpoint_id: checkpoint_transform}
+	)
+	var mounts: Array[Node] = session.get("_hog_mounts")
+	mounts.append(mount)
+
+	session.call("_on_checkpoint_reached", checkpoint_id)
+
+	assert_eq(player.spawn_transform, checkpoint_transform)
+	assert_eq(
+		mount.reset_positions,
+		[],
+		"activating a checkpoint must not change live ride state"
+	)
+
+	session.call("_on_player_respawn_started")
+
+	assert_eq(
+		mount.reset_positions,
+		[checkpoint_transform.origin],
+		"the actual respawn path must restore ride state for its destination"
+	)
 
 
 func _new_state(
