@@ -66,6 +66,9 @@ const BOULDERS_TOWARD_CAMERA_SEGMENTS: Array[StringName] = [
 ]
 const BOULDERS_EXPECTED_CHECKPOINTS := 2
 const CHASE_GAP_TOLERANCE_M := 0.001
+const TOWARD_CAMERA_OPPOSITION_DOT := -0.9
+const TOWARD_CAMERA_MINIMUM_DEPRESSION_DEGREES := 30.0
+const TOWARD_CAMERA_MAXIMUM_DEPRESSION_DEGREES := 35.0
 
 
 func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
@@ -547,6 +550,126 @@ func test_boulders_real_chase_segments_use_toward_camera() -> void:
 			catalog.camera.toward_camera_offset,
 			"the assembled scene must resolve the live chase shot"
 		)
+
+
+func test_boulders_live_camera_basis_faces_back_down_corridor() -> void:
+	var level := _instantiate_boulders()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var controller := level.get_node_or_null(
+		"CameraRig"
+	) as Node3D
+	var rail := level.get_node_or_null(
+		"CameraRig/Rail"
+	) as Path3D
+	var camera := level.get_node_or_null(
+		"CameraRig/Camera3D"
+	) as Camera3D
+	var region := level.get_node_or_null(
+		"Segments/ChaseLeft/CameraRegion"
+	) as CameraRegion
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(controller)
+	assert_not_null(rail)
+	assert_not_null(camera)
+	assert_not_null(region)
+	if (
+		catalog == null
+		or player == null
+		or controller == null
+		or rail == null
+		or camera == null
+		or region == null
+	):
+		return
+	var regions: Array = []
+	for candidate: Node in level.find_children(
+		"*",
+		"",
+		true,
+		false
+	):
+		if candidate is CameraRegion:
+			regions.append(candidate)
+	player.global_position = Vector3(
+		region.global_position.x,
+		player.global_position.y,
+		region.global_position.z
+	)
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		catalog.camera,
+		regions
+	)
+	var ordinary_view := -camera.global_basis.z
+	assert_gt(
+		Vector3(
+			ordinary_view.x,
+			0.0,
+			ordinary_view.z
+		).normalized().dot(
+			controller.call("corridor_forward")
+		),
+		0.0,
+		"the ordinary chase-behind rig must fail the toward-camera shot"
+	)
+
+	controller.call(
+		"_on_region_body_entered",
+		player,
+		region
+	)
+	for _settle_step: int in range(4):
+		controller.call(
+			"update_camera",
+			catalog.camera.region_blend_s
+		)
+	var view_direction := -camera.global_basis.z
+	var horizontal_view := Vector3(
+		view_direction.x,
+		0.0,
+		view_direction.z
+	).normalized()
+	var corridor_forward := (
+		controller.call("corridor_forward") as Vector3
+	).normalized()
+	var depression_degrees := rad_to_deg(atan2(
+		-view_direction.y,
+		Vector2(
+			view_direction.x,
+			view_direction.z
+		).length()
+	))
+
+	assert_lte(
+		horizontal_view.dot(corridor_forward),
+		TOWARD_CAMERA_OPPOSITION_DOT,
+		"the actual camera basis must look back against chase progress"
+	)
+	assert_between(
+		depression_degrees,
+		TOWARD_CAMERA_MINIMUM_DEPRESSION_DEGREES,
+		TOWARD_CAMERA_MAXIMUM_DEPRESSION_DEGREES,
+		"the actual camera basis must preserve the authored chase angle"
+	)
+	assert_gt(
+		(
+			camera.global_position
+			- player.global_position
+		).dot(corridor_forward),
+		0.0,
+		"the actual camera must sit ahead of the player"
+	)
 
 
 func test_boulders_checkpoints_are_collectible_pass_through_crates() -> void:

@@ -1,10 +1,6 @@
 class_name ChaseHazard
 extends Node3D
 
-signal chase_started(gap_m: float)
-signal chase_stopped
-signal player_caught
-
 const EVENT_START := &"start"
 const EVENT_STOP := &"stop"
 
@@ -63,6 +59,16 @@ func refresh_tuning(chase_tuning: ChaseTuning) -> void:
 func start_at_progress(player_progress_m: float) -> void:
 	if _tuning == null:
 		return
+	if not _path_is_usable():
+		_active = false
+		_caught = false
+		_stopped = false
+		_set_visual_visible(false)
+		push_error(
+			"%s cannot start without a usable chase path"
+			% get_path()
+		)
+		return
 	_boulder_progress_m = maxf(
 		player_progress_m - _tuning.boulder_start_gap_m,
 		0.0
@@ -72,9 +78,6 @@ func start_at_progress(player_progress_m: float) -> void:
 	_stopped = false
 	_set_visual_visible(true)
 	_sync_visual()
-	chase_started.emit(
-		gap_to_progress_m(player_progress_m)
-	)
 
 
 func stop() -> void:
@@ -84,7 +87,6 @@ func stop() -> void:
 	_caught = false
 	_stopped = true
 	_set_visual_visible(false)
-	chase_stopped.emit()
 
 
 func handle_segment_event(
@@ -113,7 +115,6 @@ func advance_progress(
 			<= _tuning.boulder_kill_distance_m
 		):
 			_caught = true
-			player_caught.emit()
 	return {
 		&"active": _active,
 		&"caught": _caught,

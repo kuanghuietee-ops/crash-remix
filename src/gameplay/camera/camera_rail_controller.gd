@@ -227,13 +227,6 @@ func update_camera(delta_s: float) -> void:
 			camera_right,
 			view_direction
 		)
-	elif basis_mode == CameraRegionType.MODE_TOWARD_CAMERA:
-		target_basis = (
-			CameraArchetypesType.toward_camera_basis_for_view(
-				_corridor_forward,
-				view_direction
-			)
-		)
 	_apply_basis_blend(target_basis, basis_mode, delta_s)
 	if _player.has_method("set_corridor_forward"):
 		_player.call("set_corridor_forward", _corridor_forward)

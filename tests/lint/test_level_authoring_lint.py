@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.lint_level_authoring import (
+    CHASE_START_GAP_RULE,
     CHECKPOINT_OFF_SPINE_RULE,
     CHECKPOINT_PROGRESSION_RULE,
     CHECKPOINT_SPACING_RULE,
@@ -25,6 +26,22 @@ FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures"
 
 
 class LevelAuthoringLintTests(unittest.TestCase):
+    def test_chase_path_without_start_gap_fires_its_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_chase_start_gap_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [CHASE_START_GAP_RULE],
+        )
+        self.assertIn("boulder_start_gap_m", findings[0].detail)
+        self.assertIn(
+            "4.500m",
+            findings[0].detail,
+            "the lint must measure the leading collision face, not center",
+        )
+
     def test_checkpoint_gap_fires_the_spacing_rule(self) -> None:
         self.assertEqual(
             self._rules("level_checkpoint_gap_bad.tscn"),
@@ -519,6 +536,7 @@ class LevelAuthoringLintTests(unittest.TestCase):
                 "economy.tres",
                 "camera.tres",
                 "move.tres",
+                "chase.tres",
             ]:
                 shutil.copy2(
                     REPO_ROOT / "data" / "tuning" / file_name,

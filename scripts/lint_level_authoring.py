@@ -56,6 +56,7 @@ CRATE_ID_RULE = "crate_id_unique"
 REQUIRED_JUMP_RULE = "required_jump_depression"
 TIME_CRATE_RULE = "time_crate_relic_only"
 SPAWN_FLOOR_RULE = "player_spawn_has_reachable_floor"
+CHASE_START_GAP_RULE = "chase_start_gap"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -65,6 +66,9 @@ CAMERA_REGION_SCRIPT = (
 )
 CAMERA_RAIL_CONTROLLER_SCRIPT = (
     "res://src/gameplay/camera/camera_rail_controller.gd"
+)
+CHASE_HAZARD_SCRIPT = (
+    "res://src/gameplay/chase/chase_hazard.gd"
 )
 GRAYBOX_PLATFORM_SCRIPT = (
     "res://src/graybox/graybox_platform.gd"
@@ -86,6 +90,7 @@ RELIC_ONLY_GROUP = "relic_only"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
 
 STRING_PATTERN = re.compile(r'(?:&)?"([^"]*)"')
+NODE_PATH_PATTERN = re.compile(r'NodePath\("([^"]*)"\)')
 GROUPS_PATTERN = re.compile(r"groups=\[([^\]]*)\]")
 
 
@@ -175,6 +180,7 @@ class AuthoringTuning:
     camera_look_ahead_m: float
     camera_offsets: dict[str, Vector3]
     respawn_floor_y_m: float
+    boulder_start_gap_m: float
 
 
 def find_authoring_violations(root: Path) -> list[AuthoringViolation]:
@@ -239,6 +245,131 @@ def _level_findings(
     findings.extend(
         _spawn_floor_findings(scene_name, nodes, tuning)
     )
+    findings.extend(
+        _chase_start_gap_findings(scene_name, nodes, tuning)
+    )
+    return findings
+
+
+def _chase_start_gap_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    tuning: AuthoringTuning,
+) -> list[AuthoringViolation]:
+    """Require enough path upstream of the trigger's leading face.
+
+    ``ChaseHazard.start_at_progress`` clamps negative boulder progress
+    to the start of its path. A trigger can therefore appear to sit the
+    tuned distance from the first marker while its leading collision
+    face fires earlier and silently shortens the real opening gap.
+    """
+    nodes_by_path = {node.path: node for node in nodes}
+    findings: list[AuthoringViolation] = []
+    for hazard in nodes:
+        if hazard.script_path != CHASE_HAZARD_SCRIPT:
+            continue
+        path_path = _resolve_node_path(
+            hazard.path,
+            hazard.properties.get("chase_path_path", ""),
+        )
+        trigger_path = _resolve_node_path(
+            hazard.path,
+            hazard.properties.get("start_trigger_path", ""),
+        )
+        path = nodes_by_path.get(path_path)
+        trigger = nodes_by_path.get(trigger_path)
+        if (
+            path is None
+            or path.node_type != "Path3D"
+            or trigger is None
+            or trigger.node_type != "Area3D"
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    CHASE_START_GAP_RULE,
+                    (
+                        f"{hazard.path} must resolve a Path3D and "
+                        "start-trigger Area3D before its authored "
+                        "boulder_start_gap_m can be verified"
+                    ),
+                )
+            )
+            continue
+        markers = sorted(
+            (
+                node
+                for node in nodes
+                if (
+                    node.parent == path.path
+                    and node.node_type == "Marker3D"
+                )
+            ),
+            key=lambda node: node.order,
+        )
+        if len(markers) < 2:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    CHASE_START_GAP_RULE,
+                    (
+                        f"{path.path} needs at least two direct "
+                        "Marker3D children to verify "
+                        "boulder_start_gap_m"
+                    ),
+                )
+            )
+            continue
+        points = [marker.world_position for marker in markers]
+        cumulative = _polyline_cumulative_lengths(points)
+        trigger_progress = _project_onto_polyline(
+            trigger.world_position,
+            points,
+            cumulative,
+        )
+        path_forward = _polyline_direction_at_distance(
+            points,
+            cumulative,
+            trigger_progress,
+        )
+        leading_position = trigger.world_position
+        trigger_bounds = _collision_bounds(trigger, nodes)
+        if trigger_bounds is not None and not _is_zero(path_forward):
+            leading_position = _subtract(
+                trigger.world_position,
+                _multiply(
+                    path_forward,
+                    _bounds_half_extent_along(
+                        trigger_bounds,
+                        path_forward,
+                    ),
+                ),
+            )
+        available_gap_m = _project_onto_polyline(
+            leading_position,
+            points,
+            cumulative,
+        )
+        if (
+            available_gap_m > tuning.boulder_start_gap_m
+            or math.isclose(
+                available_gap_m,
+                tuning.boulder_start_gap_m,
+            )
+        ):
+            continue
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                CHASE_START_GAP_RULE,
+                (
+                    f"{hazard.path} has {available_gap_m:.3f}m "
+                    "from path start to the trigger's leading face; "
+                    "boulder_start_gap_m requires "
+                    f"{tuning.boulder_start_gap_m:.3f}m"
+                ),
+            )
+        )
     return findings
 
 
@@ -1384,6 +1515,37 @@ def _sample_polyline(
     return points[-1]
 
 
+def _polyline_direction_at_distance(
+    points: list[Vector3],
+    cumulative: list[float],
+    distance: float,
+) -> Vector3:
+    for index, (start, finish) in enumerate(
+        zip(points, points[1:])
+    ):
+        if distance > cumulative[index + 1]:
+            continue
+        direction = _normalize(_subtract(finish, start))
+        if not _is_zero(direction):
+            return direction
+    for start, finish in reversed(list(zip(points, points[1:]))):
+        direction = _normalize(_subtract(finish, start))
+        if not _is_zero(direction):
+            return direction
+    return ZERO
+
+
+def _bounds_half_extent_along(
+    bounds: Bounds,
+    direction: Vector3,
+) -> float:
+    return sum(
+        abs(_dot(direction, bounds.transform.basis[axis]))
+        * bounds.half_size[axis]
+        for axis in range(3)
+    )
+
+
 def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
     economy = _assignment_values(
         (repo_root / "data/tuning/economy.tres").read_text(
@@ -1397,6 +1559,11 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
     )
     move = _assignment_values(
         (repo_root / "data/tuning/move.tres").read_text(
+            encoding="utf-8"
+        )
+    )
+    chase = _assignment_values(
+        (repo_root / "data/tuning/chase.tres").read_text(
             encoding="utf-8"
         )
     )
@@ -1426,6 +1593,7 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
         camera_look_ahead_m=float(camera["look_ahead_m"]),
         camera_offsets=offsets,
         respawn_floor_y_m=float(move["respawn_floor_y_m"]),
+        boulder_start_gap_m=float(chase["boulder_start_gap_m"]),
     )
 
 
@@ -1643,6 +1811,27 @@ def _node_transform(
 def _string_value(value: str) -> str:
     match = STRING_PATTERN.fullmatch(value.strip())
     return match.group(1) if match is not None else ""
+
+
+def _resolve_node_path(origin: str, authored_value: str) -> str:
+    match = NODE_PATH_PATTERN.fullmatch(authored_value.strip())
+    if match is None or not match.group(1):
+        return ""
+    raw_path = match.group(1)
+    components = (
+        []
+        if raw_path.startswith("/") or origin == "."
+        else origin.split("/")
+    )
+    for component in raw_path.strip("/").split("/"):
+        if not component or component == ".":
+            continue
+        if component == "..":
+            if components:
+                components.pop()
+            continue
+        components.append(component)
+    return "/".join(components) or "."
 
 
 def _integer_value(value: str) -> int | None:

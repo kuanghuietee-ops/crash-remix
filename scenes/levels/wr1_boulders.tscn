@@ -35,8 +35,8 @@ roughness = 0.96
 
 [sub_resource type="SphereMesh" id="Mesh_boulder"]
 material = SubResource("Material_boulder")
-radius = 3.2
-height = 6.4
+radius = 1.0
+height = 2.0
 radial_segments = 20
 rings = 12
 
@@ -49,8 +49,8 @@ emission_energy_multiplier = 1.2
 
 [sub_resource type="TorusMesh" id="Mesh_boulder_band"]
 material = SubResource("Material_boulder_band")
-inner_radius = 2.75
-outer_radius = 3.05
+inner_radius = 0.76
+outer_radius = 0.96
 rings = 24
 ring_segments = 8
 
@@ -61,8 +61,8 @@ transparency = 1
 
 [sub_resource type="CylinderMesh" id="Mesh_chase_shadow"]
 material = SubResource("Material_chase_shadow")
-top_radius = 3.5
-bottom_radius = 3.5
+top_radius = 1.0
+bottom_radius = 1.0
 height = 0.03
 
 [sub_resource type="BoxShape3D" id="Shape_finish"]
@@ -133,7 +133,7 @@ stop_trigger_path = NodePath("StopTrigger")
 [node name="Path" type="Path3D" parent="ChaseHazard"]
 
 [node name="ChaseStart" type="Marker3D" parent="ChaseHazard/Path"]
-position = Vector3(0, 3.2, -64)
+position = Vector3(0, 3.2, -56)
 
 [node name="GateEnd" type="Marker3D" parent="ChaseHazard/Path"]
 position = Vector3(0, 3.2, -128)
@@ -160,9 +160,11 @@ position = Vector3(0, 3.2, -510)
 position = Vector3(0, 3.2, -64)
 
 [node name="Rock" type="MeshInstance3D" parent="ChaseHazard/BoulderVisual"]
+position = Vector3(0, -2.2, 0)
 mesh = SubResource("Mesh_boulder")
 
 [node name="WarningBand" type="MeshInstance3D" parent="ChaseHazard/BoulderVisual"]
+position = Vector3(0, -2.2, 0)
 rotation_degrees = Vector3(90, 0, 0)
 cast_shadow = 0
 mesh = SubResource("Mesh_boulder_band")
@@ -173,7 +175,7 @@ cast_shadow = 0
 mesh = SubResource("Mesh_chase_shadow")
 
 [node name="Label" type="Label3D" parent="ChaseHazard/BoulderVisual"]
-position = Vector3(0, 4.2, 0)
+position = Vector3(0, -0.6, 0)
 text = "BOULDER"
 font_size = 54
 outline_size = 12
