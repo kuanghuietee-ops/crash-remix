@@ -7,6 +7,7 @@ const FLOAT_TOLERANCE := 0.0001
 const DISTANCE_TOLERANCE_M := 0.01
 
 var _move: MoveTuning
+var _hog: HogTuning
 
 
 func before_all() -> void:
@@ -14,6 +15,7 @@ func before_all() -> void:
 	assert_not_null(catalog)
 	if catalog != null:
 		_move = catalog.get("move")
+		_hog = catalog.get("hog")
 
 
 func test_run_acceleration_makes_partial_frame_scaled_progress() -> void:
@@ -28,7 +30,8 @@ func test_run_acceleration_makes_partial_frame_scaled_progress() -> void:
 		&"grounded",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var expected_speed: float = (
 		_move.run_speed_mps
@@ -54,7 +57,8 @@ func test_stopping_makes_partial_frame_scaled_progress() -> void:
 		&"grounded",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var expected_speed: float = (
 		_move.run_speed_mps
@@ -80,7 +84,8 @@ func test_crouched_acceleration_makes_partial_frame_scaled_progress() -> void:
 		&"crouched",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var expected_speed: float = (
 		_move.crawl_speed_mps
@@ -105,7 +110,8 @@ func test_slide_keeps_authored_momentum_after_stick_release() -> void:
 		&"sliding",
 		_move.get("run_time_to_speed_s"),
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 
 	assert_almost_eq(
@@ -143,7 +149,8 @@ func test_body_slam_explicitly_uses_committed_ground_braking() -> void:
 		&"body_slam",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var expected_speed := maxf(
 		current_speed
@@ -164,10 +171,20 @@ func test_slide_jump_and_body_slam_impulses_use_tuning() -> void:
 	var current: Vector3 = Vector3.FORWARD * _move.get("run_speed_mps")
 
 	var slide_jump: Vector3 = script.call(
-		"impulse_velocity", &"slide_jump", current, Vector3.FORWARD, _move
+		"impulse_velocity",
+		&"slide_jump",
+		current,
+		Vector3.FORWARD,
+		_move,
+		_hog
 	)
 	var slam: Vector3 = script.call(
-		"impulse_velocity", &"body_slam", current, Vector3.FORWARD, _move
+		"impulse_velocity",
+		&"body_slam",
+		current,
+		Vector3.FORWARD,
+		_move,
+		_hog
 	)
 
 	assert_almost_eq(
@@ -196,7 +213,8 @@ func test_slide_jump_travels_authored_distance_across_full_airtime() -> void:
 		&"slide_jump",
 		Vector3.FORWARD * _move.run_speed_mps,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var horizontal := Vector3(launch.x, 0.0, launch.z)
 	var position := Vector3.ZERO
@@ -214,7 +232,8 @@ func test_slide_jump_travels_authored_distance_across_full_airtime() -> void:
 			&"airborne",
 			step_s,
 			Vector3.FORWARD,
-			_move
+			_move,
+			_hog
 		)
 		position += horizontal * step_s
 		elapsed_s += step_s
@@ -235,7 +254,8 @@ func test_releasing_stick_in_air_preserves_slide_jump_momentum() -> void:
 		&"slide_jump",
 		Vector3.FORWARD * _move.run_speed_mps,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var horizontal := Vector3(launch.x, 0.0, launch.z)
 
@@ -246,7 +266,8 @@ func test_releasing_stick_in_air_preserves_slide_jump_momentum() -> void:
 		&"airborne",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 
 	assert_almost_eq(
@@ -266,7 +287,8 @@ func test_air_input_steers_without_spending_slide_jump_boost() -> void:
 		&"slide_jump",
 		Vector3.FORWARD * _move.run_speed_mps,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 	var horizontal := Vector3(launch.x, 0.0, launch.z)
 
@@ -277,7 +299,8 @@ func test_air_input_steers_without_spending_slide_jump_boost() -> void:
 		&"airborne",
 		FRAME_DELTA_S,
 		Vector3.FORWARD,
-		_move
+		_move,
+		_hog
 	)
 
 	assert_almost_eq(
@@ -304,7 +327,8 @@ func test_traversal_states_bypass_the_ground_motor() -> void:
 			state,
 			FRAME_DELTA_S,
 			Vector3.FORWARD,
-			_move
+			_move,
+			_hog
 		)
 		assert_eq(
 			velocity,
@@ -334,27 +358,44 @@ func test_authored_jump_geometry_directly_drives_impulses() -> void:
 	)
 	var current: Vector3 = Vector3.FORWARD * float(_move.get("run_speed_mps"))
 	var base_jump: Vector3 = script.call(
-		"impulse_velocity", &"jump", Vector3.ZERO, Vector3.FORWARD, _move
+		"impulse_velocity",
+		&"jump",
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		_move,
+		_hog
 	)
 	var tall_jump: Vector3 = script.call(
-		"impulse_velocity", &"jump", Vector3.ZERO, Vector3.FORWARD, taller_jump
+		"impulse_velocity",
+		&"jump",
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		taller_jump,
+		_hog
 	)
 	var base_slide: Vector3 = script.call(
-		"impulse_velocity", &"slide_jump", current, Vector3.FORWARD, _move
+		"impulse_velocity",
+		&"slide_jump",
+		current,
+		Vector3.FORWARD,
+		_move,
+		_hog
 	)
 	var long_slide: Vector3 = script.call(
 		"impulse_velocity",
 		&"slide_jump",
 		current,
 		Vector3.FORWARD,
-		longer_slide_jump
+		longer_slide_jump,
+		_hog
 	)
 	var high_slide: Vector3 = script.call(
 		"impulse_velocity",
 		&"slide_jump",
 		current,
 		Vector3.FORWARD,
-		higher_slide_jump
+		higher_slide_jump,
+		_hog
 	)
 
 	assert_gt(tall_jump.y, base_jump.y)

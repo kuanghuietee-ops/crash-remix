@@ -1470,7 +1470,8 @@ func _configured_boulders() -> LevelSession:
 		catalog.swing,
 		router.get("buffer"),
 		catalog.economy,
-		true
+		true,
+		catalog.hog
 	)
 	assert_true(level.configure(
 		meta,

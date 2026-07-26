@@ -784,7 +784,8 @@ func _new_controller_with_rail_root(rail_root: Node3D) -> Dictionary:
 		_catalog.swing,
 		buffer,
 		null,
-		false
+		false,
+		_catalog.hog
 	)
 	return {
 		"player": player,
@@ -828,7 +829,8 @@ func _new_authored_missed_hop_setup() -> Dictionary:
 		_catalog.swing,
 		buffer,
 		null,
-		false
+		false,
+		_catalog.hog
 	)
 
 	var departed_rail := grind_segment.get_node("CenterRail") as Path3D

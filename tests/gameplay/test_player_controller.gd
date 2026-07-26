@@ -293,7 +293,8 @@ func test_double_jump_release_uses_its_own_tap_height() -> void:
 		_swing,
 		buffer,
 		null,
-		false
+		false,
+		_hog
 	)
 	controller.call("advance_logic", 25.0, true, 0.0, Vector3.FORWARD)
 	buffer.push(InputIntent.button(&"jump", true, 25.01, &"touch"))
@@ -524,7 +525,8 @@ func test_phase_intent_is_ignored_when_disabled_and_honored_when_enabled() -> vo
 			_swing,
 			buffer,
 			null,
-			phase_enabled
+			phase_enabled,
+			_hog
 		)
 		PhaseState.reset_to_authored_set()
 		var before := PhaseState.active_set()
@@ -567,7 +569,8 @@ func test_phase_press_buffered_while_locked_does_not_fire_once_the_gate_opens() 
 		_swing,
 		buffer,
 		null,
-		false
+		false,
+		_hog
 	)
 	PhaseState.reset_to_authored_set()
 	var before := PhaseState.active_set()
@@ -605,7 +608,8 @@ func test_phase_press_buffered_while_locked_does_not_fire_once_the_gate_opens() 
 		_swing,
 		buffer,
 		null,
-		true
+		true,
+		_hog
 	)
 	controller.call(
 		"advance_logic",
@@ -638,7 +642,8 @@ func test_configure_gating_params_have_no_silent_default() -> void:
 		_swing,
 		buffer,
 		_economy,
-		true
+		true,
+		_hog
 	)
 	assert_eq(controller.get("_phase_enabled"), true)
 	assert_eq(controller.get("_economy_tuning"), _economy)
@@ -667,6 +672,80 @@ func test_configure_gating_params_have_no_silent_default() -> void:
 	)
 
 
+func test_hog_tuning_params_have_no_silent_default() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	controller.callv(
+		"configure",
+		[
+			_move,
+			_input,
+			_depth,
+			_wall_run,
+			_grind,
+			_swing,
+			buffer,
+			_economy,
+			true,
+		]
+	)
+	assert_engine_error(
+		"Method expected",
+		"configure must require HogTuning"
+	)
+	assert_eq(
+		controller.get("_hog_tuning"),
+		_hog,
+		"a rejected configure call must preserve the real hog tuning"
+	)
+
+	var motor := load(
+		"res://src/gameplay/player/player_motor.gd"
+	) as Script
+	assert_not_null(motor)
+	if motor == null:
+		return
+	motor.callv(
+		"horizontal_velocity",
+		[
+			Vector3.ZERO,
+			Vector2.ZERO,
+			&"grounded",
+			0.0,
+			Vector3.FORWARD,
+			_move,
+		]
+	)
+	assert_engine_error(
+		"Method expected",
+		"horizontal_velocity must require HogTuning"
+	)
+	motor.callv(
+		"impulse_velocity",
+		[&"jump", Vector3.ZERO, Vector3.FORWARD, _move]
+	)
+	assert_engine_error(
+		"Method expected",
+		"impulse_velocity must require HogTuning"
+	)
+
+	var controller_script := load(CONTROLLER_SCRIPT_PATH) as Script
+	assert_not_null(controller_script)
+	if controller_script == null:
+		return
+	controller_script.callv(
+		"tap_height_for_impulse",
+		[&"jump", _move]
+	)
+	assert_engine_error(
+		"Method expected",
+		"tap_height_for_impulse must require HogTuning"
+	)
+
+
 func test_phase_tuning_master_blocks_gamepad_at_player_choke_point() -> void:
 	var catalog := load(TUNING_PATH) as GameplayTuning
 	PhaseState.configure(catalog.phase)
@@ -687,7 +766,8 @@ func test_phase_tuning_master_blocks_gamepad_at_player_choke_point() -> void:
 		_swing,
 		buffer,
 		null,
-		true
+		true,
+		_hog
 	)
 	PhaseState.reset_to_authored_set()
 	var before := PhaseState.active_set()

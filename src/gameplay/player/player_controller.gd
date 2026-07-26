@@ -113,7 +113,7 @@ func configure(
 	intents: InputIntentBuffer,
 	economy_tuning: EconomyTuning,
 	phase_enabled: bool,
-	hog_tuning: HogTuning = null
+	hog_tuning: HogTuning
 ) -> void:
 	_move_tuning = move_tuning
 	_input_tuning = input_tuning
@@ -555,7 +555,7 @@ static func edge_nudge_directions(
 static func tap_height_for_impulse(
 	impulse: StringName,
 	move_tuning: MoveTuning,
-	hog_tuning: HogTuning = null
+	hog_tuning: HogTuning
 ) -> float:
 	match impulse:
 		PlayerFrameDecisionType.IMPULSE_DOUBLE_JUMP:

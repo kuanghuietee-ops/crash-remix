@@ -46,7 +46,7 @@ static func horizontal_velocity(
 	delta_s: float,
 	forward_axis: Vector3,
 	move_tuning: MoveTuning,
-	hog_tuning: HogTuning = null
+	hog_tuning: HogTuning
 ) -> Vector3:
 	if uses_spline_motion(state):
 		return Vector3.ZERO
@@ -133,7 +133,7 @@ static func impulse_velocity(
 	current_velocity: Vector3,
 	forward_axis: Vector3,
 	move_tuning: MoveTuning,
-	hog_tuning: HogTuning = null
+	hog_tuning: HogTuning
 ) -> Vector3:
 	var result := current_velocity
 	match impulse:

@@ -13,6 +13,7 @@ var _depth: DepthTuning
 var _wall_run: WallRunTuning
 var _grind: GrindTuning
 var _swing: SwingTuning
+var _hog: HogTuning
 
 
 class FakePredictionTarget:
@@ -46,6 +47,7 @@ func before_all() -> void:
 		_wall_run = catalog.wall_run
 		_grind = catalog.grind
 		_swing = catalog.swing
+		_hog = catalog.hog
 
 
 func test_trajectory_starts_at_player_and_advances_with_authored_step() -> void:
@@ -375,7 +377,8 @@ func test_player_prediction_context_uses_the_exact_wall_detach_arc() -> void:
 		_swing,
 		InputIntentBuffer.new(),
 		null,
-		false
+		false,
+		_hog
 	)
 	var sample := TraversalSample.new()
 	sample.position = Vector3(1.0, 2.0, 3.0)
@@ -421,7 +424,8 @@ func test_player_prediction_context_uses_current_swing_release_velocity() -> voi
 		_swing,
 		InputIntentBuffer.new(),
 		null,
-		false
+		false,
+		_hog
 	)
 	var anchor := SwingAnchor.new()
 	anchor.swing_tuning = _swing

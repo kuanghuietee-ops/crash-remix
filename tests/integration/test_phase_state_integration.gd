@@ -123,7 +123,8 @@ func test_player_phase_press_toggles_while_airborne() -> void:
 		catalog.swing,
 		intents,
 		null,
-		true
+		true,
+		catalog.hog
 	)
 	var phase_state: Node = get_node("/root/PhaseState")
 	phase_state.call("configure", catalog.phase)

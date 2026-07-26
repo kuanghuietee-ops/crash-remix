@@ -637,6 +637,7 @@ func _configure_player(player: CharacterBody3D) -> void:
 	if supports_economy:
 		arguments.append(_economy)
 		arguments.append(false)
+		arguments.append(_catalog.hog)
 	player.callv("configure", arguments)
 
 
