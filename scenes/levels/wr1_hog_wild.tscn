@@ -93,6 +93,7 @@ position = Vector3(0, 0, -896)
 
 [node name="Player" parent="." instance=ExtResource("3_player")]
 position = Vector3(0, 0.05, 0)
+ride_visual_offset = Vector3(0, 1.24, 0)
 
 [node name="HogRide" type="Node3D" parent="."]
 script = ExtResource("16_hog_mount")

@@ -1237,6 +1237,48 @@ func test_hog_wild_mounted_hog_visual_rests_on_player_floor() -> void:
 	)
 
 
+func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var mount := level.get_node_or_null("HogRide")
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var player_body := player.get_node_or_null(
+		"Visual/SpinPivot/Body"
+	) as MeshInstance3D
+	var hog_capsule := player.get_node_or_null(
+		"HogVisual/Capsule"
+	) as MeshInstance3D
+	assert_not_null(mount)
+	assert_not_null(player)
+	assert_not_null(player_body)
+	assert_not_null(hog_capsule)
+	if (
+		mount == null
+		or player == null
+		or player_body == null
+		or hog_capsule == null
+	):
+		return
+	assert_true(mount.call("is_mounted"))
+	assert_true(player_body.is_visible_in_tree())
+	var player_bounds := (
+		player_body.global_transform * player_body.get_aabb()
+	)
+	var hog_bounds := (
+		hog_capsule.global_transform * hog_capsule.get_aabb()
+	)
+	var hog_back_y := hog_bounds.position.y + hog_bounds.size.y
+	assert_almost_eq(
+		player_bounds.position.y,
+		hog_back_y,
+		CHASE_GAP_TOLERANCE_M,
+		"the mounted player body must sit visibly above the Hog capsule"
+	)
+
+
 func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 	var level := await _configured_hog_wild()
 	if level == null:
