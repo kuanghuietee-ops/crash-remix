@@ -3,7 +3,6 @@ extends EnemyBase
 
 var _state_deadline_s: float = -1.0
 var _active_started_s: float = -1.0
-var _dart_direction: float = 1.0
 
 
 func enemy_kind() -> StringName:
@@ -31,9 +30,6 @@ func advance_logic(
 		behavior_state() == STATE_DORMANT
 		and _player_is_inside_trigger(player_position)
 	):
-		_dart_direction = _player_lateral_direction(
-			player_position
-		)
 		_set_behavior_state(STATE_TELEGRAPH)
 		_state_deadline_s = now_s + _enemy_tuning.telegraph_s
 
@@ -61,9 +57,7 @@ func advance_logic(
 				_enemy_tuning.patrol_span_m
 				* ScalarMathType.HALF
 			)
-			_set_authored_lateral_offset(
-				dart_offset_m * _dart_direction
-			)
+			_set_authored_lateral_offset(dart_offset_m)
 
 	if (
 		behavior_state() == STATE_COOLDOWN
@@ -72,9 +66,6 @@ func advance_logic(
 		_set_authored_lateral_offset(0.0)
 		_set_behavior_state(STATE_DORMANT)
 		if _player_is_inside_trigger(player_position):
-			_dart_direction = _player_lateral_direction(
-				player_position
-			)
 			_set_behavior_state(STATE_TELEGRAPH)
 			_state_deadline_s = (
 				now_s + _enemy_tuning.telegraph_s
@@ -106,5 +97,4 @@ func resolve_contact(
 func _reset_behavior_state() -> void:
 	_state_deadline_s = -1.0
 	_active_started_s = -1.0
-	_dart_direction = 1.0
 	_set_behavior_state(STATE_DORMANT)

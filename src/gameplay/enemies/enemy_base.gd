@@ -180,18 +180,6 @@ func _player_is_inside_trigger(
 	)
 
 
-func _player_lateral_direction(
-	player_position: Vector3
-) -> float:
-	var lateral_axis := _authored_global_transform.basis.x.normalized()
-	var lateral_distance := (
-		player_position - _authored_global_transform.origin
-	).dot(lateral_axis)
-	if lateral_distance < 0.0:
-		return -1.0
-	return 1.0
-
-
 func _capture_authored_spawn() -> void:
 	_authored_transform = transform
 	_authored_global_transform = (

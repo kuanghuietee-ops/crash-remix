@@ -82,26 +82,38 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 	var far_player := Vector3.RIGHT * (
 		float(tuning.get("trigger_range_m")) + 1.0
 	)
+	var player_outside_authored_edge := Vector3.LEFT
 
 	enemy.call("advance_logic", start_s, far_player)
 	assert_eq(enemy.call("behavior_state"), &"dormant")
 
 	var trigger_s := start_s + 1.0
-	enemy.call("advance_logic", trigger_s, Vector3.ZERO)
+	enemy.call(
+		"advance_logic",
+		trigger_s,
+		player_outside_authored_edge
+	)
 	assert_eq(enemy.call("behavior_state"), &"telegraph")
 
 	var active_s := trigger_s + float(tuning.get("telegraph_s"))
-	enemy.call("advance_logic", active_s, Vector3.ZERO)
+	enemy.call(
+		"advance_logic",
+		active_s,
+		player_outside_authored_edge
+	)
 	assert_eq(enemy.call("behavior_state"), &"active")
 	enemy.call(
 		"advance_logic",
 		active_s + float(tuning.get("attack_active_s")) * 0.5,
-		Vector3.ZERO
+		player_outside_authored_edge
 	)
 	assert_gt(
 		enemy.position.x,
 		0.0,
-		"the active skink must dart across the corridor"
+		(
+			"the skink's authored +X dash must cross into the "
+			+ "corridor even when the player approaches from outside"
+		)
 	)
 
 	var cooldown_s := (
