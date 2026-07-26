@@ -11,6 +11,7 @@ var _grind: GrindTuning
 var _swing: SwingTuning
 var _economy: EconomyTuning
 var _chase: ChaseTuning
+var _hog: HogTuning
 
 
 func before_all() -> void:
@@ -25,6 +26,7 @@ func before_all() -> void:
 		_swing = catalog.swing
 		_economy = catalog.economy
 		_chase = catalog.chase
+		_hog = catalog.hog
 
 
 func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> void:
@@ -834,6 +836,15 @@ func test_controller_receives_every_movement_tuning_resource() -> void:
 	assert_eq(controller.get("_hog_tuning"), catalog.hog)
 
 
+func test_shared_controller_fixture_supplies_hog_tuning() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+
+	assert_eq(controller.get("_hog_tuning"), _hog)
+
+
 func test_spline_states_suppress_gravity_and_use_floating_motion() -> void:
 	for state: StringName in [&"grind", &"wall_run", &"swing"]:
 		var setup := _new_controller()
@@ -924,7 +935,8 @@ func _new_controller() -> Dictionary:
 		_swing,
 		buffer,
 		_economy,
-		false
+		false,
+		_hog
 	)
 	return {
 		"controller": controller,
