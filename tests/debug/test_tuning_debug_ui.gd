@@ -105,6 +105,47 @@ func test_debug_drawer_renders_every_runtime_economy_field() -> void:
 	)
 
 
+func test_debug_drawer_renders_all_enemy_sections_and_fields() -> void:
+	var setup := _new_ui()
+	if setup.is_empty():
+		return
+	var service: RefCounted = setup["service"]
+	var ui: Control = setup["ui"]
+	var expected_fields := [
+		&"patrol_speed_mps",
+		&"patrol_span_m",
+		&"turn_pause_s",
+		&"telegraph_s",
+		&"attack_active_s",
+		&"attack_cooldown_s",
+		&"trigger_range_m",
+	]
+	for section_name: StringName in [
+		&"enemy_crab",
+		&"enemy_skink",
+		&"enemy_plant",
+	]:
+		var resource := service.get("catalog").get(
+			section_name
+		) as Resource
+		assert_not_null(
+			resource,
+			"%s must reach the live drawer catalog" % section_name
+		)
+		if resource == null:
+			continue
+		for property_name: StringName in expected_fields:
+			assert_true(
+				ui.call(
+					"drawer_has_control",
+					section_name,
+					property_name
+				),
+				"%s.%s must have a live debug control"
+				% [section_name, property_name]
+			)
+
+
 func test_hud_reports_loaded_level_meta() -> void:
 	var setup := _new_ui()
 	if setup.is_empty():

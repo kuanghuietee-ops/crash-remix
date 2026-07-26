@@ -10,3 +10,6 @@ extends Resource
 @export var swing: SwingTuning
 @export var phase: PhaseTuning
 @export var economy: EconomyTuning
+@export var enemy_crab: EnemyTuning
+@export var enemy_skink: EnemyTuning
+@export var enemy_plant: EnemyTuning

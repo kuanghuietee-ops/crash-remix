@@ -26,7 +26,18 @@ const ENEMY_BEARING_SEGMENTS: Array[StringName] = [
 	&"CrateCadence",
 	&"PlantGauntlet",
 ]
-const TASK_17_DISCLOSURE := "ENEMIES IN TASK 17"
+const EXPECTED_ENEMIES_BY_SEGMENT := {
+	&"JungleCorridor": {
+		&"skink": 1,
+	},
+	&"CrateCadence": {
+		&"crab": 2,
+	},
+	&"PlantGauntlet": {
+		&"plant": 2,
+	},
+}
+const EXPECTED_ENEMY_TOTAL := 5
 
 
 func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
@@ -141,7 +152,7 @@ func test_handoff_check_rejects_breaks_on_each_world_axis() -> void:
 	)
 
 
-func test_level_has_collectible_counts_optional_iron_and_no_enemies() -> void:
+func test_level_has_collectible_counts_optional_iron_and_wave_b_enemies() -> void:
 	var level := _instantiate_level()
 	if level == null:
 		return
@@ -180,22 +191,12 @@ func test_level_has_collectible_counts_optional_iron_and_no_enemies() -> void:
 	assert_eq(iron_count, EXPECTED_IRON_CRATES)
 	assert_eq(
 		_enemy_count_within(level),
-		0,
-		"Task 13 is intentionally enemy-free"
+		EXPECTED_ENEMY_TOTAL,
+		"Task 17 must populate the three designated beach segments"
 	)
 
 
-# H8: nothing in this repo can currently join the "enemy" group -- Task 13
-# is enemy-free by design, and Task 17 (out of scope here) is what will
-# first add real enemy content. That makes the assertion above unable to
-# fail today, the same shape as Phase 0's M8. This proves the *detection
-# mechanism* is real without authoring any enemy content: a throwaway,
-# test-only probe node joins the group under the real level and must be
-# counted, then is discarded before any claim is made about the real,
-# committed level. If a future change ever broke `_enemy_count_within`
-# (e.g. dropped the `is_ancestor_of` scoping, or read the wrong group),
-# this test would catch it even while the level itself stays enemy-free.
-func test_enemy_free_assertion_can_detect_a_real_enemy_group_member() -> void:
+func test_enemy_count_stays_scoped_to_the_authored_level() -> void:
 	var level := _instantiate_level()
 	if level == null:
 		return
@@ -204,8 +205,7 @@ func test_enemy_free_assertion_can_detect_a_real_enemy_group_member() -> void:
 
 	assert_eq(
 		_enemy_count_within(level),
-		0,
-		"the real, committed level must start genuinely enemy-free"
+		EXPECTED_ENEMY_TOTAL
 	)
 
 	var probe := Node.new()
@@ -214,17 +214,12 @@ func test_enemy_free_assertion_can_detect_a_real_enemy_group_member() -> void:
 
 	assert_eq(
 		_enemy_count_within(level),
-		1,
-		"a real 'enemy' group member under the level must be counted"
+		EXPECTED_ENEMY_TOTAL + 1,
+		"a real enemy group member under the level must be counted"
 	)
 
 
-# H9: content-honesty guard -- a segment designated for a future enemy must
-# not look enemy-free to a player or a fresh-eyes reviewer. Only
-# PlantGauntlet carried the disclosure; JungleCorridor and CrateCadence did
-# not, even though 01-DESIGN.md §5 designates all three for an enemy once
-# Task 17 builds them.
-func test_enemy_bearing_segments_consistently_disclose_task_17() -> void:
+func test_enemy_bearing_segments_have_the_authored_behavior_mix() -> void:
 	var level := _instantiate_level()
 	if level == null:
 		return
@@ -232,21 +227,36 @@ func test_enemy_bearing_segments_consistently_disclose_task_17() -> void:
 	await wait_process_frames(1)
 
 	for segment_name: StringName in ENEMY_BEARING_SEGMENTS:
-		var title := level.get_node_or_null(
-			"Segments/%s/Title" % segment_name
-		) as Label3D
-		assert_not_null(
-			title,
-			"%s must author a Title label" % segment_name
+		var segment := level.get_node_or_null(
+			"Segments/%s" % segment_name
 		)
-		if title == null:
+		assert_not_null(segment)
+		if segment == null:
 			continue
-		assert_true(
-			title.text.contains(TASK_17_DISCLOSURE),
-			(
-				"%s is designated to receive an enemy in Task 17 and must "
-				+ "disclose it, like the other enemy-bearing segments"
-			) % segment_name
+		var actual_counts := {}
+		for enemy: Node in _enemies(level):
+			if not segment.is_ancestor_of(enemy):
+				continue
+			assert_true(
+				enemy.has_method("enemy_kind"),
+				"every authored enemy must identify its behavior type"
+			)
+			if not enemy.has_method("enemy_kind"):
+				continue
+			var enemy_kind := StringName(enemy.call("enemy_kind"))
+			actual_counts[enemy_kind] = (
+				int(actual_counts.get(enemy_kind, 0)) + 1
+			)
+			assert_eq(
+				(enemy as CollisionObject3D).collision_layer & 2,
+				2,
+				"player attack areas must detect every enemy"
+			)
+		assert_eq(
+			actual_counts,
+			EXPECTED_ENEMIES_BY_SEGMENT[segment_name],
+			"%s must carry its designed Wave B enemy mix"
+			% segment_name
 		)
 
 
@@ -342,19 +352,24 @@ func _crates(level: Node) -> Array[Node]:
 		true,
 		false
 	):
-		if candidate.has_method("apply_verb"):
+		if (
+			candidate.has_method("apply_verb")
+			and candidate.has_signal(&"broken")
+		):
 			result.append(candidate)
 	return result
 
 
 func _enemy_count_within(level: Node) -> int:
-	var enemy_count := 0
-	for candidate: Node in level.get_tree().get_nodes_in_group(
-		&"enemy"
-	):
+	return _enemies(level).size()
+
+
+func _enemies(level: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for candidate: Node in level.get_tree().get_nodes_in_group(&"enemy"):
 		if level.is_ancestor_of(candidate):
-			enemy_count += 1
-	return enemy_count
+			result.append(candidate)
+	return result
 
 
 func _full_aabbs_overlap(

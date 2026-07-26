@@ -1,0 +1,117 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/enemies/enemy_plant.gd" id="1_plant"]
+
+[sub_resource type="StandardMaterial3D" id="Material_stem"]
+albedo_color = Color(0.12, 0.52, 0.18, 1)
+roughness = 0.82
+
+[sub_resource type="StandardMaterial3D" id="Material_head"]
+albedo_color = Color(0.72, 0.12, 0.22, 1)
+roughness = 0.68
+
+[sub_resource type="StandardMaterial3D" id="Material_mouth"]
+albedo_color = Color(0.08, 0.015, 0.025, 1)
+roughness = 0.4
+
+[sub_resource type="StandardMaterial3D" id="Material_tooth"]
+albedo_color = Color(1, 0.9, 0.58, 1)
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Material_telegraph"]
+shading_mode = 0
+albedo_color = Color(1, 0.66, 0.08, 0.92)
+emission_enabled = true
+emission = Color(1, 0.25, 0.02, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="StandardMaterial3D" id="Material_active"]
+shading_mode = 0
+albedo_color = Color(1, 0.08, 0.12, 0.9)
+emission_enabled = true
+emission = Color(1, 0.02, 0.04, 1)
+emission_energy_multiplier = 2.8
+
+[sub_resource type="CylinderMesh" id="Mesh_body"]
+material = SubResource("Material_stem")
+top_radius = 0.58
+bottom_radius = 0.74
+height = 1.35
+
+[sub_resource type="SphereMesh" id="Mesh_head"]
+material = SubResource("Material_head")
+radius = 0.72
+height = 1.05
+
+[sub_resource type="BoxMesh" id="Mesh_mouth"]
+material = SubResource("Material_mouth")
+size = Vector3(0.78, 0.2, 0.14)
+
+[sub_resource type="PrismMesh" id="Mesh_tooth"]
+material = SubResource("Material_tooth")
+size = Vector3(0.16, 0.28, 0.15)
+
+[sub_resource type="TorusMesh" id="Mesh_telegraph"]
+material = SubResource("Material_telegraph")
+inner_radius = 0.82
+outer_radius = 1.02
+rings = 12
+ring_segments = 24
+
+[sub_resource type="SphereMesh" id="Mesh_active"]
+material = SubResource("Material_active")
+radius = 0.9
+height = 1.35
+
+[sub_resource type="BoxShape3D" id="Shape_hurt"]
+size = Vector3(1.48, 1.35, 1.48)
+
+[sub_resource type="BoxShape3D" id="Shape_attack"]
+size = Vector3(1.48, 1.35, 1.48)
+
+[node name="Plant" type="AnimatableBody3D"]
+collision_layer = 3
+collision_mask = 1
+script = ExtResource("1_plant")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_hurt")
+
+[node name="AttackArea" type="Area3D" parent="."]
+collision_layer = 2
+collision_mask = 1
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AttackArea"]
+shape = SubResource("Shape_attack")
+
+[node name="Visual" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_body")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.48, -0.12)
+mesh = SubResource("Mesh_head")
+
+[node name="Mouth" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.48, -0.73)
+mesh = SubResource("Mesh_mouth")
+
+[node name="LeftTooth" type="MeshInstance3D" parent="."]
+position = Vector3(-0.22, 0.38, -0.82)
+rotation_degrees = Vector3(0, 0, 180)
+mesh = SubResource("Mesh_tooth")
+
+[node name="RightTooth" type="MeshInstance3D" parent="."]
+position = Vector3(0.22, 0.38, -0.82)
+rotation_degrees = Vector3(0, 0, 180)
+mesh = SubResource("Mesh_tooth")
+
+[node name="TelegraphCue" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.64, 0)
+visible = false
+mesh = SubResource("Mesh_telegraph")
+
+[node name="ActiveCue" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.48, -0.12)
+visible = false
+mesh = SubResource("Mesh_active")

@@ -332,7 +332,10 @@ func test_real_zero_crate_scene_completion_does_not_award_gem() -> void:
 		true,
 		false
 	):
-		if not candidate.has_method("apply_verb"):
+		if (
+			not candidate.has_method("apply_verb")
+			or not candidate.has_signal(&"broken")
+		):
 			continue
 		candidate.get_parent().remove_child(candidate)
 		candidate.free()
@@ -691,7 +694,10 @@ func test_beach_authors_one_stopwatch_and_all_three_time_crates_relic_only() -> 
 		true,
 		false
 	):
-		if not candidate.has_method("apply_verb"):
+		if (
+			not candidate.has_method("apply_verb")
+			or not candidate.has_signal(&"broken")
+		):
 			continue
 		if StringName(candidate.get("crate_type")) != &"time":
 			continue

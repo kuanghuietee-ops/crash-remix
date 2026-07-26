@@ -10,6 +10,9 @@ const CrateLogicType := preload(
 const PlayerStateMachineType := preload(
 	"res://src/gameplay/player/player_state_machine.gd"
 )
+const JumpKinematicsType := preload(
+	"res://src/gameplay/player/jump_kinematics.gd"
+)
 const CHECKPOINT_NEXT_ID_META := &"next_checkpoint_id"
 
 signal run_completed(results: Dictionary)
@@ -27,8 +30,10 @@ var run_state := LevelRunState.new()
 var _economy: EconomyTuning
 var _move: MoveTuning
 var _input: InputTuning
+var _gameplay_tuning: GameplayTuning
 var _player: Node
 var _crates_by_id: Dictionary = {}
+var _enemies: Array[Node] = []
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -36,6 +41,7 @@ var _relic_stopwatch: Area3D
 var _death_recorded_pending_respawn: bool = false
 var _death_recorded_pending_generation: int = 0
 var _active_top_contact_ids: Array[int] = []
+var _active_enemy_top_contact_ids: Array[int] = []
 var _skip_player_crate_collisions_once: bool = false
 var _offered_skip_checkpoint_id: int = (
 	LevelRunState.START_CHECKPOINT
@@ -60,19 +66,24 @@ func configure(
 	economy: EconomyTuning,
 	player: Node = null,
 	move: MoveTuning = null,
-	input: InputTuning = null
+	input: InputTuning = null,
+	gameplay_tuning: GameplayTuning = null
 ) -> bool:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_economy = economy
 	_move = move
 	_input = input
+	if gameplay_tuning != null:
+		_gameplay_tuning = gameplay_tuning
 	_player = player
 	_clear_death_recorded_pending_respawn()
 	run_state.start(meta, mode)
 	_crates_by_id.clear()
+	_enemies.clear()
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
+	_active_enemy_top_contact_ids.clear()
 	_skip_player_crate_collisions_once = false
 	_relic_stopwatch = null
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
@@ -123,6 +134,7 @@ func configure(
 			_configure_relic_stopwatch(candidate as Area3D)
 	if not authored_ids.is_empty():
 		run_state.register_authored_crate_ids(authored_ids)
+	_discover_and_configure_enemies()
 
 	if _player is Node3D:
 		_start_transform = (_player as Node3D).global_transform
@@ -174,6 +186,54 @@ func configure(
 	return run_state.run_active
 
 
+func _discover_and_configure_enemies() -> void:
+	_enemies.clear()
+	_collect_enemy_descendants(self)
+	for enemy: Node in _enemies:
+		_refresh_enemy_tuning(enemy, true)
+		_connect_once(
+			enemy,
+			&"attack_contact",
+			_on_enemy_attack_contact
+		)
+
+
+func _collect_enemy_descendants(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if (
+			child.is_in_group(&"enemy")
+			and child.has_method("enemy_kind")
+			and child.has_method("tuning_section")
+		):
+			_enemies.append(child)
+		_collect_enemy_descendants(child)
+
+
+func _refresh_enemy_tuning(
+	enemy: Node,
+	initial_configuration: bool = false
+) -> void:
+	if (
+		_gameplay_tuning == null
+		or not is_instance_valid(enemy)
+		or not enemy.has_method("tuning_section")
+	):
+		return
+	var section_name := StringName(
+		enemy.call("tuning_section")
+	)
+	var enemy_tuning := (
+		_gameplay_tuning.get(section_name) as EnemyTuning
+	)
+	if enemy_tuning == null:
+		return
+	enemy.call(
+		"configure" if initial_configuration else "refresh_tuning",
+		enemy_tuning,
+		_move
+	)
+
+
 func _pause_gameplay_timers(now_s: float) -> void:
 	if _timers_paused_at_s >= 0.0:
 		return
@@ -203,16 +263,25 @@ func _resume_gameplay_timers(now_s: float) -> void:
 			and crate.has_method("delay_fuse")
 		):
 			crate.call("delay_fuse", paused_duration_s)
+	for enemy: Node in _enemies:
+		if (
+			is_instance_valid(enemy)
+			and enemy.has_method("delay_timers")
+		):
+			enemy.call("delay_timers", paused_duration_s)
 
 
 func refresh_tuning(
 	economy: EconomyTuning,
 	move: MoveTuning,
-	input: InputTuning
+	input: InputTuning,
+	gameplay_tuning: GameplayTuning = null
 ) -> void:
 	_economy = economy
 	_move = move
 	_input = input
+	if gameplay_tuning != null:
+		_gameplay_tuning = gameplay_tuning
 	for crate_value: Variant in _crates_by_id.values():
 		var crate := crate_value as Node
 		if crate != null:
@@ -227,6 +296,8 @@ func refresh_tuning(
 					== LevelRunState.MODE_RELIC
 				)
 			)
+	for enemy: Node in _enemies:
+		_refresh_enemy_tuning(enemy)
 
 
 func restore_snapshot(saved: Dictionary) -> bool:
@@ -271,6 +342,7 @@ func _physics_process(delta_s: float) -> void:
 		return
 	run_state.advance_relic_timer(delta_s)
 	var now_s := MonotonicClockType.now_s()
+	_advance_enemy_logic(now_s)
 	for crate_value: Variant in _crates_by_id.values():
 		var crate := crate_value as Node
 		if crate != null and crate.has_method("advance_fuse"):
@@ -279,6 +351,34 @@ func _physics_process(delta_s: float) -> void:
 		_skip_player_crate_collisions_once = false
 		return
 	_process_player_crate_collisions(now_s)
+
+
+func _advance_enemy_logic(now_s: float) -> void:
+	if not _player is Node3D:
+		return
+	var player_position := (_player as Node3D).global_position
+	for enemy: Node in _enemies:
+		if (
+			is_instance_valid(enemy)
+			and enemy.has_method("advance_logic")
+		):
+			enemy.call(
+				"advance_logic",
+				now_s,
+				player_position
+			)
+
+
+func _reset_enemies_to_authored_spawn() -> void:
+	_active_enemy_top_contact_ids.clear()
+	for enemy: Node in _enemies:
+		if (
+			is_instance_valid(enemy)
+			and enemy.has_method(
+				"reset_to_authored_spawn"
+			)
+		):
+			enemy.call("reset_to_authored_spawn")
 
 
 func record_player_death() -> Dictionary:
@@ -377,6 +477,7 @@ func _record_death() -> Dictionary:
 	if bool(outcome["relic_void_reset"]):
 		_reset_relic_stopwatch()
 		_reset_placed_wumpa()
+	_reset_enemies_to_authored_spawn()
 	_set_player_spawn(int(outcome["respawn_checkpoint"]))
 	# F16: a `respawn_requested(outcome)` signal used to fire here with no
 	# consumer anywhere in the repo (dead-wired, same class as P1-5/P1-9/
@@ -398,6 +499,7 @@ func _on_player_respawned() -> void:
 
 func _on_player_respawn_started() -> void:
 	_active_top_contact_ids.clear()
+	_active_enemy_top_contact_ids.clear()
 	_skip_player_crate_collisions_once = true
 	if _death_recorded_pending_respawn:
 		return
@@ -681,53 +783,70 @@ func _connect_player_attacks() -> void:
 
 
 func _on_spin_body_entered(body: Node) -> void:
-	_apply_crate_verb(body, CrateLogicType.VERB_SPIN)
+	_apply_combat_verb(body, CrateLogicType.VERB_SPIN)
 
 
 func _on_slam_body_entered(body: Node) -> void:
-	_apply_crate_verb(body, CrateLogicType.VERB_SLAM)
+	_apply_combat_verb(body, CrateLogicType.VERB_SLAM)
 
 
-func _apply_crate_verb(
+func _apply_combat_verb(
 	candidate: Node,
 	verb: StringName
 ) -> void:
-	if not _is_authored_crate(candidate):
+	var now_s := MonotonicClockType.now_s()
+	if _is_authored_crate(candidate):
+		candidate.call("apply_verb", verb, now_s)
 		return
-	candidate.call(
+	if not _is_authored_enemy(candidate):
+		return
+	var result: Dictionary = candidate.call(
 		"apply_verb",
 		verb,
-		MonotonicClockType.now_s()
+		now_s
 	)
+	_apply_enemy_outcome(result, now_s)
 
 
 func _process_player_crate_collisions(now_s: float) -> void:
 	if not _player is CharacterBody3D:
 		_active_top_contact_ids.clear()
+		_active_enemy_top_contact_ids.clear()
 		return
 	var player_body := _player as CharacterBody3D
 	var top_contacts: Array[int] = []
+	var enemy_top_contacts: Array[int] = []
 	var bounce_intent_resolved := false
 	var high_bounce := false
+	var state := (
+		StringName(player_body.call("current_state"))
+		if player_body.has_method("current_state")
+		else &""
+	)
 	for collision_index: int in range(
 		player_body.get_slide_collision_count()
 	):
 		var collision := player_body.get_slide_collision(
 			collision_index
 		)
-		var crate := collision.get_collider() as Node
+		var collider := collision.get_collider() as Node
+		var normal := collision.get_normal()
+		if _is_authored_enemy(collider):
+			_process_enemy_body_collision(
+				collider,
+				normal,
+				state,
+				now_s,
+				enemy_top_contacts
+			)
+			continue
+		var crate := collider
 		if not _is_authored_crate(crate):
 			continue
 		crate.call(
 			"apply_verb",
 			CrateLogicType.VERB_TOUCH,
 			now_s
-		)
-		var normal := collision.get_normal()
-		var state := (
-			StringName(player_body.call("current_state"))
-			if player_body.has_method("current_state")
-			else &""
 		)
 		if state == PlayerStateMachineType.STATE_SLIDING:
 			crate.call(
@@ -789,6 +908,101 @@ func _process_player_crate_collisions(now_s: float) -> void:
 						high_bounce
 					)
 	_active_top_contact_ids = top_contacts
+	_active_enemy_top_contact_ids = enemy_top_contacts
+
+
+func _process_enemy_body_collision(
+	enemy: Node,
+	normal: Vector3,
+	player_state: StringName,
+	now_s: float,
+	top_contacts: Array[int]
+) -> void:
+	var verb := CrateLogicType.VERB_TOUCH
+	var top_contact := false
+	if player_state == PlayerStateMachineType.STATE_SLIDING:
+		verb = CrateLogicType.VERB_SLIDE
+	elif player_state in [
+		PlayerStateMachineType.STATE_BODY_SLAM,
+		PlayerStateMachineType.STATE_SLAM_RECOVERY,
+	]:
+		verb = CrateLogicType.VERB_SLAM
+	elif normal.y > 0.0:
+		verb = &"jump"
+		top_contact = true
+
+	if top_contact:
+		var enemy_id := enemy.get_instance_id()
+		top_contacts.append(enemy_id)
+		if (
+			enemy_id in _active_enemy_top_contact_ids
+			and not bool(enemy.call("attack_is_active"))
+		):
+			return
+	var result: Dictionary = enemy.call(
+		"resolve_contact",
+		verb,
+		now_s
+	)
+	_apply_enemy_outcome(result, now_s)
+
+
+func _apply_enemy_outcome(
+	result: Dictionary,
+	now_s: float
+) -> void:
+	if (
+		bool(result.get("player_hit", false))
+		and _player != null
+		and _player.has_method("receive_hit")
+	):
+		_player.call("receive_hit", now_s)
+		return
+	if (
+		not bool(result.get("player_bounce", false))
+		or not _player is CharacterBody3D
+		or _move == null
+	):
+		return
+	(_player as CharacterBody3D).velocity.y = (
+		JumpKinematicsType.upward_speed_for_height(
+			_move.jump_tap_height_m,
+			_move
+		)
+	)
+	if _player.has_method("begin_bounce_timing_window"):
+		_player.call(
+			"begin_bounce_timing_window",
+			now_s,
+			false
+		)
+
+
+func _on_enemy_attack_contact(
+	body: Node,
+	enemy: Node
+) -> void:
+	if body != _player or not _is_authored_enemy(enemy):
+		return
+	call_deferred(
+		&"_resolve_enemy_attack_contact",
+		enemy
+	)
+
+
+func _resolve_enemy_attack_contact(enemy: Node) -> void:
+	if (
+		not _is_authored_enemy(enemy)
+		or not bool(enemy.call("attack_is_active"))
+	):
+		return
+	var now_s := MonotonicClockType.now_s()
+	var result: Dictionary = enemy.call(
+		"resolve_contact",
+		CrateLogicType.VERB_TOUCH,
+		now_s
+	)
+	_apply_enemy_outcome(result, now_s)
 
 
 func _consume_bounce_contact_intent(now_s: float) -> bool:
@@ -871,6 +1085,15 @@ func _is_authored_crate(candidate: Node) -> bool:
 	return _crates_by_id.get(
 		int(candidate.get("crate_id"))
 	) == candidate
+
+
+func _is_authored_enemy(candidate: Node) -> bool:
+	return (
+		candidate != null
+		and candidate in _enemies
+		and candidate.has_method("apply_verb")
+		and candidate.has_method("resolve_contact")
+	)
 
 
 func _connect_once(

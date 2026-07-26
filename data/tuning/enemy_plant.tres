@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EnemyTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/enemy_tuning.gd" id="1_enemy"]
+
+[resource]
+script = ExtResource("1_enemy")
+patrol_speed_mps = 0.0
+patrol_span_m = 0.0
+turn_pause_s = 0.0
+telegraph_s = 0.5
+attack_active_s = 0.6
+attack_cooldown_s = 1.5
+trigger_range_m = 2.5

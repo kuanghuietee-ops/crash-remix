@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="5_bounce"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_iron.tscn" id="6_iron"]
 [ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="7_wumpa"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/plant.tscn" id="8_plant"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(20, 12, 100)
@@ -15,7 +16,7 @@ size = Vector3(20, 12, 100)
 
 [node name="Title" type="Label3D" parent="."]
 position = Vector3(0, 2.5, -4)
-text = "PLANT GAUNTLET — ENEMIES IN TASK 17"
+text = "PLANT GAUNTLET"
 font_size = 40
 outline_size = 10
 
@@ -50,15 +51,11 @@ position = Vector3(4.5, -0.5, -58)
 size = Vector3(3, 1, 30)
 color = Color(0.58, 0.48, 0.18, 1)
 
-[node name="PlantPlaceholderA" parent="." instance=ExtResource("1_platform")]
+[node name="PlantA" parent="." instance=ExtResource("8_plant")]
 position = Vector3(-3.7, 0.75, -38)
-size = Vector3(1.5, 1.5, 1.5)
-color = Color(0.18, 0.62, 0.24, 1)
 
-[node name="PlantPlaceholderB" parent="." instance=ExtResource("1_platform")]
+[node name="PlantB" parent="." instance=ExtResource("8_plant")]
 position = Vector3(3.7, 0.75, -74)
-size = Vector3(1.5, 1.5, 1.5)
-color = Color(0.18, 0.62, 0.24, 1)
 
 [node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
 position = Vector3(0, -0.5, -92)

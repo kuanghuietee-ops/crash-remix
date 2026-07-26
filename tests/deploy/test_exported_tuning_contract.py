@@ -71,6 +71,12 @@ class ExportedTuningContractTests(unittest.TestCase):
         verifier_paths = _export_verifier_catalog_paths()
 
         self.assertIn("economy", section_names)
+        for enemy_section in (
+            "enemy_crab",
+            "enemy_skink",
+            "enemy_plant",
+        ):
+            self.assertIn(enemy_section, section_names)
         self.assertEqual(verifier_paths, ["gameplay", *section_names])
 
     def test_export_verifier_detects_game_root_s_real_boot_failure_message(

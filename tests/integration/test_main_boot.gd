@@ -1823,6 +1823,7 @@ func _crate(level: Node, crate_id: int) -> Node:
 	):
 		if (
 			candidate.has_method("apply_verb")
+			and candidate.has_signal(&"broken")
 			and int(candidate.get("crate_id")) == crate_id
 		):
 			return candidate

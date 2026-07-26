@@ -943,7 +943,8 @@ func _configure_authored_level(
 		catalog.economy,
 		player,
 		catalog.move,
-		catalog.input
+		catalog.input,
+		catalog
 	)
 	if flow.has_resume_decision():
 		var saved := flow.consume_resume_snapshot()
@@ -1032,7 +1033,8 @@ func _refresh_active_level_tuning() -> void:
 		"refresh_tuning",
 		catalog.economy,
 		catalog.move,
-		catalog.input
+		catalog.input,
+		catalog
 	)
 	if _hud != null:
 		_hud.call("refresh_tuning", catalog.economy)
@@ -1095,7 +1097,10 @@ func _crate_segment_map(level: Node) -> Dictionary:
 		true,
 		false
 	):
-		if not candidate.has_method("apply_verb"):
+		if (
+			not candidate.has_method("apply_verb")
+			or not candidate.has_signal(&"broken")
+		):
 			continue
 		var crate_type := StringName(
 			candidate.get("crate_type")
@@ -1125,6 +1130,7 @@ func _apply_replay_ghost_markers(
 	):
 		if (
 			not candidate.has_method("apply_verb")
+			or not candidate.has_signal(&"broken")
 			or int(candidate.get("crate_id"))
 			not in missed_crate_ids
 		):

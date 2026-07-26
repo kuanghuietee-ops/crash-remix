@@ -37,6 +37,116 @@ func test_real_scene_spawn_stays_on_authored_floor_without_death() -> void:
 	assert_eq(level.run_state.deaths_at_checkpoint, 0)
 
 
+func test_real_player_death_resets_enemies_to_authored_spawn() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var player := level.get_node("Player") as CharacterBody3D
+	var catalog := (
+		root.get("tuning_service").get("catalog")
+		as GameplayTuning
+	)
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	var enemies := _enemies(level)
+	assert_eq(
+		enemies.size(),
+		5,
+		"the real beach must contain the Wave B enemy placements"
+	)
+	var crab_tuning := catalog.get("enemy_crab") as Resource
+	assert_not_null(
+		crab_tuning,
+		"enemy_crab must reach the real runtime catalog"
+	)
+	if crab_tuning == null:
+		return
+	var crab: Node3D
+	var plant: Node3D
+	for enemy: Node in enemies:
+		if not enemy.has_method("enemy_kind"):
+			continue
+		match StringName(enemy.call("enemy_kind")):
+			&"crab":
+				if crab == null:
+					crab = enemy as Node3D
+			&"plant":
+				if plant == null:
+					plant = enemy as Node3D
+	assert_not_null(crab)
+	assert_not_null(plant)
+	if crab == null or plant == null:
+		return
+
+	var crab_spawn: Transform3D = crab.call(
+		"authored_spawn_transform"
+	)
+	var plant_spawn: Transform3D = plant.call(
+		"authored_spawn_transform"
+	)
+	var now_s := MonotonicClock.now_s()
+	crab.call("reset_to_authored_spawn")
+	crab.call("advance_logic", now_s, player.global_position)
+	crab.call(
+		"advance_logic",
+		(
+			now_s
+			+ float(crab_tuning.get("patrol_span_m"))
+			* 0.25
+			/ float(crab_tuning.get("patrol_speed_mps"))
+		),
+		player.global_position
+	)
+	assert_false(
+		crab.global_transform.is_equal_approx(crab_spawn),
+		"the reset proof must first move a real patrol enemy"
+	)
+	var defeated: Dictionary = plant.call(
+		"apply_verb",
+		&"spin",
+		now_s
+	)
+	assert_true(bool(defeated.get("enemy_defeated", false)))
+	assert_true(plant.call("is_defeated"))
+
+	assert_true(
+		player.call("receive_hit", now_s),
+		"an unmasked real player contact must begin the death path"
+	)
+	for _physics_index: int in range(120):
+		await wait_physics_frames(1)
+		if (
+			level.run_state.deaths_at_checkpoint == 1
+			and not player.call("is_respawning")
+		):
+			break
+	level.set_physics_process(false)
+
+	assert_eq(
+		level.run_state.deaths_at_checkpoint,
+		1,
+		"the reset must be driven by one real player death"
+	)
+	assert_true(
+		crab.global_transform.is_equal_approx(crab_spawn),
+		"death must restore patrol enemies to their authored transform"
+	)
+	assert_true(
+		plant.global_transform.is_equal_approx(plant_spawn),
+		"death must restore stationary enemies to their authored transform"
+	)
+	assert_false(
+		plant.call("is_defeated"),
+		"death must revive enemies defeated before the checkpoint retry"
+	)
+	assert_eq(plant.call("behavior_state"), &"dormant")
+
+
 func test_checkpoint_respawn_transform_follows_tuned_offset() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -1927,10 +2037,19 @@ func _crate(level: Node, crate_id: int) -> Node:
 	):
 		if (
 			candidate.has_method("apply_verb")
+			and candidate.has_signal(&"broken")
 			and int(candidate.get("crate_id")) == crate_id
 		):
 			return candidate
 	return null
+
+
+func _enemies(level: Node) -> Array[Node]:
+	var result: Array[Node] = []
+	for candidate: Node in level.get_tree().get_nodes_in_group(&"enemy"):
+		if level.is_ancestor_of(candidate):
+			result.append(candidate)
+	return result
 
 
 func _fall_real_player_from_entry(

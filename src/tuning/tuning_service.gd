@@ -11,6 +11,9 @@ const SECTION_NAMES: Array[StringName] = [
 	&"swing",
 	&"phase",
 	&"economy",
+	&"enemy_crab",
+	&"enemy_skink",
+	&"enemy_plant",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -349,6 +352,42 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		<= economy.time_crate_small_s
 		or economy.time_crate_large_s
 		<= economy.time_crate_medium_s
+	):
+		return false
+
+	var crab := checked.enemy_crab
+	if (
+		crab.patrol_speed_mps <= 0.0
+		or crab.patrol_span_m <= 0.0
+		or crab.turn_pause_s < 0.0
+		or not is_zero_approx(crab.telegraph_s)
+		or not is_zero_approx(crab.attack_active_s)
+		or not is_zero_approx(crab.attack_cooldown_s)
+		or not is_zero_approx(crab.trigger_range_m)
+	):
+		return false
+
+	var skink := checked.enemy_skink
+	if (
+		skink.patrol_speed_mps <= 0.0
+		or skink.patrol_span_m <= 0.0
+		or not is_zero_approx(skink.turn_pause_s)
+		or skink.telegraph_s <= 0.0
+		or skink.attack_active_s <= 0.0
+		or skink.attack_cooldown_s <= 0.0
+		or skink.trigger_range_m <= 0.0
+	):
+		return false
+
+	var plant := checked.enemy_plant
+	if (
+		not is_zero_approx(plant.patrol_speed_mps)
+		or not is_zero_approx(plant.patrol_span_m)
+		or not is_zero_approx(plant.turn_pause_s)
+		or plant.telegraph_s <= 0.0
+		or plant.attack_active_s <= 0.0
+		or plant.attack_cooldown_s <= 0.0
+		or plant.trigger_range_m <= 0.0
 	):
 		return false
 

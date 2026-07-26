@@ -1,0 +1,117 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/enemies/enemy_crab.gd" id="1_crab"]
+
+[sub_resource type="StandardMaterial3D" id="Material_shell"]
+albedo_color = Color(0.88, 0.24, 0.08, 1)
+roughness = 0.78
+
+[sub_resource type="StandardMaterial3D" id="Material_claw"]
+albedo_color = Color(1, 0.42, 0.1, 1)
+roughness = 0.72
+
+[sub_resource type="StandardMaterial3D" id="Material_eye"]
+albedo_color = Color(0.96, 0.96, 0.78, 1)
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Material_pupil"]
+albedo_color = Color(0.04, 0.025, 0.02, 1)
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="Mesh_shell"]
+material = SubResource("Material_shell")
+size = Vector3(1.35, 0.55, 0.9)
+
+[sub_resource type="BoxMesh" id="Mesh_claw"]
+material = SubResource("Material_claw")
+size = Vector3(0.55, 0.22, 0.48)
+
+[sub_resource type="CylinderMesh" id="Mesh_leg"]
+material = SubResource("Material_claw")
+top_radius = 0.09
+bottom_radius = 0.12
+height = 0.72
+
+[sub_resource type="SphereMesh" id="Mesh_eye"]
+material = SubResource("Material_eye")
+radius = 0.14
+height = 0.28
+
+[sub_resource type="SphereMesh" id="Mesh_pupil"]
+material = SubResource("Material_pupil")
+radius = 0.065
+height = 0.13
+
+[sub_resource type="BoxShape3D" id="Shape_hurt"]
+size = Vector3(1.35, 0.55, 0.9)
+
+[sub_resource type="BoxShape3D" id="Shape_attack"]
+size = Vector3(1.35, 0.55, 0.9)
+
+[node name="Crab" type="AnimatableBody3D"]
+collision_layer = 3
+collision_mask = 1
+script = ExtResource("1_crab")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.38, 0)
+shape = SubResource("Shape_hurt")
+
+[node name="AttackArea" type="Area3D" parent="."]
+collision_layer = 2
+collision_mask = 1
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="AttackArea"]
+position = Vector3(0, 0.38, 0)
+shape = SubResource("Shape_attack")
+
+[node name="Visual" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.38, 0)
+mesh = SubResource("Mesh_shell")
+
+[node name="LeftClaw" type="MeshInstance3D" parent="."]
+position = Vector3(-0.92, 0.42, -0.18)
+rotation_degrees = Vector3(0, -18, 0)
+mesh = SubResource("Mesh_claw")
+
+[node name="RightClaw" type="MeshInstance3D" parent="."]
+position = Vector3(0.92, 0.42, -0.18)
+rotation_degrees = Vector3(0, 18, 0)
+mesh = SubResource("Mesh_claw")
+
+[node name="LeftLegFront" type="MeshInstance3D" parent="."]
+position = Vector3(-0.62, 0.18, -0.25)
+rotation_degrees = Vector3(0, 0, 64)
+mesh = SubResource("Mesh_leg")
+
+[node name="LeftLegBack" type="MeshInstance3D" parent="."]
+position = Vector3(-0.62, 0.18, 0.28)
+rotation_degrees = Vector3(0, 0, 64)
+mesh = SubResource("Mesh_leg")
+
+[node name="RightLegFront" type="MeshInstance3D" parent="."]
+position = Vector3(0.62, 0.18, -0.25)
+rotation_degrees = Vector3(0, 0, -64)
+mesh = SubResource("Mesh_leg")
+
+[node name="RightLegBack" type="MeshInstance3D" parent="."]
+position = Vector3(0.62, 0.18, 0.28)
+rotation_degrees = Vector3(0, 0, -64)
+mesh = SubResource("Mesh_leg")
+
+[node name="LeftEye" type="MeshInstance3D" parent="."]
+position = Vector3(-0.32, 0.76, -0.35)
+mesh = SubResource("Mesh_eye")
+
+[node name="RightEye" type="MeshInstance3D" parent="."]
+position = Vector3(0.32, 0.76, -0.35)
+mesh = SubResource("Mesh_eye")
+
+[node name="LeftPupil" type="MeshInstance3D" parent="."]
+position = Vector3(-0.32, 0.77, -0.48)
+mesh = SubResource("Mesh_pupil")
+
+[node name="RightPupil" type="MeshInstance3D" parent="."]
+position = Vector3(0.32, 0.77, -0.48)
+mesh = SubResource("Mesh_pupil")

@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="4_bounce"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/crab.tscn" id="5_crab"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(18, 12, 100)
@@ -12,7 +13,7 @@ size = Vector3(18, 12, 100)
 
 [node name="Title" type="Label3D" parent="."]
 position = Vector3(0, 2.5, -4)
-text = "CRATE CADENCE — ENEMIES IN TASK 17"
+text = "CRATE CADENCE — CRAB PATROLS"
 font_size = 48
 outline_size = 10
 
@@ -93,3 +94,9 @@ segment_group = &"Crate Cadence"
 position = Vector3(0, 0.5, -84)
 crate_id = 23
 segment_group = &"Crate Cadence"
+
+[node name="CrabPatrolA" parent="." instance=ExtResource("5_crab")]
+position = Vector3(0, 0, -33)
+
+[node name="CrabPatrolB" parent="." instance=ExtResource("5_crab")]
+position = Vector3(0, 0, -61)

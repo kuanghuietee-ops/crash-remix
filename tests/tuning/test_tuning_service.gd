@@ -190,15 +190,45 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"time_crate_medium_s",
 		&"time_crate_large_s",
 	],
+	&"enemy_crab": [
+		&"patrol_speed_mps",
+		&"patrol_span_m",
+		&"turn_pause_s",
+		&"telegraph_s",
+		&"attack_active_s",
+		&"attack_cooldown_s",
+		&"trigger_range_m",
+	],
+	&"enemy_skink": [
+		&"patrol_speed_mps",
+		&"patrol_span_m",
+		&"turn_pause_s",
+		&"telegraph_s",
+		&"attack_active_s",
+		&"attack_cooldown_s",
+		&"trigger_range_m",
+	],
+	&"enemy_plant": [
+		&"patrol_speed_mps",
+		&"patrol_span_m",
+		&"turn_pause_s",
+		&"telegraph_s",
+		&"attack_active_s",
+		&"attack_cooldown_s",
+		&"trigger_range_m",
+	],
 }
-# See A8 comment above PHASE0_BASELINE_FIELDS_BY_SECTION. Computed as the
+# Task 17 adds whole enemy sections, which _backfill_missing_sections
+# migrates atomically for every pre-enemy override. Their initial fields
+# therefore join this baseline; later fields inside those sections still
+# belong in a legacy cohort. Computed as the
 # sha256 of the sorted "section.field" lines for every entry in that
 # dictionary — recompute deliberately (see
 # test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
 # ever legitimately needs to change, never to make a wrongly-placed new
 # field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"82ca926b700d262fde76f28c96159bedc47883bba9e12497c20e7c4ac46a1386"
+	"d127ba1823f2c1c0b1290c7a00b3db8dc8d608bbef5d3d8fe81582d37e5310b6"
 )
 
 
@@ -232,6 +262,9 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("swing")), "SwingTuning")
 	assert_eq(_global_class_name(catalog.get("phase")), "PhaseTuning")
 	assert_eq(_global_class_name(catalog.get("economy")), "EconomyTuning")
+	assert_eq(_global_class_name(catalog.get("enemy_crab")), "EnemyTuning")
+	assert_eq(_global_class_name(catalog.get("enemy_skink")), "EnemyTuning")
+	assert_eq(_global_class_name(catalog.get("enemy_plant")), "EnemyTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -316,6 +349,181 @@ func test_service_catalog_exposes_economy_section() -> void:
 	assert_eq(economy.get("mercy_mask_death_threshold"), 3)
 
 
+func test_service_catalog_exposes_all_three_enemy_sections() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			"user://tuning/does_not_exist.tres"
+		),
+		OK
+	)
+	var catalog: Resource = service.get("catalog")
+	var expected_values := {
+		&"enemy_crab": {
+			&"patrol_speed_mps": 2.0,
+			&"patrol_span_m": 4.0,
+		},
+		&"enemy_skink": {
+			&"telegraph_s": 0.35,
+			&"trigger_range_m": 4.0,
+		},
+		&"enemy_plant": {
+			&"attack_active_s": 0.6,
+			&"trigger_range_m": 2.5,
+		},
+	}
+	for section_name: StringName in expected_values:
+		var enemy_tuning := catalog.get(section_name) as Resource
+		assert_not_null(
+			enemy_tuning,
+			"clone dropped %s — enemy tuning is dead-wired"
+			% section_name
+		)
+		if enemy_tuning == null:
+			continue
+		assert_eq(_global_class_name(enemy_tuning), "EnemyTuning")
+		for property_name: StringName in expected_values[section_name]:
+			assert_eq(
+				enemy_tuning.get(property_name),
+				expected_values[section_name][property_name]
+			)
+
+
+func test_fingerprint_moves_when_an_enemy_value_changes() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var before: String = service.call("fingerprint")
+	var skink := (
+		service.get("catalog").get("enemy_skink") as Resource
+	)
+	assert_not_null(skink)
+	if skink == null:
+		return
+
+	skink.set(
+		"telegraph_s",
+		float(skink.get("telegraph_s")) + 0.1
+	)
+
+	assert_ne(
+		before,
+		service.call("fingerprint"),
+		"enemy_skink never reaches the tuning fingerprint"
+	)
+
+
+func test_pre_enemy_override_backfills_all_enemy_sections() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var enemy_sections: Array[StringName] = [
+		&"enemy_crab",
+		&"enemy_skink",
+		&"enemy_plant",
+	]
+	var sections_exist := true
+	for section_name: StringName in enemy_sections:
+		var section: Variant = authored.get(section_name)
+		assert_not_null(
+			section,
+			"%s must exist before migration can be proved" % section_name
+		)
+		sections_exist = sections_exist and section != null
+	if not sections_exist:
+		return
+
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	for section_name: StringName in enemy_sections:
+		stale.set(section_name, null)
+	stale.economy.tnt_fuse_s = 4.25
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+	assert_false(
+		service.get("override_rejected"),
+		"a pre-enemy phone override must migrate, not reset"
+	)
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for section_name: StringName in enemy_sections:
+		assert_not_null(migrated.get(section_name))
+	assert_eq(
+		migrated.economy.tnt_fuse_s,
+		4.25,
+		"enemy backfill must preserve existing operator tuning"
+	)
+
+
+func test_enemy_tuning_contract_rejects_invalid_behavior_shapes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog := service.get("catalog") as GameplayTuning
+	var sections: Array[StringName] = [
+		&"enemy_crab",
+		&"enemy_skink",
+		&"enemy_plant",
+	]
+	var sections_exist := true
+	for section_name: StringName in sections:
+		var section: Variant = catalog.get(section_name)
+		assert_not_null(section)
+		sections_exist = sections_exist and section != null
+	if not sections_exist:
+		return
+
+	var crab := catalog.get("enemy_crab") as Resource
+	var skink := catalog.get("enemy_skink") as Resource
+	var plant := catalog.get("enemy_plant") as Resource
+	var invalid_cases: Array[Array] = [
+		[crab, &"patrol_speed_mps", 0.0],
+		[crab, &"patrol_span_m", 0.0],
+		[crab, &"turn_pause_s", -0.01],
+		[skink, &"telegraph_s", 0.0],
+		[skink, &"attack_active_s", 0.0],
+		[skink, &"attack_cooldown_s", 0.0],
+		[skink, &"trigger_range_m", 0.0],
+		[plant, &"telegraph_s", 0.0],
+		[plant, &"attack_active_s", 0.0],
+		[plant, &"attack_cooldown_s", 0.0],
+		[plant, &"trigger_range_m", 0.0],
+	]
+	for invalid_case: Array in invalid_cases:
+		var section := invalid_case[0] as Resource
+		var property_name := invalid_case[1] as StringName
+		var authored_value: Variant = section.get(property_name)
+		section.set(property_name, invalid_case[2])
+		assert_false(
+			service.call("catalog_is_usable"),
+			"%s=%s must be rejected"
+			% [property_name, invalid_case[2]]
+		)
+		section.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
 func test_fingerprint_moves_when_an_economy_value_changes() -> void:
 	var service: RefCounted = _new_service()
 	if service == null:
@@ -376,6 +584,9 @@ func test_loaded_paths_include_the_traversal_resources() -> void:
 	assert_true(joined.contains("grind.tres"), "debug HUD will not list grind.tres")
 	assert_true(joined.contains("wall_run.tres"))
 	assert_true(joined.contains("economy.tres"))
+	assert_true(joined.contains("enemy_crab.tres"))
+	assert_true(joined.contains("enemy_skink.tres"))
+	assert_true(joined.contains("enemy_plant.tres"))
 
 
 func test_catalog_is_unusable_without_traversal_resources() -> void:
@@ -396,6 +607,30 @@ func test_catalog_is_unusable_without_economy() -> void:
 	catalog.set("economy", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_catalog_is_unusable_without_any_enemy_section() -> void:
+	var service: RefCounted = _new_service()
+	for section_name: StringName in [
+		&"enemy_crab",
+		&"enemy_skink",
+		&"enemy_plant",
+	]:
+		var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+			Resource.DEEP_DUPLICATE_ALL
+		)
+		if catalog.get(section_name) == null:
+			assert_not_null(
+				catalog.get(section_name),
+				"%s must exist before null rejection can be proved"
+				% section_name
+			)
+			continue
+		catalog.set(section_name, null)
+		assert_false(
+			service.call("catalog_is_usable", catalog),
+			"catalog must reject missing %s" % section_name
+		)
 
 
 func test_phase05_shaped_override_backfills_economy() -> void:

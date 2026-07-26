@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_checkpoint.tscn" id="4_checkpoint"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="5_bounce"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/skink.tscn" id="6_skink"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(18, 12, 100)
@@ -13,7 +14,7 @@ size = Vector3(18, 12, 100)
 
 [node name="Title" type="Label3D" parent="."]
 position = Vector3(0, 2.5, -4)
-text = "JUNGLE CORRIDOR — ENEMIES IN TASK 17"
+text = "JUNGLE CORRIDOR — SKINK INTRO"
 font_size = 48
 outline_size = 10
 
@@ -101,3 +102,6 @@ segment_group = &"Jungle Corridor"
 position = Vector3(0, 0.5, -86)
 crate_id = 17
 segment_group = &"Jungle Corridor"
+
+[node name="SkinkIntro" parent="." instance=ExtResource("6_skink")]
+position = Vector3(-4, 0, -30)
