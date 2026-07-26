@@ -79,6 +79,29 @@ class ExportedTuningContractTests(unittest.TestCase):
             self.assertIn(enemy_section, section_names)
         self.assertEqual(verifier_paths, ["gameplay", *section_names])
 
+    def test_export_verifier_asserts_every_authored_level_meta_path(
+        self,
+    ) -> None:
+        source = (
+            REPO_ROOT / "scripts/verify_exported_tuning.sh"
+        ).read_text(encoding="utf-8")
+        loop_bodies = re.findall(
+            r'for level_meta_path in "\$repo_root"'
+            r"/data/tuning/levels/\*\.tres; do\n(.*?)\ndone",
+            source,
+            flags=re.DOTALL,
+        )
+
+        self.assertTrue(
+            any(
+                '"$runtime_log"' in body
+                and 'res://${level_meta_path#"$repo_root"/}' in body
+                for body in loop_bodies
+            ),
+            "the exported runtime log must assert every authored "
+            "LevelMeta path, not only n_sanity_beach",
+        )
+
     def test_export_verifier_detects_game_root_s_real_boot_failure_message(
         self,
     ) -> None:
