@@ -366,14 +366,18 @@ func test_service_catalog_exposes_all_three_enemy_sections() -> void:
 		&"enemy_crab": {
 			&"patrol_speed_mps": 2.0,
 			&"patrol_span_m": 4.0,
+			&"trigger_lateral_m": 0.0,
 		},
 		&"enemy_skink": {
 			&"telegraph_s": 0.35,
-			&"trigger_range_m": 6.0,
+			&"attack_active_s": 1.0,
+			&"trigger_range_m": 9.5,
+			&"trigger_lateral_m": 5.0,
 		},
 		&"enemy_plant": {
 			&"attack_active_s": 0.6,
 			&"trigger_range_m": 2.5,
+			&"trigger_lateral_m": 0.0,
 		},
 	}
 	for section_name: StringName in expected_values:
@@ -476,6 +480,48 @@ func test_pre_enemy_override_backfills_all_enemy_sections() -> void:
 	)
 
 
+func test_old_enemy_override_backfills_skink_trigger_lateral_bound() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var operator_telegraph_s := authored.enemy_skink.telegraph_s + 0.1
+	stale.enemy_skink.trigger_lateral_m = (
+		EnemyTuning.new().trigger_lateral_m
+	)
+	stale.enemy_skink.telegraph_s = operator_telegraph_s
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.enemy_skink.trigger_lateral_m,
+		authored.enemy_skink.trigger_lateral_m,
+		"an older phone override must receive the safe trigger bound"
+	)
+	assert_almost_eq(
+		migrated.enemy_skink.telegraph_s,
+		operator_telegraph_s,
+		0.001,
+		"migration must preserve existing skink tuning edits"
+	)
+
+
 func test_enemy_tuning_contract_rejects_invalid_behavior_shapes() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:
@@ -501,14 +547,17 @@ func test_enemy_tuning_contract_rejects_invalid_behavior_shapes() -> void:
 		[crab, &"patrol_speed_mps", 0.0],
 		[crab, &"patrol_span_m", 0.0],
 		[crab, &"turn_pause_s", -0.01],
+		[crab, &"trigger_lateral_m", 0.01],
 		[skink, &"telegraph_s", 0.0],
 		[skink, &"attack_active_s", 0.0],
 		[skink, &"attack_cooldown_s", 0.0],
 		[skink, &"trigger_range_m", 0.0],
+		[skink, &"trigger_lateral_m", 0.0],
 		[plant, &"telegraph_s", 0.0],
 		[plant, &"attack_active_s", 0.0],
 		[plant, &"attack_cooldown_s", 0.0],
 		[plant, &"trigger_range_m", 0.0],
+		[plant, &"trigger_lateral_m", 0.01],
 	]
 	for invalid_case: Array in invalid_cases:
 		var section := invalid_case[0] as Resource

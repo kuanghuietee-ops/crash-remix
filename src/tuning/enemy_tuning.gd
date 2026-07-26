@@ -11,3 +11,4 @@ extends Resource
 @export var attack_active_s: float
 @export var attack_cooldown_s: float
 @export var trigger_range_m: float
+@export var trigger_lateral_m: float

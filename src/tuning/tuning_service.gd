@@ -59,6 +59,21 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"checkpoint_respawn_offset",
 		],
 	],
+	&"enemy_crab": [
+		[
+			&"trigger_lateral_m",
+		],
+	],
+	&"enemy_skink": [
+		[
+			&"trigger_lateral_m",
+		],
+	],
+	&"enemy_plant": [
+		[
+			&"trigger_lateral_m",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -364,6 +379,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or not is_zero_approx(crab.attack_active_s)
 		or not is_zero_approx(crab.attack_cooldown_s)
 		or not is_zero_approx(crab.trigger_range_m)
+		or not is_zero_approx(crab.trigger_lateral_m)
 	):
 		return false
 
@@ -376,6 +392,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or skink.attack_active_s <= 0.0
 		or skink.attack_cooldown_s <= 0.0
 		or skink.trigger_range_m <= 0.0
+		or skink.trigger_lateral_m <= 0.0
 	):
 		return false
 
@@ -388,6 +405,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or plant.attack_active_s <= 0.0
 		or plant.attack_cooldown_s <= 0.0
 		or plant.trigger_range_m <= 0.0
+		or not is_zero_approx(plant.trigger_lateral_m)
 	):
 		return false
 

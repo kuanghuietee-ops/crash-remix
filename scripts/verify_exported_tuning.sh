@@ -7,6 +7,7 @@ temp_dir="$(mktemp -d /tmp/crash-remix-export-tuning.XXXXXX)"
 pack_path="$temp_dir/crash-remix-export.zip"
 export_log="$temp_dir/export.log"
 runtime_log="$temp_dir/runtime.log"
+export source_log="$temp_dir/source.log"
 
 cleanup() {
     if [[ "$temp_dir" == /tmp/crash-remix-export-tuning.* ]]; then
@@ -34,6 +35,11 @@ for level_meta_path in "$repo_root"/data/tuning/levels/*.tres; do
     grep -qFx "${level_meta_path#"$repo_root"/}.remap" "$temp_dir/pack.list"
 done
 
+GODOT_SILENCE_ROOT_WARNING=1 XDG_DATA_HOME="$temp_dir/source_user" "$godot_bin" \
+    --headless \
+    --path "$repo_root" \
+    -s res://src/debug/export_level_meta_smoke.gd 2>&1 | tee "$source_log"
+
 GODOT_SILENCE_ROOT_WARNING=1 XDG_DATA_HOME="$temp_dir/user" "$godot_bin" \
     --headless \
     --main-pack "$pack_path" \
@@ -41,6 +47,13 @@ GODOT_SILENCE_ROOT_WARNING=1 XDG_DATA_HOME="$temp_dir/user" "$godot_bin" \
 
 if grep -qE "No loader found|Phase [0-9]+ tuning failed to load" "$runtime_log"; then
     echo "Exported build failed to load authored tuning resources" >&2
+    exit 1
+fi
+
+export source_fingerprint="$(grep -m1 -E '^[0-9a-f]{64}$' "$source_log")"
+export runtime_fingerprint="$(grep -m1 -E '^[0-9a-f]{64}$' "$runtime_log")"
+if [[ -z "$source_fingerprint" || "$runtime_fingerprint" != "$source_fingerprint" ]]; then
+    echo "Exported tuning fingerprint does not match the authored source" >&2
     exit 1
 fi
 

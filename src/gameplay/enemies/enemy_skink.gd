@@ -2,7 +2,8 @@ class_name EnemySkink
 extends EnemyBase
 
 var _state_deadline_s: float = -1.0
-var _active_started_s: float = -1.0
+var _lateral_offset_m: float = 0.0
+var _last_logic_s: float = -1.0
 
 
 func enemy_kind() -> StringName:
@@ -26,6 +27,9 @@ func advance_logic(
 ) -> void:
 	if is_defeated() or _enemy_tuning == null:
 		return
+	var movement_elapsed_s := _movement_elapsed_s(now_s)
+	var entered_active := false
+	var entered_cooldown := false
 	if (
 		behavior_state() == STATE_DORMANT
 		and _player_is_inside_corridor_trigger(player_position)
@@ -37,29 +41,41 @@ func advance_logic(
 		behavior_state() == STATE_TELEGRAPH
 		and now_s >= _state_deadline_s
 	):
-		_active_started_s = _state_deadline_s
 		_state_deadline_s += _enemy_tuning.attack_active_s
 		_set_behavior_state(STATE_ACTIVE)
 		_set_attack_active(true)
+		entered_active = true
 
 	if behavior_state() == STATE_ACTIVE:
+		if not entered_active:
+			_lateral_offset_m = minf(
+				_lateral_offset_m
+					+ _enemy_tuning.patrol_speed_mps
+					* movement_elapsed_s,
+				_dart_distance_m()
+			)
+			_set_authored_lateral_offset(_lateral_offset_m)
 		if now_s >= _state_deadline_s:
-			_set_authored_lateral_offset(_dart_distance_m())
 			_set_attack_active(false)
 			_set_behavior_state(STATE_COOLDOWN)
 			_state_deadline_s += (
 				_enemy_tuning.attack_cooldown_s
 			)
-		else:
-			var dart_offset_m := minf(
-				_enemy_tuning.patrol_speed_mps
-				* (now_s - _active_started_s),
-				_dart_distance_m()
-			)
-			_set_authored_lateral_offset(dart_offset_m)
+			entered_cooldown = true
 
 	if behavior_state() == STATE_COOLDOWN:
-		if now_s >= _state_deadline_s:
+		if not entered_cooldown:
+			_lateral_offset_m = maxf(
+				_lateral_offset_m
+					- _enemy_tuning.patrol_speed_mps
+					* movement_elapsed_s,
+				0.0
+			)
+			_set_authored_lateral_offset(_lateral_offset_m)
+		if (
+			now_s >= _state_deadline_s
+			and is_zero_approx(_lateral_offset_m)
+		):
 			_set_authored_lateral_offset(0.0)
 			_set_behavior_state(STATE_DORMANT)
 			if _player_is_inside_corridor_trigger(
@@ -69,18 +85,6 @@ func advance_logic(
 				_state_deadline_s = (
 					now_s + _enemy_tuning.telegraph_s
 				)
-		else:
-			var cooldown_started_s := (
-				_state_deadline_s
-				- _enemy_tuning.attack_cooldown_s
-			)
-			var return_offset_m := maxf(
-				_dart_distance_m()
-				- _enemy_tuning.patrol_speed_mps
-				* (now_s - cooldown_started_s),
-				0.0
-			)
-			_set_authored_lateral_offset(return_offset_m)
 
 
 func delay_timers(duration_s: float) -> void:
@@ -88,8 +92,8 @@ func delay_timers(duration_s: float) -> void:
 		return
 	if _state_deadline_s >= 0.0:
 		_state_deadline_s += duration_s
-	if _active_started_s >= 0.0:
-		_active_started_s += duration_s
+	if _last_logic_s >= 0.0:
+		_last_logic_s += duration_s
 
 
 func resolve_contact(
@@ -112,22 +116,42 @@ func _player_is_inside_corridor_trigger(
 	var corridor_forward := (
 		authored_spawn.basis.z.normalized()
 	)
+	var player_delta := player_position - authored_spawn.origin
+	var forward_offset_m := player_delta.dot(corridor_forward)
 	var forward_distance_m := absf(
-		(player_position - authored_spawn.origin).dot(
-			corridor_forward
-		)
+		forward_offset_m
 	)
-	return forward_distance_m <= _enemy_tuning.trigger_range_m
+	var lateral_distance_m := (
+		player_delta
+			- corridor_forward * forward_offset_m
+	).length()
+	return (
+		forward_distance_m <= _enemy_tuning.trigger_range_m
+		and lateral_distance_m
+			<= _enemy_tuning.trigger_lateral_m
+	)
 
 
 func _dart_distance_m() -> float:
-	return (
-		_enemy_tuning.patrol_span_m
-		* ScalarMathType.HALF
+	return _enemy_tuning.patrol_span_m
+
+
+func _movement_elapsed_s(now_s: float) -> float:
+	if _last_logic_s < 0.0:
+		_last_logic_s = now_s
+		return 0.0
+	if now_s <= _last_logic_s:
+		return 0.0
+	var elapsed_s := minf(
+		now_s - _last_logic_s,
+		get_physics_process_delta_time()
 	)
+	_last_logic_s = now_s
+	return elapsed_s
 
 
 func _reset_behavior_state() -> void:
 	_state_deadline_s = -1.0
-	_active_started_s = -1.0
+	_lateral_offset_m = 0.0
+	_last_logic_s = -1.0
 	_set_behavior_state(STATE_DORMANT)

@@ -153,6 +153,82 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 	)
 
 
+func test_skink_dart_covers_full_authored_span() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var enemy := setup["enemy"] as Node3D
+	var tuning := setup["tuning"] as Resource
+	var trigger_s := 24.0
+	var active_s := trigger_s + float(tuning.get("telegraph_s"))
+	var dart_end_s := active_s + float(tuning.get("attack_active_s"))
+	var physics_step_s := enemy.get_physics_process_delta_time()
+
+	enemy.call("advance_logic", trigger_s, Vector3.ZERO)
+	enemy.call("advance_logic", active_s, Vector3.ZERO)
+	var sample_s := active_s
+	while sample_s < dart_end_s:
+		sample_s = minf(sample_s + physics_step_s, dart_end_s)
+		enemy.call("advance_logic", sample_s, Vector3.ZERO)
+
+	assert_almost_eq(
+		enemy.position.x,
+		float(tuning.get("patrol_span_m")),
+		0.001,
+		(
+			"the skink must cover its full authored span so the "
+			+ "edge-authored dart crosses the running line"
+		)
+	)
+
+
+func test_skink_hitch_does_not_move_more_than_one_physics_step() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var enemy := setup["enemy"] as Node3D
+	var tuning := setup["tuning"] as Resource
+	var trigger_s := 26.0
+	var active_s := trigger_s + float(tuning.get("telegraph_s"))
+	var dart_end_s := active_s + float(tuning.get("attack_active_s"))
+	var physics_step_s := enemy.get_physics_process_delta_time()
+
+	enemy.call("advance_logic", trigger_s, Vector3.ZERO)
+	enemy.call("advance_logic", active_s, Vector3.ZERO)
+	var sample_s := active_s
+	while sample_s < dart_end_s:
+		sample_s = minf(sample_s + physics_step_s, dart_end_s)
+		enemy.call("advance_logic", sample_s, Vector3.ZERO)
+	assert_almost_eq(
+		enemy.position.x,
+		float(tuning.get("patrol_span_m")),
+		0.001,
+		"the normal 60 Hz path must still finish the full dart"
+	)
+
+	var return_s := dart_end_s + physics_step_s
+	enemy.call("advance_logic", return_s, Vector3.ZERO)
+	var before_hitch_x := enemy.position.x
+	var hitch_s := 0.4
+	enemy.call(
+		"advance_logic",
+		return_s + hitch_s,
+		Vector3.ZERO
+	)
+	var hitch_delta_m := absf(enemy.position.x - before_hitch_x)
+	var maximum_frame_move_m := (
+		float(tuning.get("patrol_speed_mps")) * physics_step_s
+	)
+	assert_lte(
+		hitch_delta_m,
+		maximum_frame_move_m + 0.001,
+		(
+			"a wall-clock hitch must not teleport the skink farther "
+			+ "than one fixed physics step"
+		)
+	)
+
+
 func test_skink_edge_placement_detects_centerline_before_player_is_abreast() -> void:
 	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
 	if setup.is_empty():
@@ -160,8 +236,11 @@ func test_skink_edge_placement_detects_centerline_before_player_is_abreast() -> 
 	var enemy := setup["enemy"] as Node
 	var tuning := setup["tuning"] as Resource
 	var trigger_range_m := float(tuning.get("trigger_range_m"))
+	var trigger_lateral_m := float(
+		tuning.get("trigger_lateral_m")
+	)
 	var centerline_player := Vector3(
-		trigger_range_m,
+		trigger_lateral_m,
 		0.0,
 		trigger_range_m
 	)
@@ -178,6 +257,38 @@ func test_skink_edge_placement_detects_centerline_before_player_is_abreast() -> 
 	)
 
 
+func test_skink_trigger_rejects_far_lateral_and_overhead_players() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var enemy := setup["enemy"] as Node
+	var tuning := setup["tuning"] as Resource
+	var trigger_range_m := float(tuning.get("trigger_range_m"))
+
+	enemy.call(
+		"advance_logic",
+		27.0,
+		Vector3.RIGHT * trigger_range_m
+	)
+	assert_eq(
+		enemy.call("behavior_state"),
+		&"dormant",
+		"the skink must not attack across the far corridor edge"
+	)
+
+	enemy.call("reset_to_authored_spawn")
+	enemy.call(
+		"advance_logic",
+		28.0,
+		Vector3.UP * trigger_range_m
+	)
+	assert_eq(
+		enemy.call("behavior_state"),
+		&"dormant",
+		"the skink must not attack a player directly overhead"
+	)
+
+
 func test_skink_trigger_lead_covers_its_full_run_speed_response() -> void:
 	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
 	if setup.is_empty():
@@ -187,7 +298,7 @@ func test_skink_trigger_lead_covers_its_full_run_speed_response() -> void:
 	if catalog == null:
 		return
 	var full_dart_s := (
-		float(tuning.get("patrol_span_m")) * 0.5
+		float(tuning.get("patrol_span_m"))
 		/ float(tuning.get("patrol_speed_mps"))
 	)
 	var full_response_s := (
@@ -203,6 +314,26 @@ func test_skink_trigger_lead_covers_its_full_run_speed_response() -> void:
 		(
 			"the skink must react early enough to finish its dart "
 			+ "before a full-speed runner reaches its crossing plane"
+		)
+	)
+
+
+func test_skink_active_window_can_cover_full_authored_dart() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var tuning := setup["tuning"] as Resource
+	var reachable_distance_m := (
+		float(tuning.get("attack_active_s"))
+		* float(tuning.get("patrol_speed_mps"))
+	)
+
+	assert_gte(
+		reachable_distance_m,
+		float(tuning.get("patrol_span_m")),
+		(
+			"attack_active_s must let the skink physically cover its "
+			+ "full authored dart without an end-of-window snap"
 		)
 	)
 

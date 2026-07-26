@@ -11,3 +11,4 @@ telegraph_s = 0.0
 attack_active_s = 0.0
 attack_cooldown_s = 0.0
 trigger_range_m = 0.0
+trigger_lateral_m = 0.0
