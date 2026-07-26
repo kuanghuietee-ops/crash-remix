@@ -81,6 +81,105 @@ func test_refused_player_mount_keeps_mount_signal_and_visual_inactive() -> void:
 	assert_signal_emit_count(mount, "mounted", 0)
 
 
+func test_reset_before_and_past_ride_preserves_each_visual_policy() -> void:
+	var before_fixture := _new_mount_fixture()
+	var before_mount: HogMount = before_fixture["mount"]
+	var before_visual: Node3D = before_fixture["visual"]
+	var before_player := HogPlayerStub.new()
+	before_player.position = Vector3(0.0, 0.0, -10.0)
+	add_child_autofree(before_player)
+	before_mount.configure(before_player)
+	assert_true(before_mount.is_mounted())
+
+	before_mount.reset_for_player_position(Vector3.ZERO)
+
+	assert_false(before_mount.is_mounted())
+	assert_false(before_player.is_hog_mounted())
+	assert_eq(before_visual.get_parent(), before_mount)
+	assert_eq(
+		before_visual.transform,
+		Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0)),
+		"before the mount line, the hog must return to its authored home"
+	)
+
+	var past_fixture := _new_mount_fixture()
+	var past_mount: HogMount = past_fixture["mount"]
+	var past_visual: Node3D = past_fixture["visual"]
+	var past_player := HogPlayerStub.new()
+	past_player.position = Vector3(0.0, 0.0, -10.0)
+	add_child_autofree(past_player)
+	past_mount.configure(past_player)
+	assert_true(past_mount.is_mounted())
+	var mounted_world_transform := past_visual.global_transform
+
+	past_mount.reset_for_player_position(
+		Vector3(0.0, 0.0, -20.0)
+	)
+
+	assert_false(past_mount.is_mounted())
+	assert_false(past_player.is_hog_mounted())
+	assert_eq(past_visual.get_parent(), past_mount)
+	assert_eq(
+		past_visual.global_transform,
+		mounted_world_transform,
+		"past the dismount line, the hog must stay where the ride ended"
+	)
+
+
+func test_empty_curve_forces_safe_dismount_and_zero_progress() -> void:
+	var fixture := _new_mount_fixture()
+	var mount: HogMount = fixture["mount"]
+	var path: Path3D = fixture["path"]
+	var visual: Node3D = fixture["visual"]
+	var player := HogPlayerStub.new()
+	player.position = Vector3(0.0, 0.0, -10.0)
+	add_child_autofree(player)
+	mount.configure(player)
+	assert_true(mount.is_mounted())
+	path.curve = Curve3D.new()
+
+	mount.reset_for_player_position(player.global_position)
+
+	assert_false(mount.is_mounted())
+	assert_false(player.is_hog_mounted())
+	assert_eq(visual.get_parent(), mount)
+	assert_eq(
+		visual.transform,
+		Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 0.0))
+	)
+	assert_eq(
+		mount.progress_for_position(player.global_position),
+		0.0
+	)
+
+
+func test_trigger_handlers_ignore_non_player_bodies() -> void:
+	var fixture := _new_mount_fixture()
+	var mount: HogMount = fixture["mount"]
+	var player := HogPlayerStub.new()
+	player.position = Vector3.ZERO
+	add_child_autofree(player)
+	var other_body := Node3D.new()
+	add_child_autofree(other_body)
+	mount.configure(player)
+	assert_false(mount.is_mounted())
+
+	mount.call("_on_mount_trigger_body_entered", other_body)
+
+	assert_false(mount.is_mounted())
+	assert_eq(player.mount_calls, 0)
+	mount.call("_on_mount_trigger_body_entered", player)
+	assert_true(mount.is_mounted())
+	assert_eq(player.mount_calls, 1)
+	var dismount_calls_before := player.dismount_calls
+
+	mount.call("_on_dismount_trigger_body_entered", other_body)
+
+	assert_true(mount.is_mounted())
+	assert_true(player.is_hog_mounted())
+	assert_eq(player.dismount_calls, dismount_calls_before)
+
+
 func _new_mount_fixture() -> Dictionary:
 	var mount := HogMount.new()
 	mount.name = "HogMount"

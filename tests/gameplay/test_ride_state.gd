@@ -213,6 +213,70 @@ func test_ride_jump_uses_hog_height_through_jump_kinematics() -> void:
 	)
 
 
+func test_exit_ride_distinguishes_grounded_and_airborne_transitions() -> void:
+	var fsm_script := load(FSM_SCRIPT_PATH) as Script
+	assert_not_null(fsm_script)
+	if fsm_script == null:
+		return
+	var fsm := fsm_script.new() as RefCounted
+	fsm.call("enter_ride", 1.0)
+
+	fsm.call("exit_ride", 1.1, true)
+
+	assert_eq(fsm.get("state"), &"grounded")
+	assert_true(fsm.get("_ground_jump_available"))
+	assert_true(fsm.get("_double_jump_available"))
+	assert_true(fsm.get("_air_spin_available"))
+	fsm.call("enter_ride", 2.0)
+
+	fsm.call("exit_ride", 2.1, false)
+
+	assert_eq(fsm.get("state"), &"airborne")
+	assert_false(fsm.get("_ground_jump_available"))
+	assert_true(fsm.get("_double_jump_available"))
+	assert_true(fsm.get("_air_spin_available"))
+
+
+func test_controller_mounts_and_dismounts_while_airborne() -> void:
+	assert_not_null(_hog)
+	if _hog == null:
+		return
+	var packed := load(PLAYER_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var player := packed.instantiate() as CharacterBody3D
+	add_child_autofree(player)
+	await wait_process_frames(1)
+	player.call(
+		"configure",
+		_catalog.get("move"),
+		_catalog.get("input"),
+		_catalog.get("depth"),
+		_catalog.get("wall_run"),
+		_catalog.get("grind"),
+		_catalog.get("swing"),
+		InputIntentBuffer.new(),
+		_catalog.get("economy"),
+		true,
+		_hog
+	)
+	assert_false(
+		player.is_on_floor(),
+		"the transition fixture must remain airborne"
+	)
+
+	player.call("mount_hog")
+
+	assert_true(player.call("is_hog_mounted"))
+	assert_eq(player.call("current_state"), &"ride")
+
+	player.call("dismount_hog")
+
+	assert_false(player.call("is_hog_mounted"))
+	assert_eq(player.call("current_state"), &"airborne")
+
+
 func test_controller_mounts_and_respawns_still_mounted() -> void:
 	assert_not_null(_hog)
 	if _hog == null:
