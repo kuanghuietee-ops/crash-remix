@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="ChaseTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/chase_tuning.gd" id="1_chase"]
+
+[resource]
+script = ExtResource("1_chase")
+boulder_speed_mps = 6.8
+boulder_kill_distance_m = 1.0
+boulder_start_gap_m = 6.0

@@ -42,6 +42,21 @@ static func grind_basis_for_view(
 	return _orient_up(result, rail_up)
 
 
+static func toward_camera_basis_for_view(
+	corridor_forward: Vector3,
+	view_direction: Vector3
+) -> Basis:
+	var corridor := _normalized_or(
+		corridor_forward,
+		Vector3.FORWARD
+	)
+	var view := _normalized_or(
+		view_direction,
+		-corridor
+	)
+	return _look_basis(view, Vector3.UP)
+
+
 static func swing_basis_for_view(
 	plane_forward: Vector3,
 	plane_normal: Vector3,

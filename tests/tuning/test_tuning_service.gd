@@ -217,6 +217,11 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"attack_cooldown_s",
 		&"trigger_range_m",
 	],
+	&"chase": [
+		&"boulder_speed_mps",
+		&"boulder_kill_distance_m",
+		&"boulder_start_gap_m",
+	],
 }
 # Task 17 adds whole enemy sections, which _backfill_missing_sections
 # migrates atomically for every pre-enemy override. Their initial fields
@@ -228,7 +233,7 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 # ever legitimately needs to change, never to make a wrongly-placed new
 # field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"d127ba1823f2c1c0b1290c7a00b3db8dc8d608bbef5d3d8fe81582d37e5310b6"
+	"b2e90ef3864f661683761ce419d61d755f949ed9c11ce880503fd7cce81ad68c"
 )
 
 
@@ -265,6 +270,7 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("enemy_crab")), "EnemyTuning")
 	assert_eq(_global_class_name(catalog.get("enemy_skink")), "EnemyTuning")
 	assert_eq(_global_class_name(catalog.get("enemy_plant")), "EnemyTuning")
+	assert_eq(_global_class_name(catalog.get("chase")), "ChaseTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -395,6 +401,128 @@ func test_service_catalog_exposes_all_three_enemy_sections() -> void:
 				enemy_tuning.get(property_name),
 				expected_values[section_name][property_name]
 			)
+
+
+func test_service_catalog_exposes_chase_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var chase := service.get("catalog").get("chase") as Resource
+
+	assert_not_null(chase, "clone dropped chase — boulder tuning is dead-wired")
+	if chase == null:
+		return
+	assert_eq(_global_class_name(chase), "ChaseTuning")
+	assert_eq(chase.get("boulder_speed_mps"), 6.8)
+	assert_eq(chase.get("boulder_kill_distance_m"), 1.0)
+	assert_eq(chase.get("boulder_start_gap_m"), 6.0)
+
+
+func test_fingerprint_moves_when_a_chase_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var before: String = service.call("fingerprint")
+	var chase := service.get("catalog").get("chase") as Resource
+	assert_not_null(chase)
+	if chase == null:
+		return
+
+	chase.set(
+		"boulder_speed_mps",
+		float(chase.get("boulder_speed_mps")) + 0.1
+	)
+
+	assert_ne(
+		before,
+		service.call("fingerprint"),
+		"chase values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_chase_override_backfills_chase_and_toward_camera_offset() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	assert_not_null(authored.get("chase"))
+	assert_true(
+		_exported_property_names(authored.camera).has(
+			&"toward_camera_offset"
+		)
+	)
+	if (
+		authored.get("chase") == null
+		or not _exported_property_names(authored.camera).has(
+			&"toward_camera_offset"
+		)
+	):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("chase", null)
+	stale.camera.set(
+		&"toward_camera_offset",
+		CameraTuning.new().get(&"toward_camera_offset")
+	)
+	stale.camera.field_of_view_degrees = 61.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("chase"))
+	assert_eq(
+		migrated.camera.get(&"toward_camera_offset"),
+		authored.camera.get(&"toward_camera_offset")
+	)
+	assert_eq(
+		migrated.camera.field_of_view_degrees,
+		61.0,
+		"migration must preserve existing camera edits"
+	)
+
+
+func test_chase_tuning_rejects_invalid_pressure_contracts() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var chase := service.get("catalog").get("chase") as Resource
+	assert_not_null(chase)
+	if chase == null:
+		return
+	var invalid_cases: Array[Array] = [
+		[&"boulder_speed_mps", 0.0],
+		[&"boulder_kill_distance_m", 0.0],
+		[&"boulder_start_gap_m", 0.0],
+		[
+			&"boulder_start_gap_m",
+			float(chase.get("boulder_kill_distance_m")),
+		],
+	]
+	for invalid_case: Array in invalid_cases:
+		var field_name := invalid_case[0] as StringName
+		var authored_value: Variant = chase.get(field_name)
+		chase.set(field_name, invalid_case[1])
+		assert_false(
+			service.call("catalog_is_usable"),
+			"%s=%s must be rejected"
+			% [field_name, invalid_case[1]]
+		)
+		chase.set(field_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
 
 
 func test_fingerprint_moves_when_an_enemy_value_changes() -> void:
@@ -636,6 +764,7 @@ func test_loaded_paths_include_the_traversal_resources() -> void:
 	assert_true(joined.contains("enemy_crab.tres"))
 	assert_true(joined.contains("enemy_skink.tres"))
 	assert_true(joined.contains("enemy_plant.tres"))
+	assert_true(joined.contains("chase.tres"))
 
 
 func test_catalog_is_unusable_without_traversal_resources() -> void:
@@ -679,7 +808,17 @@ func test_catalog_is_unusable_without_any_enemy_section() -> void:
 		assert_false(
 			service.call("catalog_is_usable", catalog),
 			"catalog must reject missing %s" % section_name
-		)
+			)
+
+
+func test_catalog_is_unusable_without_chase() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	catalog.set("chase", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
 
 
 func test_phase05_shaped_override_backfills_economy() -> void:

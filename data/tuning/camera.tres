@@ -17,5 +17,6 @@ side_on_offset = Vector3(9.5, 4.2, 0.8)
 grind_offset = Vector3(0, 3.5, -7)
 wall_run_offset = Vector3(6, 1.5, 0)
 swing_offset = Vector3(7, 1, 0)
+toward_camera_offset = Vector3(0, 4.8, -8.5)
 wall_run_bank_degrees = 0.0
 minimum_jump_depression_degrees = 15.0

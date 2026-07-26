@@ -227,6 +227,13 @@ func update_camera(delta_s: float) -> void:
 			camera_right,
 			view_direction
 		)
+	elif basis_mode == CameraRegionType.MODE_TOWARD_CAMERA:
+		target_basis = (
+			CameraArchetypesType.toward_camera_basis_for_view(
+				_corridor_forward,
+				view_direction
+			)
+		)
 	_apply_basis_blend(target_basis, basis_mode, delta_s)
 	if _player.has_method("set_corridor_forward"):
 		_player.call("set_corridor_forward", _corridor_forward)
@@ -288,13 +295,23 @@ func _basis_mode_for(context: Dictionary) -> StringName:
 	)
 	var tangent := _context_vector(context, &"tangent")
 	if tangent.is_zero_approx():
-		return CameraRegionType.MODE_DEFAULT
+		return _region_basis_mode()
 	if (
 		state == CameraRegionType.MODE_GRIND
 		or state == CameraRegionType.MODE_WALL_RUN
 		or state == CameraRegionType.MODE_SWING
 	):
 		return state
+	return _region_basis_mode()
+
+
+func _region_basis_mode() -> StringName:
+	for region: CameraRegionType in _active_regions:
+		if (
+			region.camera_mode
+			== CameraRegionType.MODE_TOWARD_CAMERA
+		):
+			return CameraRegionType.MODE_TOWARD_CAMERA
 	return CameraRegionType.MODE_DEFAULT
 
 

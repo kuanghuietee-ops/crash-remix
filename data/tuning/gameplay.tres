@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="GameplayTuning" load_steps=14 format=3]
+[gd_resource type="Resource" script_class="GameplayTuning" load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://src/tuning/gameplay_tuning.gd" id="1_catalog"]
 [ext_resource type="Resource" path="res://data/tuning/move.tres" id="2_move"]
@@ -13,6 +13,7 @@
 [ext_resource type="Resource" path="res://data/tuning/enemy_crab.tres" id="11_enemy_crab"]
 [ext_resource type="Resource" path="res://data/tuning/enemy_skink.tres" id="12_enemy_skink"]
 [ext_resource type="Resource" path="res://data/tuning/enemy_plant.tres" id="13_enemy_plant"]
+[ext_resource type="Resource" path="res://data/tuning/chase.tres" id="14_chase"]
 
 [resource]
 script = ExtResource("1_catalog")
@@ -28,3 +29,4 @@ economy = ExtResource("10_economy")
 enemy_crab = ExtResource("11_enemy_crab")
 enemy_skink = ExtResource("12_enemy_skink")
 enemy_plant = ExtResource("13_enemy_plant")
+chase = ExtResource("14_chase")

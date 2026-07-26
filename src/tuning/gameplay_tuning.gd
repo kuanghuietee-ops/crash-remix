@@ -13,3 +13,4 @@ extends Resource
 @export var enemy_crab: EnemyTuning
 @export var enemy_skink: EnemyTuning
 @export var enemy_plant: EnemyTuning
+@export var chase: ChaseTuning

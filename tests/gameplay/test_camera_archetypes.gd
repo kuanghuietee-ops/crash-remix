@@ -25,6 +25,9 @@ const SCREEN_TOLERANCE := 0.02
 const BASIS_TOLERANCE := 0.0001
 const NONZERO_ATTACH_DISTANCE_M := 4.0
 const MAXIMUM_COMFORT_ROLL_DEGREES := 10.0
+const TOWARD_CAMERA_MINIMUM_DEPRESSION_DEGREES := 30.0
+const TOWARD_CAMERA_MAXIMUM_DEPRESSION_DEGREES := 35.0
+const TOWARD_CAMERA_OPPOSITION_DOT := -0.9
 
 var _catalog: GameplayTuning
 var _camera: CameraTuning
@@ -411,6 +414,64 @@ func test_grind_camera_keeps_the_rail_tangent_horizontal() -> void:
 	assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
 
 
+func test_toward_camera_shot_faces_back_down_the_corridor() -> void:
+	var script := _load_script_with_method(
+		ARCHETYPES_SCRIPT_PATH,
+		&"toward_camera_basis_for_view"
+	)
+	if script == null:
+		return
+	assert_true(
+		_resource_has_property(
+			_camera,
+			&"toward_camera_offset"
+		),
+		"CameraTuning must author a dedicated toward-camera offset"
+	)
+	if not _resource_has_property(
+		_camera,
+		&"toward_camera_offset"
+	):
+		return
+	var corridor_forward := Vector3.FORWARD
+	var offset := (
+		_camera.get(&"toward_camera_offset") as Vector3
+	)
+	var view_direction := _toward_camera_view_direction(
+		corridor_forward,
+		offset
+	)
+	var basis: Basis = script.call(
+		"toward_camera_basis_for_view",
+		corridor_forward,
+		view_direction
+	)
+
+	assert_true(
+		_toward_camera_contract_holds(
+			corridor_forward,
+			view_direction
+		),
+		"the authored chase shot must look back against corridor progress"
+	)
+	assert_false(
+		_toward_camera_contract_holds(
+			corridor_forward,
+			_toward_camera_view_direction(
+				corridor_forward,
+				_camera.default_offset
+			)
+		),
+		"the ordinary chase-behind offset must fail this exact assertion"
+	)
+	assert_gt(
+		(-basis.z).dot(view_direction.normalized()),
+		0.999,
+		"the live toward-camera basis must face its real view direction"
+	)
+	assert_almost_eq(basis.determinant(), 1.0, BASIS_TOLERANCE)
+
+
 func test_swing_camera_is_side_on_to_the_pendulum_plane() -> void:
 	var script := _load_script_with_method(
 		ARCHETYPES_SCRIPT_PATH,
@@ -544,10 +605,21 @@ func test_camera_archetypes_expose_only_the_live_basis_entry_points() -> void:
 		&"wall_run_basis",
 		&"grind_basis",
 		&"swing_basis",
+		&"toward_camera_basis",
 	]:
 		assert_false(
 			_script_has_method(script, dead_method),
 			"%s duplicates the controller's live basis path" % dead_method
+		)
+	var controller_script := load(
+		CAMERA_CONTROLLER_SCRIPT_PATH
+	) as Script
+	assert_not_null(controller_script)
+	if controller_script != null:
+		assert_string_contains(
+			controller_script.source_code,
+			"toward_camera_basis_for_view",
+			"the toward-camera helper must be consumed by the live rig"
 		)
 
 
@@ -558,11 +630,21 @@ func test_camera_regions_resolve_all_traversal_offsets() -> void:
 	)
 	if script == null:
 		return
+	assert_true(
+		_resource_has_property(_camera, &"toward_camera_offset")
+	)
+	if not _resource_has_property(_camera, &"toward_camera_offset"):
+		return
 	var constants := script.get_script_constant_map()
 	for expectation: Array in [
 		[&"MODE_GRIND", &"grind", _camera.grind_offset],
 		[&"MODE_WALL_RUN", &"wall_run", _camera.wall_run_offset],
 		[&"MODE_SWING", &"swing", _camera.swing_offset],
+		[
+			&"MODE_TOWARD_CAMERA",
+			&"toward_camera",
+			_camera.get(&"toward_camera_offset"),
+		],
 	]:
 		assert_true(
 			constants.has(expectation[0]),
@@ -979,6 +1061,62 @@ func _script_has_method(script: Script, method_name: StringName) -> bool:
 		if StringName(method.get("name", &"")) == method_name:
 			return true
 	return false
+
+
+func _resource_has_property(
+	resource: Resource,
+	property_name: StringName
+) -> bool:
+	for property_info: Dictionary in resource.get_property_list():
+		if StringName(property_info.get("name", &"")) == property_name:
+			return true
+	return false
+
+
+func _toward_camera_view_direction(
+	corridor_forward: Vector3,
+	offset: Vector3
+) -> Vector3:
+	var forward := corridor_forward.normalized()
+	var up := Vector3.UP
+	var right := forward.cross(up).normalized()
+	var camera_position := (
+		right * offset.x
+		+ up * offset.y
+		- forward * offset.z
+	)
+	var look_target := (
+		forward * _camera.look_ahead_m
+		+ up * _camera.look_at_height_m
+		+ right * _camera.player_screen_left_bias_m
+	)
+	return look_target - camera_position
+
+
+func _toward_camera_contract_holds(
+	corridor_forward: Vector3,
+	view_direction: Vector3
+) -> bool:
+	var horizontal_view := Vector3(
+		view_direction.x,
+		0.0,
+		view_direction.z
+	).normalized()
+	var depression_degrees := rad_to_deg(atan2(
+		-view_direction.y,
+		Vector2(
+			view_direction.x,
+			view_direction.z
+		).length()
+	))
+	return (
+		horizontal_view.dot(corridor_forward.normalized())
+		<= TOWARD_CAMERA_OPPOSITION_DOT
+		and depression_degrees
+		>= TOWARD_CAMERA_MINIMUM_DEPRESSION_DEGREES
+		and depression_degrees
+		<= TOWARD_CAMERA_MAXIMUM_DEPRESSION_DEGREES
+	)
 
 
 func _load_script_with_method(

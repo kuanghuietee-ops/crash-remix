@@ -15,6 +15,7 @@ extends Resource
 @export var grind_offset: Vector3
 @export var wall_run_offset: Vector3
 @export var swing_offset: Vector3
+@export var toward_camera_offset: Vector3
 @export var wall_run_bank_degrees: float
 
 @export_category("Readability")

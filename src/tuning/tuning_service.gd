@@ -14,10 +14,16 @@ const SECTION_NAMES: Array[StringName] = [
 	&"enemy_crab",
 	&"enemy_skink",
 	&"enemy_plant",
+	&"chase",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
 const LEGACY_FIELD_GROUPS_BY_SECTION := {
+	&"camera": [
+		[
+			&"toward_camera_offset",
+		],
+	],
 	&"input": [
 		[
 			&"phase_button_diameter_mm",
@@ -261,6 +267,8 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or camera.rail_bake_interval_m <= 0.0
 		or camera.rail_follow_speed_mps < 0.0
 		or camera.region_blend_s < 0.0
+		or camera.toward_camera_offset.y <= 0.0
+		or camera.toward_camera_offset.z >= 0.0
 	):
 		return false
 
@@ -406,6 +414,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or plant.attack_cooldown_s <= 0.0
 		or plant.trigger_range_m <= 0.0
 		or not is_zero_approx(plant.trigger_lateral_m)
+	):
+		return false
+
+	var chase := checked.chase
+	if (
+		chase.boulder_speed_mps <= 0.0
+		or chase.boulder_kill_distance_m <= 0.0
+		or chase.boulder_start_gap_m
+		<= chase.boulder_kill_distance_m
 	):
 		return false
 
