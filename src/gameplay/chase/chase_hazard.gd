@@ -31,7 +31,7 @@ func _ready() -> void:
 
 
 func configure_logic(chase_tuning: ChaseTuning) -> void:
-	_set_chase_mode(false)
+	_set_screen_relative_tracking(false)
 	_tuning = chase_tuning
 	_boulder_progress_m = 0.0
 	_active = false
@@ -67,7 +67,7 @@ func start_at_progress(player_progress_m: float) -> void:
 		_active = false
 		_caught = false
 		_stopped = false
-		_set_chase_mode(false)
+		_set_screen_relative_tracking(false)
 		_set_visual_visible(false)
 		push_error(
 			"%s cannot start without a usable chase path"
@@ -81,19 +81,19 @@ func start_at_progress(player_progress_m: float) -> void:
 	_active = true
 	_caught = false
 	_stopped = false
-	_set_chase_mode(true)
+	_set_screen_relative_tracking(true)
 	_set_visual_visible(true)
 	_sync_visual()
 
 
 func stop() -> void:
 	if _stopped:
-		_set_chase_mode(false)
+		_set_screen_relative_tracking(false)
 		return
 	_active = false
 	_caught = false
 	_stopped = true
-	_set_chase_mode(false)
+	_set_screen_relative_tracking(false)
 	_set_visual_visible(false)
 
 
@@ -156,7 +156,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 		_caught = false
 		_stopped = false
 		_boulder_progress_m = 0.0
-		_set_chase_mode(false)
+		_set_screen_relative_tracking(false)
 		_set_visual_visible(true)
 		_sync_visual()
 		return
@@ -180,7 +180,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 			- _tuning.boulder_start_gap_m,
 			0.0
 		)
-		_set_chase_mode(false)
+		_set_screen_relative_tracking(false)
 		_set_visual_visible(true)
 		_sync_visual()
 		return
@@ -189,7 +189,7 @@ func reset_for_player_position(player_position: Vector3) -> void:
 		_caught = false
 		_stopped = true
 		_boulder_progress_m = stop_progress_m
-		_set_chase_mode(false)
+		_set_screen_relative_tracking(false)
 		_set_visual_visible(false)
 		_sync_visual()
 		return
@@ -201,7 +201,7 @@ func reset_before_start() -> void:
 	_caught = false
 	_stopped = false
 	_boulder_progress_m = 0.0
-	_set_chase_mode(false)
+	_set_screen_relative_tracking(false)
 	_set_visual_visible(true)
 	_sync_visual()
 
@@ -232,12 +232,7 @@ func progress_for_position(world_position: Vector3) -> float:
 	)
 
 
-func _set_chase_mode(enabled: bool) -> void:
-	if (
-		_player != null
-		and _player.has_method("set_chase_auto_run_enabled")
-	):
-		_player.call("set_chase_auto_run_enabled", enabled)
+func _set_screen_relative_tracking(enabled: bool) -> void:
 	if (
 		_input_router != null
 		and _input_router.has_method(

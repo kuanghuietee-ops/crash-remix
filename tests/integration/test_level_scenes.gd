@@ -672,7 +672,7 @@ func test_boulders_live_camera_basis_faces_back_down_corridor() -> void:
 	)
 
 
-func test_boulders_chase_auto_runs_with_screen_normal_lateral_control() -> void:
+func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 	var level := await _configured_boulders()
 	if level == null:
 		return
@@ -738,11 +738,6 @@ func test_boulders_chase_auto_runs_with_screen_normal_lateral_control() -> void:
 		regions,
 		router
 	)
-	router.push_move(
-		Vector2.RIGHT,
-		1.0,
-		InputIntent.SOURCE_TOUCH
-	)
 	hazard.call(
 		"start_at_progress",
 		hazard.call(
@@ -771,6 +766,29 @@ func test_boulders_chase_auto_runs_with_screen_normal_lateral_control() -> void:
 		1.0,
 		corridor_forward
 	)
+	assert_eq(
+		player.velocity,
+		Vector3.ZERO,
+		"entering the chase must leave movement fully manual"
+	)
+	assert_true(
+		bool(router.get("_screen_relative_tracking_enabled")),
+		"the chase must still keep screen-relative control tracking active"
+	)
+
+	router.push_move(
+		Vector2.RIGHT,
+		2.1,
+		InputIntent.SOURCE_TOUCH
+	)
+	player.velocity = Vector3.ZERO
+	player.call(
+		"advance_logic",
+		2.1,
+		true,
+		1.0,
+		corridor_forward
+	)
 	var screen_origin := camera.unproject_position(
 		player.global_position
 	)
@@ -778,23 +796,13 @@ func test_boulders_chase_auto_runs_with_screen_normal_lateral_control() -> void:
 		player.global_position + player.velocity
 	) - screen_origin
 
-	assert_almost_eq(
-		player.velocity.dot(corridor_forward),
-		catalog.move.run_speed_mps,
-		CHASE_GAP_TOLERANCE_M,
-		"the real chase trigger must supply full forward auto-run"
-	)
 	assert_gt(
 		screen_motion.x,
 		0.0,
-		"a held screen-right gesture must still move right after "
+		"a screen-right gesture must still move right after "
 		+ "the chase camera reverses"
 	)
 	hazard.call("stop")
-	assert_false(
-		bool(player.get("_chase_auto_run_enabled")),
-		"the stop trigger must return the player to manual movement"
-	)
 	assert_false(
 		bool(router.get("_screen_relative_tracking_enabled")),
 		"the stop trigger must restore gesture-stable camera mapping"
