@@ -1166,6 +1166,9 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 	var hog_visual := player.get_node_or_null(
 		"HogVisual"
 	) as Node3D
+	var mount_trigger := level.get_node_or_null(
+		"HogRide/MountTrigger"
+	) as Area3D
 	var dismount_trigger := level.get_node_or_null(
 		"HogRide/DismountTrigger"
 	) as Area3D
@@ -1175,6 +1178,7 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 	assert_not_null(player)
 	assert_not_null(router)
 	assert_not_null(hog_visual)
+	assert_not_null(mount_trigger)
 	assert_not_null(dismount_trigger)
 	assert_not_null(finish)
 	if (
@@ -1183,9 +1187,26 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 		or player == null
 		or router == null
 		or hog_visual == null
+		or mount_trigger == null
 		or dismount_trigger == null
 		or finish == null
 	):
+		return
+	var mount_shape := mount_trigger.get_node_or_null(
+		"CollisionShape3D"
+	) as CollisionShape3D
+	var dismount_shape := dismount_trigger.get_node_or_null(
+		"CollisionShape3D"
+	) as CollisionShape3D
+	assert_not_null(mount_shape)
+	assert_not_null(dismount_shape)
+	if mount_shape == null or dismount_shape == null:
+		return
+	var mount_box := mount_shape.shape as BoxShape3D
+	var dismount_box := dismount_shape.shape as BoxShape3D
+	assert_not_null(mount_box)
+	assert_not_null(dismount_box)
+	if mount_box == null or dismount_box == null:
 		return
 	assert_true(
 		dismount_trigger.global_position.is_equal_approx(
@@ -1198,6 +1219,31 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 		"dismount must coincide with finish so manual braking cannot stall the run"
 	)
 
+	player.set_physics_process(false)
+	player.global_position = (
+		mount_trigger.global_position
+		+ Vector3(mount_box.size.x, 0.0, 0.0)
+	)
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
+	assert_false(mount_trigger.overlaps_body(player))
+	mount.call(
+		"reset_for_player_position",
+		dismount_trigger.global_position
+	)
+	assert_false(mount.call("is_mounted"))
+	var mount_entries: Array[Node3D] = []
+	mount_trigger.body_entered.connect(
+		func(body: Node3D) -> void:
+			if body == player:
+				mount_entries.append(body)
+	)
+	player.global_position = mount_trigger.global_position
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
+
+	assert_true(mount_trigger.overlaps_body(player))
+	assert_eq(mount_entries, [player])
 	assert_true(mount.call("is_mounted"))
 	assert_true(player.call("is_hog_mounted"))
 	assert_eq(player.call("current_state"), &"ride")
@@ -1228,8 +1274,25 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 		"the real level must preserve analog lateral steering"
 	)
 
-	mount.call("_on_dismount_trigger_body_entered", player)
+	player.global_position = (
+		dismount_trigger.global_position
+		+ Vector3(dismount_box.size.x, 0.0, 0.0)
+	)
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
+	assert_false(dismount_trigger.overlaps_body(player))
+	var dismount_entries: Array[Node3D] = []
+	dismount_trigger.body_entered.connect(
+		func(body: Node3D) -> void:
+			if body == player:
+				dismount_entries.append(body)
+	)
+	player.global_position = dismount_trigger.global_position
+	player.reset_physics_interpolation()
+	await wait_physics_frames(2)
 
+	assert_true(dismount_trigger.overlaps_body(player))
+	assert_eq(dismount_entries, [player])
 	assert_false(mount.call("is_mounted"))
 	assert_false(player.call("is_hog_mounted"))
 	assert_ne(player.call("current_state"), &"ride")
