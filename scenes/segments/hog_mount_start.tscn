@@ -20,10 +20,10 @@ outline_size = 10
 
 [node name="Entry" type="Marker3D" parent="Spine"]
 
-[node name="MountLine" type="Marker3D" parent="Spine"]
+[node name="TitleLine" type="Marker3D" parent="Spine"]
 position = Vector3(0, 0, -8)
 
-[node name="FirstRead" type="Marker3D" parent="Spine"]
+[node name="Midpoint" type="Marker3D" parent="Spine"]
 position = Vector3(0, 0, -62)
 
 [node name="Exit" type="Marker3D" parent="Spine"]

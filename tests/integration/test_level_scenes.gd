@@ -1100,6 +1100,49 @@ func test_hog_wild_has_the_eight_segment_graybox_contract() -> void:
 		)
 
 
+func test_hog_wild_spine_marker_names_match_authored_landmarks() -> void:
+	var level := _instantiate_hog_wild()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	var intro := level.get_node_or_null(
+		"Segments/HogMountStart"
+	)
+	var finish := level.get_node_or_null(
+		"Segments/HogDismountFinish"
+	)
+	assert_not_null(intro)
+	assert_not_null(finish)
+	if intro == null or finish == null:
+		return
+	var title_line := intro.get_node_or_null(
+		"Spine/TitleLine"
+	) as Marker3D
+	var midpoint := intro.get_node_or_null(
+		"Spine/Midpoint"
+	) as Marker3D
+	var finish_arch := finish.get_node_or_null(
+		"Spine/FinishArch"
+	) as Marker3D
+	assert_not_null(title_line)
+	assert_not_null(midpoint)
+	assert_not_null(finish_arch)
+	assert_null(intro.get_node_or_null("Spine/MountLine"))
+	assert_null(intro.get_node_or_null("Spine/FirstRead"))
+	assert_null(finish.get_node_or_null("Spine/DismountLine"))
+	if (
+		title_line == null
+		or midpoint == null
+		or finish_arch == null
+	):
+		return
+	assert_eq(title_line.position, Vector3(0.0, 0.0, -8.0))
+	assert_eq(midpoint.position, Vector3(0.0, 0.0, -62.0))
+	assert_eq(finish_arch.position, Vector3(0.0, 0.0, -112.0))
+
+
 func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 	var level := _instantiate_hog_wild()
 	if level == null:

@@ -23,7 +23,7 @@ outline_size = 10
 [node name="RewardLine" type="Marker3D" parent="Spine"]
 position = Vector3(0, 0, -58)
 
-[node name="DismountLine" type="Marker3D" parent="Spine"]
+[node name="FinishArch" type="Marker3D" parent="Spine"]
 position = Vector3(0, 0, -112)
 
 [node name="Exit" type="Marker3D" parent="Spine"]
