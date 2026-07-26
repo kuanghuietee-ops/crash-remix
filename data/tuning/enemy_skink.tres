@@ -10,4 +10,4 @@ turn_pause_s = 0.0
 telegraph_s = 0.35
 attack_active_s = 0.5
 attack_cooldown_s = 1.2
-trigger_range_m = 4.0
+trigger_range_m = 6.0

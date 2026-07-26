@@ -6,6 +6,7 @@ const LEVEL_SCENE_PATH := (
 const LEVEL_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+const BASE_CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const SEGMENT_NAMES: Array[StringName] = [
 	&"BeachLanding",
 	&"FirstCrates",
@@ -258,6 +259,103 @@ func test_enemy_bearing_segments_have_the_authored_behavior_mix() -> void:
 			"%s must carry its designed Wave B enemy mix"
 			% segment_name
 		)
+
+
+func test_authored_skink_reacts_on_centerline_and_returns_over_floor() -> void:
+	var level := _instantiate_level()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var skink := level.get_node_or_null(
+		"Segments/JungleCorridor/SkinkIntro"
+	) as Node3D
+	var approach_run := level.get_node_or_null(
+		"Segments/JungleCorridor/ApproachRun"
+	) as Node3D
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(skink)
+	assert_not_null(approach_run)
+	assert_not_null(catalog)
+	if skink == null or approach_run == null or catalog == null:
+		return
+	var tuning := catalog.enemy_skink
+	assert_not_null(tuning)
+	if tuning == null:
+		return
+	skink.call("configure", tuning, catalog.move)
+	var spawn := skink.global_position
+	var lateral_axis := (
+		skink.global_transform.basis.x.normalized()
+	)
+	var forward_axis := (
+		skink.global_transform.basis.z.normalized()
+	)
+	var centerline_lateral_m := (
+		approach_run.global_position - spawn
+	).dot(lateral_axis)
+	var centerline_player := (
+		spawn
+		+ lateral_axis * centerline_lateral_m
+		+ forward_axis * tuning.trigger_range_m
+	)
+	var trigger_s := 25.0
+
+	skink.call("advance_logic", trigger_s, centerline_player)
+	assert_eq(
+		skink.call("behavior_state"),
+		&"telegraph",
+		"the real edge placement must detect Crash on centerline"
+	)
+	var active_s := trigger_s + tuning.telegraph_s
+	skink.call("advance_logic", active_s, centerline_player)
+	var dart_end_s := active_s + tuning.attack_active_s
+	skink.call("advance_logic", dart_end_s, centerline_player)
+	assert_eq(skink.call("behavior_state"), &"cooldown")
+	var dart_offset_m := (
+		skink.global_position - spawn
+	).dot(lateral_axis)
+	assert_gt(
+		dart_offset_m,
+		0.0,
+		"the real skink must finish its dart toward corridor center"
+	)
+	var platform_bounds := _box_world_bounds(approach_run)
+	var skink_bounds := _box_world_bounds(skink)
+	assert_gte(
+		skink_bounds.position.x,
+		platform_bounds.position.x,
+		"the skink's dart must keep its left edge over floor"
+	)
+	assert_lte(
+		skink_bounds.end.x,
+		platform_bounds.end.x,
+		"the skink's dart must keep its right edge over floor"
+	)
+	assert_gte(
+		skink_bounds.position.z,
+		platform_bounds.position.z,
+		"the skink's dart must stay within the floor length"
+	)
+	assert_lte(
+		skink_bounds.end.z,
+		platform_bounds.end.z,
+		"the skink's dart must stay within the floor length"
+	)
+	skink.call(
+		"advance_logic",
+		dart_end_s + tuning.attack_active_s * 0.5,
+		centerline_player
+	)
+	var return_offset_m := (
+		skink.global_position - spawn
+	).dot(lateral_axis)
+	assert_between(
+		return_offset_m,
+		0.0,
+		dart_offset_m,
+		"the real skink must travel home without teleporting"
+	)
 
 
 func test_required_jump_is_authored_inside_a_camera_region() -> void:

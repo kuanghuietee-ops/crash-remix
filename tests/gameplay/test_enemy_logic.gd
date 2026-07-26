@@ -79,7 +79,7 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 	var enemy := setup["enemy"] as Node3D
 	var tuning := setup["tuning"] as Resource
 	var start_s := 20.0
-	var far_player := Vector3.RIGHT * (
+	var far_player := Vector3.BACK * (
 		float(tuning.get("trigger_range_m")) + 1.0
 	)
 	var player_outside_authored_edge := Vector3.LEFT
@@ -121,6 +121,26 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 	)
 	enemy.call("advance_logic", cooldown_s, Vector3.ZERO)
 	assert_eq(enemy.call("behavior_state"), &"cooldown")
+	var dart_end_position_x := enemy.position.x
+	assert_gt(
+		dart_end_position_x,
+		0.0,
+		"the skink must not teleport home when its dart ends"
+	)
+	enemy.call(
+		"advance_logic",
+		(
+			cooldown_s
+			+ float(tuning.get("attack_active_s")) * 0.5
+		),
+		far_player
+	)
+	assert_between(
+		enemy.position.x,
+		0.0,
+		dart_end_position_x,
+		"the skink must visibly travel home during cooldown"
+	)
 
 	var dormant_s := (
 		cooldown_s + float(tuning.get("attack_cooldown_s"))
@@ -130,6 +150,60 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 	assert_true(
 		enemy.position.is_equal_approx(Vector3.ZERO),
 		"the skink must return to its authored start after the cycle"
+	)
+
+
+func test_skink_edge_placement_detects_centerline_before_player_is_abreast() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var enemy := setup["enemy"] as Node
+	var tuning := setup["tuning"] as Resource
+	var trigger_range_m := float(tuning.get("trigger_range_m"))
+	var centerline_player := Vector3(
+		trigger_range_m,
+		0.0,
+		trigger_range_m
+	)
+
+	enemy.call("advance_logic", 25.0, centerline_player)
+
+	assert_eq(
+		enemy.call("behavior_state"),
+		&"telegraph",
+		(
+			"the edge-authored skink must use forward corridor range; "
+			+ "a spherical range can miss the centerline entirely"
+		)
+	)
+
+
+func test_skink_trigger_lead_covers_its_full_run_speed_response() -> void:
+	var setup := _new_enemy(SKINK_SCRIPT_PATH, &"enemy_skink")
+	if setup.is_empty():
+		return
+	var tuning := setup["tuning"] as Resource
+	var catalog := _catalog()
+	if catalog == null:
+		return
+	var full_dart_s := (
+		float(tuning.get("patrol_span_m")) * 0.5
+		/ float(tuning.get("patrol_speed_mps"))
+	)
+	var full_response_s := (
+		float(tuning.get("telegraph_s")) + full_dart_s
+	)
+	var run_distance_during_response_m := (
+		catalog.move.run_speed_mps * full_response_s
+	)
+
+	assert_gte(
+		float(tuning.get("trigger_range_m")),
+		run_distance_during_response_m,
+		(
+			"the skink must react early enough to finish its dart "
+			+ "before a full-speed runner reaches its crossing plane"
+		)
 	)
 
 

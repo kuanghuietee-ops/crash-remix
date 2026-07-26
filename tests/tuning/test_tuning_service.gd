@@ -369,7 +369,7 @@ func test_service_catalog_exposes_all_three_enemy_sections() -> void:
 		},
 		&"enemy_skink": {
 			&"telegraph_s": 0.35,
-			&"trigger_range_m": 4.0,
+			&"trigger_range_m": 6.0,
 		},
 		&"enemy_plant": {
 			&"attack_active_s": 0.6,
