@@ -1,13 +1,15 @@
-# Ledger — Wave D audit (af585f6), read-only
+# Ledger — Wave D audit fixes (baseline af585f6)
 
-Statuses: VERIFIED = I read the code and/or executed it myself. REJECTED = claim
-did not survive. REPORTED = agent finding consistent with my reading but not
-independently executed. No FIXED rows — this audit was explicitly no-fix.
+Terminal fixer statuses: FIXED = verified, regression-tested red then green, and
+committed. DEFERRED = verified but requires an operator decision or human gate;
+the evidence names the unblocker. REJECTED = the claim did not survive
+verification. Non-terminal VERIFIED/REPORTED rows remain audit inputs awaiting
+the fixer loop.
 
 | ID | Sev | File:line | Claim | Status | Evidence |
 |----|-----|-----------|-------|--------|----------|
 | D1 | P1 | player_state_machine.gd:139-146,186-192 | Ride jump has no coyote time; every other state has 0.14 s | VERIFIED | Executed: normal 0.02 s past ledge -> `jump`; ride same input -> `none`. 0.14*9.0 = 1.26 m lost |
-| D2 | P1 | tests/gameplay/test_wall_run_state.gd:459 | Suite intermittently red: hardcoded `now_s=6.0` + `maximum_duration_s=2.0` races engine uptime | VERIFIED | Control 3/3 green; +2 s uptime burned before it -> 3/3 fail, same test. HEAD 2/9 fail, baseline 1/20 |
+| D2 | P1 | tests/gameplay/test_wall_run_state.gd:459 | Suite intermittently red: hardcoded `now_s=6.0` + `maximum_duration_s=2.0` races engine uptime | FIXED | `test_real_physics_holds_the_wall_distance_while_running`: temporary 2 s uptime-burn suite reproduced `airborne` vs `wall_run` and `0.5666667` vs `0.4 +/- 0.0001`; using `MonotonicClock.now_s()` passed under the same burn. Clean verification: shared 461 + isolated 40/17/14 = 532 |
 | D3 | P1 | scripts/run_gut.sh:2,73,75-77 | `set -e` aborts before the 3 isolated suites; green count silently omits 71 tests | VERIFIED | First full run: EXIT=1, "460 passing" printed, main_boot/island_slice/warp_room never ran |
 | D4 | P1 | tests/gameplay/test_ride_state.gd:341-358 | HogMount = 222 lines of logic, only an existence test | VERIFIED | Test asserts `has_method("configure")`/`has_method("reset_for_player_position")` only |
 | D5 | P1 | tests/integration/test_level_scenes.gd:1234 | Dismount test hand-calls `_on_dismount_trigger_body_entered`; Area3D path untested; mount handler never called | VERIFIED (coverage only) | PROBE2 moved the real body into the trigger: detection works. Risk is regression-blindness, not a live defect |

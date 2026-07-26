@@ -456,7 +456,9 @@ func test_real_physics_holds_the_wall_distance_while_running() -> void:
 		0.0
 	)
 	player.velocity = Vector3.FORWARD * 6.0
-	assert_true(player.call("try_wall_attach", strip, 6.0))
+	assert_true(
+		player.call("try_wall_attach", strip, MonotonicClock.now_s())
+	)
 	var before_z := player.global_position.z
 
 	await wait_physics_frames(2)
