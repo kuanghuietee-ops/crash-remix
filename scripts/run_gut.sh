@@ -70,8 +70,15 @@ shared_process_test_list="$(
     IFS=,
     printf '%s' "${shared_process_suites[*]}"
 )"
-run_gut_process -gdir= "-gtest=$shared_process_test_list"
+overall_status=0
+if ! run_gut_process -gdir= "-gtest=$shared_process_test_list"; then
+    overall_status=1
+fi
 
 for isolated_suite in "${isolated_suites[@]}"; do
-    run_gut_process -gdir= "-gtest=$isolated_suite"
+    if ! run_gut_process -gdir= "-gtest=$isolated_suite"; then
+        overall_status=1
+    fi
 done
+
+exit "$overall_status"

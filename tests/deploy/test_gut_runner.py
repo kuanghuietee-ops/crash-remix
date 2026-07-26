@@ -52,6 +52,14 @@ class GutRunnerTests(unittest.TestCase):
                         )
                         + "\\n"
                     )
+                if (
+                    os.environ.get("FAKE_GODOT_FAIL_SHARED") == "1"
+                    and any(
+                        arg.startswith("-gtest=") and "," in arg
+                        for arg in sys.argv[1:]
+                    )
+                ):
+                    raise SystemExit(1)
                 """
             ),
             encoding="utf-8",
@@ -59,7 +67,10 @@ class GutRunnerTests(unittest.TestCase):
         path.chmod(0o755)
 
     def _run_fake_godot(
-        self, temporary_path: Path, *runner_args: str
+        self,
+        temporary_path: Path,
+        *runner_args: str,
+        fail_shared: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], list[dict[str, object]]]:
         fake_godot = temporary_path / "fake_godot.py"
         invocation_log = temporary_path / "invocations.jsonl"
@@ -71,6 +82,8 @@ class GutRunnerTests(unittest.TestCase):
                 "GODOT_BIN": str(fake_godot),
             }
         )
+        if fail_shared:
+            environment["FAKE_GODOT_FAIL_SHARED"] = "1"
 
         result = subprocess.run(
             [str(GUT_RUNNER), *runner_args],
@@ -116,6 +129,24 @@ class GutRunnerTests(unittest.TestCase):
                 COMMON_GODOT_ARGS
                 + ["-gdir=", "-gtest=" + ",".join(shared_process_suites)],
             )
+            for invocation, suite in zip(invocations[1:], ISOLATED_SUITES):
+                self.assertEqual(
+                    invocation["args"],
+                    COMMON_GODOT_ARGS + ["-gdir=", "-gtest=" + suite],
+                )
+
+    def test_full_runner_attempts_isolated_suites_after_shared_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            result, invocations = self._run_fake_godot(
+                temporary_path,
+                fail_shared=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(len(invocations), 4)
             for invocation, suite in zip(invocations[1:], ISOLATED_SUITES):
                 self.assertEqual(
                     invocation["args"],
