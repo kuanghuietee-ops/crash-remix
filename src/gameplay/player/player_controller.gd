@@ -54,6 +54,7 @@ var _spin_visual_pivot: Node3D
 var _spin_area: Area3D
 var _slam_area: Area3D
 var _corridor_forward := Vector3.FORWARD
+var _chase_auto_run_remaining_s: float
 var _spawn_transform := Transform3D.IDENTITY
 var _last_state := &""
 var _last_spin_active: bool
@@ -122,6 +123,7 @@ func configure(
 	if is_instance_valid(_active_swing_anchor):
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
+	_chase_auto_run_remaining_s = 0.0
 	_clear_bounce_timing_window()
 	_active_jump_tap_height_m = _move_tuning.jump_tap_height_m
 	floor_snap_length = _move_tuning.floor_snap_length_m
@@ -134,6 +136,10 @@ func set_corridor_forward(forward: Vector3) -> void:
 	var horizontal_forward := Vector3(forward.x, 0.0, forward.z)
 	if not horizontal_forward.is_zero_approx():
 		_corridor_forward = horizontal_forward.normalized()
+
+
+func set_chase_auto_run_duration(duration_s: float) -> void:
+	_chase_auto_run_remaining_s = maxf(duration_s, 0.0)
 
 
 func set_spawn_transform(spawn_transform: Transform3D) -> void:
@@ -273,9 +279,16 @@ func advance_logic(
 		_input_tuning,
 		_traversal_neighbour_available
 	)
+	var movement_input := _intents.movement()
+	if _chase_auto_run_remaining_s > 0.0:
+		movement_input.y = -1.0
+		_chase_auto_run_remaining_s = maxf(
+			_chase_auto_run_remaining_s - maxf(delta_s, 0.0),
+			0.0
+		)
 	var next_horizontal := PlayerMotorType.horizontal_velocity(
 		velocity,
-		_intents.movement(),
+		movement_input,
 		decision.state,
 		delta_s,
 		_corridor_forward,

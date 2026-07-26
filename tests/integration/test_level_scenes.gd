@@ -672,7 +672,7 @@ func test_boulders_live_camera_basis_faces_back_down_corridor() -> void:
 	)
 
 
-func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
+func test_boulders_chase_auto_runs_then_hands_off_normal_control() -> void:
 	var level := await _configured_boulders()
 	if level == null:
 		return
@@ -714,6 +714,12 @@ func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 		or camera == null
 		or region == null
 	):
+		return
+	assert_true(
+		player.has_method("set_chase_auto_run_duration"),
+		"the real player must expose the timed chase handoff"
+	)
+	if not player.has_method("set_chase_auto_run_duration"):
 		return
 	var regions: Array = []
 	for candidate: Node in level.find_children(
@@ -763,13 +769,14 @@ func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 		"advance_logic",
 		2.0,
 		true,
-		1.0,
+		catalog.chase.opening_auto_run_duration_s,
 		corridor_forward
 	)
-	assert_eq(
-		player.velocity,
-		Vector3.ZERO,
-		"entering the chase must leave movement fully manual"
+	assert_almost_eq(
+		player.velocity.dot(corridor_forward),
+		catalog.move.run_speed_mps,
+		CHASE_GAP_TOLERANCE_M,
+		"the real chase trigger must auto-run for the opening window"
 	)
 	assert_true(
 		bool(router.get("_screen_relative_tracking_enabled")),
@@ -777,7 +784,7 @@ func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 	)
 
 	router.push_move(
-		Vector2.RIGHT,
+		Vector2.ZERO,
 		2.1,
 		InputIntent.SOURCE_TOUCH
 	)
@@ -785,6 +792,25 @@ func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 	player.call(
 		"advance_logic",
 		2.1,
+		true,
+		0.0,
+		corridor_forward
+	)
+	assert_eq(
+		player.velocity,
+		Vector3.ZERO,
+		"the player must regain fully manual movement after three seconds"
+	)
+
+	router.push_move(
+		Vector2.RIGHT,
+		2.2,
+		InputIntent.SOURCE_TOUCH
+	)
+	player.velocity = Vector3.ZERO
+	player.call(
+		"advance_logic",
+		2.2,
 		true,
 		1.0,
 		corridor_forward
@@ -802,10 +828,35 @@ func test_boulders_chase_keeps_manual_screen_normal_control() -> void:
 		"a screen-right gesture must still move right after "
 		+ "the chase camera reverses"
 	)
+	hazard.call(
+		"start_at_progress",
+		hazard.call(
+			"progress_for_position",
+			player.global_position
+		)
+	)
 	hazard.call("stop")
 	assert_false(
 		bool(router.get("_screen_relative_tracking_enabled")),
 		"the stop trigger must restore gesture-stable camera mapping"
+	)
+	router.push_move(
+		Vector2.ZERO,
+		2.3,
+		InputIntent.SOURCE_TOUCH
+	)
+	player.velocity = Vector3.ZERO
+	player.call(
+		"advance_logic",
+		2.3,
+		true,
+		0.0,
+		corridor_forward
+	)
+	assert_eq(
+		player.velocity,
+		Vector3.ZERO,
+		"stopping the chase must cancel any remaining auto-run"
 	)
 
 

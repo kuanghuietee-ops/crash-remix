@@ -416,6 +416,19 @@ func test_service_catalog_exposes_chase_section() -> void:
 	assert_eq(chase.get("boulder_speed_mps"), 6.8)
 	assert_eq(chase.get("boulder_kill_distance_m"), 1.0)
 	assert_eq(chase.get("boulder_start_gap_m"), 6.0)
+	assert_true(
+		_exported_property_names(chase).has(
+			&"opening_auto_run_duration_s"
+		),
+		"the three-second opening must be live typed tuning"
+	)
+	if _exported_property_names(chase).has(
+		&"opening_auto_run_duration_s"
+	):
+		assert_eq(
+			chase.get("opening_auto_run_duration_s"),
+			3.0
+		)
 
 
 func test_fingerprint_moves_when_a_chase_value_changes() -> void:
@@ -512,6 +525,13 @@ func test_chase_tuning_rejects_invalid_pressure_contracts() -> void:
 			float(chase.get("boulder_kill_distance_m")),
 		],
 	]
+	if _exported_property_names(chase).has(
+		&"opening_auto_run_duration_s"
+	):
+		invalid_cases.append([
+			&"opening_auto_run_duration_s",
+			-1.0,
+		])
 	for invalid_case: Array in invalid_cases:
 		var field_name := invalid_case[0] as StringName
 		var authored_value: Variant = chase.get(field_name)
@@ -523,6 +543,53 @@ func test_chase_tuning_rejects_invalid_pressure_contracts() -> void:
 		)
 		chase.set(field_name, authored_value)
 	assert_true(service.call("catalog_is_usable"))
+
+
+func test_old_chase_override_backfills_opening_auto_run_duration() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"opening_auto_run_duration_s"
+	assert_true(
+		_exported_property_names(authored.chase).has(field),
+		"the opening duration must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.chase).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var operator_speed_mps := authored.chase.boulder_speed_mps + 0.1
+	stale.chase.set(field, ChaseTuning.new().get(field))
+	stale.chase.boulder_speed_mps = operator_speed_mps
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.chase.get(field),
+		authored.chase.get(field),
+		"an older phone override must receive the three-second opening"
+	)
+	assert_almost_eq(
+		migrated.chase.boulder_speed_mps,
+		operator_speed_mps,
+		0.001,
+		"migration must preserve existing boulder-speed edits"
+	)
 
 
 func test_fingerprint_moves_when_an_enemy_value_changes() -> void:

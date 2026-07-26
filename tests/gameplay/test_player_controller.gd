@@ -10,6 +10,7 @@ var _wall_run: WallRunTuning
 var _grind: GrindTuning
 var _swing: SwingTuning
 var _economy: EconomyTuning
+var _chase: ChaseTuning
 
 
 func before_all() -> void:
@@ -23,6 +24,7 @@ func before_all() -> void:
 		_grind = catalog.grind
 		_swing = catalog.swing
 		_economy = catalog.economy
+		_chase = catalog.chase
 
 
 func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> void:
@@ -55,6 +57,103 @@ func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> voi
 		controller.velocity.y,
 		JumpKinematics.upward_speed_for_height(_move.jump_full_height_m, _move),
 		0.0001
+	)
+
+
+func test_chase_auto_run_expires_after_authored_opening_window() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	var buffer: InputIntentBuffer = setup["buffer"]
+	assert_true(
+		controller.has_method("set_chase_auto_run_duration"),
+		"the chase needs a named, time-bounded auto-run command"
+	)
+	if not controller.has_method("set_chase_auto_run_duration"):
+		return
+	assert_not_null(_chase)
+	if _chase == null:
+		return
+	var duration_s := float(
+		_chase.get("opening_auto_run_duration_s")
+	)
+	assert_eq(duration_s, 3.0)
+	controller.call(
+		"advance_logic",
+		10.0,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+	controller.call(
+		"set_chase_auto_run_duration",
+		duration_s
+	)
+	buffer.push(InputIntent.move(
+		Vector2.RIGHT,
+		10.1,
+		InputIntent.SOURCE_TOUCH
+	))
+	controller.velocity = Vector3.ZERO
+	var final_slice_s := _move.run_time_to_speed_s
+	var opening_slice_s := duration_s - final_slice_s
+
+	controller.call(
+		"advance_logic",
+		10.1,
+		true,
+		opening_slice_s,
+		Vector3.FORWARD
+	)
+
+	var corridor_right := Vector3.FORWARD.cross(
+		Vector3.UP
+	).normalized()
+	assert_almost_eq(
+		controller.velocity.dot(Vector3.FORWARD),
+		_move.run_speed_mps,
+		0.0001,
+		"the opening window must force full forward movement"
+	)
+	assert_almost_eq(
+		controller.velocity.dot(corridor_right),
+		_move.run_speed_mps,
+		0.0001,
+		"lateral steering must remain available during auto-run"
+	)
+
+	controller.velocity = Vector3.ZERO
+	controller.call(
+		"advance_logic",
+		10.1 + opening_slice_s,
+		true,
+		final_slice_s,
+		Vector3.FORWARD
+	)
+	assert_gt(
+		controller.velocity.dot(Vector3.FORWARD),
+		0.0,
+		"auto-run must remain active through the three-second boundary"
+	)
+
+	buffer.push(InputIntent.move(
+		Vector2.ZERO,
+		10.1 + duration_s,
+		InputIntent.SOURCE_TOUCH
+	))
+	controller.velocity = Vector3.ZERO
+	controller.call(
+		"advance_logic",
+		10.1 + duration_s,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+	assert_eq(
+		controller.velocity,
+		Vector3.ZERO,
+		"movement must be fully manual after the opening window"
 	)
 
 

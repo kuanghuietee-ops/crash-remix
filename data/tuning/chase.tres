@@ -7,3 +7,4 @@ script = ExtResource("1_chase")
 boulder_speed_mps = 6.8
 boulder_kill_distance_m = 1.0
 boulder_start_gap_m = 6.0
+opening_auto_run_duration_s = 3.0

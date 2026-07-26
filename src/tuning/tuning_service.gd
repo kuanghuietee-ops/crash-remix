@@ -80,6 +80,11 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"trigger_lateral_m",
 		],
 	],
+	&"chase": [
+		[
+			&"opening_auto_run_duration_s",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -423,6 +428,7 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or chase.boulder_kill_distance_m <= 0.0
 		or chase.boulder_start_gap_m
 		<= chase.boulder_kill_distance_m
+		or chase.opening_auto_run_duration_s < 0.0
 	):
 		return false
 
