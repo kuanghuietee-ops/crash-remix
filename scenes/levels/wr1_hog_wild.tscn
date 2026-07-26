@@ -100,7 +100,7 @@ ride_path_path = NodePath("Path")
 mount_trigger_path = NodePath("MountTrigger")
 dismount_trigger_path = NodePath("DismountTrigger")
 hog_visual_path = NodePath("HogVisual")
-mounted_visual_offset = Vector3(0, -0.35, 0)
+mounted_visual_offset = Vector3(0, 1.07, 0)
 
 [node name="Path" type="Path3D" parent="HogRide"]
 

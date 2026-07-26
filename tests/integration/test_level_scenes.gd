@@ -1201,6 +1201,42 @@ func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 	)
 
 
+func test_hog_wild_mounted_hog_visual_rests_on_player_floor() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var mount := level.get_node_or_null("HogRide")
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var hog_visual := player.get_node_or_null(
+		"HogVisual"
+	) as Node3D
+	var capsule := hog_visual.get_node_or_null(
+		"Capsule"
+	) as MeshInstance3D
+	assert_not_null(mount)
+	assert_not_null(player)
+	assert_not_null(hog_visual)
+	assert_not_null(capsule)
+	if (
+		mount == null
+		or player == null
+		or hog_visual == null
+		or capsule == null
+	):
+		return
+	assert_true(mount.call("is_mounted"))
+	assert_eq(hog_visual.get_parent(), player)
+	var world_bounds := capsule.global_transform * capsule.get_aabb()
+	assert_almost_eq(
+		world_bounds.position.y,
+		player.global_position.y,
+		CHASE_GAP_TOLERANCE_M,
+		"the mounted Hog capsule must rest on the player's floor plane"
+	)
+
+
 func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 	var level := await _configured_hog_wild()
 	if level == null:
