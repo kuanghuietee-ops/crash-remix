@@ -53,6 +53,7 @@ SPINE_ORDER_RULE = "spine_document_order"
 CHECKPOINT_OFF_SPINE_RULE = "checkpoint_off_spine"
 CRATE_AUTHORING_RULE = "crate_count_and_segment_membership"
 CRATE_ID_RULE = "crate_id_unique"
+WUMPA_TOTAL_RULE = "wumpa_total"
 REQUIRED_JUMP_RULE = "required_jump_depression"
 TIME_CRATE_RULE = "time_crate_relic_only"
 SPAWN_FLOOR_RULE = "player_spawn_has_reachable_floor"
@@ -85,8 +86,11 @@ LEVEL_META_EXEMPT_SCENES = {
 }
 TIME_CRATE_TYPE = "time"
 IRON_CRATE_TYPE = "iron"
+STANDARD_CRATE_TYPE = "standard"
+BOUNCE_CRATE_TYPE = "bounce"
 CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
+WUMPA_PICKUP_GROUP = "wumpa_pickup"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
 
 STRING_PATTERN = re.compile(r'(?:&)?"([^"]*)"')
@@ -170,12 +174,17 @@ class Bounds:
 @dataclass(frozen=True)
 class LevelMetaValues:
     crate_count: int
+    wumpa_total: int
     design_pace_mps: float
 
 
 @dataclass(frozen=True)
 class AuthoringTuning:
     checkpoint_spacing_limit_s: float
+    wumpa_per_standard_crate: int
+    wumpa_per_pickup: int
+    bounce_crate_max_bounces: int
+    bounce_crate_wumpa_per_bounce: int
     minimum_jump_depression_degrees: float
     camera_look_ahead_m: float
     camera_offsets: dict[str, Vector3]
@@ -238,6 +247,9 @@ def _level_findings(
         _checkpoint_findings(scene_name, nodes, meta, tuning)
     )
     findings.extend(_crate_findings(scene_name, nodes, meta))
+    findings.extend(
+        _wumpa_findings(scene_name, nodes, meta, tuning)
+    )
     findings.extend(
         _required_jump_findings(scene_name, nodes, tuning)
     )
@@ -898,6 +910,46 @@ def _crate_findings(
             )
         )
     return findings
+
+
+def _wumpa_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    meta: LevelMetaValues,
+    tuning: AuthoringTuning,
+) -> list[AuthoringViolation]:
+    authored_total = (
+        sum(
+            tuning.wumpa_per_standard_crate
+            for crate in _crate_nodes(nodes)
+            if _crate_type(crate) == STANDARD_CRATE_TYPE
+        )
+        + sum(
+            (
+                tuning.bounce_crate_max_bounces
+                * tuning.bounce_crate_wumpa_per_bounce
+            )
+            for crate in _crate_nodes(nodes)
+            if _crate_type(crate) == BOUNCE_CRATE_TYPE
+        )
+        + sum(
+            tuning.wumpa_per_pickup
+            for node in nodes
+            if WUMPA_PICKUP_GROUP in node.groups
+        )
+    )
+    if authored_total == meta.wumpa_total:
+        return []
+    return [
+        AuthoringViolation(
+            scene_name,
+            WUMPA_TOTAL_RULE,
+            (
+                f"authored wumpa={authored_total}, "
+                f"LevelMeta.wumpa_total={meta.wumpa_total}"
+            ),
+        )
+    ]
 
 
 def _required_jump_findings(
@@ -1587,6 +1639,18 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
         checkpoint_spacing_limit_s=float(
             economy["checkpoint_spacing_limit_s"]
         ),
+        wumpa_per_standard_crate=int(
+            float(economy["wumpa_per_standard_crate"])
+        ),
+        wumpa_per_pickup=int(
+            float(economy["wumpa_per_pickup"])
+        ),
+        bounce_crate_max_bounces=int(
+            float(economy["bounce_crate_max_bounces"])
+        ),
+        bounce_crate_wumpa_per_bounce=int(
+            float(economy["bounce_crate_wumpa_per_bounce"])
+        ),
         minimum_jump_depression_degrees=float(
             camera["minimum_jump_depression_degrees"]
         ),
@@ -1603,6 +1667,7 @@ def _load_level_meta(path: Path) -> LevelMetaValues:
     )
     return LevelMetaValues(
         crate_count=int(float(values["crate_count"])),
+        wumpa_total=int(float(values["wumpa_total"])),
         design_pace_mps=float(values["design_pace_mps"]),
     )
 

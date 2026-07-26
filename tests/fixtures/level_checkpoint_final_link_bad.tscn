@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Resource" path="res://tests/fixtures/level_crate_count_bad_meta.tres" id="1_meta"]
+[ext_resource type="Resource" path="res://tests/fixtures/level_two_checkpoint_meta.tres" id="1_meta"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_checkpoint.tscn" id="2_checkpoint"]
 
 [node name="CheckpointFinalLinkBad" type="Node3D"]

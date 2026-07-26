@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_wumpa_total_bad_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="2_standard"]
+[ext_resource type="PackedScene" path="res://scenes/props/crate_bounce.tscn" id="3_bounce"]
+[ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+
+[node name="WumpaTotalBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -10)
+
+[node name="Segment" type="Node3D" parent="."]
+
+[node name="Standard" parent="Segment" instance=ExtResource("2_standard")]
+position = Vector3(-1, 0.5, -4)
+crate_id = 0
+segment_group = &"Segment"
+
+[node name="Bounce" parent="Segment" instance=ExtResource("3_bounce")]
+position = Vector3(1, 0.5, -4)
+crate_id = 1
+segment_group = &"Segment"
+
+[node name="Pickup" parent="Segment" instance=ExtResource("4_wumpa")]
+position = Vector3(0, 0.5, -6)

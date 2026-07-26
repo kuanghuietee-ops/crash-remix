@@ -16,6 +16,7 @@ from scripts.lint_level_authoring import (
     SPAWN_FLOOR_RULE,
     SPINE_ORDER_RULE,
     TIME_CRATE_RULE,
+    WUMPA_TOTAL_RULE,
     _flatten_scene,
     find_authoring_violations,
 )
@@ -192,6 +193,18 @@ class LevelAuthoringLintTests(unittest.TestCase):
             self._rules("level_crate_count_bad.tscn"),
             [CRATE_AUTHORING_RULE],
         )
+
+    def test_wumpa_total_must_match_authored_scene_rewards(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_wumpa_total_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [WUMPA_TOTAL_RULE],
+        )
+        self.assertIn("authored wumpa=7", findings[0].detail)
+        self.assertIn("LevelMeta.wumpa_total=6", findings[0].detail)
 
     def test_segment_container_cannot_satisfy_crate_membership(
         self,
@@ -558,6 +571,7 @@ class LevelAuthoringLintTests(unittest.TestCase):
                         "[resource]",
                         "script = ExtResource(\"1\")",
                         "crate_count = 1",
+                        "wumpa_total = 0",
                         "design_pace_mps = 4.5",
                     ]
                 ),

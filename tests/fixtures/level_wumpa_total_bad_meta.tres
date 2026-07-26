@@ -4,10 +4,10 @@
 
 [resource]
 script = ExtResource("1_meta")
-level_id = &"fixture_one_crate"
-display_name = "One-crate lint fixture"
-crate_count = 1
-wumpa_total = 1
+level_id = &"fixture_wumpa_total_bad"
+display_name = "Fixture Wumpa Total Bad"
+crate_count = 2
+wumpa_total = 6
 design_pace_mps = 4.5
 relic_sapphire_s = 0.0
 relic_gold_s = 0.0
