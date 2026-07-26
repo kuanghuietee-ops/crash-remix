@@ -9,10 +9,11 @@ class HogPlayerStub:
 	var mounted: bool
 	var mount_calls: int
 	var dismount_calls: int
+	var accepts_mount := true
 
 
 	func mount_hog() -> void:
-		mounted = true
+		mounted = accepts_mount
 		mount_calls += 1
 
 
@@ -59,6 +60,25 @@ func test_marker_path_mounts_player_and_moves_visual_as_one_contract() -> void:
 	assert_eq(player.dismount_calls, 1)
 	assert_eq(visual.get_parent(), mount)
 	assert_signal_emit_count(mount, "dismounted", 1)
+
+
+func test_refused_player_mount_keeps_mount_signal_and_visual_inactive() -> void:
+	var fixture := _new_mount_fixture()
+	var mount: HogMount = fixture["mount"]
+	var visual: Node3D = fixture["visual"]
+	var player := HogPlayerStub.new()
+	player.accepts_mount = false
+	player.position = Vector3(0.0, 0.0, -10.0)
+	add_child_autofree(player)
+	watch_signals(mount)
+
+	mount.configure(player)
+
+	assert_eq(player.mount_calls, 1)
+	assert_false(player.is_hog_mounted())
+	assert_false(mount.is_mounted())
+	assert_eq(visual.get_parent(), mount)
+	assert_signal_emit_count(mount, "mounted", 0)
 
 
 func _new_mount_fixture() -> Dictionary:

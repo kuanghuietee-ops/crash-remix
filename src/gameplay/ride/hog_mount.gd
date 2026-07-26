@@ -84,9 +84,12 @@ func _set_mounted(
 		if (
 			_player == null
 			or not _player.has_method("mount_hog")
+			or not _player.has_method("is_hog_mounted")
 		):
 			return
 		_player.call("mount_hog")
+		if not bool(_player.call("is_hog_mounted")):
+			return
 		_attach_visual()
 		if not _mounted:
 			mounted.emit()
