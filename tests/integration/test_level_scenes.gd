@@ -1107,6 +1107,7 @@ func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 	add_child_autofree(level)
 	await wait_process_frames(1)
 
+	var verified_handoffs := 0
 	for index: int in range(
 		HOG_WILD_SEGMENT_NAMES.size() - 1
 	):
@@ -1149,6 +1150,12 @@ func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 			"%s → %s must overlap in X, Y, and Z"
 			% [current.name, next.name]
 		)
+		verified_handoffs += 1
+	assert_eq(
+		verified_handoffs,
+		HOG_WILD_SEGMENT_NAMES.size() - 1,
+		"every adjacent Hog Wild segment pair must be verified"
+	)
 
 
 func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
