@@ -16,6 +16,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"enemy_plant",
 	&"chase",
 	&"hog",
+	&"boss_papu",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -438,6 +439,22 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		hog.ride_speed_mps <= 0.0
 		or hog.steer_lateral_speed_mps <= 0.0
 		or hog.hog_jump_height_m <= 0.0
+	):
+		return false
+
+	var boss_papu := checked.boss_papu
+	if (
+		boss_papu.phase_count <= 0
+		or boss_papu.arena_strikes_per_phase <= 0
+		or boss_papu.slam_period_s <= 0.0
+		or boss_papu.shockwave_speed_mps <= 0.0
+		or boss_papu.shockwave_height_m <= 0.0
+		# §4.14 calls the shockwave jumpable, and the on-device drawer can
+		# push any float. A shockwave at or above the full jump arc is an
+		# unwinnable fight with no way back out, so bound it against the
+		# field that already governs it (the N1 lesson).
+		or boss_papu.shockwave_height_m >= move.jump_full_height_m
+		or boss_papu.debris_telegraph_s <= 0.0
 	):
 		return false
 
