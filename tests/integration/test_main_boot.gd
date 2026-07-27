@@ -14,6 +14,12 @@ const FUTURE_SAVE_FIXTURE := (
 const N_SANITY_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+const DynamicResolutionType := preload(
+	"res://src/core/dynamic_resolution.gd"
+)
+# Against the 60 fps budget: 16 ms is nearly out of it, 8 ms is far inside.
+const SLOW_FRAME_S := 0.016
+const FAST_FRAME_S := 0.008
 
 var _input_use_accumulated_before_test: bool
 
@@ -1780,6 +1786,53 @@ func test_main_scene_gates_the_perf_readout_on_debug_tools() -> void:
 		root.call("should_enable_debug_tools", false),
 		"and that switch must be off for a release build"
 	)
+
+
+func test_game_root_actually_drives_the_viewport_render_scale() -> void:
+	# E1-01: the readout reported SCALE, but nothing in production ever moved
+	# it, so it read 1.00 forever and the render-scale half of Gate F
+	# criterion 2 could not fail. This is the anti-dead-wire test for the
+	# driver: feed the real production method a sustained slow frame and the
+	# real viewport must actually change.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var viewport := root.get_viewport()
+	assert_not_null(viewport)
+	if viewport == null:
+		return
+	var entry_scale := viewport.scaling_3d_scale
+	viewport.scaling_3d_scale = 1.0
+
+	var elapsed_s := 0.0
+	while elapsed_s < DynamicResolutionType.ADJUST_INTERVAL_S:
+		# Drive _process itself, not the helper: a driver that exists but is
+		# never called from the frame callback is exactly what E1-01 was.
+		root.call("_process", SLOW_FRAME_S)
+		elapsed_s += SLOW_FRAME_S
+
+	var loaded_scale := viewport.scaling_3d_scale
+	assert_lt(
+		loaded_scale,
+		1.0,
+		"sustained load must actually lower the viewport render scale"
+	)
+
+	# And it must climb back, or a single hitch would cost image quality for
+	# the rest of the session.
+	elapsed_s = 0.0
+	while elapsed_s < DynamicResolutionType.ADJUST_INTERVAL_S:
+		root.call("_process", FAST_FRAME_S)
+		elapsed_s += FAST_FRAME_S
+
+	assert_gt(
+		viewport.scaling_3d_scale,
+		loaded_scale,
+		"headroom must give the resolution back"
+	)
+
+	viewport.scaling_3d_scale = entry_scale
 
 
 func test_the_perf_readout_stays_inside_the_display_safe_area() -> void:

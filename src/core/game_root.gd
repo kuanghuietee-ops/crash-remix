@@ -16,6 +16,9 @@ const ResultsModelType := preload(
 const MonotonicClockType := preload(
 	"res://src/core/monotonic_clock.gd"
 )
+const DynamicResolutionType := preload(
+	"res://src/core/dynamic_resolution.gd"
+)
 const HUD_SCENE := preload("res://scenes/ui/hud.tscn")
 const RESULTS_SCREEN_SCENE := preload(
 	"res://scenes/ui/results_screen.tscn"
@@ -115,6 +118,7 @@ var _threaded_poll_count: int = 0
 var _threaded_load_elapsed_s: float = 0.0
 var _threaded_load_status_override: Variant = null
 var _loading_overlay: Label
+var _dynamic_resolution: DynamicResolutionType = DynamicResolutionType.new()
 var _warp_room_instantiate_count: int = 0
 var _suppress_next_warp_room_render: bool = false
 
@@ -227,6 +231,22 @@ func _exit_tree() -> void:
 
 func _process(delta_s: float) -> void:
 	_poll_threaded_level_load(delta_s)
+	_apply_dynamic_resolution(delta_s)
+
+
+## E1-01: §9.4's 1.0->0.7 fallback had no production driver, so the perf
+## readout's SCALE field could only ever report 1.00 and the second half of
+## Gate F criterion 2 was untestable. This runs in every build, not just debug
+## ones -- the point is to hold 60 fps on the phone, not to show a number.
+func _apply_dynamic_resolution(delta_s: float) -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var current_scale := viewport.scaling_3d_scale
+	var next_scale := _dynamic_resolution.tick(delta_s, current_scale)
+	if is_equal_approx(next_scale, current_scale):
+		return
+	viewport.scaling_3d_scale = next_scale
 
 
 func _notification(what: int) -> void:
