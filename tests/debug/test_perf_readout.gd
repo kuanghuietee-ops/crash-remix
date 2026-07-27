@@ -220,6 +220,41 @@ func test_the_label_displays_every_measured_number() -> void:
 		assert_string_contains(readout.text, expected)
 
 
+func test_the_display_recompute_is_throttled_but_sampling_is_not() -> void:
+	# E1-05: duplicating and sorting 600 samples and rebuilding the whole
+	# string every frame adds observer cost to the thermal run it exists to
+	# measure. Sampling must stay per-frame -- that IS the measurement -- while
+	# the display recompute runs on an interval.
+	var readout: PerfReadoutType = autofree(PerfReadoutType.new())
+	readout.rendering_info_source = _fake_rendering_info
+
+	readout.tick(1.0 / 60.0)
+	var first_text := readout.text
+	assert_false(first_text.is_empty(), "the first tick must show something")
+
+	for _index in range(5):
+		readout.tick(1.0 / 600.0)
+
+	assert_eq(
+		readout.text,
+		first_text,
+		"the display must not be rebuilt every frame"
+	)
+	assert_eq(
+		readout.sample_count(),
+		6,
+		"but every frame must still be sampled"
+	)
+
+	readout.tick(PerfReadoutType.REFRESH_INTERVAL_S)
+
+	assert_ne(
+		readout.text,
+		first_text,
+		"and the display must catch up once the interval elapses"
+	)
+
+
 func test_the_readout_samples_frames_without_being_driven_by_hand() -> void:
 	# The project's predecessor shipped a config system that was never
 	# actually called. A readout nobody feeds shows a frozen zero forever,

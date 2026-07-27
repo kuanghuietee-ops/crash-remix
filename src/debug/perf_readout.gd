@@ -20,7 +20,15 @@ const SAMPLE_WINDOW_FRAMES := 600
 ## rendering counters are all zero and would agree with any mistake.
 var rendering_info_source: Callable = Callable()
 
+# The display recompute sorts the whole window and rebuilds the string, which
+# is measurable observer cost on the very thermal run this readout exists to
+# measure (E1-05). Sampling stays per-frame -- that is the measurement -- while
+# the numbers on screen refresh four times a second, which is as fast as anyone
+# can read them anyway.
+const REFRESH_INTERVAL_S := 0.25
+
 var _frame_times_s: Array[float] = []
+var _since_refresh_s := REFRESH_INTERVAL_S
 
 
 static func average_fps(frame_times_s: Array[float]) -> float:
@@ -132,6 +140,16 @@ func _sync_processing() -> void:
 	set_process(visible)
 
 
-func _process(delta: float) -> void:
-	push_frame_time(delta)
+## Sample every frame, rebuild the display on REFRESH_INTERVAL_S. Public so the
+## throttle is provable without depending on engine frame pacing.
+func tick(delta_s: float) -> void:
+	push_frame_time(delta_s)
+	_since_refresh_s += delta_s
+	if _since_refresh_s < REFRESH_INTERVAL_S:
+		return
+	_since_refresh_s = 0.0
 	refresh()
+
+
+func _process(delta: float) -> void:
+	tick(delta)
