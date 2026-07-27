@@ -413,11 +413,10 @@ func _clear_session_snapshot() -> void:
 #     the run itself ends, so results_model.build()/persisted_profile()
 #     compute and persist them in the same call, for both MODE_NORMAL
 #     and MODE_RELIC.
-#   - boss defeat: genuinely NOT wired anywhere yet.
-#     `boss_defeated.papu_papu` has no production writer repo-wide —
-#     correctly so, since Phase 1 ships no boss level to defeat. Wiring
-#     this belongs with whichever task first builds boss content
-#     (Task 17 / Wave B), not here.
+#   - boss defeat: wired below, by Task 22. Completing the boss level
+#     stamps `boss_defeated.papu_papu` into the same profile write as
+#     its results, so a defeat cannot be recorded without the run that
+#     earned it also being persisted.
 func _on_level_session_completed(results: Dictionary) -> void:
 	var meta := _active_level_meta
 	if meta == null and active_level_session != null:
@@ -456,6 +455,17 @@ func _on_level_session_completed(results: Dictionary) -> void:
 		last_save_error = ERR_INVALID_DATA
 		push_error("Level results could not update the profile.")
 		return
+	# 01-DESIGN §4.4's fourth profile-write trigger. It had no production
+	# writer while Phase 1 shipped no boss; Task 22 ships one, so a cleared
+	# boss level stamps the defeat in the same write as its results rather
+	# than in a second save.
+	if meta.level_id == PAPU_PAPU_LEVEL_ID:
+		var boss_value: Variant = updated_profile.get("boss_defeated", {})
+		var boss_defeated: Dictionary = (
+			boss_value as Dictionary if boss_value is Dictionary else {}
+		)
+		boss_defeated["papu_papu"] = true
+		updated_profile["boss_defeated"] = boss_defeated
 	last_save_error = save_service.store_profile(
 		save_dir,
 		updated_profile

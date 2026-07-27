@@ -1875,3 +1875,53 @@ func _remove_tree(path: String) -> void:
 	for child_name: String in directory.get_directories():
 		_remove_tree(path.path_join(child_name))
 	DirAccess.remove_absolute(absolute)
+
+
+func test_completing_the_boss_level_records_the_defeat() -> void:
+	# game_root.gd's own note said boss_defeated.papu_papu had no production
+	# writer repo-wide, correctly so while Phase 1 shipped no boss. It ships
+	# one now, so beating him must survive the save.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var meta := load(
+		"res://data/tuning/levels/papu_papu.tres"
+	) as LevelMeta
+	assert_not_null(meta)
+	if meta == null:
+		return
+	root.set("_active_level_meta", meta)
+	var profile: Dictionary = root.get("profile")
+	assert_false(
+		bool(
+			(profile.get("boss_defeated", {}) as Dictionary).get(
+				"papu_papu", false
+			)
+		),
+		"precondition: the boss starts undefeated"
+	)
+
+	root.call("_on_level_session_completed", {
+		"completed": true,
+		"crates_broken": 0,
+		"wumpa": 0,
+		"deaths": 0,
+		"flawless": true,
+		"elapsed_s": 1.0,
+	})
+
+	# This drives the completion handler directly from the hub state, so the
+	# FSM correctly refuses the level->results transition. That refusal is this
+	# test's own setup artifact, not the behaviour under test, which is the
+	# profile write above it.
+	assert_push_error("Could not show level results")
+	var saved: Dictionary = root.get("profile")
+	assert_true(
+		bool(
+			(saved.get("boss_defeated", {}) as Dictionary).get(
+				"papu_papu", false
+			)
+		),
+		"defeating Papu must be written to the profile"
+	)

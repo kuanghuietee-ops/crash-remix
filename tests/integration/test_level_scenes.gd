@@ -2011,3 +2011,37 @@ func test_papu_debris_cannot_kill_inside_its_telegraph() -> void:
 		bool(arena.call("debris_is_lethal_now")),
 		"and lethal once the telegraph has elapsed"
 	)
+
+
+func test_a_papu_ripple_actually_damages_the_player() -> void:
+	# Computing "caught" is not the same as anybody dying of it. This drives
+	# the real physics step LevelSession runs, so an arena that reports a catch
+	# nobody consumes fails here rather than in a playtest.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	var arena := level.get_node_or_null("PapuArena")
+	if player == null or arena == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	var deaths_before: int = level.run_state.deaths_at_checkpoint
+	assert_true(level.run_state.flawless, "precondition: nobody has died yet")
+
+	# Real physics frames, so LevelSession's own _physics_process drives the
+	# hazard loop and the player's death actually resolves. No private call.
+	for _index in range(420):
+		await wait_physics_frames(1)
+		if not level.run_state.flawless:
+			break
+
+	assert_false(
+		level.run_state.flawless,
+		"a ripple that catches the player must actually kill them"
+	)
+	assert_gt(
+		level.run_state.deaths_at_checkpoint,
+		deaths_before,
+		"and the death must be recorded against the phase checkpoint"
+	)

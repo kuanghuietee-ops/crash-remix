@@ -476,7 +476,12 @@ func _advance_chase_hazards(
 ) -> void:
 	if _player == null or not _player.has_method("receive_hit"):
 		return
-	for hazard: Node in _chase_hazards:
+	# The boss arena reports the same {caught} contract, so it shares this
+	# loop rather than growing a second damage path.
+	var hazards: Array[Node] = []
+	hazards.append_array(_chase_hazards)
+	hazards.append_array(_papu_arenas)
+	for hazard: Node in hazards:
 		if (
 			not is_instance_valid(hazard)
 			or not hazard.has_method("advance_runtime")
