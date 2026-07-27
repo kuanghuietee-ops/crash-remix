@@ -1,0 +1,160 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
+[ext_resource type="Resource" path="res://data/tuning/levels/papu_papu.tres" id="2_meta"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3_player"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_rail_controller.gd" id="4_camera"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="5_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
+[ext_resource type="PackedScene" path="res://scenes/segments/papu_arena.tscn" id="8_arena"]
+[ext_resource type="Script" path="res://src/gameplay/boss/papu_papu_arena.gd" id="9_boss"]
+
+[sub_resource type="Environment" id="Environment_papu"]
+background_mode = 1
+background_color = Color(0.09, 0.07, 0.05, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.68, 0.5, 0.34, 1)
+ambient_light_energy = 0.72
+tonemap_mode = 2
+
+[sub_resource type="BoxShape3D" id="Shape_strike"]
+size = Vector3(6, 3, 4)
+
+[sub_resource type="BoxShape3D" id="Shape_finish"]
+size = Vector3(10, 4, 4)
+
+[node name="PapuPapu" type="Node3D"]
+script = ExtResource("1_session")
+metadata/level_meta = ExtResource("2_meta")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_papu")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, 22, 0)
+light_color = Color(1, 0.74, 0.49, 1)
+light_energy = 1.25
+shadow_enabled = true
+
+[node name="Segments" type="Node3D" parent="."]
+
+[node name="Arena" parent="Segments" instance=ExtResource("8_arena")]
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+position = Vector3(0, 0.05, 0)
+
+[node name="PapuArena" type="Node3D" parent="."]
+script = ExtResource("9_boss")
+strike_trigger_paths = [NodePath("StrikeOne"), NodePath("StrikeTwo"), NodePath("StrikeThree")]
+phase_spawn_paths = [NodePath("PhaseOneSpawn"), NodePath("PhaseTwoSpawn"), NodePath("PhaseThreeSpawn")]
+
+[node name="PhaseOneSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 0.05, -4)
+
+[node name="PhaseTwoSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 2.05, -36)
+
+[node name="PhaseThreeSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 4.05, -60)
+
+[node name="StrikeOne" type="Area3D" parent="PapuArena"]
+position = Vector3(0, 1.5, -24)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PapuArena/StrikeOne"]
+shape = SubResource("Shape_strike")
+
+[node name="Label" type="Label3D" parent="PapuArena/StrikeOne"]
+position = Vector3(0, 2.2, 0)
+text = "PHASE 1 BEAM"
+font_size = 40
+outline_size = 10
+
+[node name="StrikeTwo" type="Area3D" parent="PapuArena"]
+position = Vector3(0, 3.5, -48)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PapuArena/StrikeTwo"]
+shape = SubResource("Shape_strike")
+
+[node name="Label" type="Label3D" parent="PapuArena/StrikeTwo"]
+position = Vector3(0, 2.2, 0)
+text = "PHASE 2 BEAM"
+font_size = 40
+outline_size = 10
+
+[node name="StrikeThree" type="Area3D" parent="PapuArena"]
+position = Vector3(0, 5.5, -72)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PapuArena/StrikeThree"]
+shape = SubResource("Shape_strike")
+
+[node name="Label" type="Label3D" parent="PapuArena/StrikeThree"]
+position = Vector3(0, 2.2, 0)
+text = "PHASE 3 BEAM"
+font_size = 40
+outline_size = 10
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="Rail" type="Path3D" parent="CameraRig"]
+
+[node name="Start" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, 8)
+
+[node name="PhaseOneEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 0, -24)
+
+[node name="PhaseTwoEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 2, -48)
+
+[node name="PhaseThreeEnd" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 4, -72)
+
+[node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(0, 4, -90)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
+current = true
+fov = 58.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("5_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("6_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_touch")
+
+[node name="Finish" type="Area3D" parent="."]
+position = Vector3(0, 5.5, -86)
+collision_layer = 0
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Finish"]
+shape = SubResource("Shape_finish")
+
+[node name="Label" type="Label3D" parent="Finish"]
+position = Vector3(0, 2.2, 0)
+text = "HUT COLLAPSE — EXIT"
+font_size = 52
+outline_size = 12

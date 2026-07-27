@@ -227,8 +227,16 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"steer_lateral_speed_mps",
 		&"hog_jump_height_m",
 	],
+	&"boss_papu": [
+		&"phase_count",
+		&"arena_strikes_per_phase",
+		&"slam_period_s",
+		&"shockwave_speed_mps",
+		&"shockwave_height_m",
+		&"debris_telegraph_s",
+	],
 }
-# Tasks 17, 19, and 20 add whole enemy, chase, and hog sections, which
+# Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections, which
 # _backfill_missing_sections migrates atomically for every older override.
 # Their initial fields therefore join this baseline; later fields inside
 # those sections still belong in a legacy cohort. Computed as the
@@ -238,7 +246,7 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 # ever legitimately needs to change, never to make a wrongly-placed new
 # field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"4943bdf335e6432df4440e9830a581447083ce318ad2af82b6260ff15fe8f5c8"
+	"1ef3f47a0e457abed34f68f2690d58eea25007f66e8c2f3e1104a2ee92364a59"
 )
 
 
@@ -277,6 +285,7 @@ func test_authored_catalog_loads_all_typed_resources() -> void:
 	assert_eq(_global_class_name(catalog.get("enemy_plant")), "EnemyTuning")
 	assert_eq(_global_class_name(catalog.get("chase")), "ChaseTuning")
 	assert_eq(_global_class_name(catalog.get("hog")), "HogTuning")
+	assert_eq(_global_class_name(catalog.get("boss_papu")), "BossTuning")
 
 
 func test_authored_values_form_valid_phase_zero_contract() -> void:
@@ -453,6 +462,119 @@ func test_service_catalog_exposes_hog_section() -> void:
 	assert_eq(hog.get("ride_speed_mps"), 9.0)
 	assert_eq(hog.get("steer_lateral_speed_mps"), 5.0)
 	assert_eq(hog.get("hog_jump_height_m"), 2.0)
+
+
+func test_service_catalog_exposes_boss_papu_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var boss := service.get("catalog").get("boss_papu") as Resource
+
+	assert_not_null(
+		boss,
+		"clone dropped boss_papu — the Papu fight is dead-wired"
+	)
+	if boss == null:
+		return
+	assert_eq(_global_class_name(boss), "BossTuning")
+	# 01-DESIGN §4.2: phase_count is [spec] §8.2; the rest are [proposed].
+	assert_eq(boss.get("phase_count"), 3)
+	assert_eq(boss.get("arena_strikes_per_phase"), 1)
+	assert_eq(boss.get("slam_period_s"), 2.5)
+	assert_eq(boss.get("shockwave_speed_mps"), 6.0)
+	assert_eq(boss.get("shockwave_height_m"), 0.8)
+	assert_eq(boss.get("debris_telegraph_s"), 0.8)
+
+
+func test_fingerprint_moves_when_a_boss_papu_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var boss := service.get("catalog").get("boss_papu") as Resource
+	assert_not_null(boss)
+	if boss == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	boss.set("slam_period_s", float(boss.get("slam_period_s")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"boss_papu values never reach the tuning fingerprint"
+	)
+
+
+func test_an_unjumpable_shockwave_is_refused() -> void:
+	# §4.14 calls the shockwave jumpable. The on-device drawer can push any
+	# float, and a shockwave taller than the jump arc is an unwinnable fight
+	# with no way back out — the N1 lesson: bound it against the field that
+	# already governs it.
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog := service.get("catalog") as GameplayTuning
+	var jump_height: float = catalog.move.jump_full_height_m
+	assert_true(
+		service.call("catalog_is_usable", catalog),
+		"the authored catalog must be usable before the guard is proved"
+	)
+
+	catalog.boss_papu.shockwave_height_m = jump_height
+
+	assert_false(
+		service.call("catalog_is_usable", catalog),
+		"a shockwave at or above the full jump height is not jumpable"
+	)
+
+
+func test_pre_boss_override_backfills_boss_papu() -> void:
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
+	var authored_boss := authored.get("boss_papu") as Resource
+	assert_not_null(
+		authored_boss,
+		"the authored boss_papu section must exist before migration is proved"
+	)
+	if authored_boss == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("boss_papu", null)
+	stale.hog.ride_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	var service: RefCounted = _new_service()
+	assert_not_null(service)
+	if service == null:
+		return
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+	assert_true(
+		service.get("override_active"),
+		"a pre-boss phone override must migrate, not reset"
+	)
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("boss_papu"))
+	assert_eq(
+		migrated.get("boss_papu").get("slam_period_s"),
+		authored_boss.get("slam_period_s")
+	)
+	assert_almost_eq(
+		migrated.hog.ride_speed_mps,
+		float(authored.hog.ride_speed_mps) + 0.1,
+		0.0001,
+		"migration must not discard the edit the phone already had"
+	)
 
 
 func test_fingerprint_moves_when_a_hog_value_changes() -> void:

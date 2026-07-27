@@ -36,6 +36,7 @@ var _crates_by_id: Dictionary = {}
 var _enemies: Array[Node] = []
 var _chase_hazards: Array[Node] = []
 var _hog_mounts: Array[Node] = []
+var _papu_arenas: Array[Node] = []
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -84,6 +85,7 @@ func configure(
 	_enemies.clear()
 	_chase_hazards.clear()
 	_hog_mounts.clear()
+	_papu_arenas.clear()
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
@@ -144,6 +146,7 @@ func configure(
 		_start_transform = (_player as Node3D).global_transform
 	_discover_and_configure_chase_hazards()
 	_discover_and_configure_hog_mounts()
+	_discover_and_configure_papu_arenas()
 	if _player != null and _player.has_signal(&"respawn_started"):
 		if not _player.is_connected(
 			&"respawn_started",
@@ -250,6 +253,37 @@ func _discover_and_configure_hog_mounts() -> void:
 				"configure",
 				_player as Node3D
 			)
+
+
+## The boss arena is discovered the same way hog mounts are, so victory reaches
+## complete_level() through the one path a run can end by, rather than inventing
+## a second completion route.
+func _discover_and_configure_papu_arenas() -> void:
+	_papu_arenas.clear()
+	_collect_papu_arena_descendants(self)
+	for arena: Node in _papu_arenas:
+		if not is_instance_valid(arena) or not arena.has_method("configure"):
+			continue
+		if _gameplay_tuning == null or not (_player is Node3D):
+			continue
+		arena.call(
+			"configure",
+			_player as Node3D,
+			_gameplay_tuning.boss_papu,
+			_gameplay_tuning.depth
+		)
+		if not arena.is_connected(&"boss_defeated", complete_level):
+			arena.connect(&"boss_defeated", complete_level)
+
+
+func _collect_papu_arena_descendants(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if (
+			child.is_in_group(&"papu_arena")
+			and child.has_method("current_phase")
+		):
+			_papu_arenas.append(child)
+		_collect_papu_arena_descendants(child)
 
 
 func _collect_hog_mount_descendants(parent: Node) -> void:
@@ -442,7 +476,12 @@ func _advance_chase_hazards(
 ) -> void:
 	if _player == null or not _player.has_method("receive_hit"):
 		return
-	for hazard: Node in _chase_hazards:
+	# The boss arena reports the same {caught} contract, so it shares this
+	# loop rather than growing a second damage path.
+	var hazards: Array[Node] = []
+	hazards.append_array(_chase_hazards)
+	hazards.append_array(_papu_arenas)
+	for hazard: Node in hazards:
 		if (
 			not is_instance_valid(hazard)
 			or not hazard.has_method("advance_runtime")
@@ -636,6 +675,16 @@ func _on_player_respawn_started() -> void:
 	_set_player_spawn(respawn_checkpoint)
 	_reset_hog_mounts_for_checkpoint(respawn_checkpoint)
 	_reset_chase_hazards_for_checkpoint(respawn_checkpoint)
+	_reset_papu_arenas_for_death()
+
+
+## A retry must not inherit the ripples that killed the player: that is the
+## distance-since-checkpoint difficulty §2.8 rules out, arriving by the back
+## door.
+func _reset_papu_arenas_for_death() -> void:
+	for arena: Node in _papu_arenas:
+		if is_instance_valid(arena) and arena.has_method("on_player_death"):
+			arena.call("on_player_death")
 
 
 func _arm_death_recorded_pending_respawn() -> int:
@@ -1201,8 +1250,26 @@ func _blast_path_is_clear(
 
 
 func _on_finish_body_entered(body: Node) -> void:
-	if body == _player:
-		call_deferred(&"complete_level")
+	if body != _player:
+		return
+	# P-003: the boss exit is a reward, not a route. Every strike volume is
+	# narrower than the floor it sits on, so without this the player can walk
+	# around all three beams into the Finish and be recorded as having beaten
+	# a boss still standing.
+	if _has_undefeated_boss():
+		return
+	call_deferred(&"complete_level")
+
+
+func _has_undefeated_boss() -> bool:
+	for arena: Node in _papu_arenas:
+		if (
+			is_instance_valid(arena)
+			and arena.has_method("is_defeated")
+			and not bool(arena.call("is_defeated"))
+		):
+			return true
+	return false
 
 
 func _is_authored_crate(candidate: Node) -> bool:
@@ -1251,6 +1318,15 @@ func _spawn_transform_for_checkpoint(
 ) -> Transform3D:
 	if _checkpoint_transforms.has(target_checkpoint_id):
 		return _checkpoint_transforms[target_checkpoint_id]
+	# spec §8.2: a boss phase IS the checkpoint. Without this a death in phase
+	# 2 or 3 falls back to the level spawn at the bottom of the hut.
+	for arena: Node in _papu_arenas:
+		if (
+			is_instance_valid(arena)
+			and arena.has_method("has_phase_spawn")
+			and bool(arena.call("has_phase_spawn"))
+		):
+			return arena.call("phase_spawn_transform")
 	return _start_transform
 
 

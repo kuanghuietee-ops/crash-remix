@@ -1813,3 +1813,549 @@ func _box_world_bounds(body: Node3D) -> AABB:
 		-box.size * 0.5,
 		box.size
 	)
+
+
+const PAPU_LEVEL_SCENE_PATH := "res://scenes/levels/wr1_papu_papu.tscn"
+const PAPU_LEVEL_META_PATH := (
+	"res://data/tuning/levels/papu_papu.tres"
+)
+
+
+func _configured_papu_papu() -> LevelSession:
+	assert_true(
+		ResourceLoader.exists(PAPU_LEVEL_SCENE_PATH),
+		"the Papu arena must be authored before this test can pass"
+	)
+	if not ResourceLoader.exists(PAPU_LEVEL_SCENE_PATH):
+		return null
+	var packed := load(PAPU_LEVEL_SCENE_PATH) as PackedScene
+	var level := packed.instantiate() as LevelSession
+	if level == null:
+		return null
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var meta := load(PAPU_LEVEL_META_PATH) as LevelMeta
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null("Player")
+	var router := level.get_node_or_null("Input/InputRouter")
+	assert_not_null(meta)
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(router)
+	if meta == null or catalog == null or player == null or router == null:
+		return null
+	router.call("configure", catalog.input)
+	player.call(
+		"configure",
+		catalog.move,
+		catalog.input,
+		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
+		router.get("buffer"),
+		catalog.economy,
+		true,
+		catalog.hog
+	)
+	assert_true(level.configure(
+		meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input,
+		catalog
+	))
+	return level
+
+
+func test_papu_arena_advances_a_phase_per_real_strike_volume() -> void:
+	# D5's lesson: drive the real Area3D with the real player body, never the
+	# handler by hand, or a swapped NodePath or bad collision mask ships green.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	assert_not_null(arena, "the level must carry the arena")
+	assert_not_null(player)
+	if arena == null or player == null:
+		return
+	assert_eq(arena.call("current_phase"), 1)
+	assert_false(arena.call("is_defeated"))
+
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	assert_eq(
+		strikes.size(),
+		3,
+		"one strike volume per authored phase [spec §8.2]"
+	)
+	if strikes.size() != 3:
+		return
+
+	var reached: Array[int] = []
+	for strike: Area3D in strikes:
+		player.global_position = strike.global_position
+		await wait_physics_frames(2)
+		reached.append(int(arena.call("current_phase")))
+		player.global_position = (
+			strike.global_position + Vector3(0, 0, 40)
+		)
+		await wait_physics_frames(2)
+
+	assert_eq(
+		reached,
+		([2, 3, 3] as Array[int]),
+		"each strike must clear exactly one phase"
+	)
+	assert_true(
+		arena.call("is_defeated"),
+		"three cleared phases must end the fight"
+	)
+
+
+func test_papu_arena_death_restarts_the_phase_not_the_fight() -> void:
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.is_empty():
+		return
+	player.global_position = (strikes[0] as Area3D).global_position
+	await wait_physics_frames(2)
+	assert_eq(arena.call("current_phase"), 2, "precondition: phase 2")
+
+	arena.call("on_player_death")
+
+	assert_eq(
+		arena.call("current_phase"),
+		2,
+		"death must not send the player back to phase 1 [spec §8.2]"
+	)
+
+
+func test_papu_shockwave_catches_a_grounded_player_but_not_a_jumped_one() -> void:
+	# §4.14: the ripple is jumpable. Height is measured above the player's own
+	# supporting surface, not world Y, because each phase floor sits 2 m higher
+	# than the last -- standing safely on tier 3 is a world Y that would read as
+	# airborne on tier 1.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var wave_height: float = catalog.boss_papu.shockwave_height_m
+
+	# Grounded on the phase-one floor, in the ripple's path.
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	# Long enough for the first slam (slam_period_s) plus the ripple's travel
+	# across the 12 m gap at shockwave_speed_mps.
+	var grounded_caught := false
+	for _index in range(600):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			grounded_caught = true
+			break
+	assert_true(
+		grounded_caught,
+		"a grounded player must eventually be caught by a slam ripple"
+	)
+
+	# Same spot, but above the authored wave height.
+	arena.call("reset_phase_hazards")
+	player.global_position = Vector3(0, 0.05 + wave_height * 2.0, -12)
+	await wait_physics_frames(2)
+	var jumped_caught := false
+	for _index in range(600):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			jumped_caught = true
+			break
+	assert_false(
+		jumped_caught,
+		"a player above the authored wave height must pass over it"
+	)
+
+
+func test_papu_debris_cannot_kill_inside_its_telegraph() -> void:
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var telegraph_s: float = catalog.boss_papu.debris_telegraph_s
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+
+	assert_false(
+		bool(arena.call("debris_is_lethal_now")),
+		"debris must be harmless the instant it is telegraphed"
+	)
+	arena.call("advance_runtime", telegraph_s * 0.5)
+	assert_false(
+		bool(arena.call("debris_is_lethal_now")),
+		"and still harmless halfway through its telegraph"
+	)
+	arena.call("advance_runtime", telegraph_s)
+	assert_true(
+		bool(arena.call("debris_is_lethal_now")),
+		"and lethal once the telegraph has elapsed"
+	)
+
+
+func test_a_papu_ripple_actually_damages_the_player() -> void:
+	# Computing "caught" is not the same as anybody dying of it. This drives
+	# the real physics step LevelSession runs, so an arena that reports a catch
+	# nobody consumes fails here rather than in a playtest.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	var arena := level.get_node_or_null("PapuArena")
+	if player == null or arena == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	var deaths_before: int = level.run_state.deaths_at_checkpoint
+	assert_true(level.run_state.flawless, "precondition: nobody has died yet")
+
+	# Real physics frames, so LevelSession's own _physics_process drives the
+	# hazard loop and the player's death actually resolves. No private call.
+	for _index in range(420):
+		await wait_physics_frames(1)
+		if not level.run_state.flawless:
+			break
+
+	assert_false(
+		level.run_state.flawless,
+		"a ripple that catches the player must actually kill them"
+	)
+	assert_gt(
+		level.run_state.deaths_at_checkpoint,
+		deaths_before,
+		"and the death must be recorded against the phase checkpoint"
+	)
+
+
+func test_papu_death_resets_the_phase_hazards_through_the_real_respawn() -> void:
+	# The arena's on_player_death() had no production caller: only a test
+	# called it, so in game a retry inherited the ripples that killed you.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	var outcome: Dictionary = {}
+	for _index in range(400):
+		outcome = arena.call("advance_runtime", 1.0 / 60.0)
+		if int(outcome.get(&"live_waves", 0)) > 0:
+			break
+	assert_gt(
+		int(outcome.get(&"live_waves", 0)),
+		0,
+		"precondition: a ripple is in flight"
+	)
+
+	level.call("_on_player_respawn_started")
+
+	assert_eq(
+		int(arena.call("advance_runtime", 0.0).get(&"live_waves", 0)),
+		0,
+		"a retry must not inherit the ripples that killed the player"
+	)
+
+
+func test_papu_respawn_returns_the_player_to_the_current_phase() -> void:
+	# spec §8.2 wants a checkpoint per phase. The arena authors no checkpoint
+	# crates, so without this the fallback sends the player to the level spawn
+	# at the bottom of the hut after every death in phase 2 or 3.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var level_spawn: Vector3 = player.global_position
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.size() < 2:
+		return
+	player.global_position = (strikes[0] as Area3D).global_position
+	await wait_physics_frames(2)
+	assert_eq(arena.call("current_phase"), 2, "precondition: phase 2")
+
+	var spawn: Transform3D = level.call(
+		"_spawn_transform_for_checkpoint",
+		level.run_state.checkpoint_id
+	)
+
+	assert_gt(
+		spawn.origin.y,
+		level_spawn.y,
+		"phase 2 restarts on its own tier, not the hut floor"
+	)
+	assert_lt(
+		spawn.origin.z,
+		level_spawn.z,
+		"and further into the arena than the level spawn"
+	)
+
+
+func test_papu_finish_refuses_to_complete_an_undefeated_boss() -> void:
+	# P-003: the strike volumes are 6 m wide on stairs that support x=4, so the
+	# player can walk around every beam into a 10 m Finish. Completing there
+	# also stamped boss_defeated, recording a victory nobody earned.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	var finish := level.get_node_or_null("Finish") as Area3D
+	if arena == null or player == null or finish == null:
+		return
+	var completions: Array = []
+	level.run_completed.connect(func(results: Dictionary) -> void:
+		completions.append(results)
+	)
+	assert_false(arena.call("is_defeated"), "precondition: Papu is alive")
+
+	player.global_position = finish.global_position
+	await wait_physics_frames(4)
+
+	assert_true(
+		completions.is_empty(),
+		"the exit must not open while the boss is alive"
+	)
+
+
+func test_papu_victory_completes_the_level_through_the_real_signal() -> void:
+	# P-010 mutation 2: severing boss_defeated -> complete_level left every
+	# Papu test green, because the defeat-write test calls GameRoot's handler
+	# directly. This drives the real strike volumes with the listener already
+	# attached, so the connection itself is under test.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var completions: Array = []
+	level.run_completed.connect(func(results: Dictionary) -> void:
+		completions.append(results)
+	)
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.size() != 3:
+		return
+
+	for strike: Area3D in strikes:
+		player.global_position = strike.global_position
+		await wait_physics_frames(2)
+		player.global_position = strike.global_position + Vector3(0, 0, 40)
+		await wait_physics_frames(2)
+
+	assert_true(arena.call("is_defeated"), "precondition: Papu is beaten")
+	assert_false(
+		completions.is_empty(),
+		"beating the boss must complete the level, not just set a flag"
+	)
+
+
+func test_a_ripple_emitted_during_a_long_frame_is_not_backdated() -> void:
+	# P-009: a hitch appended the new wave at age 0 and then added the WHOLE
+	# frame to it, so a wave born mid-frame travelled the full step and could
+	# kill instantly on the frame it appeared.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	# One 3.0 s frame crosses the 2.5 s slam boundary: the wave is 0.5 s old
+	# and 3 m along, nowhere near a player 12 m away.
+	var outcome: Dictionary = arena.call("advance_runtime", 3.0)
+
+	assert_false(
+		bool(outcome.get(&"caught", false)),
+		"a wave born 0.5 s ago cannot already have crossed 12 m"
+	)
+
+
+func test_a_grounded_player_is_never_immune_at_a_floor_edge() -> void:
+	# P-005: the downward probe missed at an authored floor edge, returning
+	# full probe range and reading as airborne while is_on_floor() was true --
+	# an immunity spot standing on solid ground.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	# Settle onto the lip from just above, rather than spawning inside it: the
+	# defect needs the engine to call the player grounded while a centre ray
+	# from the body finds nothing directly beneath.
+	player.global_position = Vector3(0, 1.2, -32.98)
+	await wait_physics_frames(12)
+	assert_true(
+		player.is_on_floor(),
+		"precondition: the engine considers this edge solid ground"
+	)
+
+	assert_almost_eq(
+		float(arena.call("player_height_above_surface_m")),
+		0.0,
+		0.001,
+		"a player the engine says is grounded is inside the ripple"
+	)
+
+
+func test_the_height_probe_ignores_bodies_the_player_cannot_stand_on() -> void:
+	# P-006: the probe had no collision mask, so layer-3 crates and enemies --
+	# which the player's own mask cannot stand on -- read as supporting floor.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+
+	assert_eq(
+		int(arena.call("height_probe_mask")),
+		player.collision_mask,
+		"the probe must only see what the player can actually stand on"
+	)
+
+
+func test_every_live_ripple_has_a_visible_marker_that_moves() -> void:
+	# P-008: the ripples were lethal and completely invisible -- no mesh, no
+	# effect, no cue. That is Pillar 1 inverted: death the player cannot read.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	var outcome: Dictionary = {}
+	for _index in range(400):
+		outcome = arena.call("advance_runtime", 1.0 / 60.0)
+		if int(outcome.get(&"live_waves", 0)) > 0:
+			break
+	var live: int = int(outcome.get(&"live_waves", 0))
+	assert_gt(live, 0, "precondition: a ripple is in flight")
+
+	var visuals: Array = arena.call("ripple_visuals")
+	assert_eq(
+		visuals.size(),
+		live,
+		"every live ripple needs a marker the player can see"
+	)
+	if visuals.is_empty():
+		return
+	var crest := visuals[0] as Node3D
+	assert_true(
+		crest.is_visible_in_tree(),
+		"the marker must actually be visible"
+	)
+	assert_almost_eq(
+		crest.scale.y,
+		catalog.boss_papu.shockwave_height_m,
+		0.001,
+		"the marker must stand at the height the player has to clear"
+	)
+	var before_z := crest.global_position.z
+
+	arena.call("advance_runtime", 0.25)
+
+	assert_gt(
+		(visuals[0] as Node3D).global_position.z,
+		before_z,
+		"the marker must travel with its ripple, not sit still"
+	)
+
+
+func test_debris_telegraphs_then_falls_and_kills_where_it_landed() -> void:
+	# P-004: §4.14's falling debris existed only as a clock comparison. No
+	# debris was ever spawned, telegraphed, advanced or connected to damage.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var telegraph_s: float = catalog.boss_papu.debris_telegraph_s
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	# Run to the first slam so a piece of debris exists over the player.
+	var spawned := false
+	for _index in range(400):
+		arena.call("advance_runtime", 1.0 / 60.0)
+		if (arena.call("debris_pieces") as Array).size() > 0:
+			spawned = true
+			break
+	assert_true(spawned, "a slam must bring debris down with it")
+	if not spawned:
+		return
+	var piece := (arena.call("debris_pieces") as Array)[0] as Node3D
+	var telegraph := piece.get_node_or_null("Telegraph") as Node3D
+	var rock := piece.get_node_or_null("Rock") as Node3D
+	assert_not_null(telegraph)
+	assert_not_null(rock)
+	if telegraph == null or rock == null:
+		return
+	assert_true(
+		telegraph.is_visible_in_tree(),
+		"the landing spot must be marked before anything falls"
+	)
+	var high_y := rock.global_position.y
+
+	# Inside the telegraph it must not be able to kill.
+	await wait_physics_frames(2)
+	assert_false(
+		bool(arena.call("advance_runtime", telegraph_s * 0.5).get(&"caught")),
+		"debris must not kill inside its own telegraph"
+	)
+
+	# Past the telegraph it has landed, and standing there is fatal.
+	var caught := false
+	for _index in range(120):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			caught = true
+			break
+		await wait_physics_frames(1)
+	assert_true(caught, "landed debris must kill the player standing under it")
+	assert_lt(
+		rock.global_position.y,
+		high_y,
+		"and it must have actually fallen to get there"
+	)

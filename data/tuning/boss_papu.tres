@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BossTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/boss_tuning.gd" id="1_boss"]
+
+[resource]
+script = ExtResource("1_boss")
+phase_count = 3
+arena_strikes_per_phase = 1
+slam_period_s = 2.5
+shockwave_speed_mps = 6.0
+shockwave_height_m = 0.8
+debris_telegraph_s = 0.8

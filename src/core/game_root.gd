@@ -45,6 +45,9 @@ const BOULDERS_META := preload(
 const HOG_WILD_META := preload(
 	"res://data/tuning/levels/hog_wild.tres"
 )
+const PAPU_PAPU_META := preload(
+	"res://data/tuning/levels/papu_papu.tres"
+)
 const MISSED_CRATE_OUTLINE_SHADER := preload(
 	"res://assets/shaders/missed_crate_outline.gdshader"
 )
@@ -64,10 +67,15 @@ const HOG_WILD_LEVEL_ID := &"wr1_hog_wild"
 const HOG_WILD_SCENE_PATH := (
 	"res://scenes/levels/wr1_hog_wild.tscn"
 )
+const PAPU_PAPU_LEVEL_ID := &"wr1_papu_papu"
+const PAPU_PAPU_SCENE_PATH := (
+	"res://scenes/levels/wr1_papu_papu.tscn"
+)
 const _LEVEL_SCENE_PATHS: Dictionary = {
 	N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_SCENE_PATH,
 	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
 	HOG_WILD_LEVEL_ID: HOG_WILD_SCENE_PATH,
+	PAPU_PAPU_LEVEL_ID: PAPU_PAPU_SCENE_PATH,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -430,11 +438,10 @@ func _clear_session_snapshot() -> void:
 #     the run itself ends, so results_model.build()/persisted_profile()
 #     compute and persist them in the same call, for both MODE_NORMAL
 #     and MODE_RELIC.
-#   - boss defeat: genuinely NOT wired anywhere yet.
-#     `boss_defeated.papu_papu` has no production writer repo-wide —
-#     correctly so, since Phase 1 ships no boss level to defeat. Wiring
-#     this belongs with whichever task first builds boss content
-#     (Task 17 / Wave B), not here.
+#   - boss defeat: wired below, by Task 22. Completing the boss level
+#     stamps `boss_defeated.papu_papu` into the same profile write as
+#     its results, so a defeat cannot be recorded without the run that
+#     earned it also being persisted.
 func _on_level_session_completed(results: Dictionary) -> void:
 	var meta := _active_level_meta
 	if meta == null and active_level_session != null:
@@ -473,6 +480,17 @@ func _on_level_session_completed(results: Dictionary) -> void:
 		last_save_error = ERR_INVALID_DATA
 		push_error("Level results could not update the profile.")
 		return
+	# 01-DESIGN §4.4's fourth profile-write trigger. It had no production
+	# writer while Phase 1 shipped no boss; Task 22 ships one, so a cleared
+	# boss level stamps the defeat in the same write as its results rather
+	# than in a second save.
+	if meta.level_id == PAPU_PAPU_LEVEL_ID:
+		var boss_value: Variant = updated_profile.get("boss_defeated", {})
+		var boss_defeated: Dictionary = (
+			boss_value as Dictionary if boss_value is Dictionary else {}
+		)
+		boss_defeated["papu_papu"] = true
+		updated_profile["boss_defeated"] = boss_defeated
 	last_save_error = save_service.store_profile(
 		save_dir,
 		updated_profile
@@ -907,6 +925,8 @@ func _level_meta(level_id: StringName) -> LevelMeta:
 		return BOULDERS_META
 	if level_id == HOG_WILD_LEVEL_ID:
 		return HOG_WILD_META
+	if level_id == PAPU_PAPU_LEVEL_ID:
+		return PAPU_PAPU_META
 	return null
 
 
