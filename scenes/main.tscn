@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/core/game_root.gd" id="1_root"]
 [ext_resource type="PackedScene" path="res://scenes/debug/tuning_debug_ui.tscn" id="2_debug"]
 [ext_resource type="Script" path="res://src/debug/perf_readout.gd" id="3_perf"]
+[ext_resource type="Script" path="res://src/ui/safe_area_control.gd" id="4_safe"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_root")
@@ -13,7 +14,17 @@ script = ExtResource("1_root")
 
 [node name="TuningDebug" parent="UI" instance=ExtResource("2_debug")]
 
-[node name="PerfReadout" type="Label" parent="UI"]
+[node name="PerfReadoutArea" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_safe")
+
+[node name="PerfReadout" type="Label" parent="UI/PerfReadoutArea"]
 visible = false
 anchors_preset = 1
 anchor_left = 1.0

@@ -97,7 +97,8 @@ var active_level_session: Node
 @onready var _content: Node = $Content
 @onready var _ui: CanvasLayer = $UI
 @onready var _tuning_debug: TuningDebugUI = $UI/TuningDebug
-@onready var _perf_readout: PerfReadout = $UI/PerfReadout
+@onready var _perf_readout_area: Control = $UI/PerfReadoutArea
+@onready var _perf_readout: PerfReadout = $UI/PerfReadoutArea/PerfReadout
 
 var _active_level_meta: LevelMeta
 var _segment_by_crate_id: Dictionary = {}
@@ -544,6 +545,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		var safe_area := screen.get_node_or_null("SafeArea")
 		if safe_area != null:
 			safe_area.call("configure", tuning_service.catalog.input)
+	# E1-03: the perf readout gets the same safe-area inset and the same
+	# display-metrics poll as every other overlay, so a device cutout cannot
+	# hide the numbers the weekly device check reads.
+	_perf_readout_area.call("configure", tuning_service.catalog.input)
 	var boot_error_safe_area := _boot_error_overlay.get_node_or_null(
 		"SafeArea"
 	)

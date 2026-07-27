@@ -1754,7 +1754,7 @@ func test_main_scene_gates_the_perf_readout_on_debug_tools() -> void:
 	if packed == null:
 		return
 	var root := packed.instantiate()
-	var authored := root.get_node_or_null("UI/PerfReadout") as Control
+	var authored := root.get_node_or_null("UI/PerfReadoutArea/PerfReadout") as Control
 	assert_not_null(
 		authored,
 		"main.tscn must carry the perf readout in its debug branch"
@@ -1782,12 +1782,50 @@ func test_main_scene_gates_the_perf_readout_on_debug_tools() -> void:
 	)
 
 
+func test_the_perf_readout_stays_inside_the_display_safe_area() -> void:
+	# E1-03: authored as a direct UI child, the readout was anchored to the
+	# full 1920-wide canvas. On a landscape phone with a right-side cutout or
+	# rounded inset, that hides exactly the numbers the device gate needs.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var area := root.get_node_or_null("UI/PerfReadoutArea") as Control
+	assert_not_null(
+		area,
+		"the readout needs the PhaseOneSafeArea inset every other overlay has"
+	)
+	if area == null:
+		return
+	var readout := root.get_node_or_null(
+		"UI/PerfReadoutArea/PerfReadout"
+	) as Control
+	assert_not_null(readout)
+	if readout == null:
+		return
+
+	var cutout_safe_rect := Rect2(100.0, 40.0, 1720.0, 1000.0)
+	area.call("set_layout_override", cutout_safe_rect)
+	area.call("_apply_safe_area")
+	await wait_process_frames(1)
+
+	assert_true(
+		cutout_safe_rect.encloses(readout.get_global_rect()),
+		(
+			"the readout must sit inside the safe rect; got "
+			+ str(readout.get_global_rect())
+			+ " against "
+			+ str(cutout_safe_rect)
+		)
+	)
+
+
 func test_level_touch_exclusions_include_the_perf_readout() -> void:
 	var root := _instantiate_main()
 	if root == null:
 		return
 	await wait_process_frames(1)
-	var readout := root.get_node_or_null("UI/PerfReadout") as Control
+	var readout := root.get_node_or_null("UI/PerfReadoutArea/PerfReadout") as Control
 	assert_not_null(readout)
 	if readout == null:
 		return
