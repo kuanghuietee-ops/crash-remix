@@ -205,3 +205,52 @@ func test_the_fight_adds_no_new_player_verb() -> void:
 		(["down", "jump", "move", "phase", "spin"] as Array[String]),
 		"the boss fight must not add a player action"
 	)
+
+
+func test_a_shockwave_travels_at_the_tuned_speed() -> void:
+	var flow := _flow({"shockwave_speed_mps": 6.0})
+	if flow == null:
+		return
+
+	assert_almost_eq(flow.shockwave_distance_m(0.0), 0.0, 0.0001)
+	assert_almost_eq(
+		flow.shockwave_distance_m(2.0),
+		12.0,
+		0.0001,
+		"a slam ripple must cross the floor at shockwave_speed_mps"
+	)
+
+
+func test_a_negative_age_does_not_move_a_shockwave_backwards() -> void:
+	var flow := _flow()
+	if flow == null:
+		return
+
+	assert_almost_eq(
+		flow.shockwave_distance_m(-1.0),
+		0.0,
+		0.0001,
+		"a wave that has not been emitted yet is at the origin"
+	)
+
+
+func test_jumping_clears_a_shockwave_but_standing_does_not() -> void:
+	# §4.2 gives a full jump 2.2 m and §4.14 calls the shockwave jumpable, so
+	# the tuned height must sit under the arc, and a grounded player must not
+	# survive by accident.
+	var flow := _flow({"shockwave_height_m": 0.8})
+	if flow == null:
+		return
+
+	assert_false(
+		flow.shockwave_clears_player(0.0),
+		"a grounded player is inside the ripple"
+	)
+	assert_false(
+		flow.shockwave_clears_player(0.79),
+		"clearing it means clearing its full height"
+	)
+	assert_true(
+		flow.shockwave_clears_player(0.81),
+		"a jumped player passes over it"
+	)

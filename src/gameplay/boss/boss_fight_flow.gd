@@ -69,3 +69,16 @@ func slam_count_by(elapsed_s: float) -> int:
 ## always something the player had the information to avoid.
 func debris_is_lethal(age_s: float) -> bool:
 	return age_s >= _tuning.debris_telegraph_s
+
+
+## How far a slam's ripple has crossed the floor since it was emitted. A wave
+## that has not been emitted yet sits at the origin rather than travelling
+## backwards.
+func shockwave_distance_m(age_s: float) -> float:
+	return maxf(age_s, 0.0) * _tuning.shockwave_speed_mps
+
+
+## §4.14 calls the shockwave jumpable: a player above its authored height
+## passes over it, a grounded one does not.
+func shockwave_clears_player(player_height_m: float) -> bool:
+	return player_height_m > _tuning.shockwave_height_m
