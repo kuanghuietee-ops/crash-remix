@@ -234,6 +234,29 @@ func test_the_readout_samples_frames_without_being_driven_by_hand() -> void:
 	assert_false(readout.text.is_empty(), "and display what it sampled")
 
 
+func test_a_hidden_readout_is_not_scheduled_to_process() -> void:
+	# E1-02: hiding a CanvasItem does not stop _process being dispatched. The
+	# early return made the callback cheap, not absent, so a release build
+	# still paid per-frame dispatch for a node it never shows.
+	var readout: PerfReadoutType = add_child_autofree(PerfReadoutType.new())
+
+	readout.visible = false
+	await wait_process_frames(1)
+
+	assert_false(
+		readout.is_processing(),
+		"a hidden readout must not be scheduled for _process at all"
+	)
+
+	readout.visible = true
+	await wait_process_frames(1)
+
+	assert_true(
+		readout.is_processing(),
+		"and it must resume sampling the moment it is shown"
+	)
+
+
 func test_a_hidden_readout_costs_a_release_build_nothing() -> void:
 	# GameRoot hides this node when debug tools are off, which is every
 	# release build. Hidden must mean it stops working, not just stops showing.

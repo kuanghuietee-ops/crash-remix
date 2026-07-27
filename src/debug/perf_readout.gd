@@ -120,9 +120,18 @@ func refresh() -> void:
 	text = readout_text()
 
 
+func _ready() -> void:
+	visibility_changed.connect(_sync_processing)
+	_sync_processing()
+
+
+## A hidden readout is a release build's readout. Hiding a CanvasItem does not
+## stop _process being dispatched, so unschedule it outright rather than paying
+## a per-frame callback to return early (E1-02).
+func _sync_processing() -> void:
+	set_process(visible)
+
+
 func _process(delta: float) -> void:
-	# A hidden readout is a release build's readout: it must cost nothing.
-	if not visible:
-		return
 	push_frame_time(delta)
 	refresh()
