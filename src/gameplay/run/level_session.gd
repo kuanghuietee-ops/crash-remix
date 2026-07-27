@@ -36,6 +36,7 @@ var _crates_by_id: Dictionary = {}
 var _enemies: Array[Node] = []
 var _chase_hazards: Array[Node] = []
 var _hog_mounts: Array[Node] = []
+var _papu_arenas: Array[Node] = []
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -84,6 +85,7 @@ func configure(
 	_enemies.clear()
 	_chase_hazards.clear()
 	_hog_mounts.clear()
+	_papu_arenas.clear()
 	_checkpoint_transforms.clear()
 	_wumpa_pickups.clear()
 	_active_top_contact_ids.clear()
@@ -144,6 +146,7 @@ func configure(
 		_start_transform = (_player as Node3D).global_transform
 	_discover_and_configure_chase_hazards()
 	_discover_and_configure_hog_mounts()
+	_discover_and_configure_papu_arenas()
 	if _player != null and _player.has_signal(&"respawn_started"):
 		if not _player.is_connected(
 			&"respawn_started",
@@ -250,6 +253,32 @@ func _discover_and_configure_hog_mounts() -> void:
 				"configure",
 				_player as Node3D
 			)
+
+
+## The boss arena is discovered the same way hog mounts are, so victory reaches
+## complete_level() through the one path a run can end by, rather than inventing
+## a second completion route.
+func _discover_and_configure_papu_arenas() -> void:
+	_papu_arenas.clear()
+	_collect_papu_arena_descendants(self)
+	for arena: Node in _papu_arenas:
+		if not is_instance_valid(arena) or not arena.has_method("configure"):
+			continue
+		if _gameplay_tuning == null or not (_player is Node3D):
+			continue
+		arena.call("configure", _player as Node3D, _gameplay_tuning.boss_papu)
+		if not arena.is_connected(&"boss_defeated", complete_level):
+			arena.connect(&"boss_defeated", complete_level)
+
+
+func _collect_papu_arena_descendants(parent: Node) -> void:
+	for child: Node in parent.get_children():
+		if (
+			child.is_in_group(&"papu_arena")
+			and child.has_method("current_phase")
+		):
+			_papu_arenas.append(child)
+		_collect_papu_arena_descendants(child)
 
 
 func _collect_hog_mount_descendants(parent: Node) -> void:

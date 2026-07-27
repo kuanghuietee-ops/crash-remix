@@ -18,6 +18,11 @@ const LEVEL_CASES: Array[Dictionary] = [
 		&"node_path": "Content/HogWild",
 		&"ready_marker": "EXPORTED HOG WILD SMOKE READY",
 	},
+	{
+		&"level_id": &"wr1_papu_papu",
+		&"node_path": "Content/PapuPapu",
+		&"ready_marker": "EXPORTED PAPU PAPU SMOKE READY",
+	},
 ]
 
 var _game: Node

@@ -1813,3 +1813,127 @@ func _box_world_bounds(body: Node3D) -> AABB:
 		-box.size * 0.5,
 		box.size
 	)
+
+
+const PAPU_LEVEL_SCENE_PATH := "res://scenes/levels/wr1_papu_papu.tscn"
+const PAPU_LEVEL_META_PATH := (
+	"res://data/tuning/levels/papu_papu.tres"
+)
+
+
+func _configured_papu_papu() -> LevelSession:
+	assert_true(
+		ResourceLoader.exists(PAPU_LEVEL_SCENE_PATH),
+		"the Papu arena must be authored before this test can pass"
+	)
+	if not ResourceLoader.exists(PAPU_LEVEL_SCENE_PATH):
+		return null
+	var packed := load(PAPU_LEVEL_SCENE_PATH) as PackedScene
+	var level := packed.instantiate() as LevelSession
+	if level == null:
+		return null
+	add_child_autofree(level)
+	await wait_process_frames(1)
+	var meta := load(PAPU_LEVEL_META_PATH) as LevelMeta
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var player := level.get_node_or_null("Player")
+	var router := level.get_node_or_null("Input/InputRouter")
+	assert_not_null(meta)
+	assert_not_null(catalog)
+	assert_not_null(player)
+	assert_not_null(router)
+	if meta == null or catalog == null or player == null or router == null:
+		return null
+	router.call("configure", catalog.input)
+	player.call(
+		"configure",
+		catalog.move,
+		catalog.input,
+		catalog.depth,
+		catalog.wall_run,
+		catalog.grind,
+		catalog.swing,
+		router.get("buffer"),
+		catalog.economy,
+		true,
+		catalog.hog
+	)
+	assert_true(level.configure(
+		meta,
+		LevelRunState.MODE_NORMAL,
+		catalog.economy,
+		player,
+		catalog.move,
+		catalog.input,
+		catalog
+	))
+	return level
+
+
+func test_papu_arena_advances_a_phase_per_real_strike_volume() -> void:
+	# D5's lesson: drive the real Area3D with the real player body, never the
+	# handler by hand, or a swapped NodePath or bad collision mask ships green.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	assert_not_null(arena, "the level must carry the arena")
+	assert_not_null(player)
+	if arena == null or player == null:
+		return
+	assert_eq(arena.call("current_phase"), 1)
+	assert_false(arena.call("is_defeated"))
+
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	assert_eq(
+		strikes.size(),
+		3,
+		"one strike volume per authored phase [spec §8.2]"
+	)
+	if strikes.size() != 3:
+		return
+
+	var reached: Array[int] = []
+	for strike: Area3D in strikes:
+		player.global_position = strike.global_position
+		await wait_physics_frames(2)
+		reached.append(int(arena.call("current_phase")))
+		player.global_position = (
+			strike.global_position + Vector3(0, 0, 40)
+		)
+		await wait_physics_frames(2)
+
+	assert_eq(
+		reached,
+		([2, 3, 3] as Array[int]),
+		"each strike must clear exactly one phase"
+	)
+	assert_true(
+		arena.call("is_defeated"),
+		"three cleared phases must end the fight"
+	)
+
+
+func test_papu_arena_death_restarts_the_phase_not_the_fight() -> void:
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.is_empty():
+		return
+	player.global_position = (strikes[0] as Area3D).global_position
+	await wait_physics_frames(2)
+	assert_eq(arena.call("current_phase"), 2, "precondition: phase 2")
+
+	arena.call("on_player_death")
+
+	assert_eq(
+		arena.call("current_phase"),
+		2,
+		"death must not send the player back to phase 1 [spec §8.2]"
+	)

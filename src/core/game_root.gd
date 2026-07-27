@@ -42,6 +42,9 @@ const BOULDERS_META := preload(
 const HOG_WILD_META := preload(
 	"res://data/tuning/levels/hog_wild.tres"
 )
+const PAPU_PAPU_META := preload(
+	"res://data/tuning/levels/papu_papu.tres"
+)
 const MISSED_CRATE_OUTLINE_SHADER := preload(
 	"res://assets/shaders/missed_crate_outline.gdshader"
 )
@@ -61,10 +64,15 @@ const HOG_WILD_LEVEL_ID := &"wr1_hog_wild"
 const HOG_WILD_SCENE_PATH := (
 	"res://scenes/levels/wr1_hog_wild.tscn"
 )
+const PAPU_PAPU_LEVEL_ID := &"wr1_papu_papu"
+const PAPU_PAPU_SCENE_PATH := (
+	"res://scenes/levels/wr1_papu_papu.tscn"
+)
 const _LEVEL_SCENE_PATHS: Dictionary = {
 	N_SANITY_BEACH_LEVEL_ID: N_SANITY_BEACH_SCENE_PATH,
 	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
 	HOG_WILD_LEVEL_ID: HOG_WILD_SCENE_PATH,
+	PAPU_PAPU_LEVEL_ID: PAPU_PAPU_SCENE_PATH,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -878,6 +886,8 @@ func _level_meta(level_id: StringName) -> LevelMeta:
 		return BOULDERS_META
 	if level_id == HOG_WILD_LEVEL_ID:
 		return HOG_WILD_META
+	if level_id == PAPU_PAPU_LEVEL_ID:
+		return PAPU_PAPU_META
 	return null
 
 
