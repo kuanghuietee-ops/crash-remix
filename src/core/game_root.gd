@@ -371,6 +371,8 @@ func set_active_level_session(
 		)
 		if run_state != null:
 			_active_level_meta = run_state.meta
+	if active_level_session.has_method("set_audio_service"):
+		active_level_session.call("set_audio_service", audio_service)
 	if active_level_session.has_signal(&"run_completed"):
 		active_level_session.connect(
 			&"run_completed",

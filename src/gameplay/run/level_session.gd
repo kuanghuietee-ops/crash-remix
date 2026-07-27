@@ -37,6 +37,7 @@ var _enemies: Array[Node] = []
 var _chase_hazards: Array[Node] = []
 var _hog_mounts: Array[Node] = []
 var _papu_arenas: Array[Node] = []
+var _audio: Node
 var _checkpoint_transforms: Dictionary = {}
 var _wumpa_pickups: Array[Area3D] = []
 var _start_transform := Transform3D.IDENTITY
@@ -193,6 +194,18 @@ func configure(
 		_on_finish_body_entered
 	)
 	return run_state.run_active
+
+
+## GameRoot hands the level its audio service. Every hook below is a request,
+## not a guarantee: assets/audio is empty until H10, so play() returns false and
+## the game stays silent without any call site caring.
+func set_audio_service(service: Node) -> void:
+	_audio = service
+
+
+func _play_sfx(slot: StringName) -> void:
+	if _audio != null and _audio.has_method("play"):
+		_audio.call("play", slot)
 
 
 func _discover_and_configure_enemies() -> void:
@@ -610,6 +623,7 @@ func exit_level() -> void:
 
 
 func _record_death() -> Dictionary:
+	_play_sfx(AudioService.SLOT_DEATH)
 	var outcome := run_state.record_death(_economy)
 	if _player != null and _player.has_method("clear_masks"):
 		_player.call("clear_masks")
@@ -710,6 +724,7 @@ func _expire_death_recorded_pending_respawn(
 
 
 func _on_crate_broken(crate_id: int, wumpa: int) -> void:
+	_play_sfx(AudioService.SLOT_CRATE_POP)
 	var broken_count := run_state.broken_crate_ids.size()
 	run_state.record_crate_broken(crate_id, 0)
 	if run_state.broken_crate_ids.size() > broken_count:
@@ -735,6 +750,7 @@ func _on_crate_bounced(
 
 
 func _on_checkpoint_reached(crate_id: int) -> void:
+	_play_sfx(AudioService.SLOT_CHECKPOINT_GONG)
 	run_state.record_checkpoint(crate_id)
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_offered_skip_completes_level = false
@@ -752,6 +768,9 @@ func _on_player_mask_state_changed(
 	mask_count: int,
 	invincible_until_s: float
 ) -> void:
+	if mask_count > run_state.masks:
+		# Gained, not lost: a mask being consumed is the death/hit cue's job.
+		_play_sfx(AudioService.SLOT_MASK)
 	run_state.masks = clampi(
 		mask_count,
 		0,
@@ -871,6 +890,7 @@ func _on_wumpa_body_entered(
 	):
 		return
 	pickup.set_meta(&"phase1_collected", true)
+	_play_sfx(AudioService.SLOT_WUMPA)
 	pickup.visible = false
 	pickup.set_deferred(&"monitoring", false)
 	pickup.set_deferred(&"monitorable", false)

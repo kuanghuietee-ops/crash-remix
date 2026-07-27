@@ -2247,3 +2247,147 @@ func _remove_tree(path: String) -> void:
 	for child_name: String in directory.get_directories():
 		_remove_tree(path.path_join(child_name))
 	DirAccess.remove_absolute(absolute)
+
+
+class RecordingAudio:
+	extends Node
+
+	var played: Array[StringName] = []
+
+	func play(slot: StringName) -> bool:
+		played.append(slot)
+		return false
+
+
+func test_real_gameplay_events_request_their_sfx_slots() -> void:
+	# The slots are silent until H10, so the only provable claim is that the
+	# call sites exist and fire on real events. A hook nobody calls is the
+	# same silence as a hook that works.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var level := await _enter_authored_level(root)
+	if level == null:
+		return
+	var audio := RecordingAudio.new()
+	add_child_autofree(audio)
+	level.call("set_audio_service", audio)
+	var player := level.get_node("Player") as CharacterBody3D
+	var pickup := level.get_node_or_null(
+		"Segments/BeachLanding/WumpaA"
+	) as Area3D
+	if pickup == null:
+		return
+
+	player.global_position = Vector3(
+		pickup.global_position.x,
+		0.05,
+		pickup.global_position.z
+	)
+	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
+	for _index in range(30):
+		if bool(pickup.get_meta(&"phase1_collected", false)):
+			break
+		await wait_physics_frames(1)
+
+	assert_true(
+		audio.played.has(AudioService.SLOT_WUMPA),
+		"collecting a real Wumpa must ask for its cue"
+	)
+
+	audio.played.clear()
+	level.call("_record_death")
+
+	assert_true(
+		audio.played.has(AudioService.SLOT_DEATH),
+		"a real death must ask for its cue"
+	)
+
+
+func test_the_four_piece_island_cut_completes_and_persists() -> void:
+	# The Island Cut, provable headless: a fresh save through all three levels,
+	# the boss unlocking only then, Papu beaten, and every piece surviving the
+	# write. Nothing here asserts against an in-memory profile -- it reloads
+	# from disk, because "saved" is the claim.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var save_service = root.get("save_service")
+	assert_false(
+		PortalRules.boss_unlocked(root.get("profile")),
+		"a fresh save must not open the boss"
+	)
+	assert_eq(
+		PortalRules.locked_reason(
+			PortalRules.BOSS_ID,
+			root.get("profile")
+		),
+		"CLEAR 3 MORE LEVELS"
+	)
+
+	for level_id: StringName in PortalRules.LEVEL_IDS:
+		var meta := root.call("_level_meta", level_id) as LevelMeta
+		assert_not_null(meta, "every Island Cut level needs its meta")
+		if meta == null:
+			return
+		root.set("_active_level_meta", meta)
+		root.call("_on_level_session_completed", {
+			"completed": true,
+			"crates_broken": 0,
+			"wumpa": 0,
+			"deaths": 0,
+			"flawless": true,
+			"elapsed_s": 1.0,
+		})
+		assert_push_error("Could not show level results")
+
+	assert_true(
+		PortalRules.boss_unlocked(root.get("profile")),
+		"three clears must open the boss portal"
+	)
+
+	var boss_meta := root.call(
+		"_level_meta",
+		PortalRules.BOSS_ID
+	) as LevelMeta
+	assert_not_null(boss_meta)
+	if boss_meta == null:
+		return
+	root.set("_active_level_meta", boss_meta)
+	root.call("_on_level_session_completed", {
+		"completed": true,
+		"crates_broken": 0,
+		"wumpa": 0,
+		"deaths": 0,
+		"flawless": true,
+		"elapsed_s": 1.0,
+	})
+	assert_push_error("Could not show level results")
+
+	# Reload from disk: the whole point is that it survived the write.
+	var reloaded: Dictionary = save_service.load_profile(TEST_SAVE_DIR)
+	for level_id: StringName in PortalRules.LEVEL_IDS:
+		assert_true(
+			bool(
+				SaveModel.level_record(reloaded, level_id).get(
+					"completed", false
+				)
+			),
+			"%s must persist as completed" % level_id
+		)
+	assert_true(
+		bool(
+			(reloaded.get("boss_defeated", {}) as Dictionary).get(
+				"papu_papu", false
+			)
+		),
+		"Papu's defeat must persist"
+	)
+	assert_eq(
+		PortalRules.locked_reason(PortalRules.BOSS_ID, reloaded),
+		"",
+		"a finished Island Cut has nothing left to ask of the player"
+	)
