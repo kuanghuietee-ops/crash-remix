@@ -61,8 +61,21 @@ func debris_is_lethal_now() -> bool:
 ## way the blob shadow finds its floor. World Y cannot answer this: each phase
 ## floor sits 2 m higher than the last, so standing safely on tier 3 is a world
 ## Y that would read as airborne on tier 1.
+## P-006: only what the player can actually stand on. Without this the probe
+## saw layer-3 crates and enemies as floor.
+func height_probe_mask() -> int:
+	if _player is CollisionObject3D:
+		return (_player as CollisionObject3D).collision_mask
+	return 0
+
+
 func player_height_above_surface_m() -> float:
 	if _player == null or _depth == null:
+		return 0.0
+	# P-005: the engine's own grounded state is the authority. A downward ray
+	# from the body centre misses at an authored floor edge, which read as
+	# airborne and handed the player an immunity spot on solid ground.
+	if _player is CharacterBody3D and (_player as CharacterBody3D).is_on_floor():
 		return 0.0
 	var space_state := get_world_3d().direct_space_state
 	var from := _player.global_position
@@ -71,6 +84,7 @@ func player_height_above_surface_m() -> float:
 	if _player is CollisionObject3D:
 		query.exclude = [(_player as CollisionObject3D).get_rid()]
 	query.collide_with_areas = false
+	query.collision_mask = height_probe_mask()
 	var hit := space_state.intersect_ray(query)
 	if hit.is_empty():
 		# Nothing under them within the probe: they are over a gap, which is
@@ -87,10 +101,22 @@ func advance_runtime(delta_s: float) -> Dictionary:
 		return {&"caught": false}
 	var step := maxf(delta_s, 0.0)
 	_phase_elapsed_s += step
+	# Advance the waves already in flight by the whole step, then emit any that
+	# landed DURING this step aged from their own landing moment (P-009): a
+	# hitch must not backdate a new ripple to the start of the frame.
+	var advanced: Array[float] = []
+	for age_s: float in _wave_ages_s:
+		advanced.append(age_s + step)
+	_wave_ages_s = advanced
 	var landed_slams := _flow.slam_count_by(_phase_elapsed_s)
 	while _slams_emitted < landed_slams:
-		_wave_ages_s.append(0.0)
 		_slams_emitted += 1
+		_wave_ages_s.append(
+			maxf(
+				_phase_elapsed_s - _flow.slam_landing_time_s(_slams_emitted),
+				0.0
+			)
+		)
 	var origin := _current_strike_origin()
 	var player_gap_m := absf(_player.global_position.z - origin.z)
 	var clears := _flow.shockwave_clears_player(
@@ -99,10 +125,9 @@ func advance_runtime(delta_s: float) -> Dictionary:
 	var caught := false
 	var live_waves: Array[float] = []
 	for age_s: float in _wave_ages_s:
-		var next_age_s := age_s + step
-		var travelled_m := _flow.shockwave_distance_m(next_age_s)
+		var travelled_m := _flow.shockwave_distance_m(age_s)
 		if travelled_m < player_gap_m:
-			live_waves.append(next_age_s)
+			live_waves.append(age_s)
 			continue
 		# The ripple has reached them; a jumped player lets it pass under.
 		if not clears:

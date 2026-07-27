@@ -1250,8 +1250,26 @@ func _blast_path_is_clear(
 
 
 func _on_finish_body_entered(body: Node) -> void:
-	if body == _player:
-		call_deferred(&"complete_level")
+	if body != _player:
+		return
+	# P-003: the boss exit is a reward, not a route. Every strike volume is
+	# narrower than the floor it sits on, so without this the player can walk
+	# around all three beams into the Finish and be recorded as having beaten
+	# a boss still standing.
+	if _has_undefeated_boss():
+		return
+	call_deferred(&"complete_level")
+
+
+func _has_undefeated_boss() -> bool:
+	for arena: Node in _papu_arenas:
+		if (
+			is_instance_valid(arena)
+			and arena.has_method("is_defeated")
+			and not bool(arena.call("is_defeated"))
+		):
+			return true
+	return false
 
 
 func _is_authored_crate(candidate: Node) -> bool:

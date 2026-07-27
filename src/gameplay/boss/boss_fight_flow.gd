@@ -57,6 +57,13 @@ func on_player_death() -> void:
 	_strikes_this_phase = 0
 
 
+## When the Nth slam of a phase lands, counted from the phase's start. The
+## arena needs this to age a ripple correctly when one frame spans a slam
+## boundary, instead of backdating it to the frame's start.
+func slam_landing_time_s(slam_index: int) -> float:
+	return float(slam_index) * _tuning.slam_period_s
+
+
 ## Slams are percussion, not a one-shot: the arena asks how many have landed
 ## by now and drives the platforms from the count.
 func slam_count_by(elapsed_s: float) -> int:

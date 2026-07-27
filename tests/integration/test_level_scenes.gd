@@ -2113,3 +2113,135 @@ func test_papu_respawn_returns_the_player_to_the_current_phase() -> void:
 		level_spawn.z,
 		"and further into the arena than the level spawn"
 	)
+
+
+func test_papu_finish_refuses_to_complete_an_undefeated_boss() -> void:
+	# P-003: the strike volumes are 6 m wide on stairs that support x=4, so the
+	# player can walk around every beam into a 10 m Finish. Completing there
+	# also stamped boss_defeated, recording a victory nobody earned.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	var finish := level.get_node_or_null("Finish") as Area3D
+	if arena == null or player == null or finish == null:
+		return
+	var completions: Array = []
+	level.run_completed.connect(func(results: Dictionary) -> void:
+		completions.append(results)
+	)
+	assert_false(arena.call("is_defeated"), "precondition: Papu is alive")
+
+	player.global_position = finish.global_position
+	await wait_physics_frames(4)
+
+	assert_true(
+		completions.is_empty(),
+		"the exit must not open while the boss is alive"
+	)
+
+
+func test_papu_victory_completes_the_level_through_the_real_signal() -> void:
+	# P-010 mutation 2: severing boss_defeated -> complete_level left every
+	# Papu test green, because the defeat-write test calls GameRoot's handler
+	# directly. This drives the real strike volumes with the listener already
+	# attached, so the connection itself is under test.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var completions: Array = []
+	level.run_completed.connect(func(results: Dictionary) -> void:
+		completions.append(results)
+	)
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.size() != 3:
+		return
+
+	for strike: Area3D in strikes:
+		player.global_position = strike.global_position
+		await wait_physics_frames(2)
+		player.global_position = strike.global_position + Vector3(0, 0, 40)
+		await wait_physics_frames(2)
+
+	assert_true(arena.call("is_defeated"), "precondition: Papu is beaten")
+	assert_false(
+		completions.is_empty(),
+		"beating the boss must complete the level, not just set a flag"
+	)
+
+
+func test_a_ripple_emitted_during_a_long_frame_is_not_backdated() -> void:
+	# P-009: a hitch appended the new wave at age 0 and then added the WHOLE
+	# frame to it, so a wave born mid-frame travelled the full step and could
+	# kill instantly on the frame it appeared.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	# One 3.0 s frame crosses the 2.5 s slam boundary: the wave is 0.5 s old
+	# and 3 m along, nowhere near a player 12 m away.
+	var outcome: Dictionary = arena.call("advance_runtime", 3.0)
+
+	assert_false(
+		bool(outcome.get(&"caught", false)),
+		"a wave born 0.5 s ago cannot already have crossed 12 m"
+	)
+
+
+func test_a_grounded_player_is_never_immune_at_a_floor_edge() -> void:
+	# P-005: the downward probe missed at an authored floor edge, returning
+	# full probe range and reading as airborne while is_on_floor() was true --
+	# an immunity spot standing on solid ground.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	# Settle onto the lip from just above, rather than spawning inside it: the
+	# defect needs the engine to call the player grounded while a centre ray
+	# from the body finds nothing directly beneath.
+	player.global_position = Vector3(0, 1.2, -32.98)
+	await wait_physics_frames(12)
+	assert_true(
+		player.is_on_floor(),
+		"precondition: the engine considers this edge solid ground"
+	)
+
+	assert_almost_eq(
+		float(arena.call("player_height_above_surface_m")),
+		0.0,
+		0.001,
+		"a player the engine says is grounded is inside the ripple"
+	)
+
+
+func test_the_height_probe_ignores_bodies_the_player_cannot_stand_on() -> void:
+	# P-006: the probe had no collision mask, so layer-3 crates and enemies --
+	# which the player's own mask cannot stand on -- read as supporting floor.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+
+	assert_eq(
+		int(arena.call("height_probe_mask")),
+		player.collision_mask,
+		"the probe must only see what the player can actually stand on"
+	)
