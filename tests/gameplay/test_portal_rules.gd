@@ -149,3 +149,44 @@ func _set_completed(profile: Dictionary, level_id: StringName) -> void:
 	record["completed"] = true
 	var levels: Dictionary = profile["levels"]
 	levels[String(level_id)] = record
+
+
+func test_a_locked_boss_portal_says_how_many_levels_remain() -> void:
+	# A locked portal simply stopped listening: warp_room sets
+	# portal.monitoring = unlocked, and a non-monitoring trigger ignores the
+	# player entirely. The only cue was a wordless padlock mesh, so a shut
+	# boss door and a broken one looked identical from the hub.
+	var rules := _rules()
+	if rules == null:
+		return
+	var profile := SaveModel.fresh()
+
+	assert_eq(
+		rules.call("locked_reason", BOSS_ID, profile),
+		"CLEAR 3 MORE LEVELS",
+		"a fresh profile owes all three"
+	)
+
+	_set_completed(profile, LEVEL_IDS[0])
+	_set_completed(profile, LEVEL_IDS[1])
+
+	assert_eq(
+		rules.call("locked_reason", BOSS_ID, profile),
+		"CLEAR 1 MORE LEVEL",
+		"singular when one is left, and it must count down"
+	)
+
+
+func test_an_unlocked_boss_portal_has_nothing_to_explain() -> void:
+	var rules := _rules()
+	if rules == null:
+		return
+	var profile := SaveModel.fresh()
+	for level_id: StringName in LEVEL_IDS:
+		_set_completed(profile, level_id)
+
+	assert_eq(
+		rules.call("locked_reason", BOSS_ID, profile),
+		"",
+		"an open door must not still be telling the player it is shut"
+	)

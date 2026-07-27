@@ -731,3 +731,42 @@ func _remove_tree(path: String) -> void:
 	for child_name: String in directory.get_directories():
 		_remove_tree(path.path_join(child_name))
 	DirAccess.remove_absolute(absolute)
+
+
+func test_the_locked_boss_portal_tells_the_player_what_it_wants() -> void:
+	# A label nobody writes to is the same silent door. This drives the real
+	# hub against a real fresh profile.
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+	var room := root.get_node_or_null("Content/WarpRoom1")
+	if room == null:
+		return
+	var portal := _portal_for(_portals(room), BOSS_ID)
+	assert_not_null(portal)
+	if portal == null:
+		return
+	assert_false(
+		portal.monitoring,
+		"precondition: a fresh profile leaves the boss shut"
+	)
+
+	var reason := portal.get_node_or_null("State/LockedReason") as Label3D
+
+	assert_not_null(reason, "the locked portal needs a readable reason")
+	if reason == null:
+		return
+	assert_true(
+		reason.is_visible_in_tree(),
+		"and it must be on screen while the door is shut"
+	)
+	assert_eq(
+		reason.text,
+		"CLEAR 3 MORE LEVELS",
+		"stating what the player actually has to do"
+	)

@@ -126,6 +126,17 @@ func _configure_player() -> void:
 	)
 
 
+## The padlock mesh says "shut" but not "why". This says why.
+func _set_locked_reason(portal: Node, reason: String) -> void:
+	var label := portal.get_node_or_null(
+		"State/LockedReason"
+	) as Label3D
+	if label == null:
+		return
+	label.text = reason
+	label.visible = not reason.is_empty()
+
+
 func _apply_portal_states() -> void:
 	for portal: Area3D in _portals():
 		var portal_id := StringName(
@@ -140,6 +151,10 @@ func _apply_portal_states() -> void:
 			portal.set_meta(key, state[key])
 		var unlocked := bool(state.get("unlocked", false))
 		portal.monitoring = unlocked
+		_set_locked_reason(
+			portal,
+			PortalRulesType.locked_reason(portal_id, _profile)
+		)
 		_set_visible(
 			portal,
 			"State/Locked",

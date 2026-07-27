@@ -56,6 +56,30 @@ static func state_for(
 	return _closed_state(portal_id, KIND_UNKNOWN)
 
 
+## Why a portal is shut, in words the player can act on, or "" when it is open.
+## warp_room sets portal.monitoring = unlocked and a non-monitoring trigger
+## ignores the player, so without this a locked door and a broken one are
+## indistinguishable from the hub.
+static func locked_reason(
+	portal_id: StringName,
+	profile: Dictionary
+) -> String:
+	if portal_id != BOSS_ID or boss_unlocked(profile):
+		return ""
+	var remaining := 0
+	for level_id: StringName in LEVEL_IDS:
+		if not bool(
+			SaveModel.level_record(
+				profile,
+				level_id
+			).get("completed", false)
+		):
+			remaining += 1
+	if remaining == 1:
+		return "CLEAR 1 MORE LEVEL"
+	return "CLEAR " + str(remaining) + " MORE LEVELS"
+
+
 static func boss_unlocked(profile: Dictionary) -> bool:
 	if not SaveModel.validate(profile):
 		return false
