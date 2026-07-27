@@ -47,6 +47,16 @@ position = Vector3(0, 0.05, 0)
 [node name="PapuArena" type="Node3D" parent="."]
 script = ExtResource("9_boss")
 strike_trigger_paths = [NodePath("StrikeOne"), NodePath("StrikeTwo"), NodePath("StrikeThree")]
+phase_spawn_paths = [NodePath("PhaseOneSpawn"), NodePath("PhaseTwoSpawn"), NodePath("PhaseThreeSpawn")]
+
+[node name="PhaseOneSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 0.05, -4)
+
+[node name="PhaseTwoSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 2.05, -36)
+
+[node name="PhaseThreeSpawn" type="Marker3D" parent="PapuArena"]
+position = Vector3(0, 4.05, -60)
 
 [node name="StrikeOne" type="Area3D" parent="PapuArena"]
 position = Vector3(0, 1.5, -24)

@@ -2045,3 +2045,71 @@ func test_a_papu_ripple_actually_damages_the_player() -> void:
 		deaths_before,
 		"and the death must be recorded against the phase checkpoint"
 	)
+
+
+func test_papu_death_resets_the_phase_hazards_through_the_real_respawn() -> void:
+	# The arena's on_player_death() had no production caller: only a test
+	# called it, so in game a retry inherited the ripples that killed you.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	var outcome: Dictionary = {}
+	for _index in range(400):
+		outcome = arena.call("advance_runtime", 1.0 / 60.0)
+		if int(outcome.get(&"live_waves", 0)) > 0:
+			break
+	assert_gt(
+		int(outcome.get(&"live_waves", 0)),
+		0,
+		"precondition: a ripple is in flight"
+	)
+
+	level.call("_on_player_respawn_started")
+
+	assert_eq(
+		int(arena.call("advance_runtime", 0.0).get(&"live_waves", 0)),
+		0,
+		"a retry must not inherit the ripples that killed the player"
+	)
+
+
+func test_papu_respawn_returns_the_player_to_the_current_phase() -> void:
+	# spec §8.2 wants a checkpoint per phase. The arena authors no checkpoint
+	# crates, so without this the fallback sends the player to the level spawn
+	# at the bottom of the hut after every death in phase 2 or 3.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var level_spawn: Vector3 = player.global_position
+	var strikes := level.find_children("Strike*", "Area3D", true, false)
+	if strikes.size() < 2:
+		return
+	player.global_position = (strikes[0] as Area3D).global_position
+	await wait_physics_frames(2)
+	assert_eq(arena.call("current_phase"), 2, "precondition: phase 2")
+
+	var spawn: Transform3D = level.call(
+		"_spawn_transform_for_checkpoint",
+		level.run_state.checkpoint_id
+	)
+
+	assert_gt(
+		spawn.origin.y,
+		level_spawn.y,
+		"phase 2 restarts on its own tier, not the hut floor"
+	)
+	assert_lt(
+		spawn.origin.z,
+		level_spawn.z,
+		"and further into the arena than the level spawn"
+	)

@@ -14,6 +14,9 @@ const BossFightFlowType := preload(
 signal boss_defeated
 
 @export var strike_trigger_paths: Array[NodePath] = []
+## spec §8.2's checkpoint per phase. The arena authors no checkpoint crates,
+## so the phase itself carries the respawn point.
+@export var phase_spawn_paths: Array[NodePath] = []
 
 var _flow: BossFightFlowType = BossFightFlowType.new()
 var _player: Node3D
@@ -109,6 +112,26 @@ func advance_runtime(delta_s: float) -> Dictionary:
 		&"caught": caught,
 		&"live_waves": _wave_ages_s.size(),
 	}
+
+
+## Whether this arena has an authored respawn point for the current phase.
+func has_phase_spawn() -> bool:
+	return _phase_spawn_marker() != null
+
+
+## Where a death in the current phase should put the player back.
+func phase_spawn_transform() -> Transform3D:
+	var marker := _phase_spawn_marker()
+	if marker == null:
+		return Transform3D.IDENTITY
+	return marker.global_transform
+
+
+func _phase_spawn_marker() -> Node3D:
+	var index := _flow.checkpoint_phase() - 1
+	if index < 0 or index >= phase_spawn_paths.size():
+		return null
+	return get_node_or_null(phase_spawn_paths[index]) as Node3D
 
 
 func _current_strike_origin() -> Vector3:

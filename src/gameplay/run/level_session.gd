@@ -675,6 +675,16 @@ func _on_player_respawn_started() -> void:
 	_set_player_spawn(respawn_checkpoint)
 	_reset_hog_mounts_for_checkpoint(respawn_checkpoint)
 	_reset_chase_hazards_for_checkpoint(respawn_checkpoint)
+	_reset_papu_arenas_for_death()
+
+
+## A retry must not inherit the ripples that killed the player: that is the
+## distance-since-checkpoint difficulty §2.8 rules out, arriving by the back
+## door.
+func _reset_papu_arenas_for_death() -> void:
+	for arena: Node in _papu_arenas:
+		if is_instance_valid(arena) and arena.has_method("on_player_death"):
+			arena.call("on_player_death")
 
 
 func _arm_death_recorded_pending_respawn() -> int:
@@ -1290,6 +1300,15 @@ func _spawn_transform_for_checkpoint(
 ) -> Transform3D:
 	if _checkpoint_transforms.has(target_checkpoint_id):
 		return _checkpoint_transforms[target_checkpoint_id]
+	# spec §8.2: a boss phase IS the checkpoint. Without this a death in phase
+	# 2 or 3 falls back to the level spawn at the bottom of the hut.
+	for arena: Node in _papu_arenas:
+		if (
+			is_instance_valid(arena)
+			and arena.has_method("has_phase_spawn")
+			and bool(arena.call("has_phase_spawn"))
+		):
+			return arena.call("phase_spawn_transform")
 	return _start_transform
 
 
