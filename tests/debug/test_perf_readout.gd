@@ -22,6 +22,28 @@ func test_average_fps_is_the_reciprocal_of_the_mean_frame_time() -> void:
 	)
 
 
+func test_average_fps_is_not_the_mean_of_instantaneous_rates() -> void:
+	# E1-04(1): the steady-series test above cannot separate 1/mean(frame_time)
+	# from mean(1/frame_time) — they agree when every frame is identical. On a
+	# mixed series they do not: 99 frames at 120 fps plus one 100 ms stall is
+	# 108.108 fps of real throughput, but averaging instantaneous rates reads
+	# 118.9 and flatters the stall away.
+	var frame_times := _steady_series(99, 1.0 / 120.0)
+	frame_times.append(0.1)
+
+	assert_almost_eq(
+		PerfReadoutType.average_fps(frame_times),
+		100.0 / (99.0 / 120.0 + 0.1),
+		FPS_TOLERANCE,
+		"average fps must be frames divided by elapsed time"
+	)
+	assert_lt(
+		PerfReadoutType.average_fps(frame_times),
+		110.0,
+		"averaging instantaneous rates would read about 118.9"
+	)
+
+
 func test_one_percent_low_reports_the_slowest_frames_not_the_average() -> void:
 	# 99 frames at 120 fps plus one 100 ms stall. The average is ~108 fps and
 	# the 1% low is 10 fps: any implementation that returns the mean, or that
@@ -151,13 +173,23 @@ func test_render_scale_follows_the_viewport_3d_scale() -> void:
 	if viewport == null:
 		return
 	var original_scale := viewport.scaling_3d_scale
-	viewport.scaling_3d_scale = 0.7
 
+	# E1-04(2): two distinct values. Asserting only 0.7 is satisfied by a
+	# getter hardcoded to 0.7, which is exactly the value §9.4 cares about.
+	viewport.scaling_3d_scale = 0.7
 	assert_almost_eq(
 		readout.render_scale(),
 		0.7,
 		FPS_TOLERANCE,
 		"§9.4 watches this drop toward 0.7 under load"
+	)
+
+	viewport.scaling_3d_scale = 0.85
+	assert_almost_eq(
+		readout.render_scale(),
+		0.85,
+		FPS_TOLERANCE,
+		"the readout must track the viewport, not report a constant"
 	)
 
 	viewport.scaling_3d_scale = original_scale
@@ -171,7 +203,20 @@ func test_the_label_displays_every_measured_number() -> void:
 
 	readout.refresh()
 
-	for expected: String in ["60.0", "120", "150000"]:
+	# E1-04(3): every label and every value. Asserting only three substrings
+	# let a readout_text() that silently dropped 1% LOW, OBJ and SCALE pass.
+	for expected: String in [
+		"FPS",
+		"1% LOW",
+		"DRAW",
+		"PRIM",
+		"OBJ",
+		"SCALE",
+		"60.0",
+		"120",
+		"150000",
+		"37",
+	]:
 		assert_string_contains(readout.text, expected)
 
 
