@@ -8,6 +8,14 @@ extends Node3D
 const BossFightFlowType := preload(
 	"res://src/gameplay/boss/boss_fight_flow.gd"
 )
+## Authored, not built in code: the crest's dimensions belong in a scene where
+## the numeric lint can see them and an author can change them.
+const RIPPLE_VISUAL_SCENE := preload(
+	"res://scenes/props/shockwave_ripple.tscn"
+)
+## §4.14's falling debris. Its drop height, hit volume and blob-shadow
+## telegraph are all authored in the scene rather than computed in code.
+const DEBRIS_SCENE := preload("res://scenes/props/papu_debris.tscn")
 
 ## Emitted when the last phase is cleared. LevelSession turns this into the
 ## level's completion, so victory follows the same path as any other finish.
@@ -25,6 +33,9 @@ var _triggers_connected := false
 var _phase_elapsed_s := 0.0
 var _slams_emitted := 0
 var _wave_ages_s: Array[float] = []
+var _ripple_visuals: Array[Node3D] = []
+var _debris: Array[Node3D] = []
+var _debris_ages_s: Array[float] = []
 
 
 func _ready() -> void:
@@ -49,6 +60,124 @@ func reset_phase_hazards() -> void:
 	_phase_elapsed_s = 0.0
 	_slams_emitted = 0
 	_wave_ages_s.clear()
+	_sync_ripple_visuals()
+	for piece: Node3D in _debris:
+		if is_instance_valid(piece):
+			piece.queue_free()
+	_debris.clear()
+	_debris_ages_s.clear()
+
+
+## P-008: one visible crest per live ripple. A lethal thing the player cannot
+## see is Pillar 1 inverted.
+func ripple_visuals() -> Array:
+	var live: Array = []
+	for visual: Node3D in _ripple_visuals:
+		if is_instance_valid(visual):
+			live.append(visual)
+	return live
+
+
+func _sync_ripple_visuals() -> void:
+	while _ripple_visuals.size() < _wave_ages_s.size():
+		var crest := RIPPLE_VISUAL_SCENE.instantiate() as Node3D
+		add_child(crest)
+		_ripple_visuals.append(crest)
+	while _ripple_visuals.size() > _wave_ages_s.size():
+		var spent: Node3D = _ripple_visuals.pop_back()
+		if is_instance_valid(spent):
+			spent.queue_free()
+	var origin := _current_strike_origin()
+	var floor_y := origin.y - _strike_height_offset_m()
+	for index in range(_wave_ages_s.size()):
+		var crest: Node3D = _ripple_visuals[index]
+		if not is_instance_valid(crest):
+			continue
+		# Travels back down the corridor toward the player, standing exactly as
+		# tall as the arc the player has to clear.
+		crest.global_position = Vector3(
+			origin.x,
+			floor_y,
+			origin.z + _flow.shockwave_distance_m(_wave_ages_s[index])
+		)
+		crest.scale.y = _flow.shockwave_height_m()
+
+
+## §4.14: the slam brings debris down with it. Each piece marks its landing
+## spot first, falls through its telegraph, and only then can kill.
+func debris_pieces() -> Array:
+	var live: Array = []
+	for piece: Node3D in _debris:
+		if is_instance_valid(piece):
+			live.append(piece)
+	return live
+
+
+func _spawn_debris_over_player() -> void:
+	var piece := DEBRIS_SCENE.instantiate() as Node3D
+	add_child(piece)
+	piece.global_position = Vector3(
+		_player.global_position.x,
+		_player.global_position.y - player_height_above_surface_m(),
+		_player.global_position.z
+	)
+	_debris.append(piece)
+	_debris_ages_s.append(0.0)
+
+
+## Returns whether landed debris is currently on top of the player.
+func _advance_debris(step_s: float) -> bool:
+	var caught := false
+	var live_pieces: Array[Node3D] = []
+	var live_ages: Array[float] = []
+	for index in range(_debris.size()):
+		var piece: Node3D = _debris[index]
+		if not is_instance_valid(piece):
+			continue
+		var age_s: float = _debris_ages_s[index] + step_s
+		var rock := piece.get_node_or_null("Rock") as Node3D
+		var lethal := _flow.debris_is_lethal(age_s)
+		if rock != null and not lethal:
+			# Fall through the telegraph, so it lands exactly as it arms.
+			var fall_ratio := 1.0 - _flow.debris_fall_ratio(age_s)
+			rock.position.y = _debris_drop_height_m(piece) * fall_ratio
+		elif rock != null:
+			rock.position.y = 0.0
+		if lethal and _debris_covers_player(piece):
+			caught = true
+		if lethal and _flow.debris_is_spent(age_s):
+			piece.queue_free()
+			continue
+		live_pieces.append(piece)
+		live_ages.append(age_s)
+	_debris = live_pieces
+	_debris_ages_s = live_ages
+	return caught
+
+
+func _debris_drop_height_m(piece: Node3D) -> float:
+	if not piece.has_meta(&"drop_height_m"):
+		var rock := piece.get_node_or_null("Rock") as Node3D
+		piece.set_meta(
+			&"drop_height_m",
+			rock.position.y if rock != null else 0.0
+		)
+	return float(piece.get_meta(&"drop_height_m"))
+
+
+func _debris_covers_player(piece: Node3D) -> bool:
+	var impact := piece.get_node_or_null("Impact") as Area3D
+	if impact == null:
+		return false
+	return impact.get_overlapping_bodies().has(_player)
+
+
+## The strike volume sits above its floor; the crest must ride the floor.
+func _strike_height_offset_m() -> float:
+	var marker := _phase_spawn_marker()
+	if marker == null:
+		return 0.0
+	return maxf(_current_strike_origin().y - marker.global_position.y, 0.0)
 
 
 ## §4.14: debris is blob-shadow telegraphed for debris_telegraph_s before it
@@ -111,12 +240,14 @@ func advance_runtime(delta_s: float) -> Dictionary:
 	var landed_slams := _flow.slam_count_by(_phase_elapsed_s)
 	while _slams_emitted < landed_slams:
 		_slams_emitted += 1
+		_spawn_debris_over_player()
 		_wave_ages_s.append(
 			maxf(
 				_phase_elapsed_s - _flow.slam_landing_time_s(_slams_emitted),
 				0.0
 			)
 		)
+	var debris_caught := _advance_debris(step)
 	var origin := _current_strike_origin()
 	var player_gap_m := absf(_player.global_position.z - origin.z)
 	var clears := _flow.shockwave_clears_player(
@@ -133,9 +264,11 @@ func advance_runtime(delta_s: float) -> Dictionary:
 		if not clears:
 			caught = true
 	_wave_ages_s = live_waves
+	_sync_ripple_visuals()
 	return {
-		&"caught": caught,
+		&"caught": caught or debris_caught,
 		&"live_waves": _wave_ages_s.size(),
+		&"live_debris": _debris.size(),
 	}
 
 

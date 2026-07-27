@@ -85,6 +85,26 @@ func shockwave_distance_m(age_s: float) -> float:
 	return maxf(age_s, 0.0) * _tuning.shockwave_speed_mps
 
 
+## How far through its telegraph a piece of debris is, 0 at emission and 1 at
+## the moment it arms, so a visual can land exactly as it becomes lethal.
+func debris_fall_ratio(age_s: float) -> float:
+	if _tuning.debris_telegraph_s <= 0.0:
+		return 1.0
+	return clampf(maxf(age_s, 0.0) / _tuning.debris_telegraph_s, 0.0, 1.0)
+
+
+## Debris stops threatening once it has sat for a second telegraph's worth,
+## so a phase does not silt up with permanent hazards.
+func debris_is_spent(age_s: float) -> bool:
+	return age_s >= _tuning.debris_telegraph_s + _tuning.debris_telegraph_s
+
+
+## The authored crest height, so a visual can stand exactly as tall as the arc
+## the player must clear rather than guessing at it.
+func shockwave_height_m() -> float:
+	return _tuning.shockwave_height_m
+
+
 ## §4.14 calls the shockwave jumpable: a player above its authored height
 ## passes over it, a grounded one does not.
 func shockwave_clears_player(player_height_m: float) -> bool:

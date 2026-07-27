@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Material_ripple"]
+shading_mode = 0
+albedo_color = Color(0.95, 0.45, 0.12, 0.85)
+emission_enabled = true
+emission = Color(0.5, 0.16, 0.03, 1)
+emission_energy_multiplier = 1.6
+transparency = 1
+
+[sub_resource type="BoxMesh" id="Mesh_ripple"]
+material = SubResource("Material_ripple")
+size = Vector3(18, 1, 0.7)
+
+[node name="ShockwaveRipple" type="Node3D"]
+
+[node name="Crest" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_ripple")

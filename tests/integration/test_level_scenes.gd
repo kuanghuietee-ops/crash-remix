@@ -2245,3 +2245,117 @@ func test_the_height_probe_ignores_bodies_the_player_cannot_stand_on() -> void:
 		player.collision_mask,
 		"the probe must only see what the player can actually stand on"
 	)
+
+
+func test_every_live_ripple_has_a_visible_marker_that_moves() -> void:
+	# P-008: the ripples were lethal and completely invisible -- no mesh, no
+	# effect, no cue. That is Pillar 1 inverted: death the player cannot read.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	var outcome: Dictionary = {}
+	for _index in range(400):
+		outcome = arena.call("advance_runtime", 1.0 / 60.0)
+		if int(outcome.get(&"live_waves", 0)) > 0:
+			break
+	var live: int = int(outcome.get(&"live_waves", 0))
+	assert_gt(live, 0, "precondition: a ripple is in flight")
+
+	var visuals: Array = arena.call("ripple_visuals")
+	assert_eq(
+		visuals.size(),
+		live,
+		"every live ripple needs a marker the player can see"
+	)
+	if visuals.is_empty():
+		return
+	var crest := visuals[0] as Node3D
+	assert_true(
+		crest.is_visible_in_tree(),
+		"the marker must actually be visible"
+	)
+	assert_almost_eq(
+		crest.scale.y,
+		catalog.boss_papu.shockwave_height_m,
+		0.001,
+		"the marker must stand at the height the player has to clear"
+	)
+	var before_z := crest.global_position.z
+
+	arena.call("advance_runtime", 0.25)
+
+	assert_gt(
+		(visuals[0] as Node3D).global_position.z,
+		before_z,
+		"the marker must travel with its ripple, not sit still"
+	)
+
+
+func test_debris_telegraphs_then_falls_and_kills_where_it_landed() -> void:
+	# P-004: §4.14's falling debris existed only as a clock comparison. No
+	# debris was ever spawned, telegraphed, advanced or connected to damage.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var telegraph_s: float = catalog.boss_papu.debris_telegraph_s
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	arena.call("reset_phase_hazards")
+
+	# Run to the first slam so a piece of debris exists over the player.
+	var spawned := false
+	for _index in range(400):
+		arena.call("advance_runtime", 1.0 / 60.0)
+		if (arena.call("debris_pieces") as Array).size() > 0:
+			spawned = true
+			break
+	assert_true(spawned, "a slam must bring debris down with it")
+	if not spawned:
+		return
+	var piece := (arena.call("debris_pieces") as Array)[0] as Node3D
+	var telegraph := piece.get_node_or_null("Telegraph") as Node3D
+	var rock := piece.get_node_or_null("Rock") as Node3D
+	assert_not_null(telegraph)
+	assert_not_null(rock)
+	if telegraph == null or rock == null:
+		return
+	assert_true(
+		telegraph.is_visible_in_tree(),
+		"the landing spot must be marked before anything falls"
+	)
+	var high_y := rock.global_position.y
+
+	# Inside the telegraph it must not be able to kill.
+	await wait_physics_frames(2)
+	assert_false(
+		bool(arena.call("advance_runtime", telegraph_s * 0.5).get(&"caught")),
+		"debris must not kill inside its own telegraph"
+	)
+
+	# Past the telegraph it has landed, and standing there is fatal.
+	var caught := false
+	for _index in range(120):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			caught = true
+			break
+		await wait_physics_frames(1)
+	assert_true(caught, "landed debris must kill the player standing under it")
+	assert_lt(
+		rock.global_position.y,
+		high_y,
+		"and it must have actually fallen to get there"
+	)
