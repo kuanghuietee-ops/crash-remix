@@ -266,7 +266,12 @@ func _discover_and_configure_papu_arenas() -> void:
 			continue
 		if _gameplay_tuning == null or not (_player is Node3D):
 			continue
-		arena.call("configure", _player as Node3D, _gameplay_tuning.boss_papu)
+		arena.call(
+			"configure",
+			_player as Node3D,
+			_gameplay_tuning.boss_papu,
+			_gameplay_tuning.depth
+		)
 		if not arena.is_connected(&"boss_defeated", complete_level):
 			arena.connect(&"boss_defeated", complete_level)
 

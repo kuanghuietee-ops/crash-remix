@@ -1937,3 +1937,77 @@ func test_papu_arena_death_restarts_the_phase_not_the_fight() -> void:
 		2,
 		"death must not send the player back to phase 1 [spec §8.2]"
 	)
+
+
+func test_papu_shockwave_catches_a_grounded_player_but_not_a_jumped_one() -> void:
+	# §4.14: the ripple is jumpable. Height is measured above the player's own
+	# supporting surface, not world Y, because each phase floor sits 2 m higher
+	# than the last -- standing safely on tier 3 is a world Y that would read as
+	# airborne on tier 1.
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var wave_height: float = catalog.boss_papu.shockwave_height_m
+
+	# Grounded on the phase-one floor, in the ripple's path.
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+	# Long enough for the first slam (slam_period_s) plus the ripple's travel
+	# across the 12 m gap at shockwave_speed_mps.
+	var grounded_caught := false
+	for _index in range(600):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			grounded_caught = true
+			break
+	assert_true(
+		grounded_caught,
+		"a grounded player must eventually be caught by a slam ripple"
+	)
+
+	# Same spot, but above the authored wave height.
+	arena.call("reset_phase_hazards")
+	player.global_position = Vector3(0, 0.05 + wave_height * 2.0, -12)
+	await wait_physics_frames(2)
+	var jumped_caught := false
+	for _index in range(600):
+		if bool(arena.call("advance_runtime", 1.0 / 60.0).get(&"caught")):
+			jumped_caught = true
+			break
+	assert_false(
+		jumped_caught,
+		"a player above the authored wave height must pass over it"
+	)
+
+
+func test_papu_debris_cannot_kill_inside_its_telegraph() -> void:
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var player := level.get_node_or_null("Player") as CharacterBody3D
+	if arena == null or player == null:
+		return
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	var telegraph_s: float = catalog.boss_papu.debris_telegraph_s
+	player.global_position = Vector3(0, 0.05, -12)
+	await wait_physics_frames(2)
+
+	assert_false(
+		bool(arena.call("debris_is_lethal_now")),
+		"debris must be harmless the instant it is telegraphed"
+	)
+	arena.call("advance_runtime", telegraph_s * 0.5)
+	assert_false(
+		bool(arena.call("debris_is_lethal_now")),
+		"and still harmless halfway through its telegraph"
+	)
+	arena.call("advance_runtime", telegraph_s)
+	assert_true(
+		bool(arena.call("debris_is_lethal_now")),
+		"and lethal once the telegraph has elapsed"
+	)
