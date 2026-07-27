@@ -2078,3 +2078,26 @@ func test_completing_the_boss_level_records_the_defeat() -> void:
 		),
 		"defeating Papu must be written to the profile"
 	)
+
+
+func test_boot_installs_a_configured_audio_service() -> void:
+	# Not another unwired component: the service reports its silence once at
+	# boot, which only happens if GameRoot actually built and configured it.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+
+	var audio := root.get_node_or_null("Audio") as AudioService
+
+	assert_not_null(audio, "boot must install the audio service")
+	if audio == null:
+		return
+	assert_false(
+		audio.boot_report().is_empty(),
+		"a configured service reports its slot state once at boot"
+	)
+	assert_false(
+		audio.has_clip(AudioService.SLOT_CRATE_POP),
+		"H10 has not happened: every slot is still legitimately silent"
+	)

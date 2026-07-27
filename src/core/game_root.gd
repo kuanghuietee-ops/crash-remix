@@ -19,6 +19,8 @@ const MonotonicClockType := preload(
 const DynamicResolutionType := preload(
 	"res://src/core/dynamic_resolution.gd"
 )
+const AudioServiceType := preload("res://src/core/audio_service.gd")
+const AUDIO_DIR := "res://assets/audio"
 const HUD_SCENE := preload("res://scenes/ui/hud.tscn")
 const RESULTS_SCREEN_SCENE := preload(
 	"res://scenes/ui/results_screen.tscn"
@@ -104,6 +106,7 @@ var last_snapshot_error: Error = OK
 var last_save_error: Error = OK
 var last_results_payload: Dictionary = {}
 var active_level_session: Node
+var audio_service: AudioServiceType
 
 @onready var _content: Node = $Content
 @onready var _ui: CanvasLayer = $UI
@@ -162,6 +165,14 @@ func _ready() -> void:
 		)
 		push_error("Phase 1 tuning failed to load: " + error_string(boot_error))
 		return
+
+	# Installed at boot so its one-line silence report happens once, and so the
+	# SFX call sites have something real to talk to. H10 owns the clips; every
+	# slot is empty by design until then.
+	audio_service = AudioServiceType.new()
+	audio_service.name = "Audio"
+	add_child(audio_service)
+	audio_service.configure(AUDIO_DIR)
 
 	PhaseState.configure(tuning_service.catalog.phase)
 	var debug_tools_enabled := should_enable_debug_tools(OS.is_debug_build())
@@ -382,6 +393,14 @@ func set_active_level_session(
 
 
 func _on_tuning_changed(_fingerprint: String) -> void:
+	# Installed at boot so its one-line silence report happens once, and so the
+	# SFX call sites have something real to talk to. H10 owns the clips; every
+	# slot is empty by design until then.
+	audio_service = AudioServiceType.new()
+	audio_service.name = "Audio"
+	add_child(audio_service)
+	audio_service.configure(AUDIO_DIR)
+
 	PhaseState.configure(tuning_service.catalog.phase)
 	_refresh_warp_room_tuning()
 	_refresh_active_level_tuning()
