@@ -97,6 +97,7 @@ var active_level_session: Node
 @onready var _content: Node = $Content
 @onready var _ui: CanvasLayer = $UI
 @onready var _tuning_debug: TuningDebugUI = $UI/TuningDebug
+@onready var _perf_readout: PerfReadout = $UI/PerfReadout
 
 var _active_level_meta: LevelMeta
 var _segment_by_crate_id: Dictionary = {}
@@ -152,6 +153,9 @@ func _ready() -> void:
 	PhaseState.configure(tuning_service.catalog.phase)
 	var debug_tools_enabled := should_enable_debug_tools(OS.is_debug_build())
 	_tuning_debug.visible = debug_tools_enabled
+	# Authored hidden in main.tscn; a release build leaves it that way, and
+	# PerfReadout stops sampling entirely while hidden.
+	_perf_readout.visible = debug_tools_enabled
 	if debug_tools_enabled:
 		_tuning_debug.configure(tuning_service, override_path)
 		_tuning_debug.tuning_changed.connect(_on_tuning_changed)
@@ -1238,12 +1242,17 @@ func _level_touch_exclusions() -> Array:
 
 
 func _debug_touch_exclusions() -> Array:
+	var controls: Array = []
+	if _perf_readout.visible:
+		# Top-right corner: outside §5.2's bottom-right JUMP wedge, but still
+		# over the play area, and a thumb landing on it during the 20-minute
+		# soak must not double as gameplay input.
+		controls.append(_perf_readout)
 	if not _tuning_debug.visible:
-		return []
-	return [
-		_tuning_debug.get_node("HUD"),
-		_tuning_debug.get_node("Drawer"),
-	]
+		return controls
+	controls.append(_tuning_debug.get_node("HUD"))
+	controls.append(_tuning_debug.get_node("Drawer"))
+	return controls
 
 
 func _warp_room_touch_exclusions() -> Array:

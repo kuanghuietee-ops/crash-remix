@@ -1745,6 +1745,68 @@ func test_level_touch_exclusions_include_the_mercy_panel() -> void:
 	)
 
 
+func test_main_scene_gates_the_perf_readout_on_debug_tools() -> void:
+	# Authored hidden, switched on by should_enable_debug_tools(). A release
+	# build never flips it, so a hardcoded visible=true fails the first
+	# assertion and a missing GameRoot wire fails the second.
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	var authored := root.get_node_or_null("UI/PerfReadout") as Control
+	assert_not_null(
+		authored,
+		"main.tscn must carry the perf readout in its debug branch"
+	)
+	if authored == null:
+		root.free()
+		return
+	assert_false(
+		authored.visible,
+		"the readout must be authored hidden so release builds never show it"
+	)
+
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	assert_eq(
+		authored.visible,
+		root.call("should_enable_debug_tools", OS.is_debug_build()),
+		"GameRoot must gate the readout on the same debug switch"
+	)
+	assert_false(
+		root.call("should_enable_debug_tools", false),
+		"and that switch must be off for a release build"
+	)
+
+
+func test_level_touch_exclusions_include_the_perf_readout() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var readout := root.get_node_or_null("UI/PerfReadout") as Control
+	assert_not_null(readout)
+	if readout == null:
+		return
+	assert_true(
+		readout.visible,
+		"debug tools must be enabled in this test environment"
+	)
+	var exclusions: Array = root.call("_level_touch_exclusions")
+	assert_true(
+		exclusions.has(readout),
+		(
+			"a perf readout drawn over the touch controls must be "
+			+ "excluded from gameplay touch, or it steals thumb input "
+			+ "during the 20-minute soak it exists to support "
+			+ "(§5.2 occlusion rule)"
+		)
+	)
+
+
 func _instantiate_main() -> Node:
 	var packed := load(MAIN_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
