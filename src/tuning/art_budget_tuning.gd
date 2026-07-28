@@ -8,9 +8,11 @@ extends Resource
 
 ## Per-asset triangle caps. §9.4 specifies hero, enemy and boss bands. The
 ## operator approved the prop band after measuring the first real crate at
-## 1,996 triangles, and the kit_piece band after measuring the first beach/jungle
-## kit at 100-1,564 across its 25 pieces. Rideables remain deliberately
-## unbudgeted -- §9.4 gives them no figure and nobody has chosen one.
+## 1,996 triangles; the rideable band before the first hog; and the kit_piece
+## band after measuring the first beach/jungle kit at 100-1,564 across its 25
+## pieces. Every directory in CATEGORY_BY_DIRECTORY now has a band, so the
+## lint's fail-closed path is exercised by a synthetic budget in its tests
+## rather than by a real category nobody has chosen a number for yet.
 @export var hero_min_triangles: int = 0
 @export var hero_max_triangles: int = 0
 @export var enemy_min_triangles: int = 0
@@ -21,6 +23,8 @@ extends Resource
 @export var prop_max_triangles: int = 0
 @export var kit_piece_min_triangles: int = 0
 @export var kit_piece_max_triangles: int = 0
+@export var rideable_min_triangles: int = 0
+@export var rideable_max_triangles: int = 0
 
 ## Texture rules. §9.4: 1-2 x 2048 atlases + trim sheet per kit, ASTC.
 @export var max_texture_dimension_px: int = 0
@@ -48,6 +52,8 @@ func max_triangles_for(category: StringName) -> int:
 			return prop_max_triangles
 		&"kit_piece":
 			return kit_piece_max_triangles
+		&"rideable":
+			return rideable_max_triangles
 	return UNBUDGETED
 
 
@@ -63,4 +69,6 @@ func min_triangles_for(category: StringName) -> int:
 			return prop_min_triangles
 		&"kit_piece":
 			return kit_piece_min_triangles
+		&"rideable":
+			return rideable_min_triangles
 	return UNBUDGETED

@@ -18,6 +18,8 @@ func test_authored_budget_matches_the_design_doc_per_asset_caps() -> void:
 	assert_eq(budget.prop_max_triangles, 2500)
 	assert_eq(budget.kit_piece_min_triangles, 100)
 	assert_eq(budget.kit_piece_max_triangles, 2000)
+	assert_eq(budget.rideable_min_triangles, 6000)
+	assert_eq(budget.rideable_max_triangles, 10000)
 
 
 func test_authored_budget_matches_the_design_doc_frame_budgets() -> void:
@@ -40,6 +42,8 @@ func test_lookup_returns_the_category_cap() -> void:
 	assert_eq(budget.max_triangles_for(&"prop"), 2500)
 	assert_eq(budget.min_triangles_for(&"kit_piece"), 100)
 	assert_eq(budget.max_triangles_for(&"kit_piece"), 2000)
+	assert_eq(budget.min_triangles_for(&"rideable"), 6000)
+	assert_eq(budget.max_triangles_for(&"rideable"), 10000)
 
 
 ## The heaviest piece of the first beach/jungle kit measures 1,564 triangles and
@@ -53,11 +57,12 @@ func test_the_operator_approved_kit_band_spans_the_real_beach_kit() -> void:
 	assert_gte(budget.kit_piece_max_triangles, 1564, "heaviest piece: fringe_grass_a")
 
 
-## Rideables still have no operator-approved per-asset figure. They must report
-## themselves as unbudgeted so the lint can fail closed and ask rather than
-## silently passing through a default nobody chose.
-func test_categories_without_an_operator_budget_report_no_cap() -> void:
+## Every real asset directory now has an operator-approved band -- kit pieces and
+## rideables were the last two, approved the same day. An unknown category must
+## still report itself unbudgeted so the lint fails closed and asks, rather than
+## silently passing an asset through a default nobody chose.
+func test_an_unknown_category_reports_no_cap() -> void:
 	var budget: ArtBudgetTuning = load(AUTHORED_PATH)
 
-	assert_eq(budget.max_triangles_for(&"rideable"), -1)
 	assert_eq(budget.max_triangles_for(&"not_a_category"), -1)
+	assert_eq(budget.min_triangles_for(&"not_a_category"), -1)

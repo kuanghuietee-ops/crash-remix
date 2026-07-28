@@ -36,12 +36,16 @@ def build_png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk
 
 
-def make_repo(directory: str) -> Path:
-    """A throwaway tree with the real authored budget and empty asset dirs."""
+def make_repo(directory: str, budget_text: str = AUTHORED_BUDGET) -> Path:
+    """A throwaway tree with the real authored budget and empty asset dirs.
+
+    ``budget_text`` defaults to the committed budget so tests measure what the
+    game actually ships; pass a modified copy to exercise the fail-closed path.
+    """
     root = Path(directory)
     (root / "data" / "tuning").mkdir(parents=True)
     (root / "data" / "tuning" / "art_budget.tres").write_text(
-        AUTHORED_BUDGET, encoding="utf-8"
+        budget_text, encoding="utf-8"
     )
     for name in ("characters", "enemies", "bosses", "rideables", "props", "kits"):
         (root / "assets" / "models" / name).mkdir(parents=True)
@@ -73,6 +77,8 @@ class BudgetLoadingTests(unittest.TestCase):
             self.assertEqual(budget.max_triangles["prop"], 2500)
             self.assertEqual(budget.min_triangles["kit_piece"], 100)
             self.assertEqual(budget.max_triangles["kit_piece"], 2000)
+            self.assertEqual(budget.min_triangles["rideable"], 6000)
+            self.assertEqual(budget.max_triangles["rideable"], 10000)
             self.assertEqual(budget.max_texture_dimension_px, 2048)
 
 
@@ -116,6 +122,15 @@ class TriangleBudgetTests(unittest.TestCase):
 
             self.assertEqual(find_violations(root), [])
 
+    def test_the_operator_approved_rideable_band_accepts_the_hog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/rideables/SK_hog.glb").write_bytes(
+                build_glb(8000)
+            )
+
+            self.assertEqual(find_violations(root), [])
+
     def test_the_operator_approved_kit_band_accepts_the_whole_beach_kit(self) -> None:
         # The real kit's extremes, measured with scripts/gltf_budget.py:
         # stone_cairn_a at 100 and fringe_grass_a at 1,564.
@@ -142,15 +157,25 @@ class TriangleBudgetTests(unittest.TestCase):
             self.assertIn("2000", violations[0].message)
 
     def test_an_unbudgeted_category_fails_closed_with_the_line_to_add(self) -> None:
-        # Rideables carry the fail-closed case now that kit pieces are budgeted.
+        # Every real asset directory now carries an operator-approved band, so
+        # this drops the kit_piece lines from a throwaway budget rather than
+        # borrowing a category that happens to still be unset. The fail-closed
+        # path is the whole reason an asset cannot slip through on a default
+        # nobody chose, so it keeps its own test even with nothing left to
+        # exercise it naturally.
+        stripped = "\n".join(
+            line
+            for line in AUTHORED_BUDGET.splitlines()
+            if not line.startswith("kit_piece_")
+        )
         with tempfile.TemporaryDirectory() as directory:
-            root = make_repo(directory)
-            (root / "assets/models/rideables/SK_hog.glb").write_bytes(build_glb(400))
+            root = make_repo(directory, budget_text=stripped)
+            (root / "assets/models/kits/SM_palm.glb").write_bytes(build_glb(400))
 
             violations = find_violations(root)
 
             self.assertEqual(len(violations), 1)
-            self.assertIn("rideable_max_triangles", violations[0].message)
+            self.assertIn("kit_piece_max_triangles", violations[0].message)
             self.assertIn("art_budget.tres", violations[0].message)
 
     def test_a_model_outside_every_category_directory_fails_closed(self) -> None:

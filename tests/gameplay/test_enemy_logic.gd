@@ -6,6 +6,10 @@ const SKINK_SCRIPT_PATH := "res://src/gameplay/enemies/enemy_skink.gd"
 const PLANT_SCRIPT_PATH := "res://src/gameplay/enemies/enemy_plant.gd"
 const CRAB_SCENE_PATH := "res://scenes/enemies/crab.tscn"
 const CRAB_MODEL_PATH := "res://assets/models/enemies/SK_crab.glb"
+const SKINK_SCENE_PATH := "res://scenes/enemies/skink.tscn"
+const SKINK_MODEL_PATH := "res://assets/models/enemies/SK_skink.glb"
+const PLANT_SCENE_PATH := "res://scenes/enemies/plant.tscn"
+const PLANT_MODEL_PATH := "res://assets/models/enemies/SK_plant.glb"
 
 
 func test_crab_patrol_stays_inside_authored_span_and_pauses_at_turn() -> void:
@@ -218,6 +222,76 @@ func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> voi
 		enemy.position.is_equal_approx(Vector3.ZERO),
 		"the skink must return to its authored start after the cycle"
 	)
+
+
+func test_skink_scene_animates_its_dart_and_finishes_defeat_reaction() -> void:
+	assert_true(ResourceLoader.exists(SKINK_MODEL_PATH))
+	var packed := load(SKINK_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var enemy := packed.instantiate() as Node3D
+	add_child_autofree(enemy)
+	await wait_process_frames(1)
+	var driver := enemy.get_node_or_null("VisualDriver")
+	var proxy := enemy.get_node_or_null("Visual") as MeshInstance3D
+	var dart_burst := enemy.get_node_or_null(
+		"VisualDriver/DartBurst"
+	) as GPUParticles3D
+	var defeat_burst := enemy.get_node_or_null(
+		"VisualDriver/DefeatBurst"
+	) as GPUParticles3D
+	var animation_players := enemy.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_not_null(driver)
+	assert_not_null(proxy)
+	assert_false(proxy.visible, "the graybox must become a bounds proxy only")
+	assert_not_null(dart_burst)
+	assert_not_null(defeat_burst)
+	assert_eq(animation_players.size(), 1)
+	if (
+		driver == null
+		or dart_burst == null
+		or defeat_burst == null
+		or animation_players.size() != 1
+	):
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	var catalog := _catalog()
+	if catalog == null:
+		return
+	enemy.call("configure", catalog.get("enemy_skink"), catalog.move)
+	assert_eq(animation_player.current_animation, "A_skink_idle")
+
+	enemy.call("advance_logic", 10.0, Vector3.ZERO)
+	assert_eq(animation_player.current_animation, "A_skink_telegraph")
+	enemy.call(
+		"advance_logic",
+		10.0 + catalog.enemy_skink.telegraph_s,
+		Vector3.ZERO
+	)
+	assert_eq(animation_player.current_animation, "A_skink_dart")
+	assert_true(dart_burst.emitting)
+
+	var defeated: Dictionary = enemy.call("resolve_contact", &"spin", 12.0)
+	assert_true(bool(defeated.get("enemy_defeated", false)))
+	assert_true(enemy.visible, "the reaction must play before the skink hides")
+	assert_eq(animation_player.current_animation, "A_skink_hit")
+	assert_true(defeat_burst.emitting)
+
+	animation_player.animation_finished.emit(&"A_skink_hit")
+	assert_eq(animation_player.current_animation, "A_skink_defeat")
+	animation_player.animation_finished.emit(&"A_skink_defeat")
+	await wait_process_frames(1)
+	assert_false(enemy.visible)
+
+	enemy.call("reset_to_authored_spawn")
+	assert_true(enemy.visible)
+	assert_eq(animation_player.current_animation, "A_skink_idle")
 
 
 func test_skink_dart_covers_full_authored_span() -> void:
@@ -438,6 +512,76 @@ func test_plant_cycle_windows_use_simulated_clock() -> void:
 		&"telegraph",
 		"a nearby player must begin the next tuned bite cycle"
 	)
+
+
+func test_plant_scene_animates_bite_and_finishes_defeat_reaction() -> void:
+	assert_true(ResourceLoader.exists(PLANT_MODEL_PATH))
+	var packed := load(PLANT_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var enemy := packed.instantiate() as Node3D
+	add_child_autofree(enemy)
+	await wait_process_frames(1)
+	var driver := enemy.get_node_or_null("VisualDriver")
+	var proxy := enemy.get_node_or_null("Visual") as MeshInstance3D
+	var bite_burst := enemy.get_node_or_null(
+		"VisualDriver/BiteBurst"
+	) as GPUParticles3D
+	var defeat_burst := enemy.get_node_or_null(
+		"VisualDriver/DefeatBurst"
+	) as GPUParticles3D
+	var animation_players := enemy.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_not_null(driver)
+	assert_not_null(proxy)
+	assert_false(proxy.visible, "the graybox must become a bounds proxy only")
+	assert_not_null(bite_burst)
+	assert_not_null(defeat_burst)
+	assert_eq(animation_players.size(), 1)
+	if (
+		driver == null
+		or bite_burst == null
+		or defeat_burst == null
+		or animation_players.size() != 1
+	):
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	var catalog := _catalog()
+	if catalog == null:
+		return
+	enemy.call("configure", catalog.get("enemy_plant"), catalog.move)
+	assert_eq(animation_player.current_animation, "A_plant_idle")
+
+	enemy.call("advance_logic", 20.0, Vector3.ZERO)
+	assert_eq(animation_player.current_animation, "A_plant_telegraph")
+	enemy.call(
+		"advance_logic",
+		20.0 + catalog.enemy_plant.telegraph_s,
+		Vector3.ZERO
+	)
+	assert_eq(animation_player.current_animation, "A_plant_chomp")
+	assert_true(bite_burst.emitting)
+
+	var defeated: Dictionary = enemy.call("resolve_contact", &"slam", 22.0)
+	assert_true(bool(defeated.get("enemy_defeated", false)))
+	assert_true(enemy.visible, "the reaction must play before the plant hides")
+	assert_eq(animation_player.current_animation, "A_plant_hit")
+	assert_true(defeat_burst.emitting)
+
+	animation_player.animation_finished.emit(&"A_plant_hit")
+	assert_eq(animation_player.current_animation, "A_plant_defeat")
+	animation_player.animation_finished.emit(&"A_plant_defeat")
+	await wait_process_frames(1)
+	assert_false(enemy.visible)
+
+	enemy.call("reset_to_authored_spawn")
+	assert_true(enemy.visible)
+	assert_eq(animation_player.current_animation, "A_plant_idle")
 
 
 func test_every_enemy_has_at_least_two_one_hit_verb_answers() -> void:
