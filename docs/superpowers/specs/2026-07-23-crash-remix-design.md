@@ -300,12 +300,15 @@ Rigged, animated characters this scope demands: **Crash** (the hardest asset in 
 
 ### 9.2 Learning order (sequenced so failures are cheap and skills compound)
 
-1. **Blender bootcamp via the crate** (~30–40h incl. fundamentals): model, UV, hand-paint, and break-animate the standard crate family. The crate is the perfect first asset — it's the most-seen object in the game, it's a box, and its break *feel* matters more than any environment.
-2. **First environment kit — jungle** (~40–60h, first-kit slow): 15–20 modular pieces + trim sheet. Modelling without rigging; immediate payoff in the Phase 1 slice.
-3. **First character — a lab assistant, NOT Crash** (~30–40h): simple biped, low expectations, Rigify rig, first weight-painting, first walk cycle. Learning rigging on the mascot would poison the most important asset with first-timer mistakes.
-4. **Crash himself** (~80–120h: model, rig, and the ~20-clip set): see 9.3.
+**Amended 2026-07-27** (`2026-07-27-phase1-art-pivot-design.md`): rungs 2–4 were resequenced. The original order put the jungle kit at rung 2 and Crash at rung 4, which contradicted §9.3's and §12's rule that the likeness gate precedes level-art production. The operator resolved it in favour of the gate: **Crash now precedes the first kit.**
+
+1. **Blender bootcamp via the crate** (~30–40h incl. fundamentals): model, UV, hand-paint, and break-animate the standard crate family. The crate is the perfect first asset — it's the most-seen object in the game, it's a box, and its break *feel* matters more than any environment. It is also **the calibration instrument** — every hour figure below is an estimate, so time the crate honestly and re-baseline the rest of the ladder against what it actually took.
+2. **First character — a lab assistant, NOT Crash** (~30–40h): simple biped, low expectations, Rigify rig, first weight-painting, first walk cycle. Learning rigging on the mascot would poison the most important asset with first-timer mistakes. It earns its keep later as 5 costume variants on one rig.
+3. **Crash himself** (~80–120h: model, rig, and the ~20-clip set): see 9.3.
+   → **LIKENESS GATE (§9.3). Hard block: no environment or level art begins until it passes.**
+4. **First environment kit — jungle** (~40–60h, first-kit slow): 15–20 modular pieces + trim sheet. Modelling without rigging; immediate payoff in the Phase 1 slice.
 5. **Enemy production line** (~12–20h each once fluent; Mixamo retarget for biped locomotion cuts animation time ~40%, with signature attacks hand-keyed).
-6. **Rideables** (~20–30h each; quadruped rigs and gaits are genuinely hard — budget a throwaway practice quadruped first).
+6. **Rideables** (~20–30h each; quadruped rigs and gaits are genuinely hard — budget a throwaway practice quadruped first; that practice asset is unbudgeted in §9.5 and costs an estimated 15–25h on top).
 7. **Bosses last** (~30–50h each), when skill is at peak — they're the second-most-seen characters in the game.
 
 ### 9.3 Hitting Crash — the likeness problem
@@ -313,6 +316,8 @@ Rigged, animated characters this scope demands: **Crash** (the hardest asset in 
 v0.1's original mascot could look however the operator's skill allowed. Crash cannot: **everyone can picture him, so every deviation reads as error.** This raises the character-art bar precisely where the artist is greenest. Mitigations: draw orthographic reference sheets from screenshots before modelling (front/side/top — an evening's work that saves twenty hours of eyeballing); target **PS1-era proportions with modern surfaces** — the chunky trilogy silhouette (oversized head and hands, tiny torso, big shoes), matte hand-painted textures, painted-on fur suggestion — and explicitly *not* the N. Sane Trilogy's detailed fur, which is both mobile-hostile (shells/cards) and skill-hostile. The PS1 proportions are *easier to model*, more readable at phone size, and more distinctive. Budget: ~10–12k tris, one 2048 texture.
 
 **The likeness gate (hard, cheap, early):** before any level-art production begins, show three friends the untextured Crash model cold. **All three name him unprompted or the model iterates.** This is the art-track equivalent of the feel gate — it stops six months of environment work from being built around a mascot that reads as "off-brand orange thing."
+
+**Read it literally (clarified 2026-07-27):** "any level-art production" means *all* environment and level art, **including the first jungle kit** — the learning kit is not exempt for being a learning exercise. This is the ambiguity that produced the §9.2/§12 contradiction, and it is closed in favour of the gate. Like Gate F and Gate F2 it is human-only under repo rule 3: an agent may never mark it passed, infer that it passed, or proceed past it. Budget for at least one iteration rather than assuming a first-try pass; the failure lands ~140–200h into the ladder, which is why the orthographic reference sheets above are cheap insurance.
 
 **Animation set for Crash** (~20 clips, and these carry the game's personality): idle + bored-idle gag, run, jump, double jump, spin (ground/air), crouch, crawl, slide, slam, wall-run, grind (3 poses), swing, phase-flash, hit, win, and **4–6 death gags** — the trilogy's deaths were funny, which is half of why its difficulty was tolerable; they are not optional polish, they are the difficulty system's public face.
 
@@ -397,6 +402,11 @@ Assumes 10–15 operator-hours/week total, of which ~8 go to the art track once 
 **Phase 0.5 — Traversal toybox (weeks 5–8).** Wall-run, grind, swing, PHASE button + phase objects, in graybox segments. **GATE F2:** wall-run attach→detach onto a pad ≥4/5; a 3-rail hop sequence clean by attempt five; phase-toggle mid-jump gauntlet ≥8/10; camera never disorients the blind-transfer friend during a wall-run (asked, not assumed). Art track: jungle kit, lab assistant.
 
 **Phase 1 — "Island Cut" slice (months 3–8).** N. Sanity Beach, Boulders, Hog Wild fully built; crates/gems/relics/mercy loops; warp room v1; save; **Crash himself passes the likeness gate (§9.3) before level-art production**; hog + 3 enemies + Papu Papu. **Release: Island Cut** to friends — 4 playable pieces, the game's thesis proven or disproven. Realistic landing: **month 6–9** (Crash's 80–120 art hours dominate this phase).
+
+> **Status and amendment, 2026-07-27** (`2026-07-27-phase1-art-pivot-design.md`). Phase 1's **code track is complete** — all four pieces are built and tested on `wave-e-integration`. The **art track has not started**, and the whole Island Cut now runs the §9.2 ladder to completion: ≈280–425h ≈ **8–12 months** at ~8 art-hours/week. Two consequences are recorded deliberately:
+>
+> - **The friends release moves from the start of that ladder to the end.** Friends get one finished-looking build instead of a graybox one carrying a disclosure list. The Island Cut acceptance gate (`docs/qa/phase1-island-cut-acceptance.md`) is unchanged in substance; only its timing moves. **Accepted risk, on the record:** nobody outside the operator's own judgement validates the core loop for 8–12 months — structurally the shape that produced the Reaper Rush failure. The weekly on-device play above is therefore no longer one signal among several, it is **the only one**, and if it lapses the project has no tripwire at all.
+> - **Phase 2 does not open until Phase 1's art completes** — all Island Cut assets in-engine and passing the budget lint, the likeness gate passed and recorded, and the operator's four-piece verdict on the *arted* build recorded.
 
 **Phase 2 — Warp Room 1 complete (months 9–12).** The Lost City, Road to Nowhere, colored-gem line, bonus-wing scaffold. Release 0.1.
 

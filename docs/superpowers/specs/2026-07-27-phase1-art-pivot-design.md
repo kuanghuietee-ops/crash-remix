@@ -1,12 +1,13 @@
 # Phase 1 art pivot — design
 
 **Date:** 2026-07-27
-**Status:** design agreed in brainstorm; **awaiting operator review**. No implementation
-has started. Next step after review is `writing-plans`.
+**Status:** **APPROVED by the operator 2026-07-28.** The §5 amendments have been applied
+to the main design doc; the two documents now agree. Next step is `writing-plans` for
+the §4 code-side pipeline.
 **Relationship to the main spec:** this document *amends* §9.2, §9.3 and §12 of
-`2026-07-23-crash-remix-design.md`. Those amendments are listed in §5 below and have
-**not yet been applied** — the main spec is still the source of truth and still says
-the old order. Apply §5 before treating this as settled.
+`2026-07-23-crash-remix-design.md`. Those amendments are **applied** as of 2026-07-28 —
+the main spec remains the source of truth and now carries the new order; this document
+is the rationale record for why it changed.
 
 ---
 
@@ -114,7 +115,8 @@ with live triangle count, draw calls and texture memory, so an over-budget asset
 
 The decisions above contradict `2026-07-23-crash-remix-design.md` as committed. Per repo
 `CLAUDE.md` — if code and spec disagree, say which is wrong rather than silently picking —
-the spec gets edited. **None of these edits are applied yet.**
+the spec gets edited. **All three edits were applied on 2026-07-28**, after the operator
+approved this document.
 
 - **§9.2** — resequence the learning order: lab assistant becomes #2, Crash #3, jungle kit
   #4. Rungs 5–7 unchanged.
@@ -169,8 +171,8 @@ Road to Nowhere, colored-gem line, bonus-wing scaffold) opens.
 
 Open items, in order:
 
-1. **Operator reviews this document.** Nothing below starts until then.
-2. Apply the §5 amendments to the main design doc.
+1. ~~**Operator reviews this document.**~~ **Done 2026-07-28 — approved.**
+2. ~~Apply the §5 amendments to the main design doc.~~ **Done 2026-07-28.**
 3. `writing-plans` for the §4 code-side pipeline — that is the only track with agent work
    in it, and it should land before rung 1 so the crate is the first asset the lint sees.
 4. Operator starts rung 1 (crate family) in Blender, and times it (§6.4).
