@@ -2,6 +2,7 @@ extends GutTest
 
 const LookDevType := preload("res://src/debug/look_dev.gd")
 const STANDARD_CRATE_PATH := "res://assets/models/props/SM_crate_standard.glb"
+const CRATE_MODEL_ROOT := "res://assets/models/props"
 
 
 func test_discovers_glb_assets_under_a_root() -> void:
@@ -27,6 +28,49 @@ func test_import_suffix_normalizes_to_a_loadable_asset_path() -> void:
 		ResourceLoader.exists(normalized),
 		"%s should resolve through the real importer" % normalized
 	)
+
+
+func test_crate_models_enable_their_authored_vertex_colors_after_import() -> void:
+	var look_dev: LookDev = autofree(LookDevType.new())
+	var crate_paths: PackedStringArray = look_dev.discover_assets(CRATE_MODEL_ROOT)
+
+	assert_eq(crate_paths.size(), 7)
+	for path: String in crate_paths:
+		var asset_scene := load(path) as PackedScene
+		assert_not_null(asset_scene, "%s must load as a scene" % path)
+		if asset_scene == null:
+			continue
+		var asset: Node = autofree(asset_scene.instantiate())
+		var meshes: Array[Node] = asset.find_children(
+			"*",
+			"MeshInstance3D",
+			true,
+			false
+		)
+		assert_eq(meshes.size(), 1, "%s must keep one imported mesh" % path)
+		if meshes.size() != 1:
+			continue
+		var mesh_instance := meshes[0] as MeshInstance3D
+		var material := (
+			mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+		)
+		assert_not_null(material, "%s must have a base material" % path)
+		if material == null:
+			continue
+		assert_true(
+			material.vertex_color_use_as_albedo,
+			"%s must render COLOR_0 instead of the white base material" % path
+		)
+		var arrays := mesh_instance.mesh.surface_get_arrays(0)
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var unique_colors: Dictionary = {}
+		for color: Color in colors:
+			unique_colors[color] = true
+		assert_gt(
+			unique_colors.size(),
+			1,
+			"%s must retain visibly distinct authored colors" % path
+		)
 
 
 func test_a_nonexistent_discovery_root_returns_empty() -> void:
