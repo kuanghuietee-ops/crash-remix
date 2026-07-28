@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/crates/breakable_crate.gd" id="1_crate"]
+[ext_resource type="PackedScene" path="res://scenes/vfx/crate_break_effect.tscn" id="2_effect"]
 
 [sub_resource type="StandardMaterial3D" id="Material_crate"]
 albedo_color = Color(0.55, 0.3, 0.12, 1)
@@ -19,6 +20,8 @@ script = ExtResource("1_crate")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("Mesh_crate")
+
+[node name="BreakEffect" parent="." instance=ExtResource("2_effect")]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("Shape_crate")

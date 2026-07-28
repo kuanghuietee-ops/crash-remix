@@ -28,8 +28,11 @@ var _armed: bool = false
 var _fuse_active: bool = false
 var _fuse_started_at_s: float = 0.0
 
+@onready var _break_effect: Node3D = $BreakEffect
+
 
 func _ready() -> void:
+	_break_effect.call(&"reset")
 	set_relic_context(false)
 
 
@@ -214,6 +217,7 @@ func sync_break_state(broken: bool, relic_mode: bool) -> void:
 	_broken = broken
 	_bounce_count = 0
 	_fuse_active = false
+	_break_effect.call(&"reset")
 	set_relic_context(relic_mode)
 	$Mesh.visible = not broken
 	$CollisionShape3D.set_deferred(&"disabled", broken)
@@ -234,6 +238,7 @@ func _finish_break(wumpa: int) -> void:
 	_fuse_active = false
 	$Mesh.visible = false
 	$CollisionShape3D.set_deferred(&"disabled", true)
+	_break_effect.call(&"play", crate_type)
 	broken.emit(crate_id, wumpa)
 
 

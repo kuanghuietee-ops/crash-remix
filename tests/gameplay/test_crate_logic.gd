@@ -10,6 +10,7 @@ const TNT_SCENE := "res://scenes/props/crate_tnt.tscn"
 const AKU_SCENE := "res://scenes/props/crate_aku.tscn"
 const TIME_SCENE := "res://scenes/props/crate_time.tscn"
 const WUMPA_SCENE := "res://scenes/props/wumpa.tscn"
+const BREAK_EFFECT_SCENE := "res://scenes/vfx/crate_break_effect.tscn"
 const LIVE_BOUNCE_WUMPA_PROBE := 7
 const LIVE_TNT_FUSE_PROBE_S := 4.25
 const LIVE_TNT_RADIUS_PROBE_M := 3.25
@@ -653,6 +654,125 @@ func test_every_remaining_crate_variant_has_matching_art_and_collision_bounds() 
 			)
 		)
 		assert_eq(imported_mesh.mesh.get_surface_count(), 1)
+
+
+func test_crates_share_one_budgeted_three_draw_pass_break_effect() -> void:
+	assert_true(
+		ResourceLoader.exists(BREAK_EFFECT_SCENE),
+		"the reusable crate break effect scene must exist"
+	)
+	if not ResourceLoader.exists(BREAK_EFFECT_SCENE):
+		return
+	var effect := _instantiate(BREAK_EFFECT_SCENE)
+	if effect == null:
+		return
+	add_child_autofree(effect)
+	var emitters: Array[Node] = effect.find_children(
+		"*",
+		"GPUParticles3D",
+		true,
+		false
+	)
+
+	assert_eq(
+		emitters.size(),
+		3,
+		"generic shards+dust and TNT-only sparks cap the effect at three draws"
+	)
+	for emitter_node: Node in emitters:
+		var emitter := emitter_node as GPUParticles3D
+		assert_true(emitter.one_shot)
+		assert_eq(emitter.draw_passes, 1)
+		assert_false(emitter.emitting)
+
+
+func test_standard_break_plays_shards_and_dust_without_tnt_sparks() -> void:
+	var crate := _instantiate(STANDARD_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var effect := crate.get_node_or_null("BreakEffect") as Node3D
+	assert_not_null(effect, "every breakable crate must mount the shared effect")
+	if effect == null:
+		return
+
+	crate.call("apply_verb", &"spin")
+
+	assert_true(effect.visible)
+	assert_true((effect.get_node("Shards") as GPUParticles3D).emitting)
+	assert_true((effect.get_node("Dust") as GPUParticles3D).emitting)
+	assert_false((effect.get_node("TntSparks") as GPUParticles3D).emitting)
+
+
+func test_tnt_detonation_adds_the_distinct_spark_burst() -> void:
+	var crate := _instantiate(TNT_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var effect := crate.get_node_or_null("BreakEffect") as Node3D
+	assert_not_null(effect)
+	if effect == null:
+		return
+
+	crate.call("apply_verb", &"spin")
+
+	assert_true((effect.get_node("Shards") as GPUParticles3D).emitting)
+	assert_true((effect.get_node("Dust") as GPUParticles3D).emitting)
+	assert_true((effect.get_node("TntSparks") as GPUParticles3D).emitting)
+
+
+func test_iron_contact_never_starts_a_break_effect() -> void:
+	var crate := _instantiate(IRON_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var effect := crate.get_node_or_null("BreakEffect") as Node3D
+	assert_not_null(effect)
+	if effect == null:
+		return
+
+	crate.call("apply_verb", &"spin")
+	crate.call("apply_bounce", false)
+
+	assert_false(crate.call("is_broken"))
+	assert_true(crate.get_node("Mesh").visible)
+	assert_false(effect.visible)
+	for emitter_node: Node in effect.find_children(
+		"*",
+		"GPUParticles3D",
+		true,
+		false
+	):
+		assert_false((emitter_node as GPUParticles3D).emitting)
+
+
+func test_rearming_a_crate_clears_any_in_flight_break_effect() -> void:
+	var crate := _instantiate(STANDARD_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+	crate.call("configure", _economy, _move, _input)
+	var effect := crate.get_node_or_null("BreakEffect") as Node3D
+	assert_not_null(effect)
+	if effect == null:
+		return
+	crate.call("apply_verb", &"spin")
+	assert_true(effect.visible)
+
+	crate.call("sync_break_state", false, false)
+
+	assert_false(effect.visible)
+	assert_true(crate.get_node("Mesh").visible)
+	for emitter_node: Node in effect.find_children(
+		"*",
+		"GPUParticles3D",
+		true,
+		false
+	):
+		assert_false((emitter_node as GPUParticles3D).emitting)
 
 
 func test_standard_node_emits_tuned_break_payload_once() -> void:

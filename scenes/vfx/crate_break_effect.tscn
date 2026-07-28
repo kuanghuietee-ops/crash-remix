@@ -1,0 +1,127 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://src/vfx/crate_break_effect.gd" id="1_effect"]
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_shards"]
+resource_local_to_scene = true
+emission_shape = 3
+emission_box_extents = Vector3(0.4, 0.4, 0.4)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 2.8
+initial_velocity_max = 4.6
+gravity = Vector3(0, -8, 0)
+angular_velocity_min = -540.0
+angular_velocity_max = 540.0
+scale_min = 0.72
+scale_max = 1.25
+color = Color(0.56, 0.27, 0.08, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_shards"]
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 1, 1, 1)
+roughness = 0.82
+
+[sub_resource type="BoxMesh" id="Mesh_shards"]
+material = SubResource("Material_shards")
+size = Vector3(0.08, 0.035, 0.25)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_dust"]
+emission_shape = 3
+emission_box_extents = Vector3(0.35, 0.35, 0.35)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 0.7
+initial_velocity_max = 1.6
+gravity = Vector3(0, 0.25, 0)
+angular_velocity_min = -120.0
+angular_velocity_max = 120.0
+scale_min = 0.7
+scale_max = 1.35
+color = Color(0.76, 0.58, 0.35, 0.58)
+
+[sub_resource type="Gradient" id="Gradient_dust"]
+offsets = PackedFloat32Array(0, 0.52, 1)
+colors = PackedColorArray(0.96, 0.8, 0.58, 0.92, 0.96, 0.8, 0.58, 0.56, 0.96, 0.8, 0.58, 0)
+
+[sub_resource type="GradientTexture2D" id="Texture_dust"]
+gradient = SubResource("Gradient_dust")
+width = 32
+height = 32
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="Material_dust"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = SubResource("Texture_dust")
+billboard_mode = 1
+
+[sub_resource type="QuadMesh" id="Mesh_dust"]
+material = SubResource("Material_dust")
+size = Vector2(0.42, 0.42)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_sparks"]
+emission_shape = 3
+emission_box_extents = Vector3(0.38, 0.38, 0.38)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 4.2
+initial_velocity_max = 7.0
+gravity = Vector3(0, -5.5, 0)
+angular_velocity_min = -720.0
+angular_velocity_max = 720.0
+scale_min = 0.65
+scale_max = 1.2
+color = Color(1, 0.3, 0.015, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_sparks"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 0.72, 0.06, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_sparks"]
+material = SubResource("Material_sparks")
+size = Vector3(0.035, 0.035, 0.18)
+
+[node name="CrateBreakEffect" type="Node3D"]
+visible = false
+script = ExtResource("1_effect")
+
+[node name="Shards" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 12
+lifetime = 0.72
+one_shot = true
+explosiveness = 1.0
+randomness = 0.35
+visibility_aabb = AABB(-4, -4, -4, 8, 8, 8)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_shards")
+draw_pass_1 = SubResource("Mesh_shards")
+
+[node name="Dust" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 7
+lifetime = 0.46
+one_shot = true
+explosiveness = 1.0
+randomness = 0.4
+visibility_aabb = AABB(-3, -3, -3, 6, 6, 6)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_dust")
+draw_pass_1 = SubResource("Mesh_dust")
+
+[node name="TntSparks" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 18
+lifetime = 0.52
+one_shot = true
+explosiveness = 1.0
+randomness = 0.32
+visibility_aabb = AABB(-5, -5, -5, 10, 10, 10)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_sparks")
+draw_pass_1 = SubResource("Mesh_sparks")
