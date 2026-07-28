@@ -1,3 +1,4 @@
+import math
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,11 @@ from scripts.dress_island_cut import (
     Corridor,
     Platform,
     STYLE_BY_PREFIX,
+    PORTAL_KEEPOUT_M,
+    WARP_ROOM_PATH,
+    WARP_ROOM_PLACEMENTS,
+    WARP_ROOM_PORTALS,
+    VILLAGE_STYLE,
     corridor_of,
     ensure_ext_resources,
     nested_segments,
@@ -77,7 +83,7 @@ class ClearanceTests(unittest.TestCase):
     def test_no_placement_sits_inside_the_play_corridor(self) -> None:
         corridor = Corridor(half_width=9.0, z_near=2.0, z_far=-130.0, floor_y=0.0)
 
-        for style in (CANYON_STYLE, JUNGLE_STYLE):
+        for style in (CANYON_STYLE, JUNGLE_STYLE, VILLAGE_STYLE):
             for placement in placements_for("probe_segment", corridor, style):
                 self.assertGreaterEqual(
                     abs(placement.position[0]),
@@ -195,7 +201,7 @@ class SceneRewritingTests(unittest.TestCase):
 class DressedSceneTests(unittest.TestCase):
     """Checks the committed scenes, not just the generator."""
 
-    def test_every_boulders_and_hog_segment_is_dressed(self) -> None:
+    def test_every_dressed_scene_has_scenery(self) -> None:
         for path in dressed_segments():
             self.assertIn(
                 '[node name="EnvironmentArt" type="Node3D" parent="."]',
@@ -236,3 +242,64 @@ class DressedSceneTests(unittest.TestCase):
                     corridor.half_width + CLEARANCE_M,
                     f"{path.name}: scenery at x={match.group(1)} is in the corridor",
                 )
+
+
+class ArenaTests(unittest.TestCase):
+    def test_scenery_follows_the_arena_terraces(self) -> None:
+        # Papu's arena climbs from y=0 to y=4 across three terraces. A single
+        # floor height would bury the far end's totems four metres underground.
+        arena = SEGMENT_DIR / "papu_arena.tscn"
+        corridor = corridor_of(parse_platforms(arena.read_text(encoding="utf-8")))
+
+        self.assertEqual(corridor.floor_at(-10.0), 0.0)
+        self.assertEqual(corridor.floor_at(-44.0), 2.0)
+        self.assertEqual(corridor.floor_at(-70.0), 4.0)
+
+    def test_the_arena_is_dressed_with_village_props(self) -> None:
+        text = (SEGMENT_DIR / "papu_arena.tscn").read_text(encoding="utf-8")
+
+        self.assertIn("totem_tall_a", text)
+
+    def test_arena_scenery_spans_more_than_one_height(self) -> None:
+        import re
+
+        text = (SEGMENT_DIR / "papu_arena.tscn").read_text(encoding="utf-8")
+        start = text.find('[node name="EnvironmentArt"')
+        heights = {
+            match.group(1)
+            for match in re.finditer(
+                r"^position = Vector3\([-\d.]+, ([-\d.]+),", text[start:], flags=re.MULTILINE
+            )
+        }
+
+        self.assertGreater(len(heights), 1, "arena scenery is all at one height")
+
+
+class WarpRoomTests(unittest.TestCase):
+    def test_the_room_is_dressed(self) -> None:
+        text = (REPO_ROOT / WARP_ROOM_PATH).read_text(encoding="utf-8")
+
+        self.assertIn('[node name="EnvironmentArt" type="Node3D" parent="."]', text)
+        self.assertIn("pillar_carved_a", text)
+
+    def test_nothing_blocks_a_portal(self) -> None:
+        # A pillar in front of a portal makes a level unreachable from the hub.
+        for placement in WARP_ROOM_PLACEMENTS:
+            for portal_x, portal_z in WARP_ROOM_PORTALS:
+                distance = math.hypot(
+                    placement.position[0] - portal_x, placement.position[2] - portal_z
+                )
+                self.assertGreaterEqual(
+                    distance, PORTAL_KEEPOUT_M, f"{placement.node} blocks a portal"
+                )
+
+    def test_everything_stays_inside_the_chamber(self) -> None:
+        # The chamber is 24 m square with walls at +-12.
+        for placement in WARP_ROOM_PLACEMENTS:
+            self.assertLess(abs(placement.position[0]), 12.0, placement.node)
+            self.assertLess(abs(placement.position[2]), 12.0, placement.node)
+
+    def test_placements_have_unique_names(self) -> None:
+        names = [placement.node for placement in WARP_ROOM_PLACEMENTS]
+
+        self.assertEqual(len(names), len(set(names)))

@@ -71,10 +71,30 @@ class Corridor:
     z_near: float
     z_far: float
     floor_y: float
+    platforms: tuple[Platform, ...] = ()
 
     @property
     def length(self) -> float:
         return abs(self.z_far - self.z_near)
+
+    def floor_at(self, z: float) -> float:
+        """Ground height under a given point along the segment.
+
+        Papu's arena climbs three terraces, so a single floor height would bury
+        the far end's scenery four metres underground. Falls back to the
+        segment's main floor where nothing covers that z.
+        """
+        covering = [
+            plat
+            for plat in self.platforms
+            if plat.position[2] - plat.size[2] / 2.0
+            <= z
+            <= plat.position[2] + plat.size[2] / 2.0
+        ]
+        if not covering:
+            return self.floor_y
+        widest = max(covering, key=lambda plat: plat.size[0] * plat.size[2])
+        return widest.position[1] + widest.size[1] / 2.0
 
 
 @dataclass(frozen=True)
@@ -122,7 +142,13 @@ def corridor_of(platforms: Sequence[Platform]) -> Corridor | None:
     # float every tree on that segment 3.7 m into the air.
     ground = max(platforms, key=lambda plat: plat.size[0] * plat.size[2])
     floor_y = ground.position[1] + ground.size[1] / 2.0
-    return Corridor(half_width=half_width, z_near=z_near, z_far=z_far, floor_y=floor_y)
+    return Corridor(
+        half_width=half_width,
+        z_near=z_near,
+        z_far=z_far,
+        floor_y=floor_y,
+        platforms=tuple(platforms),
+    )
 
 
 def _node_blocks(text: str) -> list[tuple[str, str]]:
@@ -175,7 +201,22 @@ JUNGLE_STYLE = {
     "scatter_every_m": 13.0,
 }
 
-STYLE_BY_PREFIX = {"boulders_": CANYON_STYLE, "hog_": JUNGLE_STYLE}
+# Papu's arena is a tribal village terrace, so it is ringed with the village
+# props rather than jungle: totems and standing stones read as "someone built
+# this", which is what a boss arena needs that a corridor does not.
+VILLAGE_STYLE = {
+    "walls": ["cliff_low_a"],
+    "bank": "terrain_jungle_bank",
+    "scatter": ["totem_tall_a", "standing_stone_a", "log_fence_a", "torch_post_a"],
+    "canopy": ["hut_thatch_a", "palm_tall_a"],
+    "scatter_every_m": 12.0,
+}
+
+STYLE_BY_PREFIX = {
+    "boulders_": CANYON_STYLE,
+    "hog_": JUNGLE_STYLE,
+    "papu_": VILLAGE_STYLE,
+}
 
 
 def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement]:
@@ -200,6 +241,7 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
             along = corridor.z_near - (index + 0.5) * (corridor.length / count)
             jitter = _hash01(seed + index, side_index * 31 + 7)
             depth = inner + 1.5 + jitter * (BAND_DEPTH_M - inner - 1.5)
+            ground = corridor.floor_at(along)
 
             scatter = list(style["scatter"])
             piece = scatter[(index + side_index) % len(scatter)]
@@ -207,7 +249,7 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                 Placement(
                     node=f"Scatter{'L' if side < 0 else 'R'}{index}",
                     piece=piece,
-                    position=(side * depth, corridor.floor_y - 0.15, along),
+                    position=(side * depth, ground - 0.15, along),
                     yaw=_hash01(seed + index, side_index * 17 + 3) * 360.0,
                 )
             )
@@ -221,7 +263,7 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                         piece=tree,
                         position=(
                             side * (depth + 3.0),
-                            corridor.floor_y - 0.4,
+                            corridor.floor_at(along - 3.5) - 0.4,
                             along - 3.5,
                         ),
                         yaw=_hash01(seed + index, side_index * 11 + 5) * 360.0,
@@ -382,6 +424,55 @@ def bump_load_steps(text: str, added: int) -> str:
     return re.sub(r"load_steps=(\d+)", replace, text, count=1)
 
 
+# --- the warp room -----------------------------------------------------
+# A 24 m square chamber rather than a corridor, so its dressing is authored
+# rather than scattered: four corner pillars, banners on the wall spans between
+# the portals, and braziers flanking the boss dais. Placement is by hand because
+# there are eleven nodes and every one of them has a reason.
+
+WARP_ROOM_PATH = Path("scenes/levels/warp_room_1.tscn")
+
+# Chamber is 24x24 with walls at +-12 and portals at the cardinal points, so
+# decor lives in the corners and on the wall spans the portals do not use.
+WARP_ROOM_PLACEMENTS: tuple[Placement, ...] = (
+    Placement("PillarNorthWest", "pillar_carved_a", (-9.6, 0.0, -9.6), 0.0),
+    Placement("PillarNorthEast", "pillar_carved_a", (9.6, 0.0, -9.6), 0.0),
+    Placement("PillarSouthWest", "pillar_carved_a", (-9.6, 0.0, 9.6), 0.0),
+    Placement("PillarSouthEast", "pillar_carved_a", (9.6, 0.0, 9.6), 0.0),
+    # Banners flank the beach portal on the north wall and face into the room.
+    Placement("BannerNorthWest", "wall_banner_a", (-5.2, 0.0, -11.7), 0.0),
+    Placement("BannerNorthEast", "wall_banner_a", (5.2, 0.0, -11.7), 0.0),
+    Placement("BannerWest", "wall_banner_a", (-11.7, 0.0, 3.6), 90.0),
+    Placement("BannerEast", "wall_banner_a", (11.7, 0.0, 3.6), -90.0),
+    # Braziers flanking the boss dais: the room's only warm light, pointing the
+    # player at the door that matters.
+    Placement("BrazierDaisWest", "brazier_bowl_a", (-3.4, 0.0, 6.4), 0.0),
+    Placement("BrazierDaisEast", "brazier_bowl_a", (3.4, 0.0, 6.4), 0.0),
+    Placement("TotemGuardian", "totem_tall_a", (0.0, 0.0, 11.2), 180.0),
+)
+
+# Nothing may sit closer than this to the room's centre line through a portal,
+# or it blocks the walk into a level.
+PORTAL_KEEPOUT_M = 2.6
+WARP_ROOM_PORTALS = ((0.0, -9.7), (-9.7, -3.4), (9.7, -3.4), (0.0, 8.4))
+
+
+def dress_warp_room(path: Path) -> int:
+    """Dress the warp room chamber. Returns the node count."""
+    text = path.read_text(encoding="utf-8")
+    text = undress(text)
+    pieces = sorted({placement.piece for placement in WARP_ROOM_PLACEMENTS})
+    before = len(re.findall(r"\[ext_resource ", text))
+    text, ids = ensure_ext_resources(text, pieces)
+    added = len(re.findall(r"\[ext_resource ", text)) - before
+    text = bump_load_steps(text, added)
+    body = render_environment_art(WARP_ROOM_PLACEMENTS, ids)
+    if not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + "\n" + body, encoding="utf-8")
+    return len(WARP_ROOM_PLACEMENTS)
+
+
 def dress_segment(path: Path) -> int:
     """Rewrite one segment with generated scenery. Returns the node count."""
     style = next(
@@ -434,7 +525,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             dressed += 1
             total += count
             print(f"DRESSED {path.name} {count}")
-    print(f"DRESS_TOTAL {dressed} segment(s), {total} scenery node(s)")
+
+    warp_room = arguments.repo_root / WARP_ROOM_PATH
+    if warp_room.is_file():
+        count = dress_warp_room(warp_room)
+        dressed += 1
+        total += count
+        print(f"DRESSED {warp_room.name} {count}")
+    print(f"DRESS_TOTAL {dressed} scene(s), {total} scenery node(s)")
     return 0
 
 

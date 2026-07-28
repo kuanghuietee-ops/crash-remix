@@ -53,6 +53,18 @@ PALETTE: dict[str, tuple[float, float, float]] = {
     "coconut": (0.38, 0.26, 0.17),
     "shell": (0.92, 0.86, 0.78),
     "flower": (0.92, 0.44, 0.31),
+    # Village and interior tones, added for Papu's arena and the warp room.
+    # Adding an entry re-sorts ATLAS_ORDER and therefore moves cell indices, so
+    # the whole kit must be rebuilt after any change here -- the UVs baked into
+    # the meshes are the only record of which cell a face points at.
+    "wood_post": (0.42, 0.30, 0.20),
+    "wood_dark": (0.28, 0.20, 0.14),
+    "thatch": (0.78, 0.66, 0.38),
+    "cloth_red": (0.70, 0.24, 0.20),
+    "cloth_ochre": (0.80, 0.58, 0.24),
+    "stone_carved": (0.60, 0.56, 0.49),
+    "stone_shadow": (0.38, 0.35, 0.31),
+    "ember": (0.94, 0.52, 0.18),
 }
 
 # --- atlas layout ------------------------------------------------------

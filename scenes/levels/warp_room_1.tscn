@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/hub/warp_room.gd" id="1_room"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_player"]
@@ -6,6 +6,10 @@
 [ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="4_gamepad"]
 [ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="5_touch"]
 [ext_resource type="PackedScene" path="res://scenes/props/portal.tscn" id="6_portal"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/brazier_bowl_a.res" id="env_brazier_bowl_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/pillar_carved_a.res" id="env_pillar_carved_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/totem_tall_a.res" id="env_totem_tall_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/wall_banner_a.res" id="env_wall_banner_a"]
 
 [sub_resource type="Environment" id="Environment_hub"]
 background_mode = 1
@@ -210,3 +214,52 @@ theme_override_colors/font_color = Color(0.86, 0.8, 1, 1)
 theme_override_font_sizes/font_size = 30
 text = "WARP ROOM 1 — GRAYBOX"
 horizontal_alignment = 1
+
+[node name="EnvironmentArt" type="Node3D" parent="."]
+
+[node name="PillarNorthWest" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-9.6, 0, -9.6)
+mesh = ExtResource("env_pillar_carved_a")
+
+[node name="PillarNorthEast" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9.6, 0, -9.6)
+mesh = ExtResource("env_pillar_carved_a")
+
+[node name="PillarSouthWest" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-9.6, 0, 9.6)
+mesh = ExtResource("env_pillar_carved_a")
+
+[node name="PillarSouthEast" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9.6, 0, 9.6)
+mesh = ExtResource("env_pillar_carved_a")
+
+[node name="BannerNorthWest" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-5.2, 0, -11.7)
+mesh = ExtResource("env_wall_banner_a")
+
+[node name="BannerNorthEast" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(5.2, 0, -11.7)
+mesh = ExtResource("env_wall_banner_a")
+
+[node name="BannerWest" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.7, 0, 3.6)
+rotation_degrees = Vector3(0, 90, 0)
+mesh = ExtResource("env_wall_banner_a")
+
+[node name="BannerEast" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(11.7, 0, 3.6)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = ExtResource("env_wall_banner_a")
+
+[node name="BrazierDaisWest" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-3.4, 0, 6.4)
+mesh = ExtResource("env_brazier_bowl_a")
+
+[node name="BrazierDaisEast" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(3.4, 0, 6.4)
+mesh = ExtResource("env_brazier_bowl_a")
+
+[node name="TotemGuardian" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(0, 0, 11.2)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_totem_tall_a")

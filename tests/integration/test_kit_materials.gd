@@ -16,7 +16,10 @@ const TRIM_PATH := "res://assets/textures/T_beach_kit_trim.png"
 ## scripts/blender/build_beach_env_kit.py. Everything else takes the atlas.
 const TRIM_PIECES := ["rock_boulder_a", "rock_boulder_b", "rock_cluster_a"]
 
-const EXPECTED_PIECE_COUNT := 25
+## 25 beach/jungle pieces plus the 8 village and interior props that dress
+## Papu's arena and the warp room. Pinned so a piece cannot vanish from the
+## build unnoticed -- a missing mesh shows up as a hole in a level, not an error.
+const EXPECTED_PIECE_COUNT := 33
 
 
 func _piece_names() -> Array:

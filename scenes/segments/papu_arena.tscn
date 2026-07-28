@@ -1,7 +1,15 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="env_cliff_low_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/hut_thatch_a.res" id="env_hut_thatch_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/log_fence_a.res" id="env_log_fence_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/palm_tall_a.res" id="env_palm_tall_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/standing_stone_a.res" id="env_standing_stone_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_jungle_bank.res" id="env_terrain_jungle_bank"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/torch_post_a.res" id="env_torch_post_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/totem_tall_a.res" id="env_totem_tall_a"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(26, 20, 104)
@@ -74,3 +82,135 @@ camera_mode = &"default"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
 shape = SubResource("Shape_camera")
+
+[node name="EnvironmentArt" type="Node3D" parent="."]
+
+[node name="BankLeft" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.5, 0, 4)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_terrain_jungle_bank")
+
+[node name="ScatterL0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-16.948, -0.15, -2.786)
+rotation_degrees = Vector3(0, 243.143, 0)
+mesh = ExtResource("env_totem_tall_a")
+
+[node name="CanopyL0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-19.948, -0.4, -6.286)
+rotation_degrees = Vector3(0, 335.454, 0)
+mesh = ExtResource("env_hut_thatch_a")
+
+[node name="ScatterL1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-18.738, -0.15, -16.357)
+rotation_degrees = Vector3(0, 127.671, 0)
+mesh = ExtResource("env_standing_stone_a")
+
+[node name="ScatterL2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-20.016, -0.15, -29.929)
+rotation_degrees = Vector3(0, 69.454, 0)
+mesh = ExtResource("env_log_fence_a")
+
+[node name="CanopyL2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-23.016, -0.4, -33.429)
+rotation_degrees = Vector3(0, 296.021, 0)
+mesh = ExtResource("env_palm_tall_a")
+
+[node name="ScatterL3" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-20.869, 1.85, -43.5)
+rotation_degrees = Vector3(0, 327.298, 0)
+mesh = ExtResource("env_torch_post_a")
+
+[node name="ScatterL4" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-21.363, -0.15, -57.071)
+rotation_degrees = Vector3(0, 17.278, 0)
+mesh = ExtResource("env_totem_tall_a")
+
+[node name="CanopyL4" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24.363, 3.6, -60.571)
+rotation_degrees = Vector3(0, 103.881, 0)
+mesh = ExtResource("env_hut_thatch_a")
+
+[node name="ScatterL5" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-22.874, 3.85, -70.643)
+rotation_degrees = Vector3(0, 171.776, 0)
+mesh = ExtResource("env_standing_stone_a")
+
+[node name="ScatterL6" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-20.328, 3.85, -84.214)
+rotation_degrees = Vector3(0, 249.294, 0)
+mesh = ExtResource("env_log_fence_a")
+
+[node name="CanopyL6" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-23.328, 3.6, -87.714)
+rotation_degrees = Vector3(0, 43.99, 0)
+mesh = ExtResource("env_palm_tall_a")
+
+[node name="WallL0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, 4)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="BankRight" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(11.5, 0, 4)
+mesh = ExtResource("env_terrain_jungle_bank")
+
+[node name="ScatterR0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(21.479, -0.15, -2.786)
+rotation_degrees = Vector3(0, 107.561, 0)
+mesh = ExtResource("env_standing_stone_a")
+
+[node name="CanopyR0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24.479, -0.4, -6.286)
+rotation_degrees = Vector3(0, 183.639, 0)
+mesh = ExtResource("env_palm_tall_a")
+
+[node name="ScatterR1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(13.168, -0.15, -16.357)
+rotation_degrees = Vector3(0, 65.784, 0)
+mesh = ExtResource("env_log_fence_a")
+
+[node name="ScatterR2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(23.871, -0.15, -29.929)
+rotation_degrees = Vector3(0, 347.731, 0)
+mesh = ExtResource("env_torch_post_a")
+
+[node name="CanopyR2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(26.871, -0.4, -33.429)
+rotation_degrees = Vector3(0, 218.27, 0)
+mesh = ExtResource("env_hut_thatch_a")
+
+[node name="ScatterR3" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(19.432, 1.85, -43.5)
+rotation_degrees = Vector3(0, 236.751, 0)
+mesh = ExtResource("env_totem_tall_a")
+
+[node name="ScatterR4" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(18.217, -0.15, -57.071)
+rotation_degrees = Vector3(0, 220.902, 0)
+mesh = ExtResource("env_standing_stone_a")
+
+[node name="CanopyR4" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(21.217, 3.6, -60.571)
+rotation_degrees = Vector3(0, 344.098, 0)
+mesh = ExtResource("env_palm_tall_a")
+
+[node name="ScatterR5" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(14.577, 3.85, -70.643)
+rotation_degrees = Vector3(0, 108.953, 0)
+mesh = ExtResource("env_log_fence_a")
+
+[node name="ScatterR6" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24.339, 3.85, -84.214)
+rotation_degrees = Vector3(0, 141.687, 0)
+mesh = ExtResource("env_torch_post_a")
+
+[node name="CanopyR6" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(27.339, 3.6, -87.714)
+rotation_degrees = Vector3(0, 108.305, 0)
+mesh = ExtResource("env_hut_thatch_a")
+
+[node name="WallR0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, 4)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
