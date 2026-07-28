@@ -46,3 +46,14 @@ func test_mobile_window_is_landscape_and_touch_events_are_independent() -> void:
 	assert_false(
 		ProjectSettings.get_setting("input_devices/pointing/emulate_touch_from_mouse")
 	)
+
+
+## The import/export contract (docs/art/import-export-contract.md) assumes every
+## texture arrives ASTC-compressed on device, which is a project-wide import
+## setting rather than a per-asset one. If this flips off, every asset imported
+## afterwards is silently wrong and nothing else in the pipeline notices.
+func test_astc_vram_compression_is_enabled_for_imported_textures() -> void:
+	assert_true(
+		ProjectSettings.get_setting("rendering/textures/vram_compression/import_etc2_astc"),
+		"ASTC/ETC2 VRAM compression must stay on -- see docs/art/import-export-contract.md"
+	)
