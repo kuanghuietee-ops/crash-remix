@@ -302,3 +302,77 @@ func test_a_hidden_readout_costs_a_release_build_nothing() -> void:
 
 	assert_eq(readout.sample_count(), 0, "a hidden readout must not sample")
 	assert_true(readout.text.is_empty(), "and must not build display strings")
+
+
+func _fixed_rendering_info(
+	draw_calls: int,
+	primitives: int,
+	texture_bytes: int
+) -> Callable:
+	return func(info_id: int) -> int:
+		match info_id:
+			RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME:
+				return draw_calls
+			RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME:
+				return primitives
+			RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED:
+				return texture_bytes
+		return 0
+
+
+func test_texture_memory_reports_megabytes() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	var one_megabyte := 1024 * 1024
+	readout.rendering_info_source = _fixed_rendering_info(
+		0,
+		0,
+		64 * one_megabyte
+	)
+
+	assert_almost_eq(readout.texture_memory_mb(), 64.0, 0.01)
+
+
+func test_budget_status_is_ok_inside_the_typical_budget() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	readout.rendering_info_source = _fixed_rendering_info(100, 140000, 0)
+
+	assert_eq(readout.budget_status(), "OK")
+
+
+func test_budget_status_warns_between_typical_and_peak() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	readout.rendering_info_source = _fixed_rendering_info(150, 140000, 0)
+
+	assert_eq(readout.budget_status(), "OVER-TYPICAL")
+
+
+func test_budget_status_reports_over_peak() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	readout.rendering_info_source = _fixed_rendering_info(100, 300000, 0)
+
+	assert_eq(readout.budget_status(), "OVER-PEAK")
+
+
+func test_the_worst_of_the_two_metrics_wins() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	readout.rendering_info_source = _fixed_rendering_info(200, 140000, 0)
+
+	assert_eq(
+		readout.budget_status(),
+		"OVER-PEAK",
+		"draw calls over peak must not be masked by triangles being fine"
+	)
+
+
+func test_readout_text_carries_the_budget_status_and_texture_memory() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	readout.rendering_info_source = _fixed_rendering_info(
+		100,
+		140000,
+		1024 * 1024
+	)
+
+	var text := readout.readout_text()
+
+	assert_string_contains(text, "TEX")
+	assert_string_contains(text, "OK")

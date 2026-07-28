@@ -1,6 +1,15 @@
 class_name PerfReadout
 extends Label
 
+## Frame budgets come from data/tuning/art_budget.tres (design doc 9.4), not from
+## literals here -- the same rule the gameplay code follows. Loaded once: this
+## runs inside the per-frame readout and must not touch the disk on a refresh.
+const ART_BUDGET_PATH := "res://data/tuning/art_budget.tres"
+const BYTES_PER_MEGABYTE := 1024 * 1024
+const STATUS_OK := "OK"
+const STATUS_OVER_TYPICAL := "OVER-TYPICAL"
+const STATUS_OVER_PEAK := "OVER-PEAK"
+
 # The share of frames the "1% low" figure is measured over. This is the
 # definition of the metric in design doc §9.4 ("1% low >= 50"), not a
 # gameplay value: the readout reports the average frame rate across the
@@ -27,6 +36,7 @@ var rendering_info_source: Callable = Callable()
 # can read them anyway.
 const REFRESH_INTERVAL_S := 0.25
 
+var _art_budget: ArtBudgetTuning = load(ART_BUDGET_PATH)
 var _frame_times_s: Array[float] = []
 var _since_refresh_s := REFRESH_INTERVAL_S
 
@@ -101,6 +111,32 @@ func objects_in_frame() -> int:
 	)
 
 
+func texture_memory_mb() -> float:
+	return float(
+		_rendering_info(RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED)
+	) / float(BYTES_PER_MEGABYTE)
+
+
+## The worst of the two whole-frame metrics wins: draw calls over peak must not
+## be hidden by a triangle count that happens to be fine.
+func budget_status() -> String:
+	if _art_budget == null:
+		return STATUS_OK
+	var calls := draw_calls()
+	var triangles := primitives()
+	if (
+		calls > _art_budget.frame_draw_calls_peak
+		or triangles > _art_budget.frame_triangles_peak
+	):
+		return STATUS_OVER_PEAK
+	if (
+		calls > _art_budget.frame_draw_calls_typical
+		or triangles > _art_budget.frame_triangles_typical
+	):
+		return STATUS_OVER_TYPICAL
+	return STATUS_OK
+
+
 ## The 3D render scale §9.4 watches fall toward 0.7 under load. The readout
 ## only observes it; nothing in this project drives it yet.
 func render_scale() -> float:
@@ -112,7 +148,10 @@ func render_scale() -> float:
 
 func readout_text() -> String:
 	return (
-		"FPS %.1f  1%% LOW %.1f  DRAW %d  PRIM %d  OBJ %d  SCALE %.2f"
+		(
+			"FPS %.1f  1%% LOW %.1f  DRAW %d  PRIM %d  OBJ %d  "
+			+ "SCALE %.2f  TEX %.1fMB  %s"
+		)
 		% [
 			sampled_average_fps(),
 			sampled_one_percent_low_fps(),
@@ -120,6 +159,8 @@ func readout_text() -> String:
 			primitives(),
 			objects_in_frame(),
 			render_scale(),
+			texture_memory_mb(),
+			budget_status(),
 		]
 	)
 
