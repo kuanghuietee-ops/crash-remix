@@ -71,6 +71,8 @@ class BudgetLoadingTests(unittest.TestCase):
             self.assertEqual(budget.min_triangles["enemy"], 3000)
             self.assertEqual(budget.min_triangles["prop"], 100)
             self.assertEqual(budget.max_triangles["prop"], 2500)
+            self.assertEqual(budget.min_triangles["rideable"], 6000)
+            self.assertEqual(budget.max_triangles["rideable"], 10000)
             self.assertEqual(budget.max_texture_dimension_px, 2048)
 
 
@@ -110,6 +112,15 @@ class TriangleBudgetTests(unittest.TestCase):
             root = make_repo(directory)
             (root / "assets/models/props/SM_crate_standard.glb").write_bytes(
                 build_glb(1996)
+            )
+
+            self.assertEqual(find_violations(root), [])
+
+    def test_the_operator_approved_rideable_band_accepts_the_hog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/rideables/SK_hog.glb").write_bytes(
+                build_glb(8000)
             )
 
             self.assertEqual(find_violations(root), [])

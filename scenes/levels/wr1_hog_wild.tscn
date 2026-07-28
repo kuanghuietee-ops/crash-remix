@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
 [ext_resource type="Resource" path="res://data/tuning/levels/hog_wild.tres" id="2_meta"]
@@ -16,6 +16,8 @@
 [ext_resource type="PackedScene" path="res://scenes/segments/hog_crescendo.tscn" id="14_crescendo"]
 [ext_resource type="PackedScene" path="res://scenes/segments/hog_dismount_finish.tscn" id="15_finish_segment"]
 [ext_resource type="Script" path="res://src/gameplay/ride/hog_mount.gd" id="16_hog_mount"]
+[ext_resource type="PackedScene" path="res://assets/models/rideables/SK_hog.glb" id="17_hog_model"]
+[ext_resource type="Script" path="res://src/visual/ride/hog_visual_driver.gd" id="18_hog_visual"]
 
 [sub_resource type="Environment" id="Environment_hog"]
 background_mode = 1
@@ -136,14 +138,24 @@ collision_mask = 1
 shape = SubResource("Shape_ride_trigger")
 
 [node name="HogVisual" type="Node3D" parent="HogRide"]
-position = Vector3(0, 0.65, 0)
+position = Vector3(0, 1.07, 0)
 
 [node name="Capsule" type="MeshInstance3D" parent="HogRide/HogVisual"]
+visible = false
 position = Vector3(0, -0.45, 0)
 rotation_degrees = Vector3(90, 0, 0)
 mesh = SubResource("Mesh_hog_graybox")
 
+[node name="HogModel" parent="HogRide/HogVisual" instance=ExtResource("17_hog_model")]
+position = Vector3(0, -1.07, 0)
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="VisualDriver" type="Node" parent="HogRide/HogVisual"]
+script = ExtResource("18_hog_visual")
+model_path = NodePath("../HogModel")
+
 [node name="GrayboxNotice" type="Label3D" parent="HogRide/HogVisual"]
+visible = false
 position = Vector3(0, 1.55, 0)
 text = "HOG — GRAYBOX CAPSULE"
 font_size = 44

@@ -10,6 +10,8 @@ extends EditorScenePostImport
 
 const LOOPING_ANIMATION_SUFFIXES := [
 	"_walk",
+	"_dart",
+	"_return",
 	"_idle",
 	"_run",
 	"_crawl",

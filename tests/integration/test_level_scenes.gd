@@ -1237,6 +1237,53 @@ func test_hog_wild_mounted_hog_visual_rests_on_player_floor() -> void:
 	)
 
 
+func test_hog_wild_uses_the_rigged_hog_and_run_animation_while_mounted() -> void:
+	var level := await _configured_hog_wild()
+	if level == null:
+		return
+	var player := level.get_node_or_null(
+		"Player"
+	) as CharacterBody3D
+	var hog_visual := player.get_node_or_null(
+		"HogVisual"
+	) as Node3D
+	var proxy := hog_visual.get_node_or_null(
+		"Capsule"
+	) as MeshInstance3D
+	var model := hog_visual.get_node_or_null("HogModel")
+	var driver := hog_visual.get_node_or_null("VisualDriver")
+	assert_not_null(player)
+	assert_not_null(hog_visual)
+	assert_not_null(proxy)
+	assert_not_null(model)
+	assert_not_null(driver)
+	if (
+		player == null
+		or hog_visual == null
+		or proxy == null
+		or model == null
+		or driver == null
+	):
+		return
+	assert_false(proxy.visible, "the old capsule must be a bounds proxy only")
+	var animation_players := model.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_eq(animation_players.size(), 1)
+	if animation_players.size() != 1:
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	await wait_process_frames(2)
+	assert_eq(
+		animation_player.current_animation,
+		"A_hog_run",
+		"the mounted forced run must visibly cycle the hog gait"
+	)
+
+
 func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
 	var level := await _configured_hog_wild()
 	if level == null:
@@ -1922,6 +1969,61 @@ func test_papu_arena_advances_a_phase_per_real_strike_volume() -> void:
 	assert_true(
 		arena.call("is_defeated"),
 		"three cleared phases must end the fight"
+	)
+
+
+func test_papu_arena_uses_the_rigged_boss_and_slam_animation() -> void:
+	var level := await _configured_papu_papu()
+	if level == null:
+		return
+	var arena := level.get_node_or_null("PapuArena")
+	var pivot := level.get_node_or_null("PapuArena/PapuVisual") as Node3D
+	var model := level.get_node_or_null(
+		"PapuArena/PapuVisual/PapuModel"
+	)
+	var driver := level.get_node_or_null(
+		"PapuArena/PapuVisual/VisualDriver"
+	)
+	assert_not_null(arena)
+	assert_not_null(pivot)
+	assert_not_null(model)
+	assert_not_null(driver)
+	if (
+		arena == null
+		or pivot == null
+		or model == null
+		or driver == null
+	):
+		return
+	var animation_players := model.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_eq(animation_players.size(), 1)
+	if animation_players.size() != 1:
+		return
+	assert_true(
+		pivot.global_position.is_equal_approx(
+			arena.call("visual_anchor_position")
+		),
+		"Papu's feet must follow the active phase floor"
+	)
+	var catalog := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	arena.call(
+		"advance_runtime",
+		catalog.boss_papu.slam_period_s
+	)
+	await wait_process_frames(2)
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(
+		animation_player.current_animation,
+		"A_papu_slam",
+		"each emitted shockwave must visibly come from Papu's slam"
 	)
 
 

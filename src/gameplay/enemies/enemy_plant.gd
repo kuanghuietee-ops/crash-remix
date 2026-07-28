@@ -4,6 +4,24 @@ extends EnemyBase
 var _state_deadline_s: float = -1.0
 
 
+func _ready() -> void:
+	super._ready()
+	var visual_driver := _visual_driver()
+	if (
+		visual_driver != null
+		and visual_driver.has_signal(&"defeat_finished")
+		and not visual_driver.is_connected(
+			&"defeat_finished",
+			_on_defeat_visual_finished
+		)
+	):
+		visual_driver.connect(
+			&"defeat_finished",
+			_on_defeat_visual_finished
+		)
+	_sync_visual_state()
+
+
 func enemy_kind() -> StringName:
 	return &"plant"
 
@@ -85,3 +103,42 @@ func resolve_contact(
 func _reset_behavior_state() -> void:
 	_state_deadline_s = -1.0
 	_set_behavior_state(STATE_DORMANT)
+
+
+func _set_behavior_state(state: StringName) -> void:
+	super._set_behavior_state(state)
+	_sync_visual_state()
+
+
+func _set_defeated(defeated: bool) -> void:
+	super._set_defeated(defeated)
+	var visual_driver := _visual_driver()
+	if visual_driver == null:
+		return
+	if defeated:
+		visible = true
+		if visual_driver.has_method("play_defeat"):
+			visual_driver.call("play_defeat")
+	elif visual_driver.has_method("reset_visual"):
+		visual_driver.call("reset_visual")
+
+
+func _sync_visual_state() -> void:
+	var visual_driver := _visual_driver()
+	if (
+		visual_driver != null
+		and visual_driver.has_method("set_behavior_state")
+	):
+		visual_driver.call(
+			"set_behavior_state",
+			behavior_state()
+		)
+
+
+func _visual_driver() -> Node:
+	return get_node_or_null("VisualDriver")
+
+
+func _on_defeat_visual_finished() -> void:
+	if is_defeated():
+		visible = false

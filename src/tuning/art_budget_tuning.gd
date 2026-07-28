@@ -8,7 +8,8 @@ extends Resource
 
 ## Per-asset triangle caps. §9.4 specifies hero, enemy and boss bands. The
 ## operator approved the prop band after measuring the first real crate at
-## 1,996 triangles. Kit pieces and rideables remain deliberately unbudgeted.
+## 1,996 triangles, then approved 6,000-10,000 for rideables before the first
+## hog. Kit pieces remain deliberately unbudgeted.
 @export var hero_min_triangles: int = 0
 @export var hero_max_triangles: int = 0
 @export var enemy_min_triangles: int = 0
@@ -17,6 +18,8 @@ extends Resource
 @export var boss_max_triangles: int = 0
 @export var prop_min_triangles: int = 0
 @export var prop_max_triangles: int = 0
+@export var rideable_min_triangles: int = 0
+@export var rideable_max_triangles: int = 0
 
 ## Texture rules. §9.4: 1-2 x 2048 atlases + trim sheet per kit, ASTC.
 @export var max_texture_dimension_px: int = 0
@@ -42,6 +45,8 @@ func max_triangles_for(category: StringName) -> int:
 			return boss_max_triangles
 		&"prop":
 			return prop_max_triangles
+		&"rideable":
+			return rideable_max_triangles
 	return UNBUDGETED
 
 
@@ -55,4 +60,6 @@ func min_triangles_for(category: StringName) -> int:
 			return boss_min_triangles
 		&"prop":
 			return prop_min_triangles
+		&"rideable":
+			return rideable_min_triangles
 	return UNBUDGETED

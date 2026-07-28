@@ -1,6 +1,8 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/enemies/enemy_plant.gd" id="1_plant"]
+[ext_resource type="PackedScene" path="res://assets/models/enemies/SK_plant.glb" id="2_model"]
+[ext_resource type="Script" path="res://src/visual/enemies/plant_visual_driver.gd" id="3_visual"]
 
 [sub_resource type="StandardMaterial3D" id="Material_stem"]
 albedo_color = Color(0.12, 0.52, 0.18, 1)
@@ -26,11 +28,12 @@ emission = Color(1, 0.25, 0.02, 1)
 emission_energy_multiplier = 2.0
 
 [sub_resource type="StandardMaterial3D" id="Material_active"]
+transparency = 1
 shading_mode = 0
-albedo_color = Color(1, 0.08, 0.12, 0.9)
+albedo_color = Color(1, 0.08, 0.12, 0.18)
 emission_enabled = true
 emission = Color(1, 0.02, 0.04, 1)
-emission_energy_multiplier = 2.8
+emission_energy_multiplier = 1.8
 
 [sub_resource type="CylinderMesh" id="Mesh_body"]
 material = SubResource("Material_stem")
@@ -69,6 +72,55 @@ size = Vector3(1.48, 1.35, 1.48)
 [sub_resource type="BoxShape3D" id="Shape_attack"]
 size = Vector3(1.48, 1.35, 1.48)
 
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_bite"]
+emission_shape = 3
+emission_box_extents = Vector3(0.45, 0.22, 0.18)
+direction = Vector3(0, 0.25, -1)
+spread = 48.0
+initial_velocity_min = 1.8
+initial_velocity_max = 3.2
+gravity = Vector3(0, -2.4, 0)
+angular_velocity_min = -500.0
+angular_velocity_max = 500.0
+scale_min = 0.6
+scale_max = 1.2
+color = Color(1, 0.26, 0.12, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_bite"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 0.38, 0.14, 1)
+emission_enabled = true
+emission = Color(0.8, 0.04, 0.02, 1)
+emission_energy_multiplier = 1.25
+
+[sub_resource type="BoxMesh" id="Mesh_bite"]
+material = SubResource("Material_bite")
+size = Vector3(0.045, 0.045, 0.22)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_defeat"]
+emission_shape = 3
+emission_box_extents = Vector3(0.58, 0.62, 0.42)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 1.5
+initial_velocity_max = 3.5
+gravity = Vector3(0, -4.0, 0)
+angular_velocity_min = -540.0
+angular_velocity_max = 540.0
+scale_min = 0.7
+scale_max = 1.35
+color = Color(0.25, 0.9, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_defeat"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(0.35, 0.95, 0.20, 1)
+
+[sub_resource type="QuadMesh" id="Mesh_defeat"]
+material = SubResource("Material_defeat")
+size = Vector2(0.16, 0.07)
+
 [node name="Plant" type="AnimatableBody3D"]
 collision_layer = 3
 collision_mask = 1
@@ -86,25 +138,65 @@ monitoring = false
 shape = SubResource("Shape_attack")
 
 [node name="Visual" type="MeshInstance3D" parent="."]
+visible = false
 mesh = SubResource("Mesh_body")
 
 [node name="Head" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(0, 0.48, -0.12)
 mesh = SubResource("Mesh_head")
 
 [node name="Mouth" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(0, 0.48, -0.73)
 mesh = SubResource("Mesh_mouth")
 
 [node name="LeftTooth" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(-0.22, 0.38, -0.82)
 rotation_degrees = Vector3(0, 0, 180)
 mesh = SubResource("Mesh_tooth")
 
 [node name="RightTooth" type="MeshInstance3D" parent="."]
+visible = false
 position = Vector3(0.22, 0.38, -0.82)
 rotation_degrees = Vector3(0, 0, 180)
 mesh = SubResource("Mesh_tooth")
+
+[node name="ModelPivot" type="Node3D" parent="."]
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="PlantModel" parent="ModelPivot" instance=ExtResource("2_model")]
+
+[node name="VisualDriver" type="Node3D" parent="."]
+position = Vector3(0, 0.72, 0)
+script = ExtResource("3_visual")
+model_path = NodePath("../ModelPivot/PlantModel")
+
+[node name="BiteBurst" type="GPUParticles3D" parent="VisualDriver"]
+position = Vector3(0, 0.42, -0.46)
+emitting = false
+amount = 12
+lifetime = 0.36
+one_shot = true
+explosiveness = 1.0
+randomness = 0.32
+visibility_aabb = AABB(-3, -3, -3, 6, 6, 6)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_bite")
+draw_pass_1 = SubResource("Mesh_bite")
+
+[node name="DefeatBurst" type="GPUParticles3D" parent="VisualDriver"]
+emitting = false
+amount = 18
+lifetime = 0.72
+one_shot = true
+explosiveness = 1.0
+randomness = 0.42
+visibility_aabb = AABB(-4, -4, -4, 8, 8, 8)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_defeat")
+draw_pass_1 = SubResource("Mesh_defeat")
 
 [node name="TelegraphCue" type="MeshInstance3D" parent="."]
 position = Vector3(0, -0.64, 0)

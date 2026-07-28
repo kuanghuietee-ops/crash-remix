@@ -302,6 +302,22 @@ func _current_strike_origin() -> Vector3:
 	return trigger.global_position if trigger != null else global_position
 
 
+## Read-only visual seam: Papu stands on the active phase floor while the
+## gameplay strike volume remains centred above it.
+func visual_anchor_position() -> Vector3:
+	var origin := _current_strike_origin()
+	return Vector3(
+		origin.x,
+		origin.y - _strike_height_offset_m(),
+		origin.z
+	)
+
+
+## Read-only visual seam used to fire one authored slam for each real ripple.
+func slams_emitted() -> int:
+	return _slams_emitted
+
+
 func current_phase() -> int:
 	return _flow.current_phase()
 
