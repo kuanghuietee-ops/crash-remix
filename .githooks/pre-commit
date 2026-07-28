@@ -8,4 +8,5 @@ python3 scripts/lint_gameplay_numbers.py
 python3 scripts/check_content_vocabulary.py
 python3 scripts/lint_traversal_authoring.py
 python3 scripts/lint_level_authoring.py
+python3 scripts/lint_art_budgets.py
 python3 -m unittest discover -s tests -p 'test_*.py'
