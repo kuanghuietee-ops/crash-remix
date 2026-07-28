@@ -18,6 +18,8 @@ const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
 const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
+const HIT := &"A_crash_hit"
+const DEATH := &"A_crash_death_knockout"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
@@ -38,6 +40,8 @@ const STATE_RIDE := PlayerStateMachineType.STATE_RIDE
 @export var facing_turn_speed_radians_per_second := 24.0
 @export_range(0.0, 30.0, 0.25, "or_greater")
 var bored_idle_delay_s := 5.0
+@export_range(0.0, 0.5, 0.01)
+var transition_blend_s := 0.06
 
 var _controller: CharacterBody3D
 var _model: Node3D
@@ -47,6 +51,7 @@ var _airborne_clip := JUMP
 var _spinning: bool
 var _current_clip := &""
 var _idle_elapsed_s := 0.0
+var _hit_reaction_active: bool
 
 
 func _ready() -> void:
@@ -67,6 +72,7 @@ func _ready() -> void:
 		set_process(false)
 		return
 	_animation_player = animation_players[0] as AnimationPlayer
+	_animation_player.animation_finished.connect(_on_animation_finished)
 	_state = _controller.call("current_state")
 	_spinning = _controller.call("is_spinning")
 	_controller.connect(
@@ -81,6 +87,8 @@ func _ready() -> void:
 		&"movement_impulse_applied",
 		Callable(self, "_on_movement_impulse_applied")
 	)
+	_controller.connect(&"hit_received", Callable(self, "_on_hit_received"))
+	_controller.connect(&"respawned", Callable(self, "_on_respawned"))
 	_refresh()
 
 
@@ -142,6 +150,15 @@ static func idle_elapsed_after(
 	return maxf(current_s, 0.0) + maxf(delta_s, 0.0)
 
 
+static func reaction_clip_for(
+	respawning: bool,
+	hit_active: bool
+) -> StringName:
+	if respawning:
+		return DEATH
+	return HIT if hit_active else &""
+
+
 static func clip_for_impulse(impulse: StringName) -> StringName:
 	if impulse == PlayerFrameDecisionType.IMPULSE_DOUBLE_JUMP:
 		return DOUBLE_JUMP
@@ -193,8 +210,37 @@ func _on_movement_impulse_applied(impulse: StringName) -> void:
 	_refresh()
 
 
+func _on_hit_received(fatal: bool) -> void:
+	_hit_reaction_active = not fatal
+	_idle_elapsed_s = 0.0
+	_refresh()
+
+
+func _on_respawned() -> void:
+	_hit_reaction_active = false
+	_airborne_clip = JUMP
+	_state = _controller.call("current_state")
+	_spinning = _controller.call("is_spinning")
+	_refresh()
+
+
+func _on_animation_finished(animation_name: StringName) -> void:
+	if animation_name != HIT:
+		return
+	_hit_reaction_active = false
+	_refresh()
+
+
 func _refresh(delta_s := 0.0) -> void:
 	if _controller == null or _animation_player == null:
+		return
+	var reaction_clip := reaction_clip_for(
+		_controller.call("is_respawning"),
+		_hit_reaction_active
+	)
+	if not reaction_clip.is_empty():
+		_idle_elapsed_s = 0.0
+		_play(reaction_clip)
 		return
 	var moving := not Vector2(
 		_controller.velocity.x,
@@ -244,5 +290,8 @@ func _play(clip: StringName) -> void:
 	if not _animation_player.has_animation(clip):
 		push_error("Crash model is missing animation %s" % clip)
 		return
-	_animation_player.play(clip)
+	_animation_player.play(
+		clip,
+		maxf(transition_blend_s, 0.0)
+	)
 	_current_clip = clip

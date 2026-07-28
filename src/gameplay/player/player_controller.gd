@@ -4,6 +4,7 @@ extends CharacterBody3D
 signal state_changed(previous_state: StringName, state: StringName)
 signal spin_changed(active: bool)
 signal movement_impulse_applied(impulse: StringName)
+signal hit_received(fatal: bool)
 signal body_slam_impacted
 signal respawn_started
 signal respawned
@@ -249,8 +250,10 @@ func receive_hit(now_s: float) -> bool:
 			+ _economy_tuning.mask_hit_invulnerability_s
 		)
 		_emit_mask_state()
+		hit_received.emit(false)
 		return false
 	request_respawn(now_s)
+	hit_received.emit(true)
 	return true
 
 

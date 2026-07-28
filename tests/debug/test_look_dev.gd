@@ -20,6 +20,8 @@ const CRASH_CORE_CLIPS := [
 	&"A_crash_spin",
 	&"A_crash_slide",
 	&"A_crash_slam",
+	&"A_crash_hit",
+	&"A_crash_death_knockout",
 	&"A_crash_wall_run",
 	&"A_crash_grind",
 	&"A_crash_swing",
@@ -334,6 +336,15 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 			&"A_crash_swing",
 		]:
 			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		if clip_name in [
+			&"A_crash_hit",
+			&"A_crash_death_knockout",
+		]:
+			assert_eq(
+				clip.loop_mode,
+				Animation.LOOP_NONE,
+				"%s must remain a one-shot reaction" % clip_name
+			)
 
 
 func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void:
@@ -548,6 +559,58 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 		slam_windup[&"hand_l"].distance_to(slam_impact[&"hand_l"]),
 		0.10,
 		"the stomp must carry the hands from windup into impact"
+	)
+
+	var hit := animation_player.get_animation(&"A_crash_hit")
+	var hit_start := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_hit",
+		hit.length * 0.05
+	)
+	var hit_recoil := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_hit",
+		hit.length * 0.55
+	)
+	assert_gt(
+		hit_start[&"hand_l"].distance_to(hit_recoil[&"hand_l"]),
+		0.10,
+		"an absorbed hit must throw the hands into a readable recoil"
+	)
+	assert_gt(
+		hit_start[&"head_rotation"].angle_to(
+			hit_recoil[&"head_rotation"]
+		),
+		deg_to_rad(10.0),
+		"an absorbed hit must snap the head away from danger"
+	)
+
+	var death := animation_player.get_animation(
+		&"A_crash_death_knockout"
+	)
+	var death_start := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_death_knockout",
+		death.length * 0.05
+	)
+	var death_end := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_death_knockout",
+		death.length * 0.95
+	)
+	assert_gt(
+		death_start[&"head"].distance_to(death_end[&"head"]),
+		0.18,
+		"the first death gag must visibly collapse the whole silhouette"
+	)
+	assert_gt(
+		death_start[&"foot_l"].distance_to(death_end[&"foot_l"]),
+		0.10,
+		"the knockout must kick the feet instead of freezing locomotion"
 	)
 
 	var wall_run := animation_player.get_animation(&"A_crash_wall_run")

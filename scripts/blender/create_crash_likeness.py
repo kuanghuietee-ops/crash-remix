@@ -8,7 +8,7 @@ Run from the repository root:
 The silhouette was reviewed in uniform clay before this color pass.  This
 stage preserves that geometry while adding a self-contained, matte palette
 through vertex colors: one draw-call material, no copied textures, a
-proportion-matched Rigify basic-human skeleton, and twelve authored gameplay
+proportion-matched Rigify basic-human skeleton, and fourteen authored gameplay
 and personality actions plus idle.  The editable Blender source and
 inspection renders stay under build/; the shipping GLB is written to the
 hero-character budget directory.
@@ -38,6 +38,8 @@ DOUBLE_JUMP_ACTION_NAME = "A_crash_double_jump"
 SPIN_ACTION_NAME = "A_crash_spin"
 SLIDE_ACTION_NAME = "A_crash_slide"
 SLAM_ACTION_NAME = "A_crash_slam"
+HIT_ACTION_NAME = "A_crash_hit"
+DEATH_ACTION_NAME = "A_crash_death_knockout"
 WALL_RUN_ACTION_NAME = "A_crash_wall_run"
 GRIND_ACTION_NAME = "A_crash_grind"
 SWING_ACTION_NAME = "A_crash_swing"
@@ -51,6 +53,8 @@ CORE_ACTION_NAMES = (
     SPIN_ACTION_NAME,
     SLIDE_ACTION_NAME,
     SLAM_ACTION_NAME,
+    HIT_ACTION_NAME,
+    DEATH_ACTION_NAME,
     WALL_RUN_ACTION_NAME,
     GRIND_ACTION_NAME,
     SWING_ACTION_NAME,
@@ -72,6 +76,8 @@ DOUBLE_JUMP_LAST_FRAME = 19
 SPIN_LAST_FRAME = 13
 SLIDE_LAST_FRAME = 17
 SLAM_LAST_FRAME = 15
+HIT_LAST_FRAME = 9
+DEATH_LAST_FRAME = 9
 WALL_RUN_LAST_FRAME = 17
 GRIND_LAST_FRAME = 25
 SWING_LAST_FRAME = 25
@@ -1584,6 +1590,155 @@ def create_slam(rig: bpy.types.Object) -> bpy.types.Action:
     return finish_action(action, "attack", False)
 
 
+def create_hit(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, HIT_ACTION_NAME, HIT_LAST_FRAME)
+    poses = {
+        IDLE_FIRST_FRAME: {
+            "torso": (4.0, 0.0, 0.0),
+            "head": (-2.0, 0.0, 0.0),
+            "thigh_fk.L": (-4.0, 0.0, -4.0),
+            "thigh_fk.R": (-4.0, 0.0, 4.0),
+            "shin_fk.L": (8.0, 0.0, 0.0),
+            "shin_fk.R": (8.0, 0.0, 0.0),
+            "foot_fk.L": (-4.0, 0.0, 0.0),
+            "foot_fk.R": (-4.0, 0.0, 0.0),
+            "upper_arm_fk.L": (12.0, -12.0, -4.0),
+            "upper_arm_fk.R": (12.0, 12.0, 4.0),
+            "forearm_fk.L": (12.0, 0.0, -4.0),
+            "forearm_fk.R": (12.0, 0.0, 4.0),
+        },
+        4: {
+            "torso": (-24.0, 0.0, -14.0),
+            "head": (36.0, 0.0, 18.0),
+            "hips": (0.0, 0.0, 10.0),
+            "thigh_fk.L": (25.0, 0.0, -12.0),
+            "thigh_fk.R": (-20.0, 0.0, 12.0),
+            "shin_fk.L": (35.0, 0.0, 0.0),
+            "shin_fk.R": (18.0, 0.0, 0.0),
+            "foot_fk.L": (-12.0, 0.0, 0.0),
+            "foot_fk.R": (15.0, 0.0, 0.0),
+            "upper_arm_fk.L": (72.0, -48.0, -32.0),
+            "upper_arm_fk.R": (56.0, 50.0, 38.0),
+            "forearm_fk.L": (48.0, 0.0, -8.0),
+            "forearm_fk.R": (40.0, 0.0, 8.0),
+        },
+        7: {
+            "torso": (-10.0, 0.0, 10.0),
+            "head": (14.0, 0.0, -12.0),
+            "hips": (0.0, 0.0, -6.0),
+            "thigh_fk.L": (-12.0, 0.0, -8.0),
+            "thigh_fk.R": (16.0, 0.0, 8.0),
+            "shin_fk.L": (18.0, 0.0, 0.0),
+            "shin_fk.R": (30.0, 0.0, 0.0),
+            "foot_fk.L": (8.0, 0.0, 0.0),
+            "foot_fk.R": (-10.0, 0.0, 0.0),
+            "upper_arm_fk.L": (42.0, -38.0, -20.0),
+            "upper_arm_fk.R": (58.0, 40.0, 24.0),
+            "forearm_fk.L": (34.0, 0.0, -7.0),
+            "forearm_fk.R": (42.0, 0.0, 7.0),
+        },
+        HIT_LAST_FRAME: {
+            "torso": (6.0, 0.0, 2.0),
+            "head": (-4.0, 0.0, -2.0),
+            "thigh_fk.L": (-4.0, 0.0, -4.0),
+            "thigh_fk.R": (-2.0, 0.0, 4.0),
+            "shin_fk.L": (10.0, 0.0, 0.0),
+            "shin_fk.R": (8.0, 0.0, 0.0),
+            "foot_fk.L": (-5.0, 0.0, 0.0),
+            "foot_fk.R": (-4.0, 0.0, 0.0),
+            "upper_arm_fk.L": (18.0, -18.0, -7.0),
+            "upper_arm_fk.R": (20.0, 18.0, 8.0),
+            "forearm_fk.L": (18.0, 0.0, -5.0),
+            "forearm_fk.R": (20.0, 0.0, 5.0),
+        },
+    }
+    root_locations = {
+        IDLE_FIRST_FRAME: (0.0, 0.0, 0.0),
+        4: (0.0, 0.0, 0.055),
+        7: (0.0, 0.0, 0.025),
+        HIT_LAST_FRAME: (0.0, 0.0, 0.0),
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, root_locations[frame])
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "reaction", False)
+
+
+def create_death_knockout(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, DEATH_ACTION_NAME, DEATH_LAST_FRAME)
+    poses = {
+        IDLE_FIRST_FRAME: {
+            "torso": (-8.0, 0.0, 0.0),
+            "head": (12.0, 0.0, 0.0),
+            "thigh_fk.L": (12.0, 0.0, -6.0),
+            "thigh_fk.R": (12.0, 0.0, 6.0),
+            "shin_fk.L": (18.0, 0.0, 0.0),
+            "shin_fk.R": (18.0, 0.0, 0.0),
+            "upper_arm_fk.L": (35.0, -30.0, -18.0),
+            "upper_arm_fk.R": (35.0, 30.0, 18.0),
+            "forearm_fk.L": (24.0, 0.0, -6.0),
+            "forearm_fk.R": (24.0, 0.0, 6.0),
+        },
+        3: {
+            "torso": (-30.0, 0.0, -18.0),
+            "head": (35.0, 0.0, 20.0),
+            "hips": (0.0, 0.0, 12.0),
+            "thigh_fk.L": (48.0, 0.0, -24.0),
+            "thigh_fk.R": (-18.0, 0.0, 24.0),
+            "shin_fk.L": (18.0, 0.0, 0.0),
+            "shin_fk.R": (62.0, 0.0, 0.0),
+            "foot_fk.L": (-20.0, 0.0, 0.0),
+            "foot_fk.R": (18.0, 0.0, 0.0),
+            "upper_arm_fk.L": (108.0, -58.0, -40.0),
+            "upper_arm_fk.R": (92.0, 60.0, 44.0),
+            "forearm_fk.L": (58.0, 0.0, -10.0),
+            "forearm_fk.R": (48.0, 0.0, 10.0),
+        },
+        6: {
+            "root": (0.0, 38.0, 0.0),
+            "torso": (18.0, 0.0, 18.0),
+            "head": (-18.0, 0.0, -20.0),
+            "hips": (0.0, 0.0, -12.0),
+            "thigh_fk.L": (-32.0, 0.0, -28.0),
+            "thigh_fk.R": (42.0, 0.0, 28.0),
+            "shin_fk.L": (78.0, 0.0, 0.0),
+            "shin_fk.R": (22.0, 0.0, 0.0),
+            "foot_fk.L": (-35.0, 0.0, 0.0),
+            "foot_fk.R": (16.0, 0.0, 0.0),
+            "upper_arm_fk.L": (82.0, -64.0, -48.0),
+            "upper_arm_fk.R": (112.0, 62.0, 46.0),
+            "forearm_fk.L": (42.0, 0.0, -12.0),
+            "forearm_fk.R": (62.0, 0.0, 12.0),
+        },
+        DEATH_LAST_FRAME: {
+            "root": (0.0, 72.0, 0.0),
+            "torso": (45.0, 0.0, 12.0),
+            "head": (-30.0, 0.0, -14.0),
+            "hips": (0.0, 0.0, -8.0),
+            "thigh_fk.L": (-62.0, 0.0, -24.0),
+            "thigh_fk.R": (-18.0, 0.0, 26.0),
+            "shin_fk.L": (116.0, 0.0, 0.0),
+            "shin_fk.R": (72.0, 0.0, 0.0),
+            "foot_fk.L": (-48.0, 0.0, 0.0),
+            "foot_fk.R": (-28.0, 0.0, 0.0),
+            "upper_arm_fk.L": (76.0, -68.0, -55.0),
+            "upper_arm_fk.R": (96.0, 66.0, 52.0),
+            "forearm_fk.L": (48.0, 0.0, -12.0),
+            "forearm_fk.R": (58.0, 0.0, 12.0),
+        },
+    }
+    root_locations = {
+        IDLE_FIRST_FRAME: (0.0, 0.0, 0.0),
+        3: (0.0, 0.0, 0.12),
+        6: (0.0, 0.0, 0.22),
+        DEATH_LAST_FRAME: (0.0, 0.0, 0.34),
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, root_locations[frame])
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "death", False)
+
+
 def create_wall_run(rig: bpy.types.Object) -> bpy.types.Action:
     action = begin_action(rig, WALL_RUN_ACTION_NAME, WALL_RUN_LAST_FRAME)
     for frame in (IDLE_FIRST_FRAME, 5, 9, 13, WALL_RUN_LAST_FRAME):
@@ -1793,6 +1948,8 @@ def create_animation_set(
         SPIN_ACTION_NAME: create_spin(rig),
         SLIDE_ACTION_NAME: create_slide(rig),
         SLAM_ACTION_NAME: create_slam(rig),
+        HIT_ACTION_NAME: create_hit(rig),
+        DEATH_ACTION_NAME: create_death_knockout(rig),
         WALL_RUN_ACTION_NAME: create_wall_run(rig),
         GRIND_ACTION_NAME: create_grind(rig),
         SWING_ACTION_NAME: create_swing(rig),
@@ -1895,6 +2052,7 @@ def validate_action_poses(
         (CRAWL_ACTION_NAME, 7, 0.140),
         (CRAWL_ACTION_NAME, 19, 0.140),
         (CRAWL_ACTION_NAME, CRAWL_LAST_FRAME, 0.140),
+        (DEATH_ACTION_NAME, DEATH_LAST_FRAME, 0.250),
         (SLIDE_ACTION_NAME, 5, 0.140),
         (SLIDE_ACTION_NAME, 12, 0.140),
         (SLIDE_ACTION_NAME, SLIDE_LAST_FRAME, 0.140),
@@ -2155,6 +2313,8 @@ def create_inspection_previews(
         SPIN_ACTION_NAME: 7,
         SLIDE_ACTION_NAME: 12,
         SLAM_ACTION_NAME: 10,
+        HIT_ACTION_NAME: 4,
+        DEATH_ACTION_NAME: DEATH_LAST_FRAME,
         WALL_RUN_ACTION_NAME: 5,
         GRIND_ACTION_NAME: 7,
         SWING_ACTION_NAME: 7,
@@ -2175,6 +2335,13 @@ def create_inspection_previews(
     scene.frame_set(12)
     scene.render.filepath = str(
         PREVIEW_ROOT / f"{SLIDE_ACTION_NAME}_pose_side.png"
+    )
+    bpy.ops.render.render(write_still=True)
+
+    rig.animation_data.action = bpy.data.actions[DEATH_ACTION_NAME]
+    scene.frame_set(DEATH_LAST_FRAME)
+    scene.render.filepath = str(
+        PREVIEW_ROOT / f"{DEATH_ACTION_NAME}_pose_side.png"
     )
     bpy.ops.render.render(write_still=True)
 

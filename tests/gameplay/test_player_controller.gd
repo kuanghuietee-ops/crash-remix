@@ -95,6 +95,38 @@ func test_controller_reports_applied_impulses_to_visual_consumers() -> void:
 	assert_eq(observed, [&"jump"])
 
 
+func test_hit_signal_distinguishes_mask_recoil_from_fatal_damage() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	assert_true(
+		controller.has_signal("hit_received"),
+		"animation needs one semantic reaction signal from the damage choke point"
+	)
+	if not controller.has_signal("hit_received"):
+		return
+	var fatal_results: Array[bool] = []
+	controller.connect(
+		&"hit_received",
+		func(fatal: bool) -> void:
+			fatal_results.append(fatal)
+	)
+	var absorbed_at_s := 3.0
+	controller.call("grant_mask", absorbed_at_s)
+
+	assert_false(controller.call("receive_hit", absorbed_at_s))
+	assert_true(controller.call(
+		"receive_hit",
+		absorbed_at_s + _economy.mask_hit_invulnerability_s
+	))
+	assert_eq(
+		fatal_results,
+		[false, true],
+		"the visual hook must distinguish recoil from the knockout gag"
+	)
+
+
 func test_chase_auto_run_expires_after_authored_opening_window() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():

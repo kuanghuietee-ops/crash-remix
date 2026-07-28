@@ -11,6 +11,8 @@ const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
 const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
+const HIT := &"A_crash_hit"
+const DEATH := &"A_crash_death_knockout"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
@@ -145,6 +147,26 @@ func test_bored_idle_clock_only_advances_while_grounded_and_still() -> void:
 			0.0,
 			"movement and actions must reset the bored-idle delay"
 		)
+
+
+func test_damage_reactions_override_locomotion_and_death_wins() -> void:
+	var driver_script := load(DRIVER_PATH) as Script
+	assert_not_null(driver_script)
+	if driver_script == null:
+		return
+	assert_eq(
+		driver_script.call("reaction_clip_for", false, false),
+		&""
+	)
+	assert_eq(
+		driver_script.call("reaction_clip_for", false, true),
+		HIT
+	)
+	assert_eq(
+		driver_script.call("reaction_clip_for", true, true),
+		DEATH,
+		"fatal damage must interrupt an active mask-hit recoil"
+	)
 
 
 func test_impulse_selection_distinguishes_jump_double_jump_and_slam() -> void:
