@@ -16,12 +16,16 @@ shadow_diameter_m = 0.8
         self.assertEqual(
             assignment_values(text),
             {
-                "type": '"Resource" format=3]',
                 "script": 'ExtResource("1_x")',
                 "hero_max_triangles": "12000",
                 "shadow_diameter_m": "0.8",
             },
         )
+
+    def test_a_header_line_contributes_no_assignment(self) -> None:
+        text = '[gd_resource type="Resource" format=3]\n'
+
+        self.assertEqual(assignment_values(text), {})
 
     def test_ignores_lines_that_are_not_assignments(self) -> None:
         text = "[resource]\n\n; a comment\nhero_max_triangles = 12000\n"

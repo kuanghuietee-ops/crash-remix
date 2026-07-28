@@ -46,18 +46,19 @@ RESOURCE_CALL_PATTERN = re.compile(
 HEADER_ATTRIBUTE_PATTERN = re.compile(
     r'([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|([^\s]+))'
 )
-PROPERTY_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
+PROPERTY_PATTERN = re.compile(r"^([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
 
 
 def assignment_values(text: str) -> dict[str, str]:
     """Return the `key = value` assignments in a .tres/.tscn body.
 
-    Line-oriented on purpose: callers look up known property names, so a
-    header line that happens to match is harmless and this stays cheap.
+    Line-oriented and anchored on purpose: only a property assignment at the
+    start of a stripped line is data. Section-header attributes are metadata,
+    not body properties.
     """
     values: dict[str, str] = {}
     for line in text.splitlines():
-        match = PROPERTY_PATTERN.search(line.strip())
+        match = PROPERTY_PATTERN.match(line.strip())
         if match is not None:
             values[match.group(1)] = match.group(2).strip()
     return values

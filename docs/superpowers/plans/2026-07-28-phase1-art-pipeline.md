@@ -97,7 +97,6 @@ shadow_diameter_m = 0.8
         self.assertEqual(
             assignment_values(text),
             {
-                "type": '"Resource" format=3]',
                 "script": 'ExtResource("1_x")',
                 "hero_max_triangles": "12000",
                 "shadow_diameter_m": "0.8",
