@@ -8,6 +8,14 @@ const LAB_ASSISTANT_PATH := (
 	"res://assets/models/enemies/SK_lab_assistant.glb"
 )
 const LAB_ASSISTANT_WALK := &"A_lab_assistant_walk"
+const CRAB_PATH := "res://assets/models/enemies/SK_crab.glb"
+const CRAB_CLIPS := [
+	&"A_crab_idle",
+	&"A_crab_walk",
+	&"A_crab_attack",
+	&"A_crab_hit",
+	&"A_crab_defeat",
+]
 const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const CRASH_IDLE := &"A_crash_idle"
 const CRASH_CORE_CLIPS := [
@@ -190,6 +198,106 @@ func test_lab_assistant_import_is_one_skinned_budget_mesh_with_walk() -> void:
 		assert_gt(walk.length, 0.0)
 		assert_gt(walk.get_track_count(), 0)
 		assert_eq(walk.loop_mode, Animation.LOOP_LINEAR)
+
+
+func test_crab_import_is_one_skinned_budget_mesh_with_gameplay_actions() -> void:
+	assert_true(
+		ResourceLoader.exists(CRAB_PATH),
+		"the Beach enemy package must export an original crab"
+	)
+	if not ResourceLoader.exists(CRAB_PATH):
+		return
+	var asset_scene := load(CRAB_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes := asset.find_children("*", "MeshInstance3D", true, false)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "the crab must remain one draw-call surface")
+	assert_eq(skeletons.size(), 1, "the crab must retain one compact skeleton")
+	assert_eq(animation_players.size(), 1)
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	assert_between(
+		indices.size() / 3,
+		3000,
+		6000,
+		"the crab must stay inside the immutable enemy triangle budget"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_gt(
+		unique_colors.size(),
+		6,
+		"shell, belly, claws, eyes, pupils and accents must read at phone size"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_eq(material.resource_name, "M_crab_body")
+		assert_null(material.albedo_texture)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"body",
+		"eye.L",
+		"eye.R",
+		"claw.L",
+		"claw.R",
+		"leg_front.L",
+		"leg_front.R",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the crab rig must retain %s" % required_bone
+		)
+
+	for clip_name: StringName in CRAB_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship with the crab" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name in [&"A_crab_idle", &"A_crab_walk"]:
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		else:
+			assert_eq(clip.loop_mode, Animation.LOOP_NONE)
 
 
 func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:

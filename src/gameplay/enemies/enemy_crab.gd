@@ -7,6 +7,24 @@ var _last_logic_s: float = -1.0
 var _turn_pause_until_s: float = -1.0
 
 
+func _ready() -> void:
+	super._ready()
+	var visual_driver := _visual_driver()
+	if (
+		visual_driver != null
+		and visual_driver.has_signal(&"defeat_finished")
+		and not visual_driver.is_connected(
+			&"defeat_finished",
+			_on_defeat_visual_finished
+		)
+	):
+		visual_driver.connect(
+			&"defeat_finished",
+			_on_defeat_visual_finished
+		)
+	_sync_visual_patrol()
+
+
 func enemy_kind() -> StringName:
 	return &"crab"
 
@@ -82,6 +100,13 @@ func resolve_contact(
 	now_s: float
 ) -> Dictionary:
 	var result := super.resolve_contact(verb, now_s)
+	if bool(result["player_hit"]):
+		var visual_driver := _visual_driver()
+		if (
+			visual_driver != null
+			and visual_driver.has_method("play_attack")
+		):
+			visual_driver.call("play_attack")
 	if (
 		verb == VERB_JUMP
 		and bool(result["enemy_defeated"])
@@ -96,3 +121,42 @@ func _reset_behavior_state() -> void:
 	_last_logic_s = -1.0
 	_turn_pause_until_s = -1.0
 	_set_behavior_state(STATE_PATROL)
+
+
+func _set_behavior_state(state: StringName) -> void:
+	super._set_behavior_state(state)
+	_sync_visual_patrol()
+
+
+func _set_defeated(defeated: bool) -> void:
+	super._set_defeated(defeated)
+	var visual_driver := _visual_driver()
+	if visual_driver == null:
+		return
+	if defeated:
+		visible = true
+		if visual_driver.has_method("play_defeat"):
+			visual_driver.call("play_defeat")
+	elif visual_driver.has_method("reset_visual"):
+		visual_driver.call("reset_visual")
+
+
+func _sync_visual_patrol() -> void:
+	var visual_driver := _visual_driver()
+	if (
+		visual_driver != null
+		and visual_driver.has_method("set_patrolling")
+	):
+		visual_driver.call(
+			"set_patrolling",
+			behavior_state() == STATE_PATROL
+		)
+
+
+func _visual_driver() -> Node:
+	return get_node_or_null("VisualDriver")
+
+
+func _on_defeat_visual_finished() -> void:
+	if is_defeated():
+		visible = false

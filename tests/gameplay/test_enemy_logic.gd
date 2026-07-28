@@ -5,6 +5,7 @@ const CRAB_SCRIPT_PATH := "res://src/gameplay/enemies/enemy_crab.gd"
 const SKINK_SCRIPT_PATH := "res://src/gameplay/enemies/enemy_skink.gd"
 const PLANT_SCRIPT_PATH := "res://src/gameplay/enemies/enemy_plant.gd"
 const CRAB_SCENE_PATH := "res://scenes/enemies/crab.tscn"
+const CRAB_MODEL_PATH := "res://assets/models/enemies/SK_crab.glb"
 
 
 func test_crab_patrol_stays_inside_authored_span_and_pauses_at_turn() -> void:
@@ -70,6 +71,72 @@ func test_crab_patrol_stays_inside_authored_span_and_pauses_at_turn() -> void:
 			half_span_m + 0.001,
 			"patrol movement must never leave the authored span"
 		)
+
+
+func test_crab_scene_plays_attack_and_finishes_its_defeat_reaction() -> void:
+	assert_true(ResourceLoader.exists(CRAB_MODEL_PATH))
+	var packed := load(CRAB_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var enemy := packed.instantiate() as Node3D
+	add_child_autofree(enemy)
+	await wait_process_frames(1)
+	var driver := enemy.get_node_or_null("VisualDriver")
+	var proxy := enemy.get_node_or_null("Visual") as MeshInstance3D
+	var attack_burst := enemy.get_node_or_null(
+		"VisualDriver/AttackBurst"
+	) as GPUParticles3D
+	var defeat_burst := enemy.get_node_or_null(
+		"VisualDriver/DefeatBurst"
+	) as GPUParticles3D
+	var animation_players := enemy.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_not_null(driver)
+	assert_not_null(proxy)
+	assert_false(proxy.visible, "the graybox must become a bounds proxy only")
+	assert_not_null(attack_burst)
+	assert_not_null(defeat_burst)
+	assert_eq(animation_players.size(), 1)
+	if (
+		driver == null
+		or attack_burst == null
+		or defeat_burst == null
+		or animation_players.size() != 1
+	):
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	var catalog := _catalog()
+	if catalog == null:
+		return
+	enemy.call("configure", catalog.get("enemy_crab"), catalog.move)
+	assert_eq(animation_player.current_animation, "A_crab_walk")
+
+	var touch: Dictionary = enemy.call("resolve_contact", &"touch", 1.0)
+	assert_true(bool(touch.get("player_hit", false)))
+	assert_eq(animation_player.current_animation, "A_crab_attack")
+	assert_true(attack_burst.emitting)
+
+	enemy.call("reset_to_authored_spawn")
+	var defeated: Dictionary = enemy.call("resolve_contact", &"spin", 2.0)
+	assert_true(bool(defeated.get("enemy_defeated", false)))
+	assert_true(enemy.visible, "the reaction must play before the crab hides")
+	assert_eq(animation_player.current_animation, "A_crab_hit")
+	assert_true(defeat_burst.emitting)
+
+	animation_player.animation_finished.emit(&"A_crab_hit")
+	assert_eq(animation_player.current_animation, "A_crab_defeat")
+	animation_player.animation_finished.emit(&"A_crab_defeat")
+	await wait_process_frames(1)
+	assert_false(enemy.visible)
+
+	enemy.call("reset_to_authored_spawn")
+	assert_true(enemy.visible)
+	assert_eq(animation_player.current_animation, "A_crab_walk")
 
 
 func test_skink_trigger_telegraph_dart_and_cooldown_use_simulated_clock() -> void:
