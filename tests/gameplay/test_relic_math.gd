@@ -19,6 +19,18 @@ class FakePlayer:
 	extends Node3D
 
 
+class VictoryPlayer:
+	extends Node3D
+
+	signal victory_finished
+
+	var begin_count: int
+
+	func begin_victory() -> bool:
+		begin_count += 1
+		return true
+
+
 func before_each() -> void:
 	_catalog = load(
 		"res://data/tuning/gameplay.tres"
@@ -30,6 +42,48 @@ func before_each() -> void:
 		"res://data/tuning/levels/n_sanity_beach.tres"
 	).duplicate(true) as LevelMeta
 	_author_relic_pars(_meta)
+
+
+func test_finish_waits_for_the_player_victory_before_completing() -> void:
+	var session := LevelSession.new()
+	add_child_autofree(session)
+	var finish := Area3D.new()
+	finish.name = "Finish"
+	session.add_child(finish)
+	var player := VictoryPlayer.new()
+	session.add_child(player)
+	var session_meta := _meta.duplicate(true) as LevelMeta
+	session_meta.crate_count = 0
+	assert_true(session.configure(
+		session_meta,
+		LevelRunState.MODE_NORMAL,
+		_economy,
+		player,
+		_catalog.move,
+		_catalog.input
+	))
+	var completed_results: Array[Dictionary] = []
+	session.run_completed.connect(
+		func(results: Dictionary) -> void:
+			completed_results.append(results)
+	)
+
+	session.call("_on_finish_body_entered", player)
+
+	assert_eq(player.begin_count, 1)
+	assert_true(completed_results.is_empty())
+	assert_true(session.run_state.run_active)
+	session.call("_on_finish_body_entered", player)
+	assert_eq(
+		player.begin_count,
+		1,
+		"overlapping Finish callbacks must not restart the celebration"
+	)
+	player.victory_finished.emit()
+	await wait_process_frames(1)
+
+	assert_eq(completed_results.size(), 1)
+	assert_false(session.run_state.run_active)
 
 
 func test_timer_arms_only_at_stopwatch_pickup() -> void:
@@ -303,6 +357,12 @@ func test_real_scene_completion_cannot_award_tier_with_unset_pars() -> void:
 		&"body_entered",
 		player
 	)
+	assert_true(
+		bool(player.call("is_celebrating")),
+		"the real Finish must start Crash's victory before results"
+	)
+	assert_true(completed_results.is_empty())
+	player.call("finish_victory")
 	await wait_process_frames(2)
 
 	assert_eq(
@@ -372,6 +432,13 @@ func test_real_zero_crate_scene_completion_does_not_award_gem() -> void:
 	player.global_position = finish.global_position
 	player.reset_physics_interpolation()
 	await wait_physics_frames(2)
+	assert_true(
+		bool(player.call("is_celebrating")),
+		"the real Finish must wait for Crash's victory"
+	)
+	assert_true(completed_results.is_empty())
+	player.call("finish_victory")
+	await wait_process_frames(2)
 
 	assert_eq(
 		completed_results.size(),

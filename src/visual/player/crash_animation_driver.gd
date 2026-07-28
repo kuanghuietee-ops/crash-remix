@@ -20,6 +20,7 @@ const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
 const HIT := &"A_crash_hit"
 const DEATH := &"A_crash_death_knockout"
+const WIN := &"A_crash_win"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
@@ -52,6 +53,7 @@ var _spinning: bool
 var _current_clip := &""
 var _idle_elapsed_s := 0.0
 var _hit_reaction_active: bool
+var _victory_active: bool
 
 
 func _ready() -> void:
@@ -88,6 +90,10 @@ func _ready() -> void:
 		Callable(self, "_on_movement_impulse_applied")
 	)
 	_controller.connect(&"hit_received", Callable(self, "_on_hit_received"))
+	_controller.connect(
+		&"victory_started",
+		Callable(self, "_on_victory_started")
+	)
 	_controller.connect(&"respawned", Callable(self, "_on_respawned"))
 	_refresh()
 
@@ -154,8 +160,18 @@ static func reaction_clip_for(
 	respawning: bool,
 	hit_active: bool
 ) -> StringName:
+	return override_clip_for(false, respawning, hit_active)
+
+
+static func override_clip_for(
+	victory_active: bool,
+	respawning: bool,
+	hit_active: bool
+) -> StringName:
 	if respawning:
 		return DEATH
+	if victory_active:
+		return WIN
 	return HIT if hit_active else &""
 
 
@@ -216,8 +232,16 @@ func _on_hit_received(fatal: bool) -> void:
 	_refresh()
 
 
+func _on_victory_started() -> void:
+	_victory_active = true
+	_hit_reaction_active = false
+	_idle_elapsed_s = 0.0
+	_refresh()
+
+
 func _on_respawned() -> void:
 	_hit_reaction_active = false
+	_victory_active = false
 	_airborne_clip = JUMP
 	_state = _controller.call("current_state")
 	_spinning = _controller.call("is_spinning")
@@ -225,16 +249,19 @@ func _on_respawned() -> void:
 
 
 func _on_animation_finished(animation_name: StringName) -> void:
-	if animation_name != HIT:
+	if animation_name == HIT:
+		_hit_reaction_active = false
+		_refresh()
 		return
-	_hit_reaction_active = false
-	_refresh()
+	if animation_name == WIN and _victory_active:
+		_controller.call("finish_victory")
 
 
 func _refresh(delta_s := 0.0) -> void:
 	if _controller == null or _animation_player == null:
 		return
-	var reaction_clip := reaction_clip_for(
+	var reaction_clip := override_clip_for(
+		_victory_active,
 		_controller.call("is_respawning"),
 		_hit_reaction_active
 	)

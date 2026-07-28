@@ -5,6 +5,8 @@ signal state_changed(previous_state: StringName, state: StringName)
 signal spin_changed(active: bool)
 signal movement_impulse_applied(impulse: StringName)
 signal hit_received(fatal: bool)
+signal victory_started
+signal victory_finished
 signal body_slam_impacted
 signal respawn_started
 signal respawned
@@ -85,6 +87,8 @@ var _swing_angular_velocity: float
 var _bounce_window_active: bool
 var _bounce_contact_s: float
 var _bounce_target_apex_y: float
+var _celebrating: bool
+var _victory_finished_emitted: bool
 
 
 func _ready() -> void:
@@ -132,6 +136,8 @@ func configure(
 		_active_swing_anchor.refresh_tuning(_swing_tuning)
 	_intents = intents
 	_chase_auto_run_remaining_s = 0.0
+	_celebrating = false
+	_victory_finished_emitted = false
 	_clear_bounce_timing_window()
 	_active_jump_tap_height_m = _move_tuning.jump_tap_height_m
 	floor_snap_length = _move_tuning.floor_snap_length_m
@@ -188,6 +194,34 @@ func is_hog_mounted() -> bool:
 	return _ride_mounted
 
 
+func begin_victory() -> bool:
+	if _celebrating or is_respawning():
+		return false
+	_celebrating = true
+	_victory_finished_emitted = false
+	velocity = Vector3.ZERO
+	_chase_auto_run_remaining_s = 0.0
+	_clear_bounce_timing_window()
+	if _intents != null:
+		_intents.clear()
+	if _state_machine.is_spinning:
+		_state_machine.is_spinning = false
+	_emit_state_changes(_state_machine.state, false)
+	victory_started.emit()
+	return true
+
+
+func finish_victory() -> void:
+	if not _celebrating or _victory_finished_emitted:
+		return
+	_victory_finished_emitted = true
+	victory_finished.emit()
+
+
+func is_celebrating() -> bool:
+	return _celebrating
+
+
 func set_spawn_transform(spawn_transform: Transform3D) -> void:
 	_spawn_transform = spawn_transform
 
@@ -237,6 +271,8 @@ func delay_invincibility(duration_s: float) -> void:
 
 
 func receive_hit(now_s: float) -> bool:
+	if _celebrating:
+		return false
 	if is_invincible(now_s):
 		return false
 	if is_respawning():
@@ -727,7 +763,7 @@ func _clear_bounce_timing_window() -> void:
 
 
 func request_respawn(now_s: float) -> void:
-	if _move_tuning == null or is_respawning():
+	if _move_tuning == null or is_respawning() or _celebrating:
 		return
 	_respawn_due_s = now_s + _move_tuning.respawn_delay_s
 	velocity = Vector3.ZERO
@@ -746,6 +782,9 @@ func advance_respawn(now_s: float) -> bool:
 
 func _physics_process(delta_s: float) -> void:
 	if _move_tuning == null or _input_tuning == null or _intents == null:
+		return
+	if _celebrating:
+		velocity = Vector3.ZERO
 		return
 	var now_s := MonotonicClockType.now_s()
 	if advance_respawn(now_s) or is_respawning():

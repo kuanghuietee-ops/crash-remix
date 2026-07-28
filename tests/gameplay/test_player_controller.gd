@@ -127,6 +127,55 @@ func test_hit_signal_distinguishes_mask_recoil_from_fatal_damage() -> void:
 	)
 
 
+func test_victory_locks_motion_and_completes_only_once() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	assert_true(controller.has_signal("victory_started"))
+	assert_true(controller.has_signal("victory_finished"))
+	assert_true(controller.has_method("begin_victory"))
+	assert_true(controller.has_method("finish_victory"))
+	if (
+		not controller.has_signal("victory_started")
+		or not controller.has_signal("victory_finished")
+		or not controller.has_method("begin_victory")
+		or not controller.has_method("finish_victory")
+	):
+		return
+	var starts: Array[bool] = []
+	var finishes: Array[bool] = []
+	controller.connect(
+		&"victory_started",
+		func() -> void:
+			starts.append(true)
+	)
+	controller.connect(
+		&"victory_finished",
+		func() -> void:
+			finishes.append(true)
+	)
+	controller.velocity = Vector3(4.0, 3.0, -2.0)
+
+	assert_true(controller.call("begin_victory"))
+	assert_true(controller.call("is_celebrating"))
+	assert_eq(controller.velocity, Vector3.ZERO)
+	assert_false(
+		controller.call("receive_hit", 5.0),
+		"a finished run must ignore damage while the cheer is playing"
+	)
+	assert_false(controller.call("is_respawning"))
+	assert_false(
+		controller.call("begin_victory"),
+		"an overlapping Finish signal must not restart the cheer"
+	)
+	controller.call("finish_victory")
+	controller.call("finish_victory")
+
+	assert_eq(starts.size(), 1)
+	assert_eq(finishes.size(), 1)
+
+
 func test_chase_auto_run_expires_after_authored_opening_window() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():

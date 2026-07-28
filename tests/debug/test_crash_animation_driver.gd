@@ -13,6 +13,7 @@ const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
 const HIT := &"A_crash_hit"
 const DEATH := &"A_crash_death_knockout"
+const WIN := &"A_crash_win"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
@@ -166,6 +167,27 @@ func test_damage_reactions_override_locomotion_and_death_wins() -> void:
 		driver_script.call("reaction_clip_for", true, true),
 		DEATH,
 		"fatal damage must interrupt an active mask-hit recoil"
+	)
+
+
+func test_victory_overrides_actions_but_not_a_fatal_respawn() -> void:
+	var driver_script := load(DRIVER_PATH) as Script
+	assert_not_null(driver_script)
+	if driver_script == null:
+		return
+	assert_eq(
+		driver_script.call("override_clip_for", false, false, false),
+		&""
+	)
+	assert_eq(
+		driver_script.call("override_clip_for", true, false, true),
+		WIN,
+		"crossing the finish must replace locomotion and hit recoil"
+	)
+	assert_eq(
+		driver_script.call("override_clip_for", true, true, true),
+		DEATH,
+		"an already-fatal respawn remains safer than celebrating"
 	)
 
 

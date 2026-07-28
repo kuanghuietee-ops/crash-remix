@@ -22,6 +22,7 @@ const CRASH_CORE_CLIPS := [
 	&"A_crash_slam",
 	&"A_crash_hit",
 	&"A_crash_death_knockout",
+	&"A_crash_win",
 	&"A_crash_wall_run",
 	&"A_crash_grind",
 	&"A_crash_swing",
@@ -339,6 +340,7 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 		if clip_name in [
 			&"A_crash_hit",
 			&"A_crash_death_knockout",
+			&"A_crash_win",
 		]:
 			assert_eq(
 				clip.loop_mode,
@@ -611,6 +613,35 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 		death_start[&"foot_l"].distance_to(death_end[&"foot_l"]),
 		0.10,
 		"the knockout must kick the feet instead of freezing locomotion"
+	)
+
+	var win := animation_player.get_animation(&"A_crash_win")
+	var win_start := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_win",
+		win.length * 0.05
+	)
+	var win_cheer := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_win",
+		win.length * 0.72
+	)
+	assert_gt(
+		win_start[&"hand_l"].distance_to(win_cheer[&"hand_l"]),
+		0.18,
+		"the victory cheer must throw both hands overhead"
+	)
+	assert_gt(
+		win_start[&"hand_r"].distance_to(win_cheer[&"hand_r"]),
+		0.18,
+		"the victory cheer must read across the full silhouette"
+	)
+	assert_gt(
+		win_start[&"head"].distance_to(win_cheer[&"head"]),
+		0.08,
+		"the victory bounce must move more than the arms"
 	)
 
 	var wall_run := animation_player.get_animation(&"A_crash_wall_run")

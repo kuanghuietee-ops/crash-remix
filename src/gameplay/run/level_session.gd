@@ -52,6 +52,7 @@ var _offered_skip_checkpoint_id: int = (
 )
 var _offered_skip_completes_level: bool = false
 var _timers_paused_at_s := -1.0
+var _finish_pending: bool = false
 
 
 func set_gameplay_timers_paused(
@@ -96,6 +97,7 @@ func configure(
 	_offered_skip_checkpoint_id = LevelRunState.START_CHECKPOINT
 	_offered_skip_completes_level = false
 	_timers_paused_at_s = -1.0
+	_finish_pending = false
 	var authored_ids: Array[int] = []
 
 	for candidate: Node in find_children(
@@ -611,6 +613,7 @@ func offered_mercy_skip_completes_level() -> bool:
 
 
 func complete_level() -> Dictionary:
+	_finish_pending = false
 	var result := run_state.record_level_complete(_economy)
 	if not result.is_empty():
 		run_completed.emit(result)
@@ -1272,13 +1275,41 @@ func _blast_path_is_clear(
 func _on_finish_body_entered(body: Node) -> void:
 	if body != _player:
 		return
+	if _finish_pending:
+		return
 	# P-003: the boss exit is a reward, not a route. Every strike volume is
 	# narrower than the floor it sits on, so without this the player can walk
 	# around all three beams into the Finish and be recorded as having beaten
 	# a boss still standing.
 	if _has_undefeated_boss():
 		return
+	if (
+		_player != null
+		and _player.has_signal(&"victory_finished")
+		and _player.has_method("begin_victory")
+	):
+		_finish_pending = true
+		_connect_once(
+			_player,
+			&"victory_finished",
+			_on_player_victory_finished
+		)
+		if bool(_player.call("begin_victory")):
+			return
+		_finish_pending = false
 	call_deferred(&"complete_level")
+
+
+func _on_player_victory_finished() -> void:
+	if not _finish_pending:
+		return
+	call_deferred(&"_complete_pending_finish")
+
+
+func _complete_pending_finish() -> void:
+	if not _finish_pending:
+		return
+	complete_level()
 
 
 func _has_undefeated_boss() -> bool:
