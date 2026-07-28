@@ -536,7 +536,7 @@ func test_time_crate_refuses_normal_mode_and_awards_tuning_in_relic_mode() -> vo
 	)
 
 
-func test_graybox_scenes_keep_type_and_identity_on_live_node_glue() -> void:
+func test_crate_scenes_keep_type_and_identity_on_live_node_glue() -> void:
 	for scene_case: Array in [
 		[STANDARD_SCENE, &"standard"],
 		[BOUNCE_SCENE, &"bounce"],
@@ -600,6 +600,59 @@ func test_standard_crate_art_matches_the_graybox_collision_bounds() -> void:
 		"the contact-origin GLB must be offset onto the centered gameplay body"
 	)
 	assert_eq(imported_mesh.mesh.get_surface_count(), 1)
+
+
+func test_every_remaining_crate_variant_has_matching_art_and_collision_bounds() -> void:
+	for scene_case: Array in [
+		[BOUNCE_SCENE, "SM_crate_bounce"],
+		[TNT_SCENE, "SM_crate_tnt"],
+		[CHECKPOINT_SCENE, "SM_crate_checkpoint"],
+		[IRON_SCENE, "SM_crate_iron"],
+		[AKU_SCENE, "SM_crate_aku"],
+		[TIME_SCENE, "SM_crate_time"],
+	]:
+		var crate := _instantiate(scene_case[0])
+		if crate == null:
+			return
+		add_child_autofree(crate)
+
+		var visual_root := crate.get_node("Mesh") as MeshInstance3D
+		assert_not_null(visual_root)
+		assert_null(
+			visual_root.mesh,
+			"%s must replace, not overlap, the BoxMesh placeholder" % scene_case[0]
+		)
+		var model := visual_root.get_node_or_null("Model") as Node3D
+		assert_not_null(model, "%s must mount its imported GLB" % scene_case[0])
+		if model == null:
+			return
+		var imported_meshes := model.find_children(
+			"*",
+			"MeshInstance3D",
+			true,
+			false
+		)
+		assert_eq(
+			imported_meshes.size(),
+			1,
+			"%s must stay one draw-call surface" % scene_case[0]
+		)
+		if imported_meshes.size() != 1:
+			return
+		var imported_mesh := imported_meshes[0] as MeshInstance3D
+		assert_eq(imported_mesh.name, scene_case[1])
+		var model_aabb := imported_mesh.get_aabb()
+		assert_true(
+			model_aabb.position.is_equal_approx(Vector3(-0.5, 0.0, -0.5))
+		)
+		assert_true(model_aabb.size.is_equal_approx(Vector3.ONE))
+		assert_true(model.position.is_equal_approx(Vector3(0.0, -0.5, 0.0)))
+		assert_true(
+			(model_aabb.position + model.position).is_equal_approx(
+				Vector3(-0.5, -0.5, -0.5)
+			)
+		)
+		assert_eq(imported_mesh.mesh.get_surface_count(), 1)
 
 
 func test_standard_node_emits_tuned_break_payload_once() -> void:

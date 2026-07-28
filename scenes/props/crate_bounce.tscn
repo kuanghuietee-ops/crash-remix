@@ -1,13 +1,13 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/props/breakable.tscn" id="1_base"]
-
-[sub_resource type="StandardMaterial3D" id="Material_bounce"]
-albedo_color = Color(0.12, 0.48, 0.78, 1)
-roughness = 0.72
+[ext_resource type="PackedScene" path="res://assets/models/props/SM_crate_bounce.glb" id="2_model"]
 
 [node name="CrateBounce" instance=ExtResource("1_base")]
 crate_type = &"bounce"
 
 [node name="Mesh" parent="." index="0"]
-material_override = SubResource("Material_bounce")
+mesh = null
+
+[node name="Model" parent="Mesh" instance=ExtResource("2_model")]
+position = Vector3(0, -0.5, 0)

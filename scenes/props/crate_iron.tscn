@@ -1,14 +1,13 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/props/breakable.tscn" id="1_base"]
-
-[sub_resource type="StandardMaterial3D" id="Material_iron"]
-albedo_color = Color(0.32, 0.36, 0.42, 1)
-metallic = 0.7
-roughness = 0.38
+[ext_resource type="PackedScene" path="res://assets/models/props/SM_crate_iron.glb" id="2_model"]
 
 [node name="CrateIron" instance=ExtResource("1_base")]
 crate_type = &"iron"
 
 [node name="Mesh" parent="." index="0"]
-material_override = SubResource("Material_iron")
+mesh = null
+
+[node name="Model" parent="Mesh" instance=ExtResource("2_model")]
+position = Vector3(0, -0.5, 0)

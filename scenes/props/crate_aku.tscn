@@ -1,15 +1,13 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/props/breakable.tscn" id="1_base"]
-
-[sub_resource type="StandardMaterial3D" id="Material_aku"]
-albedo_color = Color(0.92, 0.52, 0.08, 1)
-emission_enabled = true
-emission = Color(0.2, 0.06, 0.01, 1)
-emission_energy_multiplier = 0.45
+[ext_resource type="PackedScene" path="res://assets/models/props/SM_crate_aku.glb" id="2_model"]
 
 [node name="CrateAku" instance=ExtResource("1_base")]
 crate_type = &"aku"
 
 [node name="Mesh" parent="." index="0"]
-material_override = SubResource("Material_aku")
+mesh = null
+
+[node name="Model" parent="Mesh" instance=ExtResource("2_model")]
+position = Vector3(0, -0.5, 0)
