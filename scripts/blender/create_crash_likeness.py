@@ -1058,10 +1058,10 @@ def create_crouch(rig: bpy.types.Object) -> bpy.types.Action:
             "shin_fk.R": (24.0, 0.0, 0.0),
             "foot_fk.L": (-12.0, 0.0, 0.0),
             "foot_fk.R": (-12.0, 0.0, 0.0),
-            "upper_arm_fk.L": (18.0, 0.0, -10.0),
-            "upper_arm_fk.R": (18.0, 0.0, 10.0),
-            "forearm_fk.L": (12.0, 0.0, -6.0),
-            "forearm_fk.R": (12.0, 0.0, 6.0),
+            "upper_arm_fk.L": (22.0, -18.0, -2.0),
+            "upper_arm_fk.R": (18.0, 18.0, 2.0),
+            "forearm_fk.L": (16.0, 0.0, -5.0),
+            "forearm_fk.R": (14.0, 0.0, 5.0),
         },
         7: {
             "torso": (50.0, 0.0, 0.0),
@@ -1072,10 +1072,10 @@ def create_crouch(rig: bpy.types.Object) -> bpy.types.Action:
             "shin_fk.R": (122.0, 0.0, 0.0),
             "foot_fk.L": (-54.0, 0.0, 0.0),
             "foot_fk.R": (-54.0, 0.0, 0.0),
-            "upper_arm_fk.L": (60.0, 0.0, -18.0),
-            "upper_arm_fk.R": (60.0, 0.0, 18.0),
-            "forearm_fk.L": (42.0, 0.0, -8.0),
-            "forearm_fk.R": (42.0, 0.0, 8.0),
+            "upper_arm_fk.L": (40.0, -45.0, -3.0),
+            "upper_arm_fk.R": (45.0, 40.0, 3.0),
+            "forearm_fk.L": (30.0, 0.0, -6.0),
+            "forearm_fk.R": (35.0, 0.0, 6.0),
         },
         CROUCH_LAST_FRAME: {
             "torso": (50.0, 0.0, 0.0),
@@ -1086,10 +1086,10 @@ def create_crouch(rig: bpy.types.Object) -> bpy.types.Action:
             "shin_fk.R": (122.0, 0.0, 0.0),
             "foot_fk.L": (-54.0, 0.0, 0.0),
             "foot_fk.R": (-54.0, 0.0, 0.0),
-            "upper_arm_fk.L": (60.0, 0.0, -18.0),
-            "upper_arm_fk.R": (60.0, 0.0, 18.0),
-            "forearm_fk.L": (42.0, 0.0, -8.0),
-            "forearm_fk.R": (42.0, 0.0, 8.0),
+            "upper_arm_fk.L": (40.0, -45.0, -3.0),
+            "upper_arm_fk.R": (45.0, 40.0, 3.0),
+            "forearm_fk.L": (30.0, 0.0, -6.0),
+            "forearm_fk.R": (35.0, 0.0, 6.0),
         },
     }
     for frame, rotations in poses.items():
@@ -1178,40 +1178,40 @@ def create_double_jump(rig: bpy.types.Object) -> bpy.types.Action:
     )
     poses = {
         1: {
-            "torso": (6.0, 0.0, -18.0),
-            "head": (-4.0, 0.0, 14.0),
+            "torso": (6.0, 0.0, -8.0),
+            "head": (-4.0, 0.0, 6.0),
             "thigh_fk.L": (28.0, 0.0, -12.0),
             "thigh_fk.R": (18.0, 0.0, 12.0),
             "shin_fk.L": (36.0, 0.0, 0.0),
             "shin_fk.R": (30.0, 0.0, 0.0),
-            "upper_arm_fk.L": (48.0, 0.0, -38.0),
-            "upper_arm_fk.R": (48.0, 0.0, 38.0),
-            "forearm_fk.L": (34.0, 0.0, -8.0),
-            "forearm_fk.R": (34.0, 0.0, 8.0),
+            "upper_arm_fk.L": (44.0, -42.0, -4.0),
+            "upper_arm_fk.R": (52.0, 40.0, 4.0),
+            "forearm_fk.L": (30.0, 0.0, -7.0),
+            "forearm_fk.R": (36.0, 0.0, 7.0),
         },
         6: {
-            "torso": (-4.0, 0.0, 22.0),
-            "head": (4.0, 0.0, -18.0),
+            "torso": (-4.0, 0.0, 10.0),
+            "head": (4.0, 0.0, -8.0),
             "thigh_fk.L": (-18.0, 0.0, -24.0),
             "thigh_fk.R": (12.0, 0.0, 24.0),
             "shin_fk.L": (14.0, 0.0, 0.0),
             "shin_fk.R": (24.0, 0.0, 0.0),
-            "upper_arm_fk.L": (68.0, 0.0, -44.0),
-            "upper_arm_fk.R": (68.0, 0.0, 44.0),
-            "forearm_fk.L": (44.0, 0.0, -8.0),
-            "forearm_fk.R": (44.0, 0.0, 8.0),
+            "upper_arm_fk.L": (60.0, -50.0, -4.0),
+            "upper_arm_fk.R": (48.0, 48.0, 5.0),
+            "forearm_fk.L": (40.0, 0.0, -7.0),
+            "forearm_fk.R": (30.0, 0.0, 7.0),
         },
         12: {
-            "torso": (3.0, 0.0, -20.0),
-            "head": (-3.0, 0.0, 16.0),
+            "torso": (3.0, 0.0, -9.0),
+            "head": (-3.0, 0.0, 7.0),
             "thigh_fk.L": (18.0, 0.0, -18.0),
             "thigh_fk.R": (-14.0, 0.0, 18.0),
             "shin_fk.L": (26.0, 0.0, 0.0),
             "shin_fk.R": (12.0, 0.0, 0.0),
-            "upper_arm_fk.L": (58.0, 0.0, -34.0),
-            "upper_arm_fk.R": (58.0, 0.0, 34.0),
-            "forearm_fk.L": (40.0, 0.0, -7.0),
-            "forearm_fk.R": (40.0, 0.0, 7.0),
+            "upper_arm_fk.L": (45.0, -46.0, -3.0),
+            "upper_arm_fk.R": (60.0, 52.0, 3.0),
+            "forearm_fk.L": (30.0, 0.0, -6.0),
+            "forearm_fk.R": (42.0, 0.0, 6.0),
         },
         DOUBLE_JUMP_LAST_FRAME: {
             "torso": (5.0, 0.0, 0.0),
@@ -1220,10 +1220,10 @@ def create_double_jump(rig: bpy.types.Object) -> bpy.types.Action:
             "thigh_fk.R": (20.0, 0.0, 5.0),
             "shin_fk.L": (28.0, 0.0, 0.0),
             "shin_fk.R": (28.0, 0.0, 0.0),
-            "upper_arm_fk.L": (48.0, 0.0, -28.0),
-            "upper_arm_fk.R": (48.0, 0.0, 28.0),
-            "forearm_fk.L": (34.0, 0.0, -8.0),
-            "forearm_fk.R": (34.0, 0.0, 8.0),
+            "upper_arm_fk.L": (46.0, -40.0, -3.0),
+            "upper_arm_fk.R": (48.0, 40.0, 3.0),
+            "forearm_fk.L": (30.0, 0.0, -6.0),
+            "forearm_fk.R": (32.0, 0.0, 6.0),
         },
     }
     for frame, rotations in poses.items():
@@ -1246,24 +1246,24 @@ def create_spin(rig: bpy.types.Object) -> bpy.types.Action:
                 "shin_fk.L": (28.0, 0.0, 0.0),
                 "shin_fk.R": (28.0, 0.0, 0.0),
                 "upper_arm_fk.L": (
-                    54.0 + 6.0 * sweep,
-                    5.0 * sweep,
-                    -64.0 + 6.0 * sweep,
+                    43.0 + 11.0 * sweep,
+                    -56.0 - 8.0 * sweep,
+                    12.0 * sweep,
                 ),
                 "upper_arm_fk.R": (
-                    54.0 - 6.0 * sweep,
-                    -5.0 * sweep,
-                    64.0 + 6.0 * sweep,
+                    43.0 - 11.0 * sweep,
+                    56.0 - 8.0 * sweep,
+                    -12.0 * sweep,
                 ),
                 "forearm_fk.L": (
-                    34.0 + 6.0 * sweep,
+                    27.0 + 7.0 * sweep,
                     0.0,
-                    -12.0,
+                    -6.0,
                 ),
                 "forearm_fk.R": (
-                    34.0 - 6.0 * sweep,
+                    27.0 - 7.0 * sweep,
                     0.0,
-                    12.0,
+                    6.0,
                 ),
             },
             (0.0, 0.0, 0.009 * (1.0 + sweep)),
@@ -1276,67 +1276,66 @@ def create_slide(rig: bpy.types.Object) -> bpy.types.Action:
     action = begin_action(rig, SLIDE_ACTION_NAME, SLIDE_LAST_FRAME)
     poses = {
         1: {
-            "torso": (12.0, 0.0, 0.0),
-            "head": (-8.0, 0.0, 0.0),
-            "thigh_fk.L": (-24.0, 0.0, -5.0),
-            "thigh_fk.R": (-18.0, 0.0, 5.0),
-            "shin_fk.L": (42.0, 0.0, 0.0),
-            "shin_fk.R": (52.0, 0.0, 0.0),
-            "foot_fk.L": (-18.0, 0.0, 0.0),
-            "foot_fk.R": (-24.0, 0.0, 0.0),
-            "upper_arm_fk.L": (44.0, 0.0, -18.0),
-            "upper_arm_fk.R": (44.0, 0.0, 18.0),
-            "forearm_fk.L": (32.0, 0.0, -8.0),
-            "forearm_fk.R": (32.0, 0.0, 8.0),
+            "torso": (18.0, 0.0, 0.0),
+            "head": (-10.0, 0.0, 0.0),
+            "thigh_fk.L": (-48.0, 0.0, -10.0),
+            "thigh_fk.R": (-18.0, 0.0, 8.0),
+            "shin_fk.L": (18.0, 0.0, 0.0),
+            "shin_fk.R": (62.0, 0.0, 0.0),
+            "foot_fk.L": (-4.0, 0.0, 0.0),
+            "foot_fk.R": (-30.0, 0.0, 0.0),
+            "upper_arm_fk.L": (32.0, -30.0, -3.0),
+            "upper_arm_fk.R": (38.0, 26.0, 4.0),
+            "forearm_fk.L": (24.0, 0.0, -6.0),
+            "forearm_fk.R": (30.0, 0.0, 6.0),
         },
         5: {
             "torso": (64.0, 0.0, -6.0),
             "head": (-22.0, 0.0, 8.0),
-            "thigh_fk.L": (-70.0, 0.0, -7.0),
-            "thigh_fk.R": (-24.0, 0.0, 7.0),
-            "shin_fk.L": (34.0, 0.0, 0.0),
+            "thigh_fk.L": (-90.0, 0.0, -20.0),
+            "thigh_fk.R": (-24.0, 0.0, 12.0),
+            "shin_fk.L": (6.0, 0.0, 0.0),
             "shin_fk.R": (112.0, 0.0, 0.0),
-            "foot_fk.L": (18.0, 0.0, 0.0),
+            "foot_fk.L": (-4.0, 0.0, 0.0),
             "foot_fk.R": (-54.0, 0.0, 0.0),
-            "upper_arm_fk.L": (64.0, 0.0, -28.0),
-            "upper_arm_fk.R": (60.0, 0.0, 24.0),
-            "forearm_fk.L": (44.0, 0.0, -10.0),
-            "forearm_fk.R": (40.0, 0.0, 10.0),
+            "upper_arm_fk.L": (45.0, -35.0, -3.0),
+            "upper_arm_fk.R": (55.0, 35.0, 4.0),
+            "forearm_fk.L": (30.0, 0.0, -7.0),
+            "forearm_fk.R": (40.0, 0.0, 7.0),
         },
         12: {
             "torso": (64.0, 0.0, 5.0),
             "head": (-22.0, 0.0, -6.0),
-            "thigh_fk.L": (-66.0, 0.0, -7.0),
-            "thigh_fk.R": (-28.0, 0.0, 7.0),
-            "shin_fk.L": (38.0, 0.0, 0.0),
+            "thigh_fk.L": (-96.0, 0.0, -24.0),
+            "thigh_fk.R": (-28.0, 0.0, 14.0),
+            "shin_fk.L": (4.0, 0.0, 0.0),
             "shin_fk.R": (108.0, 0.0, 0.0),
-            "foot_fk.L": (14.0, 0.0, 0.0),
+            "foot_fk.L": (-2.0, 0.0, 0.0),
             "foot_fk.R": (-50.0, 0.0, 0.0),
-            "upper_arm_fk.L": (66.0, 0.0, -25.0),
-            "upper_arm_fk.R": (62.0, 0.0, 22.0),
-            "forearm_fk.L": (44.0, 0.0, -10.0),
-            "forearm_fk.R": (40.0, 0.0, 10.0),
+            "upper_arm_fk.L": (48.0, -44.0, -2.0),
+            "upper_arm_fk.R": (58.0, 32.0, 5.0),
+            "forearm_fk.L": (34.0, 0.0, -7.0),
+            "forearm_fk.R": (42.0, 0.0, 7.0),
         },
         SLIDE_LAST_FRAME: {
             "torso": (64.0, 0.0, 0.0),
             "head": (-22.0, 0.0, 0.0),
-            "thigh_fk.L": (-64.0, 0.0, -6.0),
-            "thigh_fk.R": (-30.0, 0.0, 6.0),
-            "shin_fk.L": (40.0, 0.0, 0.0),
+            "thigh_fk.L": (-88.0, 0.0, -18.0),
+            "thigh_fk.R": (-30.0, 0.0, 12.0),
+            "shin_fk.L": (8.0, 0.0, 0.0),
             "shin_fk.R": (104.0, 0.0, 0.0),
-            "foot_fk.L": (12.0, 0.0, 0.0),
+            "foot_fk.L": (-6.0, 0.0, 0.0),
             "foot_fk.R": (-48.0, 0.0, 0.0),
-            "upper_arm_fk.L": (64.0, 0.0, -22.0),
-            "upper_arm_fk.R": (60.0, 0.0, 20.0),
-            "forearm_fk.L": (44.0, 0.0, -8.0),
-            "forearm_fk.R": (40.0, 0.0, 8.0),
+            "upper_arm_fk.L": (46.0, -40.0, -3.0),
+            "upper_arm_fk.R": (54.0, 38.0, 4.0),
+            "forearm_fk.L": (32.0, 0.0, -6.0),
+            "forearm_fk.R": (38.0, 0.0, 6.0),
         },
     }
     for frame, rotations in poses.items():
-        # The deep asymmetric leg pose raises a planted foot relative to the
-        # rig root.  Lift the root to keep both soles at floor height; the
-        # folded torso still makes the visible silhouette substantially lower.
-        root_drop = 0.125 if frame != 1 else -0.015
+        # Lower the root as the straight leading leg swings forward so its
+        # heel skims the floor while the trailing leg stays folded underneath.
+        root_drop = 0.015 if frame != 1 else -0.015
         key_action_pose(rig, frame, rotations, (0.0, 0.0, root_drop))
     bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
     return finish_action(action, "movement", False)
@@ -1749,6 +1748,17 @@ def create_inspection_previews(
             PREVIEW_ROOT / f"{action_name}_pose.png"
         )
         bpy.ops.render.render(write_still=True)
+
+    # The forward leg is most legible in profile, so keep a dedicated slide
+    # check alongside the standard front-facing action sheets.
+    camera.location = views["side"]
+    point_at(camera, Vector((0.0, 0.0, 0.55)))
+    rig.animation_data.action = bpy.data.actions[SLIDE_ACTION_NAME]
+    scene.frame_set(12)
+    scene.render.filepath = str(
+        PREVIEW_ROOT / f"{SLIDE_ACTION_NAME}_pose_side.png"
+    )
+    bpy.ops.render.render(write_still=True)
 
     rig.animation_data.action = bpy.data.actions[IDLE_ACTION_NAME]
     scene.frame_set(IDLE_FIRST_FRAME)
