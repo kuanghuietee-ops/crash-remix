@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""Dress the Island Cut's graybox segments with the beach/jungle kit.
+
+N. Sanity Beach was dressed by hand. Boulders and Hog Wild are nineteen segments
+between them, so they are dressed from the geometry instead: this script reads
+each segment's graybox platforms, works out where the play corridor is, and
+places scenery outside it. Deterministic per segment, so re-running writes the
+same scene, and idempotent, so it can be re-run after a segment is re-authored.
+
+Run it with::
+
+    python3 scripts/dress_island_cut.py
+
+The rule every placement obeys: **nothing the script emits may sit inside the
+volume the player can reach.** Scenery is pushed past the widest platform edge
+plus a clearance margin, and the emitted nodes carry no collision shapes, no
+scripts and no groups -- they are decoration and nothing else. A piece that
+strayed into the corridor would be invisible to every lint and would simply make
+the level unplayable, so the margin is checked rather than assumed, by
+``tests/lint/test_island_dressing.py``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Sequence
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.scene_transform_parsing import (  # noqa: E402  (path set up above)
+    assignment_values,
+    header_attributes,
+    parse_vector,
+)
+
+# Clearance between the widest thing the player can stand on and the nearest
+# vertex of any scenery. Generous on purpose: the camera swings wide on the
+# chase levels, and a trunk clipping the lens is worse than a sparse verge.
+CLEARANCE_M = 2.5
+
+# How far past the corridor the dressing band extends. Beyond this the pieces
+# stop earning their draw calls.
+BAND_DEPTH_M = 26.0
+
+SEGMENT_DIR = Path("scenes/segments")
+MESH_DIR = "res://assets/models/kits/mesh"
+
+ENVIRONMENT_NODE = "EnvironmentArt"
+
+
+@dataclass(frozen=True)
+class Platform:
+    """One graybox slab: what the player can actually stand on."""
+
+    position: tuple[float, float, float]
+    size: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class Corridor:
+    """The reachable volume of a segment, in its own local space."""
+
+    half_width: float
+    z_near: float
+    z_far: float
+    floor_y: float
+
+    @property
+    def length(self) -> float:
+        return abs(self.z_far - self.z_near)
+
+
+@dataclass(frozen=True)
+class Placement:
+    node: str
+    piece: str
+    position: tuple[float, float, float]
+    yaw: float
+    cast_shadow: bool = True
+
+
+def parse_platforms(text: str) -> list[Platform]:
+    """Every graybox platform instanced in a segment, with position and size."""
+    platforms: list[Platform] = []
+    for block in _node_blocks(text):
+        header, body = block
+        attributes = header_attributes(header)
+        if "instance" not in attributes:
+            continue
+        values = assignment_values(body)
+        size = parse_vector(values.get("size", ""))
+        if size is None:
+            continue
+        # A node with no explicit position sits at its parent's origin.
+        position = parse_vector(values.get("position", "")) or (0.0, 0.0, 0.0)
+        platforms.append(Platform(position=tuple(position), size=tuple(size)))
+    return platforms
+
+
+def corridor_of(platforms: Sequence[Platform]) -> Corridor | None:
+    """The bounding corridor of every platform in a segment.
+
+    Uses the *widest* slab rather than an average: a segment whose entry apron
+    is wider than its main run still has to be cleared by the wider one.
+    """
+    if not platforms:
+        return None
+    half_width = max(
+        abs(plat.position[0]) + plat.size[0] / 2.0 for plat in platforms
+    )
+    z_near = max(plat.position[2] + plat.size[2] / 2.0 for plat in platforms)
+    z_far = min(plat.position[2] - plat.size[2] / 2.0 for plat in platforms)
+    # Ground level comes from the biggest slab, not the highest one. Hog Wild's
+    # gate obstacles are platforms too, and taking the highest top surface would
+    # float every tree on that segment 3.7 m into the air.
+    ground = max(platforms, key=lambda plat: plat.size[0] * plat.size[2])
+    floor_y = ground.position[1] + ground.size[1] / 2.0
+    return Corridor(half_width=half_width, z_near=z_near, z_far=z_far, floor_y=floor_y)
+
+
+def _node_blocks(text: str) -> list[tuple[str, str]]:
+    """Split a .tscn into (header line, body) pairs, one per node."""
+    blocks: list[tuple[str, str]] = []
+    current_header: str | None = None
+    current_body: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("[node "):
+            if current_header is not None:
+                blocks.append((current_header, "\n".join(current_body)))
+            current_header = line
+            current_body = []
+        elif current_header is not None:
+            if line.startswith("["):
+                blocks.append((current_header, "\n".join(current_body)))
+                current_header = None
+                current_body = []
+            else:
+                current_body.append(line)
+    if current_header is not None:
+        blocks.append((current_header, "\n".join(current_body)))
+    return blocks
+
+
+def _hash01(seed: int, salt: int) -> float:
+    """Deterministic 0..1 noise. Matches the kit builders' approach."""
+    mixed = (seed * 73856093) ^ (salt * 19349663)
+    mixed &= 0xFFFFFFFF
+    return ((mixed * 2654435761) & 0xFFFFFFFF) / float(0xFFFFFFFF)
+
+
+# --- the two dressing styles -------------------------------------------
+# Boulders runs down a canyon, so it is walled with cliffs; Hog Wild is a
+# flat-out jungle sprint, so it is banked and treed. Both draw on the same kit.
+
+CANYON_STYLE = {
+    "walls": ["cliff_tall_a", "cliff_low_a"],
+    "bank": "terrain_jungle_bank",
+    "scatter": ["rock_boulder_a", "rock_boulder_b", "rock_cluster_a", "stone_cairn_a"],
+    "canopy": ["jungle_tree_b", "fern_cluster_a"],
+    "scatter_every_m": 11.0,
+}
+
+JUNGLE_STYLE = {
+    "walls": ["cliff_low_a"],
+    "bank": "terrain_jungle_bank",
+    "scatter": ["bush_cluster_a", "fern_cluster_a", "grass_patch_a", "rock_cluster_a"],
+    "canopy": ["jungle_tree_a", "jungle_tree_b", "palm_tall_a", "palm_lean_a"],
+    "scatter_every_m": 13.0,
+}
+
+STYLE_BY_PREFIX = {"boulders_": CANYON_STYLE, "hog_": JUNGLE_STYLE}
+
+
+def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement]:
+    """Every scenery node for one segment, on both verges."""
+    placements: list[Placement] = []
+    inner = corridor.half_width + CLEARANCE_M
+    seed = sum(ord(character) for character in name)
+
+    for side_index, side in enumerate((-1.0, 1.0)):
+        # The bank tile runs the length of the segment and hides the horizon.
+        placements.append(
+            Placement(
+                node=f"Bank{'Left' if side < 0 else 'Right'}",
+                piece=str(style["bank"]),
+                position=(side * inner, corridor.floor_y, corridor.z_near),
+                yaw=0.0 if side > 0 else 180.0,
+            )
+        )
+
+        count = max(2, int(corridor.length / float(style["scatter_every_m"])))
+        for index in range(count):
+            along = corridor.z_near - (index + 0.5) * (corridor.length / count)
+            jitter = _hash01(seed + index, side_index * 31 + 7)
+            depth = inner + 1.5 + jitter * (BAND_DEPTH_M - inner - 1.5)
+
+            scatter = list(style["scatter"])
+            piece = scatter[(index + side_index) % len(scatter)]
+            placements.append(
+                Placement(
+                    node=f"Scatter{'L' if side < 0 else 'R'}{index}",
+                    piece=piece,
+                    position=(side * depth, corridor.floor_y - 0.15, along),
+                    yaw=_hash01(seed + index, side_index * 17 + 3) * 360.0,
+                )
+            )
+
+            if index % 2 == 0:
+                canopy = list(style["canopy"])
+                tree = canopy[(index // 2 + side_index) % len(canopy)]
+                placements.append(
+                    Placement(
+                        node=f"Canopy{'L' if side < 0 else 'R'}{index}",
+                        piece=tree,
+                        position=(
+                            side * (depth + 3.0),
+                            corridor.floor_y - 0.4,
+                            along - 3.5,
+                        ),
+                        yaw=_hash01(seed + index, side_index * 11 + 5) * 360.0,
+                    )
+                )
+
+        walls = list(style["walls"])
+        for index, wall in enumerate(walls):
+            placements.append(
+                Placement(
+                    node=f"Wall{'L' if side < 0 else 'R'}{index}",
+                    piece=wall,
+                    position=(
+                        side * (BAND_DEPTH_M - 2.0 - index * 5.0),
+                        corridor.floor_y - 0.5,
+                        corridor.z_near - index * 6.0,
+                    ),
+                    yaw=0.0 if side > 0 else 180.0,
+                    cast_shadow=False,
+                )
+            )
+    return placements
+
+
+def render_environment_art(placements: Sequence[Placement], ids: dict[str, str]) -> str:
+    """The EnvironmentArt subtree as .tscn text."""
+    lines = [f'[node name="{ENVIRONMENT_NODE}" type="Node3D" parent="."]', ""]
+    for placement in placements:
+        lines.append(
+            f'[node name="{placement.node}" type="MeshInstance3D" '
+            f'parent="{ENVIRONMENT_NODE}"]'
+        )
+        x, y, z = placement.position
+        lines.append(f"position = Vector3({_number(x)}, {_number(y)}, {_number(z)})")
+        if abs(placement.yaw) > 1e-6:
+            lines.append(f"rotation_degrees = Vector3(0, {_number(placement.yaw)}, 0)")
+        lines.append(f'mesh = ExtResource("{ids[placement.piece]}")')
+        if not placement.cast_shadow:
+            lines.append("cast_shadow = 0")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _number(value: float) -> str:
+    rounded = round(value, 3)
+    if math.isclose(rounded, int(rounded), abs_tol=1e-9):
+        return str(int(rounded))
+    return str(rounded)
+
+
+def strip_existing(text: str) -> str:
+    """Remove a previously generated EnvironmentArt subtree, if any."""
+    marker = f'[node name="{ENVIRONMENT_NODE}" type="Node3D" parent="."]'
+    start = text.find(marker)
+    if start < 0:
+        return text
+    # Everything from the marker to the next node that is not one of its
+    # children. Children are the only nodes parented to EnvironmentArt.
+    remainder = text[start + len(marker) :]
+    offset = 0
+    for match in re.finditer(r"^\[node .*$", remainder, flags=re.MULTILINE):
+        attributes = header_attributes(match.group(0))
+        if attributes.get("parent") != ENVIRONMENT_NODE:
+            offset = match.start()
+            break
+    else:
+        offset = len(remainder)
+    return text[:start] + remainder[offset:]
+
+
+def ensure_ext_resources(text: str, pieces: Sequence[str]) -> tuple[str, dict[str, str]]:
+    """Add a Mesh ext_resource per piece, reusing any already present."""
+    ids: dict[str, str] = {}
+    existing = dict(
+        re.findall(
+            r'\[ext_resource type="Mesh" path="[^"]*/mesh/([a-z0-9_]+)\.res" '
+            r'id="([^"]+)"\]',
+            text,
+        )
+    )
+    additions: list[str] = []
+    used = set(re.findall(r'id="([^"]+)"', text))
+    for piece in pieces:
+        if piece in existing:
+            ids[piece] = existing[piece]
+            continue
+        identifier = f"env_{piece}"
+        suffix = 0
+        while identifier in used:
+            suffix += 1
+            identifier = f"env_{piece}_{suffix}"
+        used.add(identifier)
+        ids[piece] = identifier
+        additions.append(
+            f'[ext_resource type="Mesh" path="{MESH_DIR}/{piece}.res" '
+            f'id="{identifier}"]'
+        )
+    if not additions:
+        return text, ids
+    lines = text.splitlines()
+    last = max(
+        index for index, line in enumerate(lines) if line.startswith("[ext_resource ")
+    )
+    lines[last + 1 : last + 1] = additions
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else ""), ids
+
+
+def nested_segments(segment_dir: Path) -> set[str]:
+    """Segment scenes that are instanced *inside* another segment.
+
+    ``boulders_chase_obstacle`` is a reusable obstacle block, not a stretch of
+    level. Dressing it would place scenery relative to wherever it is instanced
+    -- which is inside the corridor -- and duplicate it at every use site.
+    """
+    nested: set[str] = set()
+    for path in sorted(segment_dir.glob("*.tscn")):
+        for match in re.finditer(
+            r'\[ext_resource type="PackedScene" '
+            r'path="res://scenes/segments/([a-z0-9_]+)\.tscn"',
+            path.read_text(encoding="utf-8"),
+        ):
+            if match.group(1) != path.stem:
+                nested.add(match.group(1))
+    return nested
+
+
+def undress(text: str) -> str:
+    """Remove everything a previous run of this script added.
+
+    Nodes alone are not enough: the ext_resource lines and the load_steps count
+    would accumulate on every re-run, so the generator has to be able to put a
+    scene back exactly as it found it.
+    """
+    text = strip_existing(text)
+    lines = text.splitlines()
+    kept = [
+        line
+        for line in lines
+        if not (line.startswith("[ext_resource ") and 'id="env_' in line)
+    ]
+    removed = len(lines) - len(kept)
+    # Trailing blank lines are what the stripped subtree left behind. Dropping
+    # them is what makes a full undress byte-identical to the original file.
+    while kept and not kept[-1].strip():
+        kept.pop()
+    text = "\n".join(kept) + ("\n" if text.endswith("\n") else "")
+    return bump_load_steps(text, -removed)
+
+
+def bump_load_steps(text: str, added: int) -> str:
+    """Keep the gd_scene load_steps header honest about the resource count."""
+    if added == 0:
+        return text
+
+    def replace(match: re.Match) -> str:
+        return f"load_steps={int(match.group(1)) + added}"
+
+    return re.sub(r"load_steps=(\d+)", replace, text, count=1)
+
+
+def dress_segment(path: Path) -> int:
+    """Rewrite one segment with generated scenery. Returns the node count."""
+    style = next(
+        (value for prefix, value in STYLE_BY_PREFIX.items() if path.name.startswith(prefix)),
+        None,
+    )
+    if style is None:
+        return 0
+    text = path.read_text(encoding="utf-8")
+    corridor = corridor_of(parse_platforms(text))
+    if corridor is None:
+        return 0
+
+    placements = placements_for(path.stem, corridor, style)
+    text = undress(text)
+    pieces = sorted({placement.piece for placement in placements})
+    before = len(re.findall(r"\[ext_resource ", text))
+    text, ids = ensure_ext_resources(text, pieces)
+    added = len(re.findall(r"\[ext_resource ", text)) - before
+    text = bump_load_steps(text, added)
+
+    body = render_environment_art(placements, ids)
+    if not text.endswith("\n"):
+        text += "\n"
+    path.write_text(text + "\n" + body, encoding="utf-8")
+    return len(placements)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=_REPO_ROOT)
+    arguments = parser.parse_args(argv)
+
+    segment_dir = arguments.repo_root / SEGMENT_DIR
+    nested = nested_segments(segment_dir)
+    total = 0
+    dressed = 0
+    for path in sorted(segment_dir.glob("*.tscn")):
+        if path.stem in nested:
+            # Reusable block, not a stretch of level. Undress it in case an
+            # earlier run dressed it before this exclusion existed.
+            original = path.read_text(encoding="utf-8")
+            cleaned = undress(original)
+            if cleaned != original:
+                path.write_text(cleaned, encoding="utf-8")
+                print(f"UNDRESSED {path.name} (instanced by another segment)")
+            continue
+        count = dress_segment(path)
+        if count:
+            dressed += 1
+            total += count
+            print(f"DRESSED {path.name} {count}")
+    print(f"DRESS_TOTAL {dressed} segment(s), {total} scenery node(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

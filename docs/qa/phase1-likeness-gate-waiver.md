@@ -51,10 +51,33 @@ This waiver unlocks only:
   (100–2,000) the operator chose after being shown the measured range of 100–1,564;
 - tests, lints and budget checks covering the above.
 
-It does **not** unlock any further environment kit, the temple-ruins or any other §9.4
-kit, enemies, rideables, bosses, Phase 2 content, baked lighting as a separate package,
-the Island Cut acceptance gate, or Gate F and Gate F2. Those remain in force. A later
-operator decision is required before any of them begins.
+### Extension of 28 July 2026 — the rest of the Island Cut
+
+Later the same session, after the beach texture pass was committed, the operator
+directed that the remaining Island Cut environments be built too:
+
+> so now you not only build the beach, but the other 2 room and boss level
+> enviroment also build it . afyer that only let me inspect
+
+Read as: the other two levels (Boulders and Hog Wild), the warp room, and the Papu
+Papu boss arena. This extension additionally unlocks:
+
+- environment art and level scenery for `wr1_boulders`, `wr1_hog_wild`,
+  `warp_room_1` and `wr1_papu_papu`, including any new kit pieces and palette
+  entries those environments need;
+- the segment and level scene edits that place that scenery.
+
+**The risk accepted below grows with it, and the operator should know by how much.**
+The original waiver risked reworking one level's dressing if Crash's proportions
+change. This extension puts all four Island Cut pieces in the same position. That is
+the entire Phase 1 art surface, built against a mascot no outside observer has yet
+identified unprompted — which is precisely the sunk-cost shape §9.3 was written to
+prevent. It is the operator's call, and it is recorded here rather than softened.
+
+It still does **not** unlock the temple-ruins or any other Phase 2 §9.4 kit, enemies,
+rideables, boss *characters* (the arena is scenery; Papu himself is rung 7), Phase 2
+content, baked lighting as a separate package, the Island Cut acceptance gate, or
+Gate F and Gate F2. Those remain in force.
 
 ## Agent boundary
 
