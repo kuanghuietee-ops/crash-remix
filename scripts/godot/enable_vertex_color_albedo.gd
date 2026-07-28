@@ -12,6 +12,7 @@ const LOOPING_ANIMATION_SUFFIXES := [
 	"_walk",
 	"_idle",
 	"_run",
+	"_crawl",
 	"_spin",
 	"_grind",
 	"_swing",

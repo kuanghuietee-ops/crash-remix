@@ -8,10 +8,10 @@ Run from the repository root:
 The silhouette was reviewed in uniform clay before this color pass.  This
 stage preserves that geometry while adding a self-contained, matte palette
 through vertex colors: one draw-call material, no copied textures, a
-proportion-matched Rigify basic-human skeleton, and ten authored gameplay
-actions plus idle.  The editable Blender source and inspection renders stay
-under build/; the shipping GLB is written to the hero-character budget
-directory.
+proportion-matched Rigify basic-human skeleton, and twelve authored gameplay
+and personality actions plus idle.  The editable Blender source and
+inspection renders stay under build/; the shipping GLB is written to the
+hero-character budget directory.
 """
 
 from __future__ import annotations
@@ -29,8 +29,10 @@ ASSET_NAME = "SK_crash"
 RIG_NAME = "RIG_crash"
 MATERIAL_NAME = "M_crash_body"
 IDLE_ACTION_NAME = "A_crash_idle"
+BORED_IDLE_ACTION_NAME = "A_crash_bored_idle"
 RUN_ACTION_NAME = "A_crash_run"
 CROUCH_ACTION_NAME = "A_crash_crouch"
+CRAWL_ACTION_NAME = "A_crash_crawl"
 JUMP_ACTION_NAME = "A_crash_jump"
 DOUBLE_JUMP_ACTION_NAME = "A_crash_double_jump"
 SPIN_ACTION_NAME = "A_crash_spin"
@@ -40,8 +42,10 @@ WALL_RUN_ACTION_NAME = "A_crash_wall_run"
 GRIND_ACTION_NAME = "A_crash_grind"
 SWING_ACTION_NAME = "A_crash_swing"
 CORE_ACTION_NAMES = (
+    BORED_IDLE_ACTION_NAME,
     RUN_ACTION_NAME,
     CROUCH_ACTION_NAME,
+    CRAWL_ACTION_NAME,
     JUMP_ACTION_NAME,
     DOUBLE_JUMP_ACTION_NAME,
     SPIN_ACTION_NAME,
@@ -59,8 +63,10 @@ PREVIEW_ROOT = REPO_ROOT / "build/art-previews"
 IDLE_FIRST_FRAME = 1
 IDLE_LAST_FRAME = 49
 IDLE_FPS = 24
+BORED_IDLE_LAST_FRAME = 73
 RUN_LAST_FRAME = 17
 CROUCH_LAST_FRAME = 13
+CRAWL_LAST_FRAME = 25
 JUMP_LAST_FRAME = 21
 DOUBLE_JUMP_LAST_FRAME = 19
 SPIN_LAST_FRAME = 13
@@ -965,6 +971,121 @@ def create_idle(rig: bpy.types.Object) -> bpy.types.Action:
     return finish_action(action, "idle", True)
 
 
+def create_bored_idle(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(
+        rig,
+        BORED_IDLE_ACTION_NAME,
+        BORED_IDLE_LAST_FRAME,
+    )
+    relaxed_pose = {
+        "torso": (2.0, 0.0, 0.0),
+        "head": (-1.0, 0.0, 0.0),
+        "hips": (0.0, 0.0, 0.0),
+        "thigh_fk.L": (-2.0, 0.0, -2.0),
+        "thigh_fk.R": (-2.0, 0.0, 2.0),
+        "shin_fk.L": (4.0, 0.0, 0.0),
+        "shin_fk.R": (4.0, 0.0, 0.0),
+        "foot_fk.L": (-2.0, 0.0, 0.0),
+        "foot_fk.R": (-2.0, 0.0, 0.0),
+        "upper_arm_fk.L": (5.0, -8.0, -2.0),
+        "upper_arm_fk.R": (5.0, 8.0, 2.0),
+        "forearm_fk.L": (8.0, 0.0, -3.0),
+        "forearm_fk.R": (8.0, 0.0, 3.0),
+    }
+    poses = {
+        IDLE_FIRST_FRAME: relaxed_pose,
+        13: {
+            "torso": (5.0, 1.0, -6.0),
+            "head": (-4.0, -12.0, 8.0),
+            "hips": (0.0, 0.0, 5.0),
+            "thigh_fk.L": (-5.0, 0.0, -3.0),
+            "thigh_fk.R": (-1.0, 0.0, 4.0),
+            "shin_fk.L": (8.0, 0.0, 0.0),
+            "shin_fk.R": (3.0, 0.0, 0.0),
+            "foot_fk.L": (-4.0, 0.0, 0.0),
+            "foot_fk.R": (-10.0, 0.0, 0.0),
+            "upper_arm_fk.L": (9.0, -12.0, -5.0),
+            "upper_arm_fk.R": (16.0, 12.0, 6.0),
+            "forearm_fk.L": (12.0, 0.0, -4.0),
+            "forearm_fk.R": (18.0, 0.0, 5.0),
+        },
+        25: {
+            "torso": (7.0, 2.0, -8.0),
+            "head": (-7.0, -15.0, 10.0),
+            "hips": (0.0, 0.0, 6.0),
+            "thigh_fk.L": (-6.0, 0.0, -4.0),
+            "thigh_fk.R": (1.0, 0.0, 5.0),
+            "shin_fk.L": (9.0, 0.0, 0.0),
+            "shin_fk.R": (2.0, 0.0, 0.0),
+            "foot_fk.L": (-5.0, 0.0, 0.0),
+            "foot_fk.R": (8.0, 0.0, 0.0),
+            "upper_arm_fk.L": (12.0, -18.0, -8.0),
+            "upper_arm_fk.R": (108.0, 22.0, 20.0),
+            "forearm_fk.L": (18.0, 0.0, -5.0),
+            "forearm_fk.R": (92.0, 0.0, 10.0),
+        },
+        37: {
+            "torso": (8.0, -2.0, 8.0),
+            "head": (-8.0, 14.0, -10.0),
+            "hips": (0.0, 0.0, -6.0),
+            "thigh_fk.L": (1.0, 0.0, -5.0),
+            "thigh_fk.R": (-6.0, 0.0, 4.0),
+            "shin_fk.L": (2.0, 0.0, 0.0),
+            "shin_fk.R": (9.0, 0.0, 0.0),
+            "foot_fk.L": (7.0, 0.0, 0.0),
+            "foot_fk.R": (-5.0, 0.0, 0.0),
+            "upper_arm_fk.L": (15.0, -16.0, -7.0),
+            "upper_arm_fk.R": (118.0, 28.0, 23.0),
+            "forearm_fk.L": (20.0, 0.0, -5.0),
+            "forearm_fk.R": (104.0, 0.0, 11.0),
+        },
+        49: {
+            "torso": (4.0, -1.0, 6.0),
+            "head": (-4.0, 12.0, -8.0),
+            "hips": (0.0, 0.0, -4.0),
+            "thigh_fk.L": (0.0, 0.0, -4.0),
+            "thigh_fk.R": (-5.0, 0.0, 3.0),
+            "shin_fk.L": (3.0, 0.0, 0.0),
+            "shin_fk.R": (8.0, 0.0, 0.0),
+            "foot_fk.L": (-2.0, 0.0, 0.0),
+            "foot_fk.R": (-4.0, 0.0, 0.0),
+            "upper_arm_fk.L": (38.0, -38.0, -32.0),
+            "upper_arm_fk.R": (38.0, 38.0, 32.0),
+            "forearm_fk.L": (48.0, 0.0, -8.0),
+            "forearm_fk.R": (48.0, 0.0, 8.0),
+        },
+        61: {
+            "torso": (3.0, 0.0, 2.0),
+            "head": (-2.0, 4.0, -3.0),
+            "hips": (0.0, 0.0, -2.0),
+            "thigh_fk.L": (-1.0, 0.0, -3.0),
+            "thigh_fk.R": (-3.0, 0.0, 3.0),
+            "shin_fk.L": (3.0, 0.0, 0.0),
+            "shin_fk.R": (6.0, 0.0, 0.0),
+            "foot_fk.L": (-2.0, 0.0, 0.0),
+            "foot_fk.R": (-3.0, 0.0, 0.0),
+            "upper_arm_fk.L": (12.0, -14.0, -6.0),
+            "upper_arm_fk.R": (18.0, 16.0, 7.0),
+            "forearm_fk.L": (16.0, 0.0, -4.0),
+            "forearm_fk.R": (20.0, 0.0, 5.0),
+        },
+        BORED_IDLE_LAST_FRAME: relaxed_pose,
+    }
+    root_locations = {
+        IDLE_FIRST_FRAME: (0.0, 0.0, 0.0),
+        13: (-0.012, 0.0, 0.0),
+        25: (-0.018, 0.0, 0.003),
+        37: (0.018, 0.0, 0.003),
+        49: (0.012, 0.0, 0.0),
+        61: (0.004, 0.0, 0.0),
+        BORED_IDLE_LAST_FRAME: (0.0, 0.0, 0.0),
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, root_locations[frame])
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "personality", True)
+
+
 def create_run(rig: bpy.types.Object) -> bpy.types.Action:
     action = begin_action(rig, RUN_ACTION_NAME, RUN_LAST_FRAME)
     for frame in (IDLE_FIRST_FRAME, 5, 9, 13, RUN_LAST_FRAME):
@@ -1113,6 +1234,62 @@ def create_crouch(rig: bpy.types.Object) -> bpy.types.Action:
         key_action_pose(rig, frame, rotations, (0.0, 0.0, root_drop))
     bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
     return finish_action(action, "movement", False)
+
+
+def create_crawl(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, CRAWL_ACTION_NAME, CRAWL_LAST_FRAME)
+    low_pose = {
+        "torso": (58.0, 0.0, 0.0),
+        "head": (-20.0, 0.0, 0.0),
+        "thigh_fk.L": (-72.0, 0.0, -6.0),
+        "thigh_fk.R": (-72.0, 0.0, 6.0),
+        "shin_fk.L": (120.0, 0.0, 0.0),
+        "shin_fk.R": (120.0, 0.0, 0.0),
+        "foot_fk.L": (-48.0, 0.0, 0.0),
+        "foot_fk.R": (-48.0, 0.0, 0.0),
+        "upper_arm_fk.L": (55.0, -35.0, -5.0),
+        "upper_arm_fk.R": (55.0, 35.0, 5.0),
+        "forearm_fk.L": (38.0, 0.0, -6.0),
+        "forearm_fk.R": (38.0, 0.0, 6.0),
+    }
+    poses = {
+        IDLE_FIRST_FRAME: low_pose,
+        7: {
+            "torso": (62.0, 0.0, -7.0),
+            "head": (-22.0, 0.0, 6.0),
+            "thigh_fk.L": (-88.0, 0.0, -12.0),
+            "thigh_fk.R": (-54.0, 0.0, 10.0),
+            "shin_fk.L": (98.0, 0.0, 0.0),
+            "shin_fk.R": (132.0, 0.0, 0.0),
+            "foot_fk.L": (-28.0, 0.0, 0.0),
+            "foot_fk.R": (-58.0, 0.0, 0.0),
+            "upper_arm_fk.L": (38.0, -46.0, -7.0),
+            "upper_arm_fk.R": (80.0, 28.0, 7.0),
+            "forearm_fk.L": (28.0, 0.0, -7.0),
+            "forearm_fk.R": (52.0, 0.0, 7.0),
+        },
+        13: low_pose,
+        19: {
+            "torso": (62.0, 0.0, 7.0),
+            "head": (-22.0, 0.0, -6.0),
+            "thigh_fk.L": (-54.0, 0.0, -10.0),
+            "thigh_fk.R": (-88.0, 0.0, 12.0),
+            "shin_fk.L": (132.0, 0.0, 0.0),
+            "shin_fk.R": (98.0, 0.0, 0.0),
+            "foot_fk.L": (-58.0, 0.0, 0.0),
+            "foot_fk.R": (-28.0, 0.0, 0.0),
+            "upper_arm_fk.L": (80.0, -28.0, -7.0),
+            "upper_arm_fk.R": (38.0, 46.0, 7.0),
+            "forearm_fk.L": (52.0, 0.0, -7.0),
+            "forearm_fk.R": (28.0, 0.0, 7.0),
+        },
+        CRAWL_LAST_FRAME: low_pose,
+    }
+    for frame, rotations in poses.items():
+        root_height = 0.045 if frame in (7, 19) else -0.026
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, root_height))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "locomotion", True)
 
 
 def create_jump(rig: bpy.types.Object) -> bpy.types.Action:
@@ -1607,8 +1784,10 @@ def create_animation_set(
 ) -> dict[str, bpy.types.Action]:
     actions = {
         IDLE_ACTION_NAME: create_idle(rig),
+        BORED_IDLE_ACTION_NAME: create_bored_idle(rig),
         RUN_ACTION_NAME: create_run(rig),
         CROUCH_ACTION_NAME: create_crouch(rig),
+        CRAWL_ACTION_NAME: create_crawl(rig),
         JUMP_ACTION_NAME: create_jump(rig),
         DOUBLE_JUMP_ACTION_NAME: create_double_jump(rig),
         SPIN_ACTION_NAME: create_spin(rig),
@@ -1656,6 +1835,7 @@ def validate_action_poses(
         DOUBLE_JUMP_ACTION_NAME: 0.050,
         SPIN_ACTION_NAME: 0.040,
         SLIDE_ACTION_NAME: 0.035,
+        CRAWL_ACTION_NAME: 0.020,
     }
     for action_name, minimum_clearance in hand_clearances.items():
         action = actions[action_name]
@@ -1712,6 +1892,9 @@ def validate_action_poses(
     idle_min_z, idle_max_z = evaluated_z_bounds(character)
     low_pose_checks = (
         (CROUCH_ACTION_NAME, CROUCH_LAST_FRAME, 0.150),
+        (CRAWL_ACTION_NAME, 7, 0.140),
+        (CRAWL_ACTION_NAME, 19, 0.140),
+        (CRAWL_ACTION_NAME, CRAWL_LAST_FRAME, 0.140),
         (SLIDE_ACTION_NAME, 5, 0.140),
         (SLIDE_ACTION_NAME, 12, 0.140),
         (SLIDE_ACTION_NAME, SLIDE_LAST_FRAME, 0.140),
@@ -1963,8 +2146,10 @@ def create_inspection_previews(
     camera.location = views["front"]
     point_at(camera, Vector((0.0, 0.0, 0.55)))
     preview_frames = {
+        BORED_IDLE_ACTION_NAME: 37,
         RUN_ACTION_NAME: 5,
         CROUCH_ACTION_NAME: 13,
+        CRAWL_ACTION_NAME: 7,
         JUMP_ACTION_NAME: 11,
         DOUBLE_JUMP_ACTION_NAME: 6,
         SPIN_ACTION_NAME: 7,
@@ -1990,6 +2175,13 @@ def create_inspection_previews(
     scene.frame_set(12)
     scene.render.filepath = str(
         PREVIEW_ROOT / f"{SLIDE_ACTION_NAME}_pose_side.png"
+    )
+    bpy.ops.render.render(write_still=True)
+
+    rig.animation_data.action = bpy.data.actions[CRAWL_ACTION_NAME]
+    scene.frame_set(7)
+    scene.render.filepath = str(
+        PREVIEW_ROOT / f"{CRAWL_ACTION_NAME}_pose_side.png"
     )
     bpy.ops.render.render(write_still=True)
 

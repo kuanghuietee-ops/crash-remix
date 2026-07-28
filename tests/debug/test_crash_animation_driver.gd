@@ -2,8 +2,10 @@ extends GutTest
 
 const DRIVER_PATH := "res://src/visual/player/crash_animation_driver.gd"
 const IDLE := &"A_crash_idle"
+const BORED_IDLE := &"A_crash_bored_idle"
 const RUN := &"A_crash_run"
 const CROUCH := &"A_crash_crouch"
+const CRAWL := &"A_crash_crawl"
 const JUMP := &"A_crash_jump"
 const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
@@ -14,7 +16,7 @@ const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
 
 
-func test_clip_selection_covers_the_ten_core_gameplay_actions() -> void:
+func test_clip_selection_covers_gameplay_and_personality_actions() -> void:
 	assert_true(
 		ResourceLoader.exists(DRIVER_PATH),
 		"the player scene needs a visual-only Crash animation driver"
@@ -27,20 +29,30 @@ func test_clip_selection_covers_the_ten_core_gameplay_actions() -> void:
 		return
 
 	assert_eq(
-		driver_script.call("clip_for", &"grounded", false, JUMP, false),
+		driver_script.call("clip_for", &"grounded", false, JUMP, false, false),
 		IDLE
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"grounded", false, JUMP, true),
+		driver_script.call("clip_for", &"grounded", false, JUMP, false, true),
+		BORED_IDLE,
+		"standing still long enough should reveal Crash's personality"
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"grounded", false, JUMP, true, true),
 		RUN
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"crouched", false, JUMP, false),
+		driver_script.call("clip_for", &"crouched", false, JUMP, false, false),
 		CROUCH,
 		"pressing down while still needs an authored crouch instead of squash"
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"airborne", false, JUMP, true),
+		driver_script.call("clip_for", &"crouched", false, JUMP, true, false),
+		CRAWL,
+		"moving while low needs a readable crawl cycle"
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"airborne", false, JUMP, true, false),
 		JUMP
 	)
 	assert_eq(
@@ -49,44 +61,90 @@ func test_clip_selection_covers_the_ten_core_gameplay_actions() -> void:
 			&"airborne",
 			false,
 			DOUBLE_JUMP,
-			true
+			true,
+			false
 		),
 		DOUBLE_JUMP
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"sliding", false, JUMP, true),
+		driver_script.call("clip_for", &"sliding", false, JUMP, true, false),
 		SLIDE
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"body_slam", false, JUMP, true),
+		driver_script.call("clip_for", &"body_slam", false, JUMP, true, false),
 		SLAM
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"slam_recovery", false, JUMP, false),
+		driver_script.call(
+			"clip_for",
+			&"slam_recovery",
+			false,
+			JUMP,
+			false,
+			false
+		),
 		SLAM,
 		"the impact pose must hold through the authored stomp recovery"
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"grounded", true, JUMP, true),
+		driver_script.call("clip_for", &"grounded", true, JUMP, true, true),
 		SPIN
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"wall_run", false, JUMP, true),
+		driver_script.call("clip_for", &"wall_run", false, JUMP, true, false),
 		WALL_RUN
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"grind", false, JUMP, true),
+		driver_script.call("clip_for", &"grind", false, JUMP, true, false),
 		GRIND
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"swing", false, JUMP, true),
+		driver_script.call("clip_for", &"swing", false, JUMP, true, false),
 		SWING
 	)
 	assert_eq(
-		driver_script.call("clip_for", &"ride", false, JUMP, true),
+		driver_script.call("clip_for", &"ride", false, JUMP, true, false),
 		RUN,
 		"ride keeps the grounded locomotion cycle until its own art pass"
 	)
+
+
+func test_bored_idle_clock_only_advances_while_grounded_and_still() -> void:
+	var driver_script := load(DRIVER_PATH) as Script
+	assert_not_null(driver_script)
+	if driver_script == null:
+		return
+
+	assert_almost_eq(
+		driver_script.call(
+			"idle_elapsed_after",
+			1.25,
+			0.5,
+			&"grounded",
+			false,
+			false
+		),
+		1.75,
+		0.0001
+	)
+	for reset_case: Array in [
+		[&"grounded", false, true],
+		[&"grounded", true, false],
+		[&"crouched", false, false],
+		[&"airborne", false, false],
+	]:
+		assert_eq(
+			driver_script.call(
+				"idle_elapsed_after",
+				4.0,
+				0.25,
+				reset_case[0],
+				reset_case[1],
+				reset_case[2]
+			),
+			0.0,
+			"movement and actions must reset the bored-idle delay"
+		)
 
 
 func test_impulse_selection_distinguishes_jump_double_jump_and_slam() -> void:

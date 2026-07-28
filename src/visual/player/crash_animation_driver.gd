@@ -9,8 +9,10 @@ const PlayerFrameDecisionType := preload(
 )
 
 const IDLE := &"A_crash_idle"
+const BORED_IDLE := &"A_crash_bored_idle"
 const RUN := &"A_crash_run"
 const CROUCH := &"A_crash_crouch"
+const CRAWL := &"A_crash_crawl"
 const JUMP := &"A_crash_jump"
 const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
@@ -34,6 +36,8 @@ const STATE_RIDE := PlayerStateMachineType.STATE_RIDE
 @export var controller_path: NodePath
 @export var model_path: NodePath
 @export var facing_turn_speed_radians_per_second := 24.0
+@export_range(0.0, 30.0, 0.25, "or_greater")
+var bored_idle_delay_s := 5.0
 
 var _controller: CharacterBody3D
 var _model: Node3D
@@ -42,6 +46,7 @@ var _state := STATE_AIRBORNE
 var _airborne_clip := JUMP
 var _spinning: bool
 var _current_clip := &""
+var _idle_elapsed_s := 0.0
 
 
 func _ready() -> void:
@@ -81,7 +86,7 @@ func _ready() -> void:
 
 func _process(delta_s: float) -> void:
 	_refresh_facing(delta_s)
-	_refresh()
+	_refresh(delta_s)
 
 
 func current_clip() -> StringName:
@@ -92,15 +97,18 @@ static func clip_for(
 	state: StringName,
 	spinning: bool,
 	airborne_clip: StringName,
-	moving: bool
+	moving: bool,
+	bored: bool
 ) -> StringName:
 	if spinning:
 		return SPIN
 	match state:
 		STATE_GROUNDED:
-			return RUN if moving else IDLE
+			if moving:
+				return RUN
+			return BORED_IDLE if bored else IDLE
 		STATE_CROUCHED:
-			return CROUCH
+			return CRAWL if moving else CROUCH
 		STATE_SLIDING:
 			return SLIDE
 		STATE_BODY_SLAM, STATE_SLAM_RECOVERY:
@@ -120,6 +128,18 @@ static func clip_for(
 		STATE_RIDE:
 			return RUN
 	return IDLE
+
+
+static func idle_elapsed_after(
+	current_s: float,
+	delta_s: float,
+	state: StringName,
+	spinning: bool,
+	moving: bool
+) -> float:
+	if state != STATE_GROUNDED or spinning or moving:
+		return 0.0
+	return maxf(current_s, 0.0) + maxf(delta_s, 0.0)
 
 
 static func clip_for_impulse(impulse: StringName) -> StringName:
@@ -173,19 +193,28 @@ func _on_movement_impulse_applied(impulse: StringName) -> void:
 	_refresh()
 
 
-func _refresh() -> void:
+func _refresh(delta_s := 0.0) -> void:
 	if _controller == null or _animation_player == null:
 		return
 	var moving := not Vector2(
 		_controller.velocity.x,
 		_controller.velocity.z
 	).is_zero_approx()
+	_idle_elapsed_s = idle_elapsed_after(
+		_idle_elapsed_s,
+		delta_s,
+		_state,
+		_spinning,
+		moving
+	)
+	var bored := _idle_elapsed_s >= maxf(bored_idle_delay_s, 0.0)
 	_play(
 		clip_for(
 			_state,
 			_spinning,
 			_airborne_clip,
-			moving
+			moving,
+			bored
 		)
 	)
 

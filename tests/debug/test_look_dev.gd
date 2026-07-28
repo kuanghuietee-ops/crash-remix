@@ -11,8 +11,10 @@ const LAB_ASSISTANT_WALK := &"A_lab_assistant_walk"
 const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const CRASH_IDLE := &"A_crash_idle"
 const CRASH_CORE_CLIPS := [
+	&"A_crash_bored_idle",
 	&"A_crash_run",
 	&"A_crash_crouch",
+	&"A_crash_crawl",
 	&"A_crash_jump",
 	&"A_crash_double_jump",
 	&"A_crash_spin",
@@ -323,7 +325,9 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 		assert_gt(clip.length, 0.0)
 		assert_gt(clip.get_track_count(), 0)
 		if clip_name in [
+			&"A_crash_bored_idle",
 			&"A_crash_run",
+			&"A_crash_crawl",
 			&"A_crash_spin",
 			&"A_crash_wall_run",
 			&"A_crash_grind",
@@ -381,6 +385,69 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 		run_early[&"foot_l"].distance_to(run_late[&"foot_l"]),
 		0.06,
 		"the run must move the feet instead of sliding a stiff body"
+	)
+
+	var bored_idle := animation_player.get_animation(
+		&"A_crash_bored_idle"
+	)
+	var bored_early := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_bored_idle",
+		bored_idle.length * 0.2
+	)
+	var bored_late := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_bored_idle",
+		bored_idle.length * 0.55
+	)
+	assert_gt(
+		bored_early[&"hand_r"].distance_to(bored_late[&"hand_r"]),
+		0.08,
+		"bored idle must include a readable hand gesture"
+	)
+	assert_gt(
+		bored_early[&"head_rotation"].angle_to(
+			bored_late[&"head_rotation"]
+		),
+		deg_to_rad(6.0),
+		"bored idle must look around instead of repeating breathing"
+	)
+
+	var idle_sample := _sample_bones(
+		animation_player,
+		skeleton,
+		CRASH_IDLE,
+		0.0
+	)
+	var crawl := animation_player.get_animation(&"A_crash_crawl")
+	var crawl_early := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_crawl",
+		crawl.length * 0.25
+	)
+	var crawl_late := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_crawl",
+		crawl.length * 0.75
+	)
+	assert_lt(
+		crawl_early[&"head"].y,
+		idle_sample[&"head"].y - 0.12,
+		"the crawl must keep Crash visibly below his standing silhouette"
+	)
+	assert_gt(
+		crawl_early[&"hand_l"].distance_to(crawl_late[&"hand_l"]),
+		0.06,
+		"the crawl must alternate its reaching hands"
+	)
+	assert_gt(
+		crawl_early[&"foot_l"].distance_to(crawl_late[&"foot_l"]),
+		0.05,
+		"the crawl must alternate its feet instead of gliding"
 	)
 	for clip_name: StringName in CRASH_CORE_CLIPS:
 		var clip := animation_player.get_animation(clip_name)
@@ -756,12 +823,14 @@ func _sample_bones(
 		&"hand_r",
 		&"foot_l",
 		&"chest",
+		&"head",
 	]:
 		var bone_name := {
 			&"hand_l": "DEF-hand.L",
 			&"hand_r": "DEF-hand.R",
 			&"foot_l": "DEF-foot.L",
 			&"chest": "DEF-spine.003",
+			&"head": "DEF-spine.006",
 		}[key] as String
 		var bone_index := skeleton.find_bone(bone_name)
 		assert_ne(bone_index, -1, "%s must remain exported" % bone_name)
@@ -770,4 +839,12 @@ func _sample_bones(
 			if bone_index >= 0
 			else Vector3.ZERO
 		)
+	var head_index := skeleton.find_bone("DEF-spine.006")
+	if head_index >= 0:
+		var head_pose := skeleton.get_bone_global_pose(head_index)
+		positions[&"head_rotation"] = (
+			head_pose.basis.orthonormalized().get_rotation_quaternion()
+		)
+	else:
+		positions[&"head_rotation"] = Quaternion.IDENTITY
 	return positions
