@@ -12,6 +12,8 @@ const FULL_TURN_DEGREES := 360.0
 ## Degrees per second. A slow turn: fast enough to read the silhouette from every
 ## angle in a few seconds, slow enough to stop on a bad one.
 const TURNTABLE_DEGREES_PER_SECOND := 30.0
+const IMPORT_SIDECAR_SUFFIX := ".import"
+const REMAP_SIDECAR_SUFFIX := ".remap"
 
 var _assets := PackedStringArray()
 var _selected_index := 0
@@ -80,20 +82,24 @@ func close() -> void:
 	closed.emit()
 
 
+func normalize_resource_path(path: String) -> String:
+	for suffix: String in [IMPORT_SIDECAR_SUFFIX, REMAP_SIDECAR_SUFFIX]:
+		if path.ends_with(suffix):
+			return path.trim_suffix(suffix)
+	return path
+
+
 func _collect_assets(directory_path: String, into: PackedStringArray) -> void:
-	var directory := DirAccess.open(directory_path)
-	if directory == null:
-		return
-	directory.list_dir_begin()
-	var entry := directory.get_next()
-	while entry != "":
-		var full_path := directory_path.path_join(entry)
-		if directory.current_is_dir():
-			_collect_assets(full_path, into)
-		elif entry.ends_with(".glb"):
+	for entry: String in ResourceLoader.list_directory(directory_path):
+		if entry.ends_with("/"):
+			_collect_assets(
+				directory_path.path_join(entry.trim_suffix("/")),
+				into
+			)
+			continue
+		var full_path := normalize_resource_path(directory_path.path_join(entry))
+		if full_path.ends_with(".glb") and not into.has(full_path):
 			into.append(full_path)
-		entry = directory.get_next()
-	directory.list_dir_end()
 
 
 func _show_selected_asset() -> void:

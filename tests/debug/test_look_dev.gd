@@ -1,6 +1,7 @@
 extends GutTest
 
 const LookDevType := preload("res://src/debug/look_dev.gd")
+const STANDARD_CRATE_PATH := "res://assets/models/props/SM_crate_standard.glb"
 
 
 func test_discovers_glb_assets_under_a_root() -> void:
@@ -8,11 +9,32 @@ func test_discovers_glb_assets_under_a_root() -> void:
 
 	var found := look_dev.discover_assets("res://assets/models")
 
-	# The tree legitimately holds no models yet, so this asserts the contract
-	# (a sorted list of .glb paths, never null) rather than a fixed count.
 	assert_not_null(found)
+	assert_has(found, STANDARD_CRATE_PATH)
 	for path: String in found:
 		assert_true(path.ends_with(".glb"), "%s should be a .glb" % path)
+
+
+func test_import_suffix_normalizes_to_a_loadable_asset_path() -> void:
+	var look_dev: LookDev = autofree(LookDevType.new())
+
+	var normalized: String = look_dev.normalize_resource_path(
+		STANDARD_CRATE_PATH + ".import"
+	)
+
+	assert_eq(normalized, STANDARD_CRATE_PATH)
+	assert_true(
+		ResourceLoader.exists(normalized),
+		"%s should resolve through the real importer" % normalized
+	)
+
+
+func test_a_nonexistent_discovery_root_returns_empty() -> void:
+	var look_dev: LookDev = autofree(LookDevType.new())
+
+	var found := look_dev.discover_assets("res://assets/models/not_present")
+
+	assert_eq(found, PackedStringArray())
 
 
 func test_selection_wraps_around_an_empty_list_without_erroring() -> void:
