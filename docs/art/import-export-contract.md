@@ -48,15 +48,15 @@ document where it cannot.
   | `assets/models/bosses/` | `boss` | §9.4: 15–25k tris |
   | `assets/models/rideables/` | 6,000–10,000 tris | Operator-approved 2026-07-28 for the first hog |
   | `assets/models/props/` | 100–2,500 tris | Operator-approved after the first crate measured 1,996 tris |
-  | `assets/models/kits/` | *unset* | §9.4 gives no figure — operator sets it |
+  | `assets/models/kits/` | 100–2,000 tris | Operator-approved after the first beach/jungle kit measured 100–1,564 tris |
 
   An unset category **fails the lint closed** with the exact line to add to
   `data/tuning/art_budget.tres`. That is deliberate: §9.4 specifies per-asset caps for
   characters, enemies and bosses only, while props, rideables and kit pieces are
   governed by the whole-frame budget instead. The operator approved the 100–2,500
   prop band on 2026-07-28 after the first real crate measured 1,996 triangles,
-  and approved the 6,000–10,000 rideable band before the first hog on the same
-  date. Kit pieces remain unset until their first real assets land.
+  the 100–2,000 kit-piece band after the first beach/jungle kit measured
+  100–1,564 triangles, and the 6,000–10,000 rideable band before the first hog.
 
 ## Godot side
 

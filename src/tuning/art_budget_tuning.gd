@@ -8,10 +8,10 @@ extends Resource
 
 ## Per-asset triangle caps. §9.4 specifies hero, enemy and boss bands. The
 ## operator approved the prop band after measuring the first real crate at
-## 1,996 triangles; the rideable band before the first hog; and the kit_piece
-## band after measuring the first beach/jungle kit at 100-1,564 across its 25
-## pieces. Every directory in CATEGORY_BY_DIRECTORY now has a band, so the
-## lint's fail-closed path is exercised by a synthetic budget in its tests
+## 1,996 triangles; the kit_piece band after measuring the first beach/jungle
+## kit at 100-1,564 across its 25 pieces; and 6,000-10,000 for rideables before
+## the first hog. Every directory in CATEGORY_BY_DIRECTORY now has a band, so
+## the lint's fail-closed path is exercised by a synthetic budget in its tests
 ## rather than by a real category nobody has chosen a number for yet.
 @export var hero_min_triangles: int = 0
 @export var hero_max_triangles: int = 0

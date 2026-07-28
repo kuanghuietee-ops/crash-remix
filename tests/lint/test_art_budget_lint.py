@@ -145,6 +145,15 @@ class TriangleBudgetTests(unittest.TestCase):
 
             self.assertEqual(find_violations(root), [])
 
+    def test_the_operator_approved_rideable_band_accepts_the_hog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/rideables/SK_hog.glb").write_bytes(
+                build_glb(8000)
+            )
+
+            self.assertEqual(find_violations(root), [])
+
     def test_an_over_budget_kit_piece_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = make_repo(directory)
@@ -155,6 +164,17 @@ class TriangleBudgetTests(unittest.TestCase):
             self.assertEqual(len(violations), 1)
             self.assertIn("2400", violations[0].message)
             self.assertIn("2000", violations[0].message)
+
+    def test_an_under_budget_rideable_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/rideables/SK_hog.glb").write_bytes(build_glb(400))
+
+            violations = find_violations(root)
+
+            self.assertEqual(len(violations), 1)
+            self.assertIn("400", violations[0].message)
+            self.assertIn("6000", violations[0].message)
 
     def test_an_unbudgeted_category_fails_closed_with_the_line_to_add(self) -> None:
         # Every real asset directory now carries an operator-approved band, so
