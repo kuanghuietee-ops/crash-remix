@@ -1,9 +1,26 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_tnt.tscn" id="4_tnt"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_beach_shelf.res" id="30_shelf"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_jungle_bank.res" id="32_jbank"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/water_sea_tile.res" id="33_sea"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/surf_foam_edge.res" id="34_surf"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/headland_far.res" id="35_head"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="36_clifflow"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/palm_tall_a.res" id="38_palmt"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/palm_lean_a.res" id="39_palml"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/jungle_tree_b.res" id="41_treeb"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/fern_cluster_a.res" id="42_fern"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/bush_cluster_a.res" id="43_bush"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/grass_patch_a.res" id="44_grass"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/fringe_grass_a.res" id="45_fringeg"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/fringe_beach_a.res" id="46_fringeb"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/canopy_frond_arch.res" id="47_canopy"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/rock_cluster_a.res" id="50_rockc"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/stone_cairn_a.res" id="54_cairn"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(18, 12, 100)
@@ -92,3 +109,168 @@ segment_group = &"Crescendo"
 position = Vector3(0, 0.5, -76)
 crate_id = 40
 segment_group = &"Crescendo"
+
+[node name="EnvironmentArt" type="Node3D" parent="."]
+
+[node name="SeaShelf" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-3.6, 0, -96)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("30_shelf")
+
+[node name="Sea" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-18, -1.7, -96)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("33_sea")
+cast_shadow = 0
+
+[node name="Surf" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-14.9, -1.62, -96)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("34_surf")
+cast_shadow = 0
+
+[node name="Headland" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-112, -6, -46)
+mesh = ExtResource("35_head")
+cast_shadow = 0
+
+[node name="BankRight" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(3.6, 0, 0)
+mesh = ExtResource("32_jbank")
+
+[node name="FringeSea" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-6.35, -0.05, -96)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("46_fringeb")
+
+[node name="FringeRight" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(6.35, -0.05, 0)
+mesh = ExtResource("45_fringeg")
+
+[node name="CliffRightA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(17, 2.7, -6)
+mesh = ExtResource("36_clifflow")
+
+[node name="CliffRightB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(18, 2.9, -44)
+mesh = ExtResource("36_clifflow")
+
+[node name="PalmShoreA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.6, -0.78, -26)
+rotation_degrees = Vector3(0, 35, 0)
+mesh = ExtResource("38_palmt")
+
+[node name="PalmShoreB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-13.6, -1.2, -58)
+rotation_degrees = Vector3(0, -60, 0)
+mesh = ExtResource("39_palml")
+
+[node name="PalmShoreC" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.3, -0.72, -88)
+rotation_degrees = Vector3(0, 150, 0)
+mesh = ExtResource("38_palmt")
+
+[node name="TreeRightA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(12, 1.8, -18)
+rotation_degrees = Vector3(0, -30, 0)
+mesh = ExtResource("41_treeb")
+
+[node name="TreeRightB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(13.5, 2.3, -56)
+rotation_degrees = Vector3(0, 70, 0)
+mesh = ExtResource("41_treeb")
+
+[node name="FernRightA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9.8, 1.25, -32)
+rotation_degrees = Vector3(0, 140, 0)
+mesh = ExtResource("42_fern")
+
+[node name="FernRightB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(10.2, 1.4, -70)
+rotation_degrees = Vector3(0, 230, 0)
+mesh = ExtResource("42_fern")
+
+[node name="BushRightA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9.8, 0.8, -12)
+rotation_degrees = Vector3(0, 50, 0)
+mesh = ExtResource("43_bush")
+
+[node name="BushRightB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(10.2, 0.9, -50)
+rotation_degrees = Vector3(0, 170, 0)
+mesh = ExtResource("43_bush")
+
+[node name="GrassShoreA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-10.4, -0.5, -40)
+rotation_degrees = Vector3(0, 20, 0)
+mesh = ExtResource("44_grass")
+
+[node name="GrassShoreB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-10.2, -0.46, -76)
+rotation_degrees = Vector3(0, 130, 0)
+mesh = ExtResource("44_grass")
+
+[node name="GrassRightA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(11, 1.4, -84)
+rotation_degrees = Vector3(0, 60, 0)
+mesh = ExtResource("44_grass")
+
+[node name="RocksShore" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-15.5, -1.45, -64)
+rotation_degrees = Vector3(0, 90, 0)
+mesh = ExtResource("50_rockc")
+
+[node name="RocksRight" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(12.5, 2, -72)
+rotation_degrees = Vector3(0, 30, 0)
+mesh = ExtResource("50_rockc")
+
+[node name="CairnFinish" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-8.4, -0.15, -92)
+mesh = ExtResource("54_cairn")
+
+[node name="CanopyA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(2.4, 14.8, -20)
+rotation_degrees = Vector3(0, 120, 0)
+mesh = ExtResource("47_canopy")
+
+[node name="SeaShelfBeyond" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-3.6, 0, -192)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("30_shelf")
+
+[node name="SeaBeyond" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-18, -1.7, -192)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("33_sea")
+cast_shadow = 0
+
+[node name="SurfBeyond" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-14.9, -1.62, -192)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("34_surf")
+cast_shadow = 0
+
+[node name="BankBeyond" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-4, -0.15, -99)
+mesh = ExtResource("32_jbank")
+
+[node name="TreeBeyondA" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(12.5, 2.1, -108)
+rotation_degrees = Vector3(0, 40, 0)
+mesh = ExtResource("41_treeb")
+
+[node name="TreeBeyondB" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(15, 3, -140)
+rotation_degrees = Vector3(0, -25, 0)
+mesh = ExtResource("41_treeb")
+
+[node name="PalmBeyond" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-12, -0.85, -124)
+rotation_degrees = Vector3(0, 160, 0)
+mesh = ExtResource("38_palmt")
+
+[node name="BankBeyondOuter" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(20, -0.15, -192)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("32_jbank")
