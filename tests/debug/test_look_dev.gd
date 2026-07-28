@@ -8,6 +8,8 @@ const LAB_ASSISTANT_PATH := (
 	"res://assets/models/enemies/SK_lab_assistant.glb"
 )
 const LAB_ASSISTANT_WALK := &"A_lab_assistant_walk"
+const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
+const CRASH_IDLE := &"A_crash_idle"
 
 
 func test_discovers_glb_assets_under_a_root() -> void:
@@ -171,6 +173,187 @@ func test_lab_assistant_import_is_one_skinned_budget_mesh_with_walk() -> void:
 		assert_gt(walk.length, 0.0)
 		assert_gt(walk.get_track_count(), 0)
 		assert_eq(walk.loop_mode, Animation.LOOP_LINEAR)
+
+
+func test_crash_likeness_candidate_is_one_untextured_rigged_hero() -> void:
+	assert_true(
+		ResourceLoader.exists(CRASH_PATH),
+		"art-ladder rung 3 must export the untextured Crash candidate"
+	)
+	if not ResourceLoader.exists(CRASH_PATH):
+		return
+	var asset_scene := load(CRASH_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes: Array[Node] = asset.find_children(
+		"*",
+		"MeshInstance3D",
+		true,
+		false
+	)
+	var skeletons: Array[Node] = asset.find_children(
+		"*",
+		"Skeleton3D",
+		true,
+		false
+	)
+	var animation_players: Array[Node] = asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "Crash must stay one draw-call surface")
+	assert_eq(skeletons.size(), 1, "Crash must retain one Rigify skeleton")
+	assert_eq(animation_players.size(), 1, "the idle preview must be exported")
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var bounds := mesh_instance.get_aabb()
+	assert_almost_eq(
+		bounds.position.y,
+		0.0,
+		0.03,
+		"the hero origin must remain at the shoes"
+	)
+	assert_between(
+		bounds.size.y,
+		1.05,
+		1.15,
+		"the likeness candidate must preserve the authored 1.1 m scale"
+	)
+
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	var triangle_count := indices.size() / 3
+	assert_between(
+		triangle_count,
+		10000,
+		12000,
+		"the hero must remain inside the immutable design budget"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_eq(
+		unique_colors.size(),
+		1,
+		"the likeness gate must see a uniform clay model, not color cues"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_null(
+			material.albedo_texture,
+			"the cold likeness candidate must be genuinely untextured"
+		)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"DEF-spine",
+		"DEF-upper_arm.L",
+		"DEF-upper_arm.R",
+		"DEF-thigh.L",
+		"DEF-thigh.R",
+		"DEF-foot.L",
+		"DEF-foot.R",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the Rigify deform skeleton must retain %s" % required_bone
+		)
+
+	assert_true(animation_player.has_animation(CRASH_IDLE))
+	if not animation_player.has_animation(CRASH_IDLE):
+		return
+	var idle := animation_player.get_animation(CRASH_IDLE)
+	assert_not_null(idle)
+	if idle != null:
+		assert_gt(idle.length, 0.0)
+		assert_gt(idle.get_track_count(), 0)
+		assert_eq(idle.loop_mode, Animation.LOOP_LINEAR)
+
+
+func test_look_dev_auto_plays_and_phone_frames_crash_idle() -> void:
+	assert_true(ResourceLoader.exists(CRASH_PATH))
+	if not ResourceLoader.exists(CRASH_PATH):
+		return
+	var packed := load(LOOK_DEV_SCENE) as PackedScene
+	var look_dev := packed.instantiate() as LookDev
+	look_dev.set_assets(PackedStringArray([CRASH_PATH]))
+	add_child_autofree(look_dev)
+	await wait_process_frames(1)
+	var camera := look_dev.get_node("Camera3D") as Camera3D
+	var meshes: Array[Node] = look_dev.find_children(
+		"*",
+		"MeshInstance3D",
+		true,
+		false
+	)
+	var animation_players: Array[Node] = look_dev.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_not_null(camera)
+	assert_eq(meshes.size(), 1)
+	assert_eq(animation_players.size(), 1)
+	if (
+		camera == null
+		or meshes.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_true(animation_player.is_playing())
+	assert_eq(
+		StringName(animation_player.current_animation),
+		CRASH_IDLE
+	)
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var min_screen_y := INF
+	var max_screen_y := -INF
+	for endpoint_index: int in range(8):
+		var endpoint := (
+			mesh_instance.global_transform
+			* mesh_instance.get_aabb().get_endpoint(endpoint_index)
+		)
+		var screen_point := camera.unproject_position(endpoint)
+		min_screen_y = minf(min_screen_y, screen_point.y)
+		max_screen_y = maxf(max_screen_y, screen_point.y)
+	var viewport_height := look_dev.get_viewport().get_visible_rect().size.y
+	var screen_height_ratio := (
+		(max_screen_y - min_screen_y) / viewport_height
+	)
+	assert_between(
+		screen_height_ratio,
+		0.35,
+		0.85,
+		"the 1.1 m hero must remain readable without clipping at phone size"
+	)
 
 
 func test_look_dev_auto_plays_the_lab_assistant_walk() -> void:

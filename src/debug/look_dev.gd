@@ -14,8 +14,8 @@ const FULL_TURN_DEGREES := 360.0
 const TURNTABLE_DEGREES_PER_SECOND := 30.0
 const IMPORT_SIDECAR_SUFFIX := ".import"
 const REMAP_SIDECAR_SUFFIX := ".remap"
-const PREVIEW_ANIMATION_SUFFIX := "_walk"
-const CAMERA_MIN_DISTANCE_M := 3.0
+const PREVIEW_ANIMATION_SUFFIXES := ["_idle", "_walk"]
+const CAMERA_MIN_DISTANCE_M := 1.8
 const CAMERA_FRAME_MARGIN := 1.2
 
 var _assets := PackedStringArray()
@@ -182,10 +182,13 @@ func _play_preview_animation(asset: Node) -> void:
 		false
 	):
 		var animation_player := player_node as AnimationPlayer
-		for animation_name: StringName in animation_player.get_animation_list():
-			if String(animation_name).ends_with(PREVIEW_ANIMATION_SUFFIX):
-				animation_player.play(animation_name)
-				return
+		for suffix: String in PREVIEW_ANIMATION_SUFFIXES:
+			for animation_name: StringName in (
+				animation_player.get_animation_list()
+			):
+				if String(animation_name).ends_with(suffix):
+					animation_player.play(animation_name)
+					return
 
 
 func _on_previous_pressed() -> void:

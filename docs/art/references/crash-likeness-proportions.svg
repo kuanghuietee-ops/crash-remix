@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .grid { stroke: #263247; stroke-width: 1; }
+      .axis { stroke: #6ec5d7; stroke-width: 2; stroke-dasharray: 8 8; }
+      .outline { fill: #aeb9c8; stroke: #edf3fa; stroke-width: 3; }
+      .dark { fill: #738094; stroke: #edf3fa; stroke-width: 3; }
+      .detail { fill: none; stroke: #344257; stroke-width: 3; }
+      .measure { fill: none; stroke: #f0b64a; stroke-width: 2; }
+      .label { fill: #dce8f4; font: 22px sans-serif; }
+      .small { fill: #aebed0; font: 17px sans-serif; }
+      .title { fill: #ffffff; font: 700 31px sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#111725"/>
+  <g opacity="0.75">
+    <path class="grid" d="M50 120H1350 M50 220H1350 M50 320H1350 M50 420H1350
+      M50 520H1350 M50 620H1350 M50 720H1350"/>
+    <path class="grid" d="M100 90V780 M200 90V780 M300 90V780 M400 90V780
+      M500 90V780 M600 90V780 M700 90V780 M800 90V780 M900 90V780
+      M1000 90V780 M1100 90V780 M1200 90V780 M1300 90V780"/>
+  </g>
+
+  <text x="50" y="50" class="title">Crash likeness candidate — original proportion plan</text>
+  <text x="50" y="78" class="small">Clay silhouette only • 1.10 m • PS1-era massing • no extracted geometry or texture</text>
+
+  <!-- Front view: large wedge head, tiny torso, long arms, short legs, broad shoes. -->
+  <g id="front">
+    <path class="axis" d="M330 100V775"/>
+    <path class="dark" d="M267 193 L238 126 L300 166 L330 106 L360 166 L422 126 L393 193 Z"/>
+    <path class="outline" d="M239 206 L199 152 L207 245 Z"/>
+    <path class="outline" d="M421 206 L461 152 L453 245 Z"/>
+    <ellipse class="outline" cx="330" cy="270" rx="125" ry="135"/>
+    <ellipse class="outline" cx="330" cy="349" rx="137" ry="76"/>
+    <ellipse class="dark" cx="330" cy="329" rx="38" ry="31"/>
+    <path class="detail" d="M266 240 Q295 213 318 244 M342 244 Q366 213 394 240"/>
+    <path class="detail" d="M275 382 Q330 425 385 382"/>
+    <path class="outline" d="M273 406 Q330 378 387 406 L407 527 Q330 564 253 527 Z"/>
+    <path class="outline" d="M267 422 Q219 434 189 499 L148 571 L183 591 L238 527 L280 485 Z"/>
+    <path class="outline" d="M393 422 Q441 434 471 499 L512 571 L477 591 L422 527 L380 485 Z"/>
+    <ellipse class="outline" cx="154" cy="593" rx="51" ry="46"/>
+    <ellipse class="outline" cx="506" cy="593" rx="51" ry="46"/>
+    <path class="dark" d="M253 511 Q330 537 407 511 L399 586 Q330 610 261 586 Z"/>
+    <path class="outline" d="M278 576 L326 580 L319 685 L274 685 Z"/>
+    <path class="outline" d="M334 580 L382 576 L386 685 L341 685 Z"/>
+    <path class="outline" d="M257 676 Q294 650 331 684 L326 738 Q266 756 220 728 Q220 694 257 676 Z"/>
+    <path class="outline" d="M403 676 Q366 650 329 684 L334 738 Q394 756 440 728 Q440 694 403 676 Z"/>
+    <text x="274" y="810" class="label">FRONT</text>
+  </g>
+
+  <!-- Side view, facing left: the muzzle projection is the likeness anchor. -->
+  <g id="side">
+    <path class="axis" d="M790 100V775"/>
+    <path class="dark" d="M821 191 L858 119 L864 178 L921 137 L889 211 Z"/>
+    <path class="outline" d="M851 213 L914 155 L893 256 Z"/>
+    <ellipse class="outline" cx="806" cy="276" rx="111" ry="140"/>
+    <path class="outline" d="M801 295 Q700 290 663 346 Q707 411 817 399 Q862 356 801 295 Z"/>
+    <ellipse class="dark" cx="665" cy="342" rx="36" ry="31"/>
+    <path class="detail" d="M721 382 Q760 414 806 382"/>
+    <path class="outline" d="M790 406 Q850 395 882 437 L886 536 Q817 558 765 523 Z"/>
+    <path class="outline" d="M821 428 Q878 450 903 521 L928 581 L890 596 L850 534 L797 483 Z"/>
+    <ellipse class="outline" cx="920" cy="598" rx="49" ry="45"/>
+    <path class="dark" d="M765 510 Q825 537 886 514 L883 586 Q820 605 772 581 Z"/>
+    <path class="outline" d="M803 578 L850 579 L849 686 L805 686 Z"/>
+    <path class="outline" d="M798 677 Q850 654 911 699 L905 738 Q817 756 752 725 Q759 693 798 677 Z"/>
+    <text x="760" y="810" class="label">SIDE</text>
+  </g>
+
+  <!-- Top view records the broad cranium and narrow shoulders. -->
+  <g id="top">
+    <path class="axis" d="M1140 135V630"/>
+    <path class="dark" d="M1070 202 L1025 151 L1100 172 L1140 116 L1180 172 L1255 151 L1210 202 Z"/>
+    <ellipse class="outline" cx="1140" cy="276" rx="137" ry="117"/>
+    <path class="outline" d="M1040 293 Q1140 337 1240 293 L1222 388 Q1140 434 1058 388 Z"/>
+    <ellipse class="dark" cx="1140" cy="401" rx="42" ry="29"/>
+    <path class="outline" d="M1088 427 Q1140 407 1192 427 L1209 522 Q1140 551 1071 522 Z"/>
+    <path class="outline" d="M1080 454 Q1011 471 970 541 L1004 564 Q1051 517 1103 502 Z"/>
+    <path class="outline" d="M1200 454 Q1269 471 1310 541 L1276 564 Q1229 517 1177 502 Z"/>
+    <ellipse class="outline" cx="979" cy="564" rx="43" ry="39"/>
+    <ellipse class="outline" cx="1301" cy="564" rx="43" ry="39"/>
+    <text x="1114" y="650" class="label">TOP</text>
+  </g>
+
+  <!-- Measurements and modelling constraints. -->
+  <path class="measure" d="M75 106V742 M65 106H85 M65 742H85"/>
+  <text x="92" y="430" class="label" transform="rotate(-90 92 430)">1.10 m total</text>
+  <path class="measure" d="M190 105H470 M190 95V115 M470 95V115"/>
+  <text x="254" y="102" class="small">head ≈ 45% height</text>
+
+  <g transform="translate(52 842)">
+    <text class="small">Silhouette anchors: five-point crest • tall ears • deep muzzle + large nose • narrow chest • elbow-low arms • fist-sized hands • cuffed shorts • split oversized shoes</text>
+  </g>
+</svg>
