@@ -18,6 +18,7 @@ try:
         UP,
         ZERO,
         Vector3,
+        assignment_values,
         header_attributes as _header_attributes,
         parse_transform as _parse_transform,
         parse_vector as _parse_vector,
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover - exercised via scripts.* imports
         UP,
         ZERO,
         Vector3,
+        assignment_values,
         header_attributes as _header_attributes,
         parse_transform as _parse_transform,
         parse_vector as _parse_vector,
@@ -580,8 +582,8 @@ def _load_camera_config(repo_root: Path) -> CameraConfig:
         encoding="utf-8"
     )
     project_text = (repo_root / "project.godot").read_text(encoding="utf-8")
-    values = _assignment_values(camera_text)
-    project_values = _assignment_values(project_text)
+    values = assignment_values(camera_text)
+    project_values = assignment_values(project_text)
     width = float(project_values["window/size/viewport_width"])
     height = float(project_values["window/size/viewport_height"])
     wall_offset = _parse_vector(values["wall_run_offset"])
@@ -594,15 +596,6 @@ def _load_camera_config(repo_root: Path) -> CameraConfig:
         wall_run_offset=wall_offset,
         aspect_ratio=width / height,
     )
-
-
-def _assignment_values(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        match = PROPERTY_PATTERN.match(line.strip())
-        if match is not None:
-            values[match.group(1)] = match.group(2).strip()
-    return values
 
 
 def _scene_files(root: Path) -> Iterable[Path]:

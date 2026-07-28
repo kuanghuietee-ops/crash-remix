@@ -21,6 +21,7 @@ try:
         SpatialTransform,
         Vector3,
         ZERO,
+        assignment_values,
         header_attributes as _header_attributes,
         parse_basis as _parse_basis,
         parse_transform as _parse_transform,
@@ -38,6 +39,7 @@ except ImportError:  # pragma: no cover - exercised via scripts.* imports
         SpatialTransform,
         Vector3,
         ZERO,
+        assignment_values,
         header_attributes as _header_attributes,
         parse_basis as _parse_basis,
         parse_transform as _parse_transform,
@@ -1599,22 +1601,22 @@ def _bounds_half_extent_along(
 
 
 def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
-    economy = _assignment_values(
+    economy = assignment_values(
         (repo_root / "data/tuning/economy.tres").read_text(
             encoding="utf-8"
         )
     )
-    camera = _assignment_values(
+    camera = assignment_values(
         (repo_root / "data/tuning/camera.tres").read_text(
             encoding="utf-8"
         )
     )
-    move = _assignment_values(
+    move = assignment_values(
         (repo_root / "data/tuning/move.tres").read_text(
             encoding="utf-8"
         )
     )
-    chase = _assignment_values(
+    chase = assignment_values(
         (repo_root / "data/tuning/chase.tres").read_text(
             encoding="utf-8"
         )
@@ -1662,7 +1664,7 @@ def _load_authoring_tuning(repo_root: Path) -> AuthoringTuning:
 
 
 def _load_level_meta(path: Path) -> LevelMetaValues:
-    values = _assignment_values(
+    values = assignment_values(
         path.read_text(encoding="utf-8")
     )
     return LevelMetaValues(
@@ -1759,15 +1761,6 @@ def _header_groups(header: str) -> set[str]:
         group
         for group in re.findall(r'"([^"]+)"', match.group(1))
     }
-
-
-def _assignment_values(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        match = PROPERTY_PATTERN.match(line.strip())
-        if match is not None:
-            values[match.group(1)] = match.group(2).strip()
-    return values
 
 
 def _scene_files(root: Path) -> Iterable[Path]:

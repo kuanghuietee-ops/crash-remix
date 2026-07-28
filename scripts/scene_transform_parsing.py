@@ -46,7 +46,22 @@ RESOURCE_CALL_PATTERN = re.compile(
 HEADER_ATTRIBUTE_PATTERN = re.compile(
     r'([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|([^\s]+))'
 )
-PROPERTY_PATTERN = re.compile(r"^([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
+PROPERTY_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_/]*)\s*=\s*(.+)$")
+
+
+def assignment_values(text: str) -> dict[str, str]:
+    """Return the `key = value` assignments in a .tres/.tscn body.
+
+    Line-oriented on purpose: callers look up known property names, so a
+    header line that happens to match is harmless and this stays cheap.
+    """
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        match = PROPERTY_PATTERN.search(line.strip())
+        if match is not None:
+            values[match.group(1)] = match.group(2).strip()
+    return values
+
 
 # Section headers every authoring lint's line-oriented .tscn parser must
 # either understand or explicitly treat as carrying no authoring-relevant
