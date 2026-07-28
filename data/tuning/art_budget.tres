@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ArtBudgetTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/art_budget_tuning.gd" id="1_art_budget"]
+
+[resource]
+script = ExtResource("1_art_budget")
+hero_min_triangles = 10000
+hero_max_triangles = 12000
+enemy_min_triangles = 3000
+enemy_max_triangles = 6000
+boss_min_triangles = 15000
+boss_max_triangles = 25000
+max_texture_dimension_px = 2048
+frame_draw_calls_typical = 120
+frame_draw_calls_peak = 180
+frame_triangles_typical = 150000
+frame_triangles_peak = 250000
