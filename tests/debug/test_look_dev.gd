@@ -12,6 +12,7 @@ const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const CRASH_IDLE := &"A_crash_idle"
 const CRASH_CORE_CLIPS := [
 	&"A_crash_run",
+	&"A_crash_crouch",
 	&"A_crash_jump",
 	&"A_crash_double_jump",
 	&"A_crash_spin",
@@ -372,6 +373,68 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 		0.06,
 		"the run must move the feet instead of sliding a stiff body"
 	)
+	for clip_name: StringName in CRASH_CORE_CLIPS:
+		var clip := animation_player.get_animation(clip_name)
+		if clip == null:
+			continue
+		var worst_scale_error := 0.0
+		var sample_count := ceili(clip.length * 24.0)
+		for sample_index: int in range(sample_count + 1):
+			var sample_time := minf(
+				float(sample_index) / 24.0,
+				clip.length
+			)
+			animation_player.play(clip_name)
+			animation_player.seek(sample_time, true)
+			animation_player.advance(0.0)
+			skeleton.force_update_all_bone_transforms()
+			for bone_name: String in [
+				"DEF-spine.003",
+				"DEF-spine.006",
+			]:
+				var bone_index := skeleton.find_bone(bone_name)
+				assert_ne(bone_index, -1)
+				if bone_index < 0:
+					continue
+				var pose_scale := (
+					skeleton
+					.get_bone_global_pose(bone_index)
+					.basis
+					.get_scale()
+				)
+				for axis_scale: float in [
+					pose_scale.x,
+					pose_scale.y,
+					pose_scale.z,
+				]:
+					worst_scale_error = maxf(
+						worst_scale_error,
+						absf(axis_scale - 1.0)
+					)
+		assert_lte(
+			worst_scale_error,
+			0.08,
+			"%s must not stretch the torso or head (scale error %.3f)"
+			% [clip_name, worst_scale_error]
+		)
+
+	var jump := animation_player.get_animation(&"A_crash_jump")
+	var jump_apex := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_jump",
+		jump.length * 0.5
+	)
+	assert_gt(
+		jump_apex[&"hand_l"].z,
+		jump_apex[&"chest"].z + 0.04,
+		"the left jump hand must reach in front of the chest"
+	)
+	assert_gt(
+		jump_apex[&"hand_r"].z,
+		jump_apex[&"chest"].z + 0.04,
+		"the right jump hand must reach in front of the chest"
+	)
 
 	var spin := animation_player.get_animation(&"A_crash_spin")
 	var spin_early := _sample_bones(
@@ -607,11 +670,13 @@ func _sample_bones(
 		&"hand_l",
 		&"hand_r",
 		&"foot_l",
+		&"chest",
 	]:
 		var bone_name := {
 			&"hand_l": "DEF-hand.L",
 			&"hand_r": "DEF-hand.R",
 			&"foot_l": "DEF-foot.L",
+			&"chest": "DEF-spine.003",
 		}[key] as String
 		var bone_index := skeleton.find_bone(bone_name)
 		assert_ne(bone_index, -1, "%s must remain exported" % bone_name)

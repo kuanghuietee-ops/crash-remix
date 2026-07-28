@@ -1424,11 +1424,13 @@ func _apply_character_dimensions(state: StringName) -> void:
 			)
 			hurtbox_shape_node.position.y = half_height
 	if _visual_root != null:
-		_visual_root.scale.y = visual_height / _move_tuning.player_height_m
+		_visual_root.scale = Vector3.ONE
 		_visual_root.position = Vector3.ZERO
 		if state == PlayerStateMachineType.STATE_RIDE:
 			_visual_root.position = ride_visual_offset
-		_visual_root.position.y += visual_height * ScalarMathType.HALF
+		_visual_root.position.y += (
+			_move_tuning.player_height_m * ScalarMathType.HALF
+		)
 	if _spin_area != null:
 		var spin_shape_node := _spin_area.get_node_or_null("CollisionShape3D") as CollisionShape3D
 		if spin_shape_node != null and spin_shape_node.shape is SphereShape3D:

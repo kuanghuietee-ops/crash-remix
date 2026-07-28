@@ -3,6 +3,7 @@ extends GutTest
 const DRIVER_PATH := "res://src/visual/player/crash_animation_driver.gd"
 const IDLE := &"A_crash_idle"
 const RUN := &"A_crash_run"
+const CROUCH := &"A_crash_crouch"
 const JUMP := &"A_crash_jump"
 const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
@@ -10,7 +11,7 @@ const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
 
 
-func test_clip_selection_covers_the_six_core_gameplay_actions() -> void:
+func test_clip_selection_covers_the_seven_core_gameplay_actions() -> void:
 	assert_true(
 		ResourceLoader.exists(DRIVER_PATH),
 		"the player scene needs a visual-only Crash animation driver"
@@ -29,6 +30,11 @@ func test_clip_selection_covers_the_six_core_gameplay_actions() -> void:
 	assert_eq(
 		driver_script.call("clip_for", &"grounded", false, JUMP, true),
 		RUN
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"crouched", false, JUMP, false),
+		CROUCH,
+		"pressing down while still needs an authored crouch instead of squash"
 	)
 	assert_eq(
 		driver_script.call("clip_for", &"airborne", false, JUMP, true),

@@ -415,6 +415,7 @@ func test_controller_updates_crouch_shape_and_commits_body_slam() -> void:
 	var controller: CharacterBody3D = setup["controller"]
 	var collision_shape: CollisionShape3D = setup["collision_shape"]
 	var hurtbox_shape: CollisionShape3D = setup["hurtbox_shape"]
+	var visual: Node3D = setup["visual"]
 	var buffer: InputIntentBuffer = setup["buffer"]
 	controller.call("advance_logic", 30.0, true, 0.0, Vector3.FORWARD)
 	buffer.push(InputIntent.button(&"down", true, 30.01, &"touch"))
@@ -434,6 +435,17 @@ func test_controller_updates_crouch_shape_and_commits_body_slam() -> void:
 			* _move.crouch_hurtbox_height_ratio
 			* _move.hurtbox_visual_ratio,
 		0.0001
+	)
+	assert_eq(
+		visual.scale,
+		Vector3.ONE,
+		"crouch may reduce collision height but must not squash the model"
+	)
+	assert_almost_eq(
+		visual.position.y,
+		_move.player_height_m * 0.5,
+		0.0001,
+		"the full-size animated model must stay planted on the floor"
 	)
 
 	buffer.push(InputIntent.button(&"down", false, 30.02, &"touch"))

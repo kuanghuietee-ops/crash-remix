@@ -10,6 +10,7 @@ const PlayerFrameDecisionType := preload(
 
 const IDLE := &"A_crash_idle"
 const RUN := &"A_crash_run"
+const CROUCH := &"A_crash_crouch"
 const JUMP := &"A_crash_jump"
 const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
@@ -17,6 +18,7 @@ const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
 
 const STATE_GROUNDED := PlayerStateMachineType.STATE_GROUNDED
+const STATE_CROUCHED := PlayerStateMachineType.STATE_CROUCHED
 const STATE_SLIDING := PlayerStateMachineType.STATE_SLIDING
 const STATE_AIRBORNE := PlayerStateMachineType.STATE_AIRBORNE
 const STATE_BODY_SLAM := PlayerStateMachineType.STATE_BODY_SLAM
@@ -94,6 +96,8 @@ static func clip_for(
 	match state:
 		STATE_GROUNDED:
 			return RUN if moving else IDLE
+		STATE_CROUCHED:
+			return CROUCH
 		STATE_SLIDING:
 			return SLIDE
 		STATE_BODY_SLAM, STATE_SLAM_RECOVERY:
