@@ -1245,9 +1245,19 @@ func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
 	var player := level.get_node_or_null(
 		"Player"
 	) as CharacterBody3D
-	var player_body := player.get_node_or_null(
-		"Visual/SpinPivot/Body"
-	) as MeshInstance3D
+	var crash_model := player.get_node_or_null(
+		"Visual/SpinPivot/CrashModel"
+	) as Node3D
+	var crash_meshes: Array[Node] = (
+		crash_model.find_children("*", "MeshInstance3D", true, false)
+		if crash_model != null
+		else []
+	)
+	var player_body := (
+		crash_meshes[0] as MeshInstance3D
+		if crash_meshes.size() == 1
+		else null
+	)
 	var hog_capsule := player.get_node_or_null(
 		"HogVisual/Capsule"
 	) as MeshInstance3D

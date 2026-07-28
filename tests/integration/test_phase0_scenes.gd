@@ -4,6 +4,10 @@ const PLAYER_SCENE_PATH := "res://scenes/player/player.tscn"
 const CAMERA_SCENE_PATH := "res://scenes/camera_rig.tscn"
 const GAME_SCENE_PATH := "res://scenes/game.tscn"
 const GAME_SCRIPT_PATH := "res://src/core/phase0_game.gd"
+const CRASH_IDLE := &"A_crash_idle"
+const CRASH_RUN := &"A_crash_run"
+const CRASH_JUMP := &"A_crash_jump"
+const CRASH_SPIN := &"A_crash_spin"
 
 
 func test_player_scene_contains_controller_and_both_depth_aids() -> void:
@@ -19,6 +23,61 @@ func test_player_scene_contains_controller_and_both_depth_aids() -> void:
 	assert_true(player.get_node("SlamArea") is Area3D)
 	assert_true(player.has_node("BlobShadow"))
 	assert_true(player.has_node("LandingRing"))
+
+
+func test_player_scene_mounts_the_colored_rig_instead_of_the_gray_capsule() -> void:
+	var player := _instantiate(PLAYER_SCENE_PATH) as CharacterBody3D
+	if player == null:
+		return
+	add_child_autofree(player)
+	var crash_model := player.get_node_or_null(
+		"Visual/SpinPivot/CrashModel"
+	) as Node3D
+	var animation_driver := player.get_node_or_null(
+		"Visual/CrashAnimationDriver"
+	)
+
+	assert_not_null(crash_model)
+	assert_not_null(animation_driver)
+	assert_false(player.has_node("Visual/SpinPivot/Body"))
+	assert_false(player.has_node("Visual/SpinPivot/ForwardMarker"))
+	if crash_model == null or animation_driver == null:
+		return
+	var meshes: Array[Node] = crash_model.find_children(
+		"*",
+		"MeshInstance3D",
+		true,
+		false
+	)
+	var animation_players: Array[Node] = crash_model.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_eq(meshes.size(), 1)
+	assert_eq(animation_players.size(), 1)
+	if meshes.size() != 1 or animation_players.size() != 1:
+		return
+	var mesh := meshes[0] as MeshInstance3D
+	var world_bounds := mesh.global_transform * mesh.get_aabb()
+	assert_almost_eq(
+		world_bounds.position.y,
+		player.global_position.y,
+		0.03,
+		"Crash's shoes must remain on the gameplay floor plane"
+	)
+	assert_almost_eq(
+		absf(crash_model.rotation.y),
+		PI,
+		0.001,
+		"the imported +Z-facing model must face gameplay's -Z corridor"
+	)
+	assert_true(animation_driver.has_method("current_clip"))
+	if animation_driver.has_method("current_clip"):
+		assert_true(
+			animation_driver.call("current_clip") in [CRASH_IDLE, CRASH_JUMP]
+		)
 
 
 func test_camera_rig_has_path_camera_and_overlapping_region_volumes() -> void:
@@ -134,6 +193,7 @@ func test_booted_toybox_runs_player_camera_and_depth_aids_in_physics() -> void:
 	var rail := game.get_node("CameraRig/Rail") as Path3D
 	var camera := game.get_node("CameraRig/Camera3D") as Camera3D
 	var landing_ring := player.get_node("LandingRing") as Node3D
+	var animation_driver := player.get_node("Visual/CrashAnimationDriver")
 	var landing_probe: Variant = landing_ring.get("_probe_shape")
 	assert_true(player.is_on_floor())
 	assert_gte(rail.curve.point_count, 5)
@@ -156,12 +216,14 @@ func test_booted_toybox_runs_player_camera_and_depth_aids_in_physics() -> void:
 	buffer.push(InputIntent.move(Vector2.UP, now_s, &"test"))
 	await wait_physics_frames(8)
 	assert_lt(player.global_position.z, before_run.z)
+	assert_eq(animation_driver.call("current_clip"), CRASH_RUN)
 
 	now_s = float(Time.get_ticks_usec()) / 1_000_000.0
 	buffer.push(InputIntent.button(&"jump", true, now_s, &"test"))
 	var before_jump_y := player.global_position.y
 	await wait_physics_frames(2)
 	assert_gt(player.global_position.y, before_jump_y)
+	assert_eq(animation_driver.call("current_clip"), CRASH_JUMP)
 	assert_true(player.get_node("LandingRing").visible)
 	buffer.push(InputIntent.button(&"jump", false, now_s + 0.05, &"test"))
 
@@ -275,6 +337,7 @@ func test_touch_spin_reaches_player_and_rotates_visible_pivot() -> void:
 	var player := game.get_node("Player") as CharacterBody3D
 	var touch := game.get_node("UI/TouchControls") as Control
 	var spin_area := player.get_node("SpinArea") as Area3D
+	var animation_driver := player.get_node("Visual/CrashAnimationDriver")
 	assert_true(player.has_node("Visual/SpinPivot"))
 	if not player.has_node("Visual/SpinPivot"):
 		return
@@ -291,6 +354,7 @@ func test_touch_spin_reaches_player_and_rotates_visible_pivot() -> void:
 	assert_true(player.call("is_spinning"))
 	assert_true(spin_area.monitoring)
 	assert_ne(spin_pivot.rotation.y, rotation_before)
+	assert_eq(animation_driver.call("current_clip"), CRASH_SPIN)
 	spin_press.pressed = false
 	touch.call("handle_touch_event", spin_press)
 

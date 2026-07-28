@@ -28,6 +28,20 @@ ASSET_NAME = "SK_crash"
 RIG_NAME = "RIG_crash"
 MATERIAL_NAME = "M_crash_body"
 IDLE_ACTION_NAME = "A_crash_idle"
+RUN_ACTION_NAME = "A_crash_run"
+JUMP_ACTION_NAME = "A_crash_jump"
+DOUBLE_JUMP_ACTION_NAME = "A_crash_double_jump"
+SPIN_ACTION_NAME = "A_crash_spin"
+SLIDE_ACTION_NAME = "A_crash_slide"
+SLAM_ACTION_NAME = "A_crash_slam"
+CORE_ACTION_NAMES = (
+    RUN_ACTION_NAME,
+    JUMP_ACTION_NAME,
+    DOUBLE_JUMP_ACTION_NAME,
+    SPIN_ACTION_NAME,
+    SLIDE_ACTION_NAME,
+    SLAM_ACTION_NAME,
+)
 COLOR_ATTRIBUTE = "COLOR_0"
 SOURCE_PATH = REPO_ROOT / "build/art-source/SK_crash_color.blend"
 EXPORT_PATH = REPO_ROOT / "assets/models/characters/SK_crash.glb"
@@ -36,6 +50,12 @@ PREVIEW_ROOT = REPO_ROOT / "build/art-previews"
 IDLE_FIRST_FRAME = 1
 IDLE_LAST_FRAME = 49
 IDLE_FPS = 24
+RUN_LAST_FRAME = 25
+JUMP_LAST_FRAME = 21
+DOUBLE_JUMP_LAST_FRAME = 19
+SPIN_LAST_FRAME = 13
+SLIDE_LAST_FRAME = 17
+SLAM_LAST_FRAME = 15
 Color = tuple[float, float, float, float]
 
 FUR_ORANGE: Color = (0.88, 0.225, 0.035, 1.0)
@@ -792,6 +812,7 @@ def join_and_skin(
     character["material_slots"] = 1
     character["likeness_stage"] = "vertex_color_candidate"
     character["idle_action"] = IDLE_ACTION_NAME
+    character["core_actions"] = list(CORE_ACTION_NAMES)
     character.data.validate(verbose=True)
     character.data.update()
     return character
@@ -807,19 +828,75 @@ def key_rotation(
     bone.keyframe_insert(data_path="rotation_euler", frame=frame)
 
 
-def create_idle(rig: bpy.types.Object) -> bpy.types.Action:
+def key_location(
+    bone: bpy.types.PoseBone,
+    frame: int,
+    location: tuple[float, float, float],
+) -> None:
+    bone.location = location
+    bone.keyframe_insert(data_path="location", frame=frame)
+
+
+def begin_action(
+    rig: bpy.types.Object,
+    name: str,
+    last_frame: int,
+) -> bpy.types.Action:
     scene = bpy.context.scene
     scene.frame_start = IDLE_FIRST_FRAME
-    scene.frame_end = IDLE_LAST_FRAME
+    scene.frame_end = last_frame
     scene.render.fps = IDLE_FPS
-    action = bpy.data.actions.new(IDLE_ACTION_NAME)
+    action = bpy.data.actions.new(name)
     action.use_fake_user = True
     rig.animation_data_create()
     rig.animation_data.action = action
 
+    control_names = (
+        "root",
+        "torso",
+        "head",
+        "hips",
+        "upper_arm_fk.L",
+        "upper_arm_fk.R",
+        "forearm_fk.L",
+        "forearm_fk.R",
+        "thigh_fk.L",
+        "thigh_fk.R",
+        "shin_fk.L",
+        "shin_fk.R",
+        "foot_fk.L",
+        "foot_fk.R",
+    )
+    for control_name in control_names:
+        bone = rig.pose.bones[control_name]
+        bone.rotation_mode = "XYZ"
+        bone.rotation_euler = (0.0, 0.0, 0.0)
+        bone.location = (0.0, 0.0, 0.0)
+        bone.scale = (1.0, 1.0, 1.0)
     for side in ("L", "R"):
         rig.pose.bones[f"upper_arm_parent.{side}"]["IK_FK"] = 0.0
         rig.pose.bones[f"thigh_parent.{side}"]["IK_FK"] = 0.0
+    scene.frame_set(IDLE_FIRST_FRAME)
+    return action
+
+
+def finish_action(
+    action: bpy.types.Action,
+    role: str,
+    looping: bool,
+) -> bpy.types.Action:
+    for curve in action.fcurves:
+        for keyframe in curve.keyframe_points:
+            keyframe.interpolation = "BEZIER"
+            keyframe.handle_left_type = "AUTO_CLAMPED"
+            keyframe.handle_right_type = "AUTO_CLAMPED"
+    action["looping"] = looping
+    action["clip_role"] = role
+    return action
+
+
+def create_idle(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, IDLE_ACTION_NAME, IDLE_LAST_FRAME)
 
     for frame in (IDLE_FIRST_FRAME, 13, 25, 37, IDLE_LAST_FRAME):
         phase = math.tau * (
@@ -856,19 +933,360 @@ def create_idle(rig: bpy.types.Object) -> bpy.types.Action:
             frame,
             (0.0, -math.radians(0.8) * breath, -math.radians(0.6) * settle),
         )
-        hips = rig.pose.bones["hips"]
-        hips.location = (0.0, 0.0, 0.004 * (1.0 - settle))
-        hips.keyframe_insert(data_path="location", frame=frame)
+        key_location(
+            rig.pose.bones["hips"],
+            frame,
+            (0.0, 0.0, 0.004 * (1.0 - settle)),
+        )
 
-    for curve in action.fcurves:
-        for keyframe in curve.keyframe_points:
-            keyframe.interpolation = "BEZIER"
-            keyframe.handle_left_type = "AUTO_CLAMPED"
-            keyframe.handle_right_type = "AUTO_CLAMPED"
-    action["looping"] = True
-    action["clip_role"] = "idle"
-    scene.frame_set(IDLE_FIRST_FRAME)
-    return action
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "idle", True)
+
+
+def create_run(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, RUN_ACTION_NAME, RUN_LAST_FRAME)
+    for frame in (IDLE_FIRST_FRAME, 7, 13, 19, RUN_LAST_FRAME):
+        phase = math.tau * (
+            (frame - IDLE_FIRST_FRAME)
+            / (RUN_LAST_FRAME - IDLE_FIRST_FRAME)
+        )
+        stride = math.sin(phase)
+        double_step = math.cos(phase * 2.0)
+        for side, direction in (("L", 1.0), ("R", -1.0)):
+            leg_stride = stride * direction
+            key_rotation(
+                rig.pose.bones[f"thigh_fk.{side}"],
+                frame,
+                (math.radians(34.0) * leg_stride, 0.0, 0.0),
+            )
+            key_rotation(
+                rig.pose.bones[f"shin_fk.{side}"],
+                frame,
+                (
+                    math.radians(18.0)
+                    + math.radians(34.0) * max(-leg_stride, 0.0),
+                    0.0,
+                    0.0,
+                ),
+            )
+            key_rotation(
+                rig.pose.bones[f"foot_fk.{side}"],
+                frame,
+                (-math.radians(12.0) * leg_stride, 0.0, 0.0),
+            )
+            key_rotation(
+                rig.pose.bones[f"upper_arm_fk.{side}"],
+                frame,
+                (-math.radians(38.0) * leg_stride, 0.0, 0.0),
+            )
+            key_rotation(
+                rig.pose.bones[f"forearm_fk.{side}"],
+                frame,
+                (
+                    math.radians(24.0),
+                    0.0,
+                    -math.radians(12.0) * direction,
+                ),
+            )
+        key_rotation(
+            rig.pose.bones["torso"],
+            frame,
+            (
+                math.radians(9.0)
+                + math.radians(3.0) * double_step,
+                0.0,
+                -math.radians(7.0) * stride,
+            ),
+        )
+        key_rotation(
+            rig.pose.bones["head"],
+            frame,
+            (
+                -math.radians(5.0) * double_step,
+                0.0,
+                math.radians(5.0) * stride,
+            ),
+        )
+        key_location(
+            rig.pose.bones["hips"],
+            frame,
+            (0.0, 0.0, 0.024 * (1.0 - double_step)),
+        )
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "locomotion", True)
+
+
+def key_action_pose(
+    rig: bpy.types.Object,
+    frame: int,
+    rotations: dict[str, tuple[float, float, float]],
+    hips_location: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> None:
+    for bone_name, degrees in rotations.items():
+        key_rotation(
+            rig.pose.bones[bone_name],
+            frame,
+            tuple(math.radians(value) for value in degrees),
+        )
+    key_location(rig.pose.bones["hips"], frame, hips_location)
+
+
+def create_jump(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, JUMP_ACTION_NAME, JUMP_LAST_FRAME)
+    poses = {
+        1: {
+            "torso": (14.0, 0.0, 0.0),
+            "head": (-10.0, 0.0, 0.0),
+            "thigh_fk.L": (26.0, 0.0, 0.0),
+            "thigh_fk.R": (26.0, 0.0, 0.0),
+            "shin_fk.L": (38.0, 0.0, 0.0),
+            "shin_fk.R": (38.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-32.0, 0.0, -12.0),
+            "upper_arm_fk.R": (-32.0, 0.0, 12.0),
+        },
+        5: {
+            "torso": (-8.0, 0.0, 0.0),
+            "head": (8.0, 0.0, 0.0),
+            "thigh_fk.L": (-12.0, 0.0, 0.0),
+            "thigh_fk.R": (-12.0, 0.0, 0.0),
+            "shin_fk.L": (5.0, 0.0, 0.0),
+            "shin_fk.R": (5.0, 0.0, 0.0),
+            "upper_arm_fk.L": (42.0, 0.0, -28.0),
+            "upper_arm_fk.R": (42.0, 0.0, 28.0),
+        },
+        11: {
+            "torso": (2.0, 0.0, -4.0),
+            "head": (-4.0, 0.0, 4.0),
+            "thigh_fk.L": (32.0, 0.0, -8.0),
+            "thigh_fk.R": (20.0, 0.0, 8.0),
+            "shin_fk.L": (42.0, 0.0, 0.0),
+            "shin_fk.R": (34.0, 0.0, 0.0),
+            "upper_arm_fk.L": (18.0, 0.0, -48.0),
+            "upper_arm_fk.R": (18.0, 0.0, 48.0),
+        },
+        16: {
+            "torso": (8.0, 0.0, 3.0),
+            "head": (-6.0, 0.0, -3.0),
+            "thigh_fk.L": (12.0, 0.0, 0.0),
+            "thigh_fk.R": (18.0, 0.0, 0.0),
+            "shin_fk.L": (20.0, 0.0, 0.0),
+            "shin_fk.R": (26.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-12.0, 0.0, -28.0),
+            "upper_arm_fk.R": (-12.0, 0.0, 28.0),
+        },
+        JUMP_LAST_FRAME: {
+            "torso": (14.0, 0.0, 0.0),
+            "head": (-10.0, 0.0, 0.0),
+            "thigh_fk.L": (26.0, 0.0, 0.0),
+            "thigh_fk.R": (26.0, 0.0, 0.0),
+            "shin_fk.L": (38.0, 0.0, 0.0),
+            "shin_fk.R": (38.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-32.0, 0.0, -12.0),
+            "upper_arm_fk.R": (-32.0, 0.0, 12.0),
+        },
+    }
+    for frame, rotations in poses.items():
+        lift = 0.018 if frame in (5, 11) else 0.0
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, lift))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "airborne", False)
+
+
+def create_double_jump(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(
+        rig,
+        DOUBLE_JUMP_ACTION_NAME,
+        DOUBLE_JUMP_LAST_FRAME,
+    )
+    poses = {
+        1: {
+            "torso": (6.0, 0.0, -18.0),
+            "head": (-4.0, 0.0, 14.0),
+            "thigh_fk.L": (28.0, 0.0, -12.0),
+            "thigh_fk.R": (18.0, 0.0, 12.0),
+            "shin_fk.L": (36.0, 0.0, 0.0),
+            "shin_fk.R": (30.0, 0.0, 0.0),
+            "upper_arm_fk.L": (8.0, 0.0, -62.0),
+            "upper_arm_fk.R": (8.0, 0.0, 52.0),
+        },
+        6: {
+            "torso": (-4.0, 0.0, 22.0),
+            "head": (4.0, 0.0, -18.0),
+            "thigh_fk.L": (-18.0, 0.0, -24.0),
+            "thigh_fk.R": (12.0, 0.0, 24.0),
+            "shin_fk.L": (14.0, 0.0, 0.0),
+            "shin_fk.R": (24.0, 0.0, 0.0),
+            "upper_arm_fk.L": (28.0, 0.0, -74.0),
+            "upper_arm_fk.R": (-14.0, 0.0, 68.0),
+        },
+        12: {
+            "torso": (3.0, 0.0, -20.0),
+            "head": (-3.0, 0.0, 16.0),
+            "thigh_fk.L": (18.0, 0.0, -18.0),
+            "thigh_fk.R": (-14.0, 0.0, 18.0),
+            "shin_fk.L": (26.0, 0.0, 0.0),
+            "shin_fk.R": (12.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-12.0, 0.0, -56.0),
+            "upper_arm_fk.R": (26.0, 0.0, 64.0),
+        },
+        DOUBLE_JUMP_LAST_FRAME: {
+            "torso": (5.0, 0.0, 0.0),
+            "head": (-4.0, 0.0, 0.0),
+            "thigh_fk.L": (20.0, 0.0, -5.0),
+            "thigh_fk.R": (20.0, 0.0, 5.0),
+            "shin_fk.L": (28.0, 0.0, 0.0),
+            "shin_fk.R": (28.0, 0.0, 0.0),
+            "upper_arm_fk.L": (4.0, 0.0, -42.0),
+            "upper_arm_fk.R": (4.0, 0.0, 42.0),
+        },
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, 0.016))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "airborne", False)
+
+
+def create_spin(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, SPIN_ACTION_NAME, SPIN_LAST_FRAME)
+    for frame, sweep in ((1, -1.0), (4, 0.0), (7, 1.0), (10, 0.0), (13, -1.0)):
+        key_action_pose(
+            rig,
+            frame,
+            {
+                "torso": (10.0, 8.0 * sweep, 12.0 * sweep),
+                "head": (-8.0, -6.0 * sweep, -10.0 * sweep),
+                "thigh_fk.L": (18.0, 0.0, -12.0),
+                "thigh_fk.R": (18.0, 0.0, 12.0),
+                "shin_fk.L": (28.0, 0.0, 0.0),
+                "shin_fk.R": (28.0, 0.0, 0.0),
+                "upper_arm_fk.L": (-24.0, 0.0, -48.0),
+                "upper_arm_fk.R": (-24.0, 0.0, 48.0),
+                "forearm_fk.L": (34.0, 0.0, -18.0),
+                "forearm_fk.R": (34.0, 0.0, 18.0),
+            },
+            (0.0, 0.0, 0.012 * (1.0 + sweep)),
+        )
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "attack", True)
+
+
+def create_slide(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, SLIDE_ACTION_NAME, SLIDE_LAST_FRAME)
+    poses = {
+        1: {
+            "torso": (18.0, 0.0, 0.0),
+            "head": (-12.0, 0.0, 0.0),
+            "thigh_fk.L": (24.0, 0.0, -6.0),
+            "thigh_fk.R": (24.0, 0.0, 6.0),
+            "shin_fk.L": (34.0, 0.0, 0.0),
+            "shin_fk.R": (34.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-28.0, 0.0, -20.0),
+            "upper_arm_fk.R": (-28.0, 0.0, 20.0),
+        },
+        5: {
+            "torso": (-48.0, 0.0, -6.0),
+            "head": (30.0, 0.0, 8.0),
+            "thigh_fk.L": (-42.0, 0.0, -8.0),
+            "thigh_fk.R": (-28.0, 0.0, 8.0),
+            "shin_fk.L": (22.0, 0.0, 0.0),
+            "shin_fk.R": (14.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-58.0, 0.0, -22.0),
+            "upper_arm_fk.R": (-58.0, 0.0, 22.0),
+        },
+        12: {
+            "torso": (-42.0, 0.0, 5.0),
+            "head": (26.0, 0.0, -6.0),
+            "thigh_fk.L": (-34.0, 0.0, -8.0),
+            "thigh_fk.R": (-44.0, 0.0, 8.0),
+            "shin_fk.L": (16.0, 0.0, 0.0),
+            "shin_fk.R": (26.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-52.0, 0.0, -18.0),
+            "upper_arm_fk.R": (-52.0, 0.0, 18.0),
+        },
+        SLIDE_LAST_FRAME: {
+            "torso": (-36.0, 0.0, 0.0),
+            "head": (22.0, 0.0, 0.0),
+            "thigh_fk.L": (-30.0, 0.0, -6.0),
+            "thigh_fk.R": (-30.0, 0.0, 6.0),
+            "shin_fk.L": (20.0, 0.0, 0.0),
+            "shin_fk.R": (20.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-46.0, 0.0, -16.0),
+            "upper_arm_fk.R": (-46.0, 0.0, 16.0),
+        },
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, (0.0, 0.055, -0.030))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "movement", False)
+
+
+def create_slam(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, SLAM_ACTION_NAME, SLAM_LAST_FRAME)
+    poses = {
+        1: {
+            "torso": (-12.0, 0.0, 0.0),
+            "head": (10.0, 0.0, 0.0),
+            "thigh_fk.L": (34.0, 0.0, -8.0),
+            "thigh_fk.R": (34.0, 0.0, 8.0),
+            "shin_fk.L": (42.0, 0.0, 0.0),
+            "shin_fk.R": (42.0, 0.0, 0.0),
+            "upper_arm_fk.L": (46.0, 0.0, -30.0),
+            "upper_arm_fk.R": (46.0, 0.0, 30.0),
+        },
+        5: {
+            "torso": (34.0, 0.0, 0.0),
+            "head": (-24.0, 0.0, 0.0),
+            "thigh_fk.L": (-14.0, 0.0, -6.0),
+            "thigh_fk.R": (-14.0, 0.0, 6.0),
+            "shin_fk.L": (8.0, 0.0, 0.0),
+            "shin_fk.R": (8.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-64.0, 0.0, -20.0),
+            "upper_arm_fk.R": (-64.0, 0.0, 20.0),
+        },
+        10: {
+            "torso": (48.0, 0.0, -4.0),
+            "head": (-34.0, 0.0, 5.0),
+            "thigh_fk.L": (-20.0, 0.0, -5.0),
+            "thigh_fk.R": (-20.0, 0.0, 5.0),
+            "shin_fk.L": (4.0, 0.0, 0.0),
+            "shin_fk.R": (4.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-78.0, 0.0, -14.0),
+            "upper_arm_fk.R": (-78.0, 0.0, 14.0),
+        },
+        SLAM_LAST_FRAME: {
+            "torso": (52.0, 0.0, 0.0),
+            "head": (-38.0, 0.0, 0.0),
+            "thigh_fk.L": (-24.0, 0.0, -4.0),
+            "thigh_fk.R": (-24.0, 0.0, 4.0),
+            "shin_fk.L": (2.0, 0.0, 0.0),
+            "shin_fk.R": (2.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-84.0, 0.0, -10.0),
+            "upper_arm_fk.R": (-84.0, 0.0, 10.0),
+        },
+    }
+    for frame, rotations in poses.items():
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, -0.012))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "attack", False)
+
+
+def create_animation_set(
+    rig: bpy.types.Object,
+) -> dict[str, bpy.types.Action]:
+    actions = {
+        IDLE_ACTION_NAME: create_idle(rig),
+        RUN_ACTION_NAME: create_run(rig),
+        JUMP_ACTION_NAME: create_jump(rig),
+        DOUBLE_JUMP_ACTION_NAME: create_double_jump(rig),
+        SPIN_ACTION_NAME: create_spin(rig),
+        SLIDE_ACTION_NAME: create_slide(rig),
+        SLAM_ACTION_NAME: create_slam(rig),
+    }
+    rig.animation_data.action = actions[IDLE_ACTION_NAME]
+    bpy.context.scene.frame_start = IDLE_FIRST_FRAME
+    bpy.context.scene.frame_end = IDLE_LAST_FRAME
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return actions
 
 
 def triangle_count(character: bpy.types.Object) -> int:
@@ -881,7 +1299,7 @@ def triangle_count(character: bpy.types.Object) -> int:
 def validate_asset(
     character: bpy.types.Object,
     rig: bpy.types.Object,
-    action: bpy.types.Action,
+    actions: dict[str, bpy.types.Action],
 ) -> tuple[int, int, int]:
     vertices = len(character.data.vertices)
     faces = len(character.data.polygons)
@@ -911,8 +1329,14 @@ def validate_asset(
         raise RuntimeError("Crash color pass has no UV map")
     if not character.vertex_groups:
         raise RuntimeError("Crash color pass has no deform weights")
-    if action.name != IDLE_ACTION_NAME:
-        raise RuntimeError("idle action lost its authored name")
+    required_actions = {IDLE_ACTION_NAME, *CORE_ACTION_NAMES}
+    missing_actions = sorted(required_actions - set(actions))
+    if missing_actions:
+        raise RuntimeError(f"Crash animation set is missing {missing_actions}")
+    for action_name in required_actions:
+        action = actions[action_name]
+        if action.name != action_name or not action.fcurves:
+            raise RuntimeError(f"{action_name} has no keyed animation data")
     required_bones = {
         "DEF-spine",
         "DEF-upper_arm.L",
@@ -950,6 +1374,9 @@ def save_source_and_export(
     rig.select_set(True)
     character.select_set(True)
     bpy.context.view_layer.objects.active = rig
+    rig.animation_data.action = bpy.data.actions[IDLE_ACTION_NAME]
+    bpy.context.scene.frame_start = IDLE_FIRST_FRAME
+    bpy.context.scene.frame_end = IDLE_LAST_FRAME
     bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
     bpy.ops.export_scene.gltf(
         filepath=str(EXPORT_PATH),
@@ -993,6 +1420,7 @@ def create_inspection_previews(
     rig: bpy.types.Object,
 ) -> None:
     PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    rig.animation_data.action = bpy.data.actions[IDLE_ACTION_NAME]
     bpy.context.scene.frame_set(13)
     rig.hide_render = False
 
@@ -1089,6 +1517,26 @@ def create_inspection_previews(
         )
         bpy.ops.render.render(write_still=True)
 
+    camera.location = views["front"]
+    point_at(camera, Vector((0.0, 0.0, 0.55)))
+    preview_frames = {
+        RUN_ACTION_NAME: 7,
+        JUMP_ACTION_NAME: 11,
+        DOUBLE_JUMP_ACTION_NAME: 6,
+        SPIN_ACTION_NAME: 7,
+        SLIDE_ACTION_NAME: 12,
+        SLAM_ACTION_NAME: 10,
+    }
+    for action_name, frame in preview_frames.items():
+        rig.animation_data.action = bpy.data.actions[action_name]
+        scene.frame_set(frame)
+        scene.render.filepath = str(
+            PREVIEW_ROOT / f"{action_name}_pose.png"
+        )
+        bpy.ops.render.render(write_still=True)
+
+    rig.animation_data.action = bpy.data.actions[IDLE_ACTION_NAME]
+    scene.frame_set(IDLE_FIRST_FRAME)
     bpy.context.view_layer.objects.active = character
 
 
@@ -1104,15 +1552,15 @@ def main() -> None:
         material,
         rig,
     )
-    action = create_idle(rig)
-    vertices, faces, triangles = validate_asset(character, rig, action)
+    actions = create_animation_set(rig)
+    vertices, faces, triangles = validate_asset(character, rig, actions)
     save_source_and_export(character, rig)
     create_inspection_previews(character, rig)
     print(
         "CRASH_COLOR_BUILD_OK "
         f"name={ASSET_NAME} vertices={vertices} faces={faces} "
         f"triangles={triangles} materials=1 "
-        f"rig=rigify_basic_human idle={IDLE_ACTION_NAME}"
+        f"rig=rigify_basic_human animations={len(actions)}"
     )
     print(f"CRASH_COLOR_SOURCE={SOURCE_PATH}")
     print(f"CRASH_COLOR_GLB={EXPORT_PATH}")

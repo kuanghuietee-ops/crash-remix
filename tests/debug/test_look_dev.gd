@@ -10,6 +10,14 @@ const LAB_ASSISTANT_PATH := (
 const LAB_ASSISTANT_WALK := &"A_lab_assistant_walk"
 const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const CRASH_IDLE := &"A_crash_idle"
+const CRASH_CORE_CLIPS := [
+	&"A_crash_run",
+	&"A_crash_jump",
+	&"A_crash_double_jump",
+	&"A_crash_spin",
+	&"A_crash_slide",
+	&"A_crash_slam",
+]
 
 
 func test_discovers_glb_assets_under_a_root() -> void:
@@ -297,6 +305,21 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 		assert_gt(idle.length, 0.0)
 		assert_gt(idle.get_track_count(), 0)
 		assert_eq(idle.loop_mode, Animation.LOOP_LINEAR)
+	for clip_name: StringName in CRASH_CORE_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship in Crash's first gameplay animation set" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name in [&"A_crash_run", &"A_crash_spin"]:
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
 
 
 func test_look_dev_auto_plays_and_phone_frames_crash_idle() -> void:

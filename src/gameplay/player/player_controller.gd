@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 signal state_changed(previous_state: StringName, state: StringName)
 signal spin_changed(active: bool)
+signal movement_impulse_applied(impulse: StringName)
 signal body_slam_impacted
 signal respawn_started
 signal respawned
@@ -388,6 +389,8 @@ func advance_logic(
 	_apply_spin_visual(delta_s)
 	_apply_body_slam_attack(decision)
 	_emit_state_changes(decision.state, _state_machine.is_spinning)
+	if decision.impulse != PlayerFrameDecisionType.IMPULSE_NONE:
+		movement_impulse_applied.emit(decision.impulse)
 	return decision
 
 

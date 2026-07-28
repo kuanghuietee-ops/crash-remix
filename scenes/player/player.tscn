@@ -4,6 +4,8 @@
 [ext_resource type="Script" path="res://src/gameplay/depth/blob_shadow.gd" id="2_shadow"]
 [ext_resource type="Script" path="res://src/gameplay/depth/landing_ring.gd" id="3_ring"]
 [ext_resource type="Shader" path="res://assets/shaders/blob_shadow.gdshader" id="4_shadow_shader"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/SK_crash.glb" id="5_crash"]
+[ext_resource type="Script" path="res://src/visual/player/crash_animation_driver.gd" id="6_crash_animation"]
 
 [sub_resource type="CylinderShape3D" id="Cylinder_player"]
 radius = 0.32
@@ -12,15 +14,6 @@ height = 1.0
 [sub_resource type="CylinderShape3D" id="Cylinder_hurtbox"]
 radius = 0.232
 height = 0.725
-
-[sub_resource type="StandardMaterial3D" id="Material_player"]
-albedo_color = Color(1, 0.42, 0.08, 1)
-roughness = 0.82
-
-[sub_resource type="CapsuleMesh" id="Mesh_player"]
-material = SubResource("Material_player")
-radius = 0.34
-height = 1.1
 
 [sub_resource type="SphereShape3D" id="Sphere_spin"]
 radius = 1.2
@@ -71,13 +64,14 @@ position = Vector3(0, 0.55, 0)
 
 [node name="SpinPivot" type="Node3D" parent="Visual"]
 
-[node name="Body" type="MeshInstance3D" parent="Visual/SpinPivot"]
-mesh = SubResource("Mesh_player")
+[node name="CrashModel" parent="Visual/SpinPivot" instance=ExtResource("5_crash")]
+position = Vector3(0, -0.55, 0)
+rotation = Vector3(0, 3.1415927, 0)
 
-[node name="ForwardMarker" type="MeshInstance3D" parent="Visual/SpinPivot"]
-position = Vector3(0, 0, -0.32)
-scale = Vector3(0.22, 0.22, 0.22)
-mesh = SubResource("Mesh_player")
+[node name="CrashAnimationDriver" type="Node" parent="Visual"]
+script = ExtResource("6_crash_animation")
+controller_path = NodePath("../..")
+model_path = NodePath("../SpinPivot/CrashModel")
 
 [node name="SpinArea" type="Area3D" parent="."]
 collision_layer = 0

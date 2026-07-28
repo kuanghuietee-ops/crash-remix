@@ -62,6 +62,39 @@ func test_controller_binds_run_and_jump_decisions_to_character_velocity() -> voi
 	)
 
 
+func test_controller_reports_applied_impulses_to_visual_consumers() -> void:
+	var setup := _new_controller()
+	if setup.is_empty():
+		return
+	var controller: CharacterBody3D = setup["controller"]
+	assert_true(
+		controller.has_signal("movement_impulse_applied"),
+		"animation may observe an impulse without changing movement logic"
+	)
+	if not controller.has_signal("movement_impulse_applied"):
+		return
+	var observed: Array[StringName] = []
+	controller.connect(
+		&"movement_impulse_applied",
+		func(impulse: StringName) -> void:
+			observed.append(impulse)
+	)
+	var buffer: InputIntentBuffer = setup["buffer"]
+	controller.call("advance_logic", 2.0, true, 0.0, Vector3.FORWARD)
+	buffer.push(InputIntent.button(&"jump", true, 2.01, &"touch"))
+
+	var decision: RefCounted = controller.call(
+		"advance_logic",
+		2.01,
+		true,
+		0.0,
+		Vector3.FORWARD
+	)
+
+	assert_eq(decision.get("impulse"), &"jump")
+	assert_eq(observed, [&"jump"])
+
+
 func test_chase_auto_run_expires_after_authored_opening_window() -> void:
 	var setup := _new_controller()
 	if setup.is_empty():
