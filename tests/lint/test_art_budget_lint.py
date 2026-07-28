@@ -71,6 +71,8 @@ class BudgetLoadingTests(unittest.TestCase):
             self.assertEqual(budget.min_triangles["enemy"], 3000)
             self.assertEqual(budget.min_triangles["prop"], 100)
             self.assertEqual(budget.max_triangles["prop"], 2500)
+            self.assertEqual(budget.min_triangles["kit_piece"], 100)
+            self.assertEqual(budget.max_triangles["kit_piece"], 2000)
             self.assertEqual(budget.max_texture_dimension_px, 2048)
 
 
@@ -114,15 +116,41 @@ class TriangleBudgetTests(unittest.TestCase):
 
             self.assertEqual(find_violations(root), [])
 
-    def test_an_unbudgeted_category_fails_closed_with_the_line_to_add(self) -> None:
+    def test_the_operator_approved_kit_band_accepts_the_whole_beach_kit(self) -> None:
+        # The real kit's extremes, measured with scripts/gltf_budget.py:
+        # stone_cairn_a at 100 and fringe_grass_a at 1,564.
         with tempfile.TemporaryDirectory() as directory:
             root = make_repo(directory)
-            (root / "assets/models/kits/SM_palm.glb").write_bytes(build_glb(400))
+            (root / "assets/models/kits/SM_stone_cairn_a.glb").write_bytes(
+                build_glb(100)
+            )
+            (root / "assets/models/kits/SM_fringe_grass_a.glb").write_bytes(
+                build_glb(1564)
+            )
+
+            self.assertEqual(find_violations(root), [])
+
+    def test_an_over_budget_kit_piece_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/kits/SM_overgrown.glb").write_bytes(build_glb(2400))
 
             violations = find_violations(root)
 
             self.assertEqual(len(violations), 1)
-            self.assertIn("kit_piece_max_triangles", violations[0].message)
+            self.assertIn("2400", violations[0].message)
+            self.assertIn("2000", violations[0].message)
+
+    def test_an_unbudgeted_category_fails_closed_with_the_line_to_add(self) -> None:
+        # Rideables carry the fail-closed case now that kit pieces are budgeted.
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/rideables/SK_hog.glb").write_bytes(build_glb(400))
+
+            violations = find_violations(root)
+
+            self.assertEqual(len(violations), 1)
+            self.assertIn("rideable_max_triangles", violations[0].message)
             self.assertIn("art_budget.tres", violations[0].message)
 
     def test_a_model_outside_every_category_directory_fails_closed(self) -> None:
