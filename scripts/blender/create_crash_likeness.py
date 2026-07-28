@@ -35,7 +35,7 @@ PREVIEW_ROOT = REPO_ROOT / "build/art-previews"
 IDLE_FIRST_FRAME = 1
 IDLE_LAST_FRAME = 49
 IDLE_FPS = 24
-CLAY = (0.55, 0.60, 0.67, 1.0)
+CLAY = (0.40, 0.45, 0.52, 1.0)
 
 
 def load_geometry_helpers():
@@ -101,18 +101,18 @@ def add_ear(
     sign: float,
     material: bpy.types.Material,
 ) -> bpy.types.Object:
-    # A flattened, swept diamond reads as the tall triangular bandicoot ear
-    # from both the front and side without relying on an inner-ear color.
-    x_inner = 0.205 * sign
-    x_outer = 0.315 * sign
-    x_mid = 0.268 * sign
+    # Keep the ear broad, outward-swept, and lower than the central crest.  The
+    # first candidate's tall equal-sided triangles read as cat ears on phone.
+    x_inner = 0.175 * sign
+    x_outer = 0.325 * sign
+    x_mid = 0.255 * sign
     vertices = [
-        (x_inner, -0.015, 0.875),
-        (x_outer, -0.002, 1.035),
-        (x_mid, -0.018, 0.845),
-        (x_inner, 0.055, 0.875),
-        (x_outer, 0.045, 1.035),
-        (x_mid, 0.060, 0.845),
+        (x_inner, -0.020, 0.905),
+        (x_outer, -0.005, 1.055),
+        (x_mid, -0.025, 0.805),
+        (x_inner, 0.070, 0.905),
+        (x_outer, 0.055, 1.055),
+        (x_mid, 0.080, 0.805),
     ]
     faces = [
         (0, 1, 2),
@@ -169,6 +169,102 @@ def add_brow(
     )
 
 
+def carve_smile(
+    muzzle: bpy.types.Object,
+    deform_bone: str,
+) -> None:
+    """Cut a broad recessed grin into the muzzle without a color cue."""
+    bpy.ops.mesh.primitive_uv_sphere_add(
+        segments=18,
+        ring_count=10,
+        radius=1.0,
+        location=(0.0, -0.286, 0.675),
+    )
+    cutter = bpy.context.active_object
+    cutter.name = "_smile_cutter"
+    cutter.scale = (0.135, 0.082, 0.050)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    modifier = muzzle.modifiers.new(name="_recessed_grin", type="BOOLEAN")
+    modifier.operation = "DIFFERENCE"
+    modifier.solver = "EXACT"
+    modifier.object = cutter
+    bpy.context.view_layer.objects.active = muzzle
+    muzzle.select_set(True)
+    cutter.select_set(False)
+    bpy.ops.object.modifier_apply(modifier=modifier.name)
+    bpy.data.objects.remove(cutter, do_unlink=True)
+
+    geometry.paint_mesh(muzzle.data, CLAY)
+    group = muzzle.vertex_groups.get(deform_bone)
+    if group is None:
+        group = muzzle.vertex_groups.new(name=deform_bone)
+    group.add(list(range(len(muzzle.data.vertices))), 1.0, "REPLACE")
+    for polygon in muzzle.data.polygons:
+        polygon.use_smooth = True
+
+
+def add_tapered_head(
+    material: bpy.types.Material,
+) -> bpy.types.Object:
+    """Create the upper-heavy wedge that the round first pass lacked."""
+    center_z = 0.810
+    half_height = 0.245
+    head = geometry.add_sphere(
+        "head",
+        (0.0, 0.020, center_z),
+        (0.255, 0.190, half_height),
+        CLAY,
+        material,
+        "DEF-spine.006",
+        segments=28,
+        rings=16,
+    )
+    for vertex in head.data.vertices:
+        normalized_z = max(
+            -1.0,
+            min(1.0, (vertex.co.z - center_z) / half_height),
+        )
+        height_ratio = (normalized_z + 1.0) * 0.5
+        vertex.co.x *= 0.58 + 0.52 * height_ratio
+        vertex.co.y = (
+            0.020
+            + (vertex.co.y - 0.020) * (0.88 + 0.12 * height_ratio)
+        )
+    head.data.update()
+    return head
+
+
+def add_nose_wedge(
+    material: bpy.types.Material,
+) -> bpy.types.Object:
+    vertices = [
+        (-0.065, -0.285, 0.795),
+        (0.065, -0.285, 0.795),
+        (0.060, -0.285, 0.725),
+        (-0.060, -0.285, 0.725),
+        (-0.078, -0.430, 0.782),
+        (0.078, -0.430, 0.782),
+        (0.062, -0.430, 0.735),
+        (-0.062, -0.430, 0.735),
+    ]
+    faces = [
+        (0, 1, 2, 3),
+        (7, 6, 5, 4),
+        (0, 4, 5, 1),
+        (1, 5, 6, 2),
+        (2, 6, 7, 3),
+        (3, 7, 4, 0),
+    ]
+    return add_polyhedron(
+        "nose_wedge",
+        vertices,
+        faces,
+        material,
+        "DEF-spine.006",
+    )
+
+
 def build_character_parts(
     material: bpy.types.Material,
 ) -> list[bpy.types.Object]:
@@ -176,12 +272,12 @@ def build_character_parts(
 
     # Split, oversized shoes anchor the 1.10 m silhouette exactly at z=0.
     for side, sign in (("L", 1.0), ("R", -1.0)):
-        x = 0.105 * sign
+        x = 0.112 * sign
         parts.append(
             geometry.add_rounded_box(
                 f"shoe_sole_{side}",
                 (x, -0.075, 0.0225),
-                (0.245, 0.335, 0.045),
+                (0.205, 0.335, 0.045),
                 CLAY,
                 material,
                 f"DEF-foot.{side}",
@@ -251,8 +347,8 @@ def build_character_parts(
         parts.append(
             geometry.add_sphere(
                 f"shorts_leg_{side}",
-                (0.073 * sign, 0.000, 0.335),
-                (0.094, 0.090, 0.075),
+                (0.065 * sign, 0.000, 0.325),
+                (0.082, 0.088, 0.075),
                 CLAY,
                 material,
                 "DEF-spine",
@@ -264,8 +360,8 @@ def build_character_parts(
     parts.append(
         geometry.add_sphere(
             "shorts_waist",
-            (0.0, 0.012, 0.380),
-            (0.158, 0.108, 0.105),
+            (0.0, 0.012, 0.355),
+            (0.138, 0.103, 0.090),
             CLAY,
             material,
             "DEF-spine",
@@ -276,10 +372,10 @@ def build_character_parts(
     parts.append(
         geometry.add_cone_between(
             "tiny_torso",
-            (0.0, 0.018, 0.385),
-            (0.0, 0.008, 0.565),
-            0.118,
-            0.145,
+            (0.0, 0.018, 0.350),
+            (0.0, 0.008, 0.610),
+            0.108,
+            0.160,
             CLAY,
             material,
             "DEF-spine.003",
@@ -289,9 +385,9 @@ def build_character_parts(
     parts.append(
         geometry.add_cylinder_between(
             "neck",
-            (0.0, 0.005, 0.545),
-            (0.0, 0.005, 0.655),
-            0.068,
+            (0.0, 0.005, 0.590),
+            (0.0, 0.005, 0.660),
+            0.060,
             CLAY,
             material,
             "DEF-spine.005",
@@ -299,18 +395,18 @@ def build_character_parts(
         )
     )
 
-    # Elbow-low A-pose, long forearms, and fist-sized hands are stronger cold
-    # identifiers than costume surface details.
+    # Elbow-low A-pose, long forearms, and open four-finger hands are stronger
+    # cold identifiers than costume surface details.
     arm_points = {
         "L": (
-            (0.125, 0.015, 0.545),
-            (0.305, 0.018, 0.430),
-            (0.430, -0.005, 0.315),
+            (0.145, 0.015, 0.595),
+            (0.220, 0.018, 0.430),
+            (0.250, -0.005, 0.285),
         ),
         "R": (
-            (-0.125, 0.015, 0.545),
-            (-0.305, 0.018, 0.430),
-            (-0.430, -0.005, 0.315),
+            (-0.145, 0.015, 0.595),
+            (-0.220, 0.018, 0.430),
+            (-0.250, -0.005, 0.285),
         ),
     }
     for side, (shoulder, elbow, wrist) in arm_points.items():
@@ -365,86 +461,65 @@ def build_character_parts(
         )
         parts.append(
             geometry.add_sphere(
-                f"fist_{side}",
-                (0.495 * sign, -0.015, 0.275),
-                (0.104, 0.092, 0.105),
+                f"palm_{side}",
+                (0.272 * sign, -0.010, 0.235),
+                (0.072, 0.065, 0.088),
                 CLAY,
                 material,
                 f"DEF-hand.{side}",
-                segments=22,
-                rings=13,
-            )
-        )
-        parts.append(
-            geometry.add_sphere(
-                f"thumb_{side}",
-                (0.448 * sign, -0.083, 0.283),
-                (0.055, 0.052, 0.058),
-                CLAY,
-                material,
-                f"DEF-hand.{side}",
-                segments=12,
-                rings=7,
-            )
-        )
-        parts.append(
-            geometry.add_sphere(
-                f"knuckles_{side}",
-                (0.535 * sign, -0.068, 0.283),
-                (0.071, 0.052, 0.060),
-                CLAY,
-                material,
-                f"DEF-hand.{side}",
-                segments=12,
-                rings=7,
-            )
-        )
-
-    # One huge cranium, deep double-lobed muzzle, large nose, and raised eye
-    # masses.  Every part remains the same clay so lighting alone must describe
-    # the face.
-    parts.append(
-        geometry.add_sphere(
-            "head",
-            (0.0, 0.018, 0.810),
-            (0.270, 0.205, 0.245),
-            CLAY,
-            material,
-            "DEF-spine.006",
-            segments=30,
-            rings=18,
-        )
-    )
-    parts.append(
-        geometry.add_sphere(
-            "muzzle",
-            (0.0, -0.165, 0.725),
-            (0.255, 0.150, 0.145),
-            CLAY,
-            material,
-            "DEF-spine.006",
-            segments=28,
-            rings=16,
-        )
-    )
-    for side, sign in (("L", 1.0), ("R", -1.0)):
-        parts.append(
-            geometry.add_sphere(
-                f"cheek_{side}",
-                (0.112 * sign, -0.218, 0.725),
-                (0.150, 0.105, 0.112),
-                CLAY,
-                material,
-                "DEF-spine.006",
                 segments=18,
                 rings=10,
             )
         )
+        finger_positions = (
+            (0.235, -0.055, 0.176, 0.028, 0.037, 0.065),
+            (0.275, -0.060, 0.165, 0.029, 0.038, 0.070),
+            (0.315, -0.055, 0.180, 0.028, 0.037, 0.063),
+            (0.330, -0.070, 0.238, 0.050, 0.040, 0.043),
+        )
+        for finger_index, (
+            finger_x,
+            finger_y,
+            finger_z,
+            scale_x,
+            scale_y,
+            scale_z,
+        ) in enumerate(finger_positions):
+            parts.append(
+                geometry.add_sphere(
+                    f"finger_{side}_{finger_index}",
+                    (finger_x * sign, finger_y, finger_z),
+                    (scale_x, scale_y, scale_z),
+                    CLAY,
+                    material,
+                    f"DEF-hand.{side}",
+                    segments=10,
+                    rings=6,
+                )
+            )
+
+    # The first phone candidate read as a round cat.  Narrow the cranium, keep
+    # the eyes tall and joined, project one angular muzzle, and cut a real
+    # shadowed grin so the face must read without orange fur or a black nose.
+    parts.append(add_tapered_head(material))
+    muzzle = geometry.add_sphere(
+        "muzzle",
+        (0.0, -0.190, 0.730),
+        (0.198, 0.160, 0.112),
+        CLAY,
+        material,
+        "DEF-spine.006",
+        segments=26,
+        rings=15,
+    )
+    carve_smile(muzzle, "DEF-spine.006")
+    parts.append(muzzle)
+    for side, sign in (("L", 1.0), ("R", -1.0)):
         parts.append(
             geometry.add_sphere(
                 f"eye_mass_{side}",
-                (0.068 * sign, -0.215, 0.862),
-                (0.066, 0.058, 0.125),
+                (0.058 * sign, -0.220, 0.865),
+                (0.063, 0.060, 0.135),
                 CLAY,
                 material,
                 "DEF-spine.006",
@@ -455,8 +530,8 @@ def build_character_parts(
         parts.append(
             geometry.add_sphere(
                 f"pupil_relief_{side}",
-                (0.068 * sign, -0.282, 0.878),
-                (0.025, 0.018, 0.050),
+                (0.058 * sign, -0.292, 0.885),
+                (0.024, 0.018, 0.053),
                 CLAY,
                 material,
                 "DEF-spine.006",
@@ -467,38 +542,40 @@ def build_character_parts(
         parts.append(add_brow(side, sign, material))
         parts.append(add_ear(side, sign, material))
 
+    parts.append(add_nose_wedge(material))
     parts.append(
         geometry.add_sphere(
-            "nose",
-            (0.0, -0.310, 0.758),
-            (0.100, 0.082, 0.078),
+            "lower_jaw",
+            (0.0, -0.205, 0.635),
+            (0.148, 0.095, 0.052),
             CLAY,
             material,
             "DEF-spine.006",
-            segments=22,
-            rings=13,
+            segments=18,
+            rings=10,
         )
     )
-    parts.append(
-        geometry.add_rounded_box(
-            "lower_mouth_plane",
-            (0.0, -0.323, 0.667),
-            (0.178, 0.020, 0.026),
-            CLAY,
-            material,
-            "DEF-spine.006",
-            bevel=0.010,
+    for tooth_index, tooth_x in enumerate((-0.045, -0.015, 0.015, 0.045)):
+        parts.append(
+            geometry.add_rounded_box(
+                f"tooth_{tooth_index}",
+                (tooth_x, -0.326, 0.697),
+                (0.027, 0.018, 0.036),
+                CLAY,
+                material,
+                "DEF-spine.006",
+                bevel=0.006,
+            )
         )
-    )
 
-    # Five independent swept crest points preserve the characteristic crown in
-    # front, profile, and three-quarter inspection.
+    # Five points now sweep front-to-back as one narrow central tuft.  Spreading
+    # them sideways made the failed candidate read as a Sonic-like crown.
     crest_points = (
-        ((-0.205, 0.025, 0.940), (-0.315, 0.015, 1.055), 0.072),
-        ((-0.118, 0.025, 1.000), (-0.178, 0.010, 1.090), 0.070),
-        ((0.000, 0.020, 1.025), (0.000, 0.005, 1.100), 0.073),
-        ((0.118, 0.025, 1.000), (0.178, 0.010, 1.090), 0.070),
-        ((0.205, 0.025, 0.940), (0.315, 0.015, 1.055), 0.072),
+        ((0.000, -0.090, 0.970), (0.000, -0.180, 1.085), 0.066),
+        ((-0.020, -0.045, 1.005), (-0.035, -0.095, 1.135), 0.068),
+        ((0.015, 0.000, 1.020), (0.020, -0.020, 1.115), 0.068),
+        ((-0.012, 0.038, 1.010), (-0.022, 0.065, 1.085), 0.056),
+        ((0.015, 0.070, 0.990), (0.025, 0.110, 1.055), 0.050),
     )
     for index, (start, end, radius) in enumerate(crest_points):
         parts.append(
@@ -555,38 +632,38 @@ def create_rigify_rig() -> bpy.types.Object:
         set_edit_bone(
             metarig,
             f"shoulder.{side}",
-            (0.012 * sign, 0.000, 0.535),
-            (0.128 * sign, 0.010, 0.545),
+            (0.012 * sign, 0.000, 0.580),
+            (0.140 * sign, 0.010, 0.595),
         )
         set_edit_bone(
             metarig,
             f"upper_arm.{side}",
-            (0.135 * sign, 0.012, 0.545),
-            (0.305 * sign, 0.018, 0.430),
+            (0.145 * sign, 0.012, 0.595),
+            (0.220 * sign, 0.018, 0.430),
         )
         set_edit_bone(
             metarig,
             f"forearm.{side}",
-            (0.305 * sign, 0.018, 0.430),
-            (0.430 * sign, -0.005, 0.315),
+            (0.220 * sign, 0.018, 0.430),
+            (0.250 * sign, -0.005, 0.285),
         )
         set_edit_bone(
             metarig,
             f"hand.{side}",
-            (0.430 * sign, -0.005, 0.315),
-            (0.510 * sign, -0.015, 0.275),
+            (0.250 * sign, -0.005, 0.285),
+            (0.275 * sign, -0.015, 0.205),
         )
         set_edit_bone(
             metarig,
             f"breast.{side}",
-            (0.090 * sign, 0.035, 0.485),
-            (0.090 * sign, -0.070, 0.485),
+            (0.095 * sign, 0.035, 0.535),
+            (0.095 * sign, -0.070, 0.535),
         )
         set_edit_bone(
             metarig,
             f"pelvis.{side}",
             (0.0, 0.018, 0.330),
-            (0.080 * sign, -0.015, 0.395),
+            (0.070 * sign, -0.015, 0.380),
         )
         set_edit_bone(
             metarig,
