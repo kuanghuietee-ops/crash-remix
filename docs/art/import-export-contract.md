@@ -9,9 +9,11 @@ document where it cannot.
 ## Blender side
 
 - **Units:** Metric, unit scale 1.0. **1 Blender unit = 1 metre = 1 Godot unit.**
-- **Orientation:** model facing **−Y** in Blender, which exports to **−Z forward, +Y up**
-  in glTF — the axis convention Godot expects. Export with +Y up (the glTF exporter
-  default); do not "correct" the axes by rotating the object.
+- **Orientation:** model facing **−Y** in Blender, which imports as **+Z model front,
+  +Y up** in Godot — Godot's directional-model convention. Export with +Y up (the
+  glTF exporter default); do not "correct" the axes by rotating the object. This
+  mapping is verified against the imported geometry, not inferred from Blender's
+  viewport labels.
 - **Transforms:** apply all location/rotation/scale before export (`Ctrl+A → All
   Transforms`). Object scale must read 1.0/1.0/1.0. Unapplied scale is the single most
   common cause of an asset arriving at the wrong size.
