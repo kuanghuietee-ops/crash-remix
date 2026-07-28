@@ -80,6 +80,102 @@ func test_player_scene_mounts_the_colored_rig_instead_of_the_gray_capsule() -> v
 		)
 
 
+func test_crash_visual_faces_horizontal_travel_instead_of_reverse_walking() -> void:
+	var player := _instantiate(PLAYER_SCENE_PATH) as CharacterBody3D
+	if player == null:
+		return
+	add_child_autofree(player)
+	await wait_process_frames(1)
+	var crash_model := player.get_node(
+		"Visual/SpinPivot/CrashModel"
+	) as Node3D
+
+	player.velocity = Vector3.BACK * 3.0
+	await wait_process_frames(16)
+	assert_gt(
+		crash_model.global_basis.z.normalized().dot(Vector3.BACK),
+		0.98,
+		"moving back down the corridor must turn Crash toward +Z"
+	)
+
+	player.velocity = Vector3.FORWARD * 3.0
+	await wait_process_frames(16)
+	assert_gt(
+		crash_model.global_basis.z.normalized().dot(Vector3.FORWARD),
+		0.98,
+		"forward travel must turn Crash back toward -Z"
+	)
+
+
+func test_player_action_effects_animate_spin_and_stomp_without_colliders() -> void:
+	var player := _instantiate(PLAYER_SCENE_PATH) as CharacterBody3D
+	if player == null:
+		return
+	add_child_autofree(player)
+	await wait_process_frames(1)
+	var effects := player.get_node_or_null("ActionEffects") as Node3D
+	assert_not_null(effects)
+	if effects == null:
+		return
+	assert_eq(
+		effects.find_children("*", "CollisionObject3D", true, false).size(),
+		0,
+		"action effects must stay visual-only"
+	)
+	var spin := effects.get_node_or_null("Spin") as Node3D
+	var stomp := effects.get_node_or_null("Stomp") as Node3D
+	var stomp_ring := effects.get_node_or_null(
+		"Stomp/ImpactRing"
+	) as MeshInstance3D
+	var stomp_dust := effects.get_node_or_null(
+		"Stomp/Dust"
+	) as GPUParticles3D
+	assert_not_null(spin)
+	assert_not_null(stomp)
+	assert_not_null(stomp_ring)
+	assert_not_null(stomp_dust)
+	if (
+		spin == null
+		or stomp == null
+		or stomp_ring == null
+		or stomp_dust == null
+	):
+		return
+	assert_eq(
+		spin.find_children("*", "MeshInstance3D", true, false).size(),
+		2,
+		"the spin needs two readable moving streak rings"
+	)
+
+	player.emit_signal(&"spin_changed", true)
+	await wait_process_frames(1)
+	assert_true(effects.call("is_spin_effect_active"))
+	assert_true(spin.visible)
+	var spin_rotation := spin.rotation.y
+	await wait_process_frames(3)
+	assert_ne(
+		spin.rotation.y,
+		spin_rotation,
+		"the spin streaks must visibly orbit Crash"
+	)
+	player.emit_signal(&"spin_changed", false)
+	await wait_process_frames(1)
+	assert_false(effects.call("is_spin_effect_active"))
+	assert_false(spin.visible)
+
+	player.emit_signal(&"body_slam_impacted")
+	assert_true(effects.call("is_stomp_effect_active"))
+	assert_true(stomp.visible)
+	assert_true(stomp_dust.emitting)
+	var impact_scale := stomp_ring.scale.x
+	await wait_process_frames(3)
+	assert_gt(
+		stomp_ring.scale.x,
+		impact_scale,
+		"the stomp shockwave must expand away from the impact"
+	)
+
+
 func test_camera_rig_has_path_camera_and_overlapping_region_volumes() -> void:
 	var rig := _instantiate(CAMERA_SCENE_PATH)
 	if rig == null:
@@ -338,6 +434,7 @@ func test_touch_spin_reaches_player_and_rotates_visible_pivot() -> void:
 	var touch := game.get_node("UI/TouchControls") as Control
 	var spin_area := player.get_node("SpinArea") as Area3D
 	var animation_driver := player.get_node("Visual/CrashAnimationDriver")
+	var action_effects := player.get_node("ActionEffects")
 	assert_true(player.has_node("Visual/SpinPivot"))
 	if not player.has_node("Visual/SpinPivot"):
 		return
@@ -355,6 +452,7 @@ func test_touch_spin_reaches_player_and_rotates_visible_pivot() -> void:
 	assert_true(spin_area.monitoring)
 	assert_ne(spin_pivot.rotation.y, rotation_before)
 	assert_eq(animation_driver.call("current_clip"), CRASH_SPIN)
+	assert_true(action_effects.call("is_spin_effect_active"))
 	spin_press.pressed = false
 	touch.call("handle_touch_event", spin_press)
 

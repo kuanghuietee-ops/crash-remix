@@ -53,6 +53,11 @@ func test_clip_selection_covers_the_six_core_gameplay_actions() -> void:
 		SLAM
 	)
 	assert_eq(
+		driver_script.call("clip_for", &"slam_recovery", false, JUMP, false),
+		SLAM,
+		"the impact pose must hold through the authored stomp recovery"
+	)
+	assert_eq(
 		driver_script.call("clip_for", &"grounded", true, JUMP, true),
 		SPIN
 	)
@@ -72,3 +77,56 @@ func test_impulse_selection_distinguishes_jump_double_jump_and_slam() -> void:
 		DOUBLE_JUMP
 	)
 	assert_eq(driver_script.call("clip_for_impulse", &"body_slam"), SLAM)
+
+
+func test_travel_yaw_faces_the_model_in_every_horizontal_direction() -> void:
+	if not ResourceLoader.exists(DRIVER_PATH):
+		return
+	var driver_script := load(DRIVER_PATH) as Script
+	assert_not_null(driver_script)
+	if driver_script == null:
+		return
+	assert_true(
+		driver_script.has_method("yaw_for_velocity"),
+		"the visual driver must turn Crash instead of reverse-walking"
+	)
+	if not driver_script.has_method("yaw_for_velocity"):
+		return
+
+	assert_almost_eq(
+		driver_script.call(
+			"yaw_for_velocity",
+			Vector3.FORWARD,
+			0.0
+		),
+		PI,
+		0.0001
+	)
+	assert_almost_eq(
+		driver_script.call(
+			"yaw_for_velocity",
+			Vector3.BACK,
+			PI
+		),
+		0.0,
+		0.0001
+	)
+	assert_almost_eq(
+		driver_script.call(
+			"yaw_for_velocity",
+			Vector3.RIGHT,
+			PI
+		),
+		PI * 0.5,
+		0.0001
+	)
+	assert_almost_eq(
+		driver_script.call(
+			"yaw_for_velocity",
+			Vector3.ZERO,
+			1.25
+		),
+		1.25,
+		0.0001,
+		"stopping must preserve the last readable facing"
+	)

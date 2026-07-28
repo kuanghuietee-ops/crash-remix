@@ -20,6 +20,7 @@ const STATE_GROUNDED := PlayerStateMachineType.STATE_GROUNDED
 const STATE_SLIDING := PlayerStateMachineType.STATE_SLIDING
 const STATE_AIRBORNE := PlayerStateMachineType.STATE_AIRBORNE
 const STATE_BODY_SLAM := PlayerStateMachineType.STATE_BODY_SLAM
+const STATE_SLAM_RECOVERY := PlayerStateMachineType.STATE_SLAM_RECOVERY
 const STATE_GRIND := PlayerStateMachineType.STATE_GRIND
 const STATE_WALL_RUN := PlayerStateMachineType.STATE_WALL_RUN
 const STATE_SWING := PlayerStateMachineType.STATE_SWING
@@ -27,8 +28,10 @@ const STATE_RIDE := PlayerStateMachineType.STATE_RIDE
 
 @export var controller_path: NodePath
 @export var model_path: NodePath
+@export var facing_turn_speed_radians_per_second := 24.0
 
 var _controller: CharacterBody3D
+var _model: Node3D
 var _animation_player: AnimationPlayer
 var _state := STATE_AIRBORNE
 var _airborne_clip := JUMP
@@ -38,12 +41,12 @@ var _current_clip := &""
 
 func _ready() -> void:
 	_controller = get_node_or_null(controller_path) as CharacterBody3D
-	var model := get_node_or_null(model_path)
-	if _controller == null or model == null:
+	_model = get_node_or_null(model_path) as Node3D
+	if _controller == null or _model == null:
 		push_error("Crash animation driver paths must resolve")
 		set_process(false)
 		return
-	var animation_players := model.find_children(
+	var animation_players := _model.find_children(
 		"*",
 		"AnimationPlayer",
 		true,
@@ -71,7 +74,8 @@ func _ready() -> void:
 	_refresh()
 
 
-func _process(_delta_s: float) -> void:
+func _process(delta_s: float) -> void:
+	_refresh_facing(delta_s)
 	_refresh()
 
 
@@ -92,7 +96,7 @@ static func clip_for(
 			return RUN if moving else IDLE
 		STATE_SLIDING:
 			return SLIDE
-		STATE_BODY_SLAM:
+		STATE_BODY_SLAM, STATE_SLAM_RECOVERY:
 			return SLAM
 		STATE_AIRBORNE:
 			return (
@@ -124,6 +128,16 @@ static func clip_for_impulse(impulse: StringName) -> StringName:
 	]:
 		return JUMP
 	return &""
+
+
+static func yaw_for_velocity(
+	velocity: Vector3,
+	fallback_yaw: float
+) -> float:
+	var horizontal := Vector2(velocity.x, velocity.z)
+	if horizontal.is_zero_approx():
+		return fallback_yaw
+	return atan2(horizontal.x, horizontal.y)
 
 
 func _on_state_changed(
@@ -162,6 +176,25 @@ func _refresh() -> void:
 			_airborne_clip,
 			moving
 		)
+	)
+
+
+func _refresh_facing(delta_s: float) -> void:
+	if _controller == null or _model == null or _spinning:
+		return
+	var target_yaw := yaw_for_velocity(
+		_controller.velocity,
+		_model.rotation.y
+	)
+	var turn_weight := minf(
+		maxf(facing_turn_speed_radians_per_second, 0.0)
+		* maxf(delta_s, 0.0),
+		1.0
+	)
+	_model.rotation.y = lerp_angle(
+		_model.rotation.y,
+		target_yaw,
+		turn_weight
 	)
 
 

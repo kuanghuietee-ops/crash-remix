@@ -8,9 +8,9 @@ Run from the repository root:
 The silhouette was reviewed in uniform clay before this color pass.  This
 stage preserves that geometry while adding a self-contained, matte palette
 through vertex colors: one draw-call material, no copied textures, a
-proportion-matched Rigify basic-human skeleton, and one subtle looping idle.
-The editable Blender source and inspection renders stay under build/; the
-shipping GLB is written to the hero-character budget directory.
+proportion-matched Rigify basic-human skeleton, and seven authored gameplay
+actions.  The editable Blender source and inspection renders stay under
+build/; the shipping GLB is written to the hero-character budget directory.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ PREVIEW_ROOT = REPO_ROOT / "build/art-previews"
 IDLE_FIRST_FRAME = 1
 IDLE_LAST_FRAME = 49
 IDLE_FPS = 24
-RUN_LAST_FRAME = 25
+RUN_LAST_FRAME = 17
 JUMP_LAST_FRAME = 21
 DOUBLE_JUMP_LAST_FRAME = 19
 SPIN_LAST_FRAME = 13
@@ -874,8 +874,10 @@ def begin_action(
         bone.location = (0.0, 0.0, 0.0)
         bone.scale = (1.0, 1.0, 1.0)
     for side in ("L", "R"):
-        rig.pose.bones[f"upper_arm_parent.{side}"]["IK_FK"] = 0.0
-        rig.pose.bones[f"thigh_parent.{side}"]["IK_FK"] = 0.0
+        # These actions key the FK controls.  Rigify uses 1.0 for FK; leaving
+        # this at 0.0 silently keeps the limbs on their unkeyed IK controls.
+        rig.pose.bones[f"upper_arm_parent.{side}"]["IK_FK"] = 1.0
+        rig.pose.bones[f"thigh_parent.{side}"]["IK_FK"] = 1.0
     scene.frame_set(IDLE_FIRST_FRAME)
     return action
 
@@ -945,7 +947,7 @@ def create_idle(rig: bpy.types.Object) -> bpy.types.Action:
 
 def create_run(rig: bpy.types.Object) -> bpy.types.Action:
     action = begin_action(rig, RUN_ACTION_NAME, RUN_LAST_FRAME)
-    for frame in (IDLE_FIRST_FRAME, 7, 13, 19, RUN_LAST_FRAME):
+    for frame in (IDLE_FIRST_FRAME, 5, 9, 13, RUN_LAST_FRAME):
         phase = math.tau * (
             (frame - IDLE_FIRST_FRAME)
             / (RUN_LAST_FRAME - IDLE_FIRST_FRAME)
@@ -957,14 +959,14 @@ def create_run(rig: bpy.types.Object) -> bpy.types.Action:
             key_rotation(
                 rig.pose.bones[f"thigh_fk.{side}"],
                 frame,
-                (math.radians(34.0) * leg_stride, 0.0, 0.0),
+                (math.radians(44.0) * leg_stride, 0.0, 0.0),
             )
             key_rotation(
                 rig.pose.bones[f"shin_fk.{side}"],
                 frame,
                 (
-                    math.radians(18.0)
-                    + math.radians(34.0) * max(-leg_stride, 0.0),
+                    math.radians(14.0)
+                    + math.radians(54.0) * max(-leg_stride, 0.0),
                     0.0,
                     0.0,
                 ),
@@ -972,18 +974,23 @@ def create_run(rig: bpy.types.Object) -> bpy.types.Action:
             key_rotation(
                 rig.pose.bones[f"foot_fk.{side}"],
                 frame,
-                (-math.radians(12.0) * leg_stride, 0.0, 0.0),
+                (-math.radians(18.0) * leg_stride, 0.0, 0.0),
             )
             key_rotation(
                 rig.pose.bones[f"upper_arm_fk.{side}"],
                 frame,
-                (-math.radians(38.0) * leg_stride, 0.0, 0.0),
+                (
+                    -math.radians(56.0) * leg_stride,
+                    math.radians(7.0) * direction,
+                    0.0,
+                ),
             )
             key_rotation(
                 rig.pose.bones[f"forearm_fk.{side}"],
                 frame,
                 (
-                    math.radians(24.0),
+                    math.radians(30.0)
+                    + math.radians(20.0) * max(leg_stride, 0.0),
                     0.0,
                     -math.radians(12.0) * direction,
                 ),
@@ -992,25 +999,25 @@ def create_run(rig: bpy.types.Object) -> bpy.types.Action:
             rig.pose.bones["torso"],
             frame,
             (
-                math.radians(9.0)
-                + math.radians(3.0) * double_step,
+                math.radians(12.0)
+                + math.radians(4.0) * double_step,
                 0.0,
-                -math.radians(7.0) * stride,
+                -math.radians(10.0) * stride,
             ),
         )
         key_rotation(
             rig.pose.bones["head"],
             frame,
             (
-                -math.radians(5.0) * double_step,
+                -math.radians(7.0) * double_step,
                 0.0,
-                math.radians(5.0) * stride,
+                math.radians(7.0) * stride,
             ),
         )
         key_location(
             rig.pose.bones["hips"],
             frame,
-            (0.0, 0.0, 0.024 * (1.0 - double_step)),
+            (0.0, 0.0, 0.040 * (1.0 - double_step)),
         )
     bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
     return finish_action(action, "locomotion", True)
@@ -1153,18 +1160,34 @@ def create_spin(rig: bpy.types.Object) -> bpy.types.Action:
             rig,
             frame,
             {
-                "torso": (10.0, 8.0 * sweep, 12.0 * sweep),
-                "head": (-8.0, -6.0 * sweep, -10.0 * sweep),
+                "torso": (12.0, 18.0 * sweep, 22.0 * sweep),
+                "head": (-9.0, -14.0 * sweep, -16.0 * sweep),
                 "thigh_fk.L": (18.0, 0.0, -12.0),
                 "thigh_fk.R": (18.0, 0.0, 12.0),
                 "shin_fk.L": (28.0, 0.0, 0.0),
                 "shin_fk.R": (28.0, 0.0, 0.0),
-                "upper_arm_fk.L": (-24.0, 0.0, -48.0),
-                "upper_arm_fk.R": (-24.0, 0.0, 48.0),
-                "forearm_fk.L": (34.0, 0.0, -18.0),
-                "forearm_fk.R": (34.0, 0.0, 18.0),
+                "upper_arm_fk.L": (
+                    -14.0 + 30.0 * sweep,
+                    14.0 * sweep,
+                    -78.0 + 10.0 * sweep,
+                ),
+                "upper_arm_fk.R": (
+                    -14.0 - 30.0 * sweep,
+                    -14.0 * sweep,
+                    78.0 + 10.0 * sweep,
+                ),
+                "forearm_fk.L": (
+                    24.0 + 16.0 * sweep,
+                    0.0,
+                    -12.0,
+                ),
+                "forearm_fk.R": (
+                    24.0 - 16.0 * sweep,
+                    0.0,
+                    12.0,
+                ),
             },
-            (0.0, 0.0, 0.012 * (1.0 + sweep)),
+            (0.0, 0.0, 0.018 * (1.0 + sweep)),
         )
     bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
     return finish_action(action, "attack", True)
@@ -1493,6 +1516,8 @@ def create_inspection_previews(
         if "BLENDER_EEVEE_NEXT" in render_engines
         else "BLENDER_EEVEE"
     )
+    if hasattr(scene, "eevee"):
+        scene.eevee.taa_render_samples = 24
     scene.render.resolution_x = 640
     scene.render.resolution_y = 640
     scene.render.resolution_percentage = 100
@@ -1520,7 +1545,7 @@ def create_inspection_previews(
     camera.location = views["front"]
     point_at(camera, Vector((0.0, 0.0, 0.55)))
     preview_frames = {
-        RUN_ACTION_NAME: 7,
+        RUN_ACTION_NAME: 5,
         JUMP_ACTION_NAME: 11,
         DOUBLE_JUMP_ACTION_NAME: 6,
         SPIN_ACTION_NAME: 7,

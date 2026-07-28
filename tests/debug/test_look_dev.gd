@@ -322,6 +322,96 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
 
 
+func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void:
+	var asset_scene := load(CRASH_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset := asset_scene.instantiate()
+	add_child_autofree(asset)
+	await wait_process_frames(1)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_eq(skeletons.size(), 1)
+	assert_eq(animation_players.size(), 1)
+	if skeletons.size() != 1 or animation_players.size() != 1:
+		return
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+
+	var run := animation_player.get_animation(&"A_crash_run")
+	var run_early := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_run",
+		run.length * 0.25
+	)
+	var run_late := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_run",
+		run.length * 0.75
+	)
+	assert_gt(
+		run_early[&"hand_l"].distance_to(run_late[&"hand_l"]),
+		0.08,
+		"the left hand must visibly swing with the run stride"
+	)
+	assert_gt(
+		run_early[&"hand_r"].distance_to(run_late[&"hand_r"]),
+		0.08,
+		"the right hand must visibly swing with the run stride"
+	)
+	assert_gt(
+		run_early[&"foot_l"].distance_to(run_late[&"foot_l"]),
+		0.06,
+		"the run must move the feet instead of sliding a stiff body"
+	)
+
+	var spin := animation_player.get_animation(&"A_crash_spin")
+	var spin_early := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_spin",
+		spin.length * 0.1
+	)
+	var spin_late := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_spin",
+		spin.length * 0.55
+	)
+	assert_gt(
+		spin_early[&"hand_l"].distance_to(spin_late[&"hand_l"]),
+		0.08,
+		"the spin clip must sweep the arms through the silhouette"
+	)
+
+	var slam := animation_player.get_animation(&"A_crash_slam")
+	var slam_windup := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_slam",
+		slam.length * 0.05
+	)
+	var slam_impact := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_slam",
+		slam.length * 0.7
+	)
+	assert_gt(
+		slam_windup[&"hand_l"].distance_to(slam_impact[&"hand_l"]),
+		0.10,
+		"the stomp must carry the hands from windup into impact"
+	)
+
+
 func test_look_dev_auto_plays_and_phone_frames_crash_idle() -> void:
 	assert_true(ResourceLoader.exists(CRASH_PATH))
 	if not ResourceLoader.exists(CRASH_PATH):
@@ -500,3 +590,34 @@ func test_turntable_advances_and_wraps_at_a_full_turn() -> void:
 		LookDevType.FULL_TURN_DEGREES,
 		"the turntable angle must stay bounded rather than growing all session"
 	)
+
+
+func _sample_bones(
+	animation_player: AnimationPlayer,
+	skeleton: Skeleton3D,
+	clip: StringName,
+	time_s: float
+) -> Dictionary:
+	animation_player.play(clip)
+	animation_player.seek(time_s, true)
+	animation_player.advance(0.0)
+	skeleton.force_update_all_bone_transforms()
+	var positions := {}
+	for key: StringName in [
+		&"hand_l",
+		&"hand_r",
+		&"foot_l",
+	]:
+		var bone_name := {
+			&"hand_l": "DEF-hand.L",
+			&"hand_r": "DEF-hand.R",
+			&"foot_l": "DEF-foot.L",
+		}[key] as String
+		var bone_index := skeleton.find_bone(bone_name)
+		assert_ne(bone_index, -1, "%s must remain exported" % bone_name)
+		positions[key] = (
+			skeleton.get_bone_global_pose(bone_index).origin
+			if bone_index >= 0
+			else Vector3.ZERO
+		)
+	return positions

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/player/player_controller.gd" id="1_controller"]
 [ext_resource type="Script" path="res://src/gameplay/depth/blob_shadow.gd" id="2_shadow"]
@@ -6,6 +6,7 @@
 [ext_resource type="Shader" path="res://assets/shaders/blob_shadow.gdshader" id="4_shadow_shader"]
 [ext_resource type="PackedScene" path="res://assets/models/characters/SK_crash.glb" id="5_crash"]
 [ext_resource type="Script" path="res://src/visual/player/crash_animation_driver.gd" id="6_crash_animation"]
+[ext_resource type="Script" path="res://src/visual/player/crash_action_effects.gd" id="7_action_effects"]
 
 [sub_resource type="CylinderShape3D" id="Cylinder_player"]
 radius = 0.32
@@ -41,6 +42,81 @@ outer_radius = 0.42
 rings = 8
 ring_segments = 32
 
+[sub_resource type="StandardMaterial3D" id="Material_spin_orange"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.24, 0.025, 0.68)
+emission_enabled = true
+emission = Color(1, 0.08, 0.01, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="TorusMesh" id="Mesh_spin_orange"]
+material = SubResource("Material_spin_orange")
+inner_radius = 0.43
+outer_radius = 0.47
+rings = 8
+ring_segments = 24
+
+[sub_resource type="StandardMaterial3D" id="Material_spin_cream"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.82, 0.18, 0.62)
+emission_enabled = true
+emission = Color(1, 0.48, 0.04, 1)
+emission_energy_multiplier = 1.5
+
+[sub_resource type="TorusMesh" id="Mesh_spin_cream"]
+material = SubResource("Material_spin_cream")
+inner_radius = 0.32
+outer_radius = 0.355
+rings = 8
+ring_segments = 24
+
+[sub_resource type="StandardMaterial3D" id="Material_stomp_ring"]
+resource_local_to_scene = true
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.42, 0.035, 0.9)
+emission_enabled = true
+emission = Color(1, 0.16, 0.01, 1)
+emission_energy_multiplier = 1.7
+
+[sub_resource type="TorusMesh" id="Mesh_stomp_ring"]
+material = SubResource("Material_stomp_ring")
+inner_radius = 0.32
+outer_radius = 0.39
+rings = 8
+ring_segments = 32
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_stomp_dust"]
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.08
+emission_ring_radius = 0.42
+emission_ring_inner_radius = 0.12
+direction = Vector3(1, 0.3, 0)
+spread = 180.0
+flatness = 0.72
+initial_velocity_min = 0.9
+initial_velocity_max = 1.8
+gravity = Vector3(0, -2.4, 0)
+scale_min = 0.65
+scale_max = 1.25
+color = Color(0.95, 0.62, 0.28, 0.72)
+
+[sub_resource type="StandardMaterial3D" id="Material_stomp_dust"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 0.72, 0.34, 0.72)
+
+[sub_resource type="SphereMesh" id="Mesh_stomp_dust"]
+material = SubResource("Material_stomp_dust")
+radius = 0.065
+height = 0.13
+radial_segments = 6
+rings = 3
+
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 1
 collision_mask = 1
@@ -72,6 +148,44 @@ rotation = Vector3(0, 3.1415927, 0)
 script = ExtResource("6_crash_animation")
 controller_path = NodePath("../..")
 model_path = NodePath("../SpinPivot/CrashModel")
+
+[node name="ActionEffects" type="Node3D" parent="."]
+script = ExtResource("7_action_effects")
+controller_path = NodePath("..")
+
+[node name="Spin" type="Node3D" parent="ActionEffects"]
+visible = false
+position = Vector3(0, 0.57, 0)
+
+[node name="OrangeStreak" type="MeshInstance3D" parent="ActionEffects/Spin"]
+rotation = Vector3(0.38, 0, 0.3)
+cast_shadow = 0
+mesh = SubResource("Mesh_spin_orange")
+
+[node name="CreamStreak" type="MeshInstance3D" parent="ActionEffects/Spin"]
+rotation = Vector3(-0.46, 0, 0.52)
+cast_shadow = 0
+mesh = SubResource("Mesh_spin_cream")
+
+[node name="Stomp" type="Node3D" parent="ActionEffects"]
+visible = false
+
+[node name="ImpactRing" type="MeshInstance3D" parent="ActionEffects/Stomp"]
+cast_shadow = 0
+mesh = SubResource("Mesh_stomp_ring")
+
+[node name="Dust" type="GPUParticles3D" parent="ActionEffects/Stomp"]
+position = Vector3(0, 0.08, 0)
+emitting = false
+amount = 12
+lifetime = 0.52
+one_shot = true
+explosiveness = 1.0
+randomness = 0.35
+visibility_aabb = AABB(-3, -1, -3, 6, 3, 6)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_stomp_dust")
+draw_pass_1 = SubResource("Mesh_stomp_dust")
 
 [node name="SpinArea" type="Area3D" parent="."]
 collision_layer = 0
