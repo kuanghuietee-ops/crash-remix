@@ -75,6 +75,47 @@ commit the block Godot writes, and add a test asserting the keys. Doing it befor
 asset exists would mean authoring importer keys blind, which is how a config ends up
 dead-wired. Until then, check each new asset's sidecar by hand against the rules above.
 
+## Textured kits: where the texture actually lives
+
+Environment kits are the one place the "one self-contained `.glb`" rule bends, and it
+bends deliberately. A kit is many meshes sharing one atlas, so embedding the texture
+would put a copy of it inside every piece — twenty-five copies of a 2 MB atlas, in a
+public repo's history, forever. Instead:
+
+- The `.glb` carries **geometry, UVs and one white material**. No texture, no colour.
+  One material slot per piece: the palette lives in the UVs, which is what keeps the
+  kit inside §9.4's 120-draw-call budget.
+- The texture is committed **once** under `assets/textures/`.
+- The shipping material is a committed `StandardMaterial3D` under `assets/materials/`,
+  and each `.glb.import` points its material at that file through `_subresources`:
+
+  ```
+  "materials": {
+  "M_beach_kit_atlas": {
+  "use_external/enabled": true,
+  "use_external/path": "res://assets/materials/M_beach_kit_atlas.tres"
+  }
+  }
+  ```
+
+  `scripts/blender/build_beach_env_kit.py` writes this block, so it survives a rebuild.
+
+**A post-import script cannot do this job, and the failure is silent.** An
+`EditorScenePostImport` script runs on the imported *scene*, but `save_to_file` writes
+the extracted mesh from the pre-script material — so the texture never reaches
+`kits/mesh/*.res`. Everything still imports, every lint still passes, the level still
+loads, and every piece is plain white. This was tried first and caught only by
+`tests/integration/test_kit_materials.gd`, which asserts each extracted mesh has an
+albedo texture. Keep that suite green; it is the only thing standing between this
+pipeline and a silently untextured level. The post-import script mechanism is still
+correct for models the scenes instance directly as a `PackedScene`, which is why the
+crates use it.
+
+**`compress/mode=2` is confirmed, not assumed.** Setting it and reimporting makes Godot
+write `"vram_texture": true` and `"imported_formats": ["s3tc_bptc", "etc2_astc"]` into
+the sidecar's own metadata — the importer stating it produced the ASTC the mobile
+budget assumes. Check that metadata rather than trusting the enum ordering.
+
 ## Checking an asset before committing it
 
 ```bash

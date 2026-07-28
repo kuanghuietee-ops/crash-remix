@@ -6,12 +6,18 @@ operations so every byte of the kit is original to this project.
 
 Two conventions matter and are easy to get wrong:
 
+*Colour comes from UVs, not slots.* Each piece carries exactly one material and
+one UV layer. ``paint()`` still takes a palette name, but instead of adding a
+material slot it maps the face into that colour's cell of the shared atlas
+(``env_kit_palette``). One slot per piece is what design doc 9.4's 120-draw-call
+budget needs, and it is why the kit can carry hand-painted grain at all.
+
 *Colour space.* Blender's Principled base colour is **linear**; Godot's
-``StandardMaterial3D.albedo_color`` is displayed and authored in **sRGB**.
-The palette below is written in sRGB so it can be read against the sRGB
-colours already authored into ``scenes/segments/beach_*.tscn``, and is
-converted on the way into Blender. Skipping that conversion is the classic
-"why is my sand washed out" bug.
+``StandardMaterial3D.albedo_color`` is displayed and authored in **sRGB**. The
+palette is written in sRGB so it can be read against the sRGB colours already
+authored into ``scenes/segments/beach_*.tscn``. The kit material itself is
+white, because the atlas -- not the material -- now carries the colour; tinting
+it would multiply the palette in twice.
 
 *Up axis.* Build with Blender's Z-up convention. The glTF exporter's default
 ``export_yup`` rotates into Godot's Y-up on the way out, so a prop modelled
@@ -28,46 +34,20 @@ import bmesh
 import bpy
 import mathutils
 
+from env_kit_palette import (  # noqa: F401  (PALETTE re-exported for builders)
+    PALETTE,
+    atlas_uv_rect,
+    face_window,
+    projection_axes,
+    srgb_to_linear,
+    trim_uv_rect,
+)
 
-# --- palette -----------------------------------------------------------
-# sRGB, deliberately keyed to the graybox floor colours already authored in
-# the beach segments so the dressing and the play surface read as one place.
-
-PALETTE: dict[str, tuple[float, float, float]] = {
-    "sand_light": (0.87, 0.78, 0.57),
-    "sand_mid": (0.76, 0.63, 0.40),
-    "sand_wet": (0.58, 0.48, 0.33),
-    "rock_light": (0.63, 0.61, 0.56),
-    "rock_mid": (0.47, 0.45, 0.43),
-    "rock_dark": (0.32, 0.31, 0.30),
-    "rock_warm": (0.56, 0.46, 0.34),
-    "leaf_light": (0.52, 0.70, 0.29),
-    "leaf_mid": (0.30, 0.52, 0.24),
-    "leaf_dark": (0.17, 0.34, 0.18),
-    "frond": (0.37, 0.59, 0.26),
-    "trunk": (0.45, 0.33, 0.22),
-    "trunk_dark": (0.31, 0.23, 0.16),
-    "driftwood": (0.66, 0.60, 0.52),
-    # Distance tones. There is no fog on this level -- the level scene owns
-    # the WorldEnvironment -- so aerial perspective is faked by desaturating
-    # far-away pieces toward the sky colour instead.
-    "rock_haze": (0.44, 0.54, 0.63),
-    "rock_haze_dark": (0.34, 0.45, 0.56),
-    "leaf_haze": (0.35, 0.50, 0.50),
-    "water_shallow": (0.30, 0.67, 0.70),
-    "water_deep": (0.13, 0.42, 0.58),
-    "foam": (0.88, 0.94, 0.95),
-    "coconut": (0.38, 0.26, 0.17),
-    "shell": (0.92, 0.86, 0.78),
-    "flower": (0.92, 0.44, 0.31),
-}
-
-
-def srgb_to_linear(channel: float) -> float:
-    """Convert one sRGB channel to the linear value Blender expects."""
-    if channel <= 0.04045:
-        return channel / 12.92
-    return ((channel + 0.055) / 1.055) ** 2.4
+# The two shipping materials. Which one a piece gets decides which texture the
+# Godot import script hangs on it, so these names are load-bearing and are
+# asserted by tests/integration/test_kit_materials.gd.
+ATLAS_MATERIAL = "M_beach_kit_atlas"
+TRIM_MATERIAL = "M_beach_kit_trim"
 
 
 def reset_scene() -> None:
@@ -76,56 +56,101 @@ def reset_scene() -> None:
 
 
 def material(name: str) -> bpy.types.Material:
-    """Fetch or create the palette material called ``name``."""
+    """Fetch or create one of the kit's two shipping materials.
+
+    Deliberately white and untextured on the Blender side. The atlas is not
+    embedded in the ``.glb`` -- twenty-five copies of a 2 MB texture in a public
+    repo's history is not a trade worth making -- so the texture is attached at
+    import time by ``scripts/godot/apply_kit_atlas_material.gd``, keyed on the
+    material name below.
+    """
+    if name not in (ATLAS_MATERIAL, TRIM_MATERIAL):
+        raise KeyError(
+            f"{name!r} is not a kit material; expected one of "
+            f"{ATLAS_MATERIAL!r} or {TRIM_MATERIAL!r}"
+        )
     existing = bpy.data.materials.get(name)
     if existing is not None:
         return existing
-    if name not in PALETTE:
-        raise KeyError(f"{name!r} is not in the environment palette")
-    red, green, blue = PALETTE[name]
     made = bpy.data.materials.new(name)
     made.use_nodes = True
     shader = made.node_tree.nodes["Principled BSDF"]
-    shader.inputs["Base Color"].default_value = (
-        srgb_to_linear(red),
-        srgb_to_linear(green),
-        srgb_to_linear(blue),
-        1.0,
-    )
+    shader.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     shader.inputs["Roughness"].default_value = 0.92
     shader.inputs["Metallic"].default_value = 0.0
-    made.diffuse_color = (
-        srgb_to_linear(red),
-        srgb_to_linear(green),
-        srgb_to_linear(blue),
-        1.0,
-    )
+    made.diffuse_color = (1.0, 1.0, 1.0, 1.0)
     return made
 
 
 class Piece:
     """A single kit mesh under construction.
 
-    Wraps a bmesh plus the ordered material slot list, and hands out slot
-    indices by palette name so builders never juggle raw integers.
+    Wraps a bmesh and a UV layer. Builders still say "paint these faces sand" and
+    never touch UVs or slots; the piece turns that into a rectangle of the shared
+    atlas, so the finished mesh has exactly one material.
+
+    Set ``uses_trim`` before painting to route a piece onto the strata trim sheet
+    instead. Only the rock family has bands, and asking for anything else raises
+    rather than quietly falling back.
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, uses_trim: bool = False) -> None:
         self.name = name
         self.bm = bmesh.new()
-        self._slots: list[str] = []
+        self.uses_trim = uses_trim
+        self.uv_layer = self.bm.loops.layers.uv.verify()
+        # Advances once per painted face so two faces of the same colour land on
+        # different patches of grain. Deterministic, so re-running the build
+        # still writes byte-identical files.
+        self._face_serial = 0
 
-    def slot(self, palette_name: str) -> int:
-        """Index of ``palette_name`` in this piece's material slots."""
-        if palette_name not in self._slots:
-            self._slots.append(palette_name)
-        return self._slots.index(palette_name)
+    @property
+    def material_name(self) -> str:
+        return TRIM_MATERIAL if self.uses_trim else ATLAS_MATERIAL
+
+    def uv_rect(self, palette_name: str) -> tuple[float, float, float, float]:
+        if self.uses_trim:
+            return trim_uv_rect(palette_name)
+        return atlas_uv_rect(palette_name)
 
     def paint(self, faces: Iterable[bmesh.types.BMFace], palette_name: str) -> None:
-        index = self.slot(palette_name)
+        rect = self.uv_rect(palette_name)
         for face in faces:
-            face.material_index = index
+            face.material_index = 0
             face.smooth = False
+            self._map_face(face, rect)
+
+    def _map_face(
+        self, face: bmesh.types.BMFace, rect: tuple[float, float, float, float]
+    ) -> None:
+        """Flatten one face onto its dominant plane and fit it into ``rect``."""
+        u0, v0, u1, v1 = rect
+        first, second = projection_axes(face.normal)
+        coords = [(vert.co[first], vert.co[second]) for vert in face.verts]
+        min_a = min(coord[0] for coord in coords)
+        max_a = max(coord[0] for coord in coords)
+        min_b = min(coord[1] for coord in coords)
+        max_b = max(coord[1] for coord in coords)
+        span_a = max_a - min_a
+        span_b = max_b - min_b
+
+        if self.uses_trim:
+            # Strata have to run the full height of the band or the layering the
+            # trim sheet exists for is lost, so trim faces fill their rectangle.
+            window_u0, window_v0, window_u1, window_v1 = u0, v0, u1, v1
+        else:
+            window_u0, window_v0, window_u1, window_v1 = face_window(
+                rect, self._face_serial
+            )
+        self._face_serial += 1
+
+        for loop, (a, b) in zip(face.loops, coords):
+            fraction_a = 0.5 if span_a <= 0.0 else (a - min_a) / span_a
+            fraction_b = 0.5 if span_b <= 0.0 else (b - min_b) / span_b
+            loop[self.uv_layer].uv = (
+                window_u0 + fraction_a * (window_u1 - window_u0),
+                window_v0 + fraction_b * (window_v1 - window_v0),
+            )
 
     def new_faces(self, before: set[bmesh.types.BMFace]) -> list[bmesh.types.BMFace]:
         self.bm.faces.ensure_lookup_table()
@@ -155,12 +180,11 @@ class Piece:
             vert.co.z += dz
 
     def finish(self) -> bpy.types.Object:
-        """Bake the bmesh into a real object with its material slots attached."""
+        """Bake the bmesh into a real object with its single material attached."""
         mesh = bpy.data.meshes.new(self.name)
         self.bm.to_mesh(mesh)
         self.bm.free()
-        for palette_name in self._slots:
-            mesh.materials.append(material(palette_name))
+        mesh.materials.append(material(self.material_name))
         for polygon in mesh.polygons:
             polygon.use_smooth = False
         mesh.update()
@@ -402,10 +426,10 @@ def add_height_grid(
                     grid[ix][iy + 1],
                 )
             )
-            face.smooth = False
-            face.material_index = piece.slot(
-                palette_fn((ix + 0.5) / cells_x, (iy + 0.5) / cells_y)
-            )
+            # Route through paint() rather than setting the slot directly, so
+            # grid faces get UVs like every other face. This was the one place
+            # that bypassed it, and a bypass here would ship untextured terrain.
+            piece.paint([face], palette_fn((ix + 0.5) / cells_x, (iy + 0.5) / cells_y))
     _ = before
 
 

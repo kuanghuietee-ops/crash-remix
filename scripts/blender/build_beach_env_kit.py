@@ -353,7 +353,10 @@ def build_headland() -> None:
 
 def build_boulder(name: str, seed: int, radius: float, tone: str) -> None:
     rng = random.Random(seed)
-    piece = Piece(name)
+    # Pure rock, so it can take the strata trim sheet rather than a flat atlas
+    # cell. The cliffs cannot: their canopy cap is foliage, and the trim sheet
+    # carries the rock family only.
+    piece = Piece(name, uses_trim=True)
     add_rock(piece, (0.0, 0.0, 0.0), radius, tone, rng, subdivisions=2, jitter=0.3)
     for _ in range(3):
         add_rock(
@@ -368,7 +371,7 @@ def build_boulder(name: str, seed: int, radius: float, tone: str) -> None:
 
 def build_rock_cluster() -> None:
     rng = random.Random(7707)
-    piece = Piece("rock_cluster_a")
+    piece = Piece("rock_cluster_a", uses_trim=True)
     for _ in range(4):
         add_rock(
             piece,
@@ -882,7 +885,70 @@ BUILDERS = (
 MULTI = {"palms", "jungle_trees", "fringes"}
 
 
-def _patch_import_sidecar(out_dir: str, piece: str) -> bool:
+MATERIAL_DIR = "res://assets/materials"
+
+
+def _brace_span(text: str, start: int) -> int:
+    """Index of the closing brace matching the first ``{`` at or after ``start``."""
+    index = text.index("{", start)
+    depth = 0
+    while index < len(text):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    raise ValueError("unbalanced braces in .import sidecar")
+
+
+def _with_external_material(text: str, material_name: str) -> str:
+    """Point a ``.glb.import`` at the committed material carrying the texture.
+
+    The kit's .glb files carry a white, untextured material on purpose --
+    embedding a 2 MB atlas in each of twenty-five meshes would put twenty-five
+    copies of it in a public repo's history forever. The texture lives once in
+    ``assets/materials/``, and this block is what makes the *extracted* mesh
+    reference it.
+
+    A post-import script cannot do this job. It runs on the imported scene,
+    while ``save_to_file`` writes the mesh from the pre-script material, so the
+    texture never reaches ``kits/mesh/*.res`` -- which is exactly the failure
+    ``tests/integration/test_kit_materials.gd`` was written to catch.
+    """
+    # Whatever wrote this before, the import script is not what wires materials.
+    text = re.sub(
+        r'^import_script/path=.*$',
+        'import_script/path=""',
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    block = (
+        '"materials": {\n'
+        f'"{material_name}": {{\n'
+        '"use_external/enabled": true,\n'
+        f'"use_external/path": "{MATERIAL_DIR}/{material_name}.tres"\n'
+        "}\n"
+        "}"
+    )
+    marker = '"materials": {'
+    start = text.find(marker)
+    if start >= 0:
+        end = _brace_span(text, start + len(marker) - 1)
+        # Godot rewrites the inner keys on import; replace the whole object so a
+        # renamed material cannot leave a stale entry behind.
+        return text[:start] + block + text[end + 1 :]
+    anchor = "_subresources={\n"
+    index = text.find(anchor)
+    if index < 0:
+        return text
+    insert_at = index + len(anchor)
+    return text[:insert_at] + block + ",\n" + text[insert_at:]
+
+
+def _patch_import_sidecar(out_dir: str, piece: str, material_name: str) -> bool:
     """Point a ``.glb.import`` at an extracted mesh under ``kits/mesh/``.
 
     Returns False when the sidecar does not exist yet, which just means Godot
@@ -891,8 +957,12 @@ def _patch_import_sidecar(out_dir: str, piece: str) -> bool:
     sidecar = os.path.join(out_dir, f"{piece}.glb.import")
     if not os.path.exists(sidecar):
         return False
-    text = open(sidecar, encoding="utf-8").read()
+    original = open(sidecar, encoding="utf-8").read()
+    text = _with_external_material(original, material_name)
     if "save_to_file/enabled" in text:
+        if text != original:
+            with open(sidecar, "w", encoding="utf-8") as handle:
+                handle.write(text)
         # Already wired. Godot rewrites this block on import (it swaps the
         # path for a uid and adds its own keys), so leave its version alone
         # rather than fighting it every build.
@@ -956,7 +1026,9 @@ def main() -> None:
     out_dir = os.path.abspath(os.path.join(here, "..", "..", "assets", "models", "kits"))
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(os.path.join(out_dir, "mesh"), exist_ok=True)
-    written: list[str] = []
+    # (path, material name). The material decides which texture the extracted
+    # mesh ends up referencing, so it has to travel with the piece.
+    written: list[tuple[str, str]] = []
     for label, builder in BUILDERS:
         reset_scene()
         builder()
@@ -968,18 +1040,18 @@ def main() -> None:
                     other.select_set(other is obj)
                 path = os.path.join(out_dir, f"{obj.name}.glb")
                 _export_single(obj, path)
-                written.append(path)
+                written.append((path, _material_name(obj)))
         else:
             path = os.path.join(out_dir, f"{label}.glb")
             export_glb(path)
-            written.append(path)
+            written.append((path, _material_name(bpy.context.collection.objects[0])))
     pending: list[str] = []
-    for path in written:
+    for path, material_name in written:
         piece = os.path.basename(path)[: -len(".glb")]
         _invalidate(out_dir, piece)
-        if not _patch_import_sidecar(out_dir, piece):
+        if not _patch_import_sidecar(out_dir, piece, material_name):
             pending.append(piece)
-        print(f"KIT_WROTE {os.path.basename(path)} {os.path.getsize(path)}")
+        print(f"KIT_WROTE {os.path.basename(path)} {material_name} {os.path.getsize(path)}")
     print(f"KIT_TOTAL {len(written)}")
     if pending:
         print(
@@ -988,6 +1060,22 @@ def main() -> None:
             + " -- run godot --headless --path . --import, then this script "
             "again, so their meshes get extracted."
         )
+
+
+def _material_name(obj: "bpy.types.Object") -> str:
+    """The single material a finished piece carries.
+
+    Pieces have exactly one slot by design -- that is the whole point of moving
+    colour into the atlas UVs -- so anything else means a builder regressed and
+    the sidecar would be wired to the wrong texture.
+    """
+    materials = [slot for slot in obj.data.materials if slot is not None]
+    if len(materials) != 1:
+        raise RuntimeError(
+            f"{obj.name} has {len(materials)} materials; kit pieces must have "
+            "exactly one so the atlas can be wired to it"
+        )
+    return materials[0].name
 
 
 def _export_single(obj: bpy.types.Object, path: str) -> None:

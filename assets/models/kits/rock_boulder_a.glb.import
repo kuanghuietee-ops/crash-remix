@@ -40,6 +40,13 @@ materials/extract=0
 materials/extract_format=0
 materials/extract_path=""
 _subresources={
+"materials": {
+"M_beach_kit_trim": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/materials/M_beach_kit_trim.tres",
+"use_external/path": "res://assets/materials/M_beach_kit_trim.tres"
+}
+},
 "meshes": {
 "rock_boulder_a_rock_boulder_a": {
 "generate/lightmap_uv": 0,
