@@ -1,0 +1,95 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/debug/look_dev.gd" id="1_look_dev"]
+[ext_resource type="Script" path="res://src/ui/safe_area_control.gd" id="2_safe"]
+
+[sub_resource type="Environment" id="Environment_graybox"]
+background_mode = 1
+background_color = Color(0.055, 0.075, 0.11, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.48, 0.55, 0.68, 1)
+ambient_light_energy = 0.72
+tonemap_mode = 2
+
+[node name="LookDev" type="Node3D"]
+script = ExtResource("1_look_dev")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_graybox")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, -32, 0)
+light_color = Color(1, 0.89, 0.72, 1)
+light_energy = 1.25
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 1.2, 3)
+current = true
+
+[node name="Turntable" type="Node3D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="SafeArea" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_safe")
+
+[node name="Rows" type="VBoxContainer" parent="UI/SafeArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 18
+
+[node name="AssetPath" type="Label" parent="UI/SafeArea/Rows"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.82, 0.94, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 22
+text = "NO .GLB ASSETS FOUND"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Spacer" type="Control" parent="UI/SafeArea/Rows"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Controls" type="HBoxContainer" parent="UI/SafeArea/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="Previous" type="Button" parent="UI/SafeArea/Rows/Controls"]
+custom_minimum_size = Vector2(180, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "PREV"
+
+[node name="Next" type="Button" parent="UI/SafeArea/Rows/Controls"]
+custom_minimum_size = Vector2(180, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "NEXT"
+
+[node name="Close" type="Button" parent="UI/SafeArea/Rows/Controls"]
+custom_minimum_size = Vector2(180, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "CLOSE"

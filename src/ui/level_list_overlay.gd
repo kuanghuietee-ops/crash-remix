@@ -3,6 +3,7 @@ extends Control
 
 signal level_requested(level_id: StringName)
 signal toybox_requested
+signal look_dev_requested
 signal closed
 
 
@@ -22,6 +23,9 @@ func _ready() -> void:
 	$SafeArea/Center/Panel/Margin/Rows/Toybox.pressed.connect(
 		func() -> void: toybox_requested.emit()
 	)
+	$SafeArea/Center/Panel/Margin/Rows/LookDev.pressed.connect(
+		func() -> void: look_dev_requested.emit()
+	)
 	$SafeArea/Center/Panel/Margin/Rows/Close.pressed.connect(
 		func() -> void: closed.emit()
 	)
@@ -29,5 +33,8 @@ func _ready() -> void:
 
 func configure(debug_tools_enabled: bool) -> void:
 	$SafeArea/Center/Panel/Margin/Rows/Toybox.visible = (
+		debug_tools_enabled
+	)
+	$SafeArea/Center/Panel/Margin/Rows/LookDev.visible = (
 		debug_tools_enabled
 	)

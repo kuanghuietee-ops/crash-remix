@@ -35,6 +35,7 @@ const BOOT_ERROR_OVERLAY_SCENE := preload(
 	"res://scenes/ui/boot_error_overlay.tscn"
 )
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
+const LOOK_DEV_SCENE := preload("res://scenes/debug/look_dev.tscn")
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -57,6 +58,7 @@ const MISSED_CRATE_OUTLINE_SHADER := preload(
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
+const DEBUG_LOOK_DEV_LEVEL_ID := &"debug_look_dev"
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
@@ -655,6 +657,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		_on_toybox_requested
 	)
 	_level_list_overlay.connect(
+		&"look_dev_requested",
+		_on_look_dev_requested
+	)
+	_level_list_overlay.connect(
 		&"closed",
 		_on_level_list_closed
 	)
@@ -717,6 +723,17 @@ func _render_state(previous_state: int = flow.state) -> void:
 			_level_touch_exclusions()
 		)
 		_content.add_child(toybox)
+		return
+	if (
+		flow.state == GameFlow.State.LEVEL
+		and flow.active_level_id == DEBUG_LOOK_DEV_LEVEL_ID
+	):
+		var look_dev: LookDev = LOOK_DEV_SCENE.instantiate()
+		look_dev.set_assets(
+			look_dev.discover_assets("res://assets/models")
+		)
+		look_dev.closed.connect(_on_level_session_exited)
+		_content.add_child(look_dev)
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -1346,7 +1363,10 @@ func _sync_ui_visibility() -> void:
 		)
 	_hud.call(
 		"set_run_display_visible",
-		flow.active_level_id != DEBUG_TOYBOX_LEVEL_ID
+		flow.active_level_id not in [
+			DEBUG_TOYBOX_LEVEL_ID,
+			DEBUG_LOOK_DEV_LEVEL_ID,
+		]
 	)
 	_pause_overlay.visible = (
 		flow.state == GameFlow.State.PAUSED
@@ -1436,6 +1456,11 @@ func _on_level_requested(level_id: StringName) -> void:
 func _on_toybox_requested() -> void:
 	if OS.is_debug_build():
 		_select_level(DEBUG_TOYBOX_LEVEL_ID)
+
+
+func _on_look_dev_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_LOOK_DEV_LEVEL_ID)
 
 
 func _on_level_list_closed() -> void:
