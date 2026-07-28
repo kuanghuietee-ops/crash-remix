@@ -1,6 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/props/breakable.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://assets/models/props/SM_crate_standard.glb" id="2_model"]
 
 [node name="CrateStandard" instance=ExtResource("1_base")]
 crate_type = &"standard"
+
+[node name="Mesh" parent="." index="0"]
+mesh = null
+
+[node name="Model" parent="Mesh" instance=ExtResource("2_model")]
+position = Vector3(0, -0.5, 0)

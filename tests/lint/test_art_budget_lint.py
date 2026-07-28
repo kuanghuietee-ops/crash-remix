@@ -69,6 +69,8 @@ class BudgetLoadingTests(unittest.TestCase):
 
             self.assertEqual(budget.max_triangles["hero"], 12000)
             self.assertEqual(budget.min_triangles["enemy"], 3000)
+            self.assertEqual(budget.min_triangles["prop"], 100)
+            self.assertEqual(budget.max_triangles["prop"], 2500)
             self.assertEqual(budget.max_texture_dimension_px, 2048)
 
 
@@ -103,15 +105,24 @@ class TriangleBudgetTests(unittest.TestCase):
             self.assertEqual(len(violations), 1)
             self.assertIn("3000", violations[0].message)
 
+    def test_the_operator_approved_prop_band_accepts_the_first_crate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/props/SM_crate_standard.glb").write_bytes(
+                build_glb(1996)
+            )
+
+            self.assertEqual(find_violations(root), [])
+
     def test_an_unbudgeted_category_fails_closed_with_the_line_to_add(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = make_repo(directory)
-            (root / "assets/models/props/SM_crate_standard.glb").write_bytes(build_glb(400))
+            (root / "assets/models/kits/SM_palm.glb").write_bytes(build_glb(400))
 
             violations = find_violations(root)
 
             self.assertEqual(len(violations), 1)
-            self.assertIn("prop_max_triangles", violations[0].message)
+            self.assertIn("kit_piece_max_triangles", violations[0].message)
             self.assertIn("art_budget.tres", violations[0].message)
 
     def test_a_model_outside_every_category_directory_fails_closed(self) -> None:

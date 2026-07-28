@@ -561,6 +561,47 @@ func test_graybox_scenes_keep_type_and_identity_on_live_node_glue() -> void:
 	assert_true(wumpa is Area3D)
 
 
+func test_standard_crate_art_matches_the_graybox_collision_bounds() -> void:
+	var crate := _instantiate(STANDARD_SCENE)
+	if crate == null:
+		return
+	add_child_autofree(crate)
+
+	var visual_root := crate.get_node("Mesh") as MeshInstance3D
+	assert_not_null(visual_root)
+	assert_null(
+		visual_root.mesh,
+		"the standard crate must replace, not overlap, the BoxMesh placeholder"
+	)
+	var model := visual_root.get_node_or_null("Model") as Node3D
+	assert_not_null(model)
+	if model == null:
+		return
+	var imported_meshes := model.find_children(
+		"*",
+		"MeshInstance3D",
+		true,
+		false
+	)
+	assert_eq(imported_meshes.size(), 1)
+	if imported_meshes.size() != 1:
+		return
+	var imported_mesh := imported_meshes[0] as MeshInstance3D
+	var model_aabb := imported_mesh.get_aabb()
+	assert_true(
+		model_aabb.position.is_equal_approx(Vector3(-0.5, 0.0, -0.5))
+	)
+	assert_true(model_aabb.size.is_equal_approx(Vector3.ONE))
+	assert_true(model.position.is_equal_approx(Vector3(0.0, -0.5, 0.0)))
+	assert_true(
+		(model_aabb.position + model.position).is_equal_approx(
+			Vector3(-0.5, -0.5, -0.5)
+		),
+		"the contact-origin GLB must be offset onto the centered gameplay body"
+	)
+	assert_eq(imported_mesh.mesh.get_surface_count(), 1)
+
+
 func test_standard_node_emits_tuned_break_payload_once() -> void:
 	var crate := _instantiate(STANDARD_SCENE)
 	if crate == null:

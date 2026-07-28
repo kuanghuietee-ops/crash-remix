@@ -45,14 +45,15 @@ document where it cannot.
   | `assets/models/enemies/` | `enemy` | §9.4: 3–6k tris |
   | `assets/models/bosses/` | `boss` | §9.4: 15–25k tris |
   | `assets/models/rideables/` | *unset* | §9.4 gives no figure — operator sets it |
-  | `assets/models/props/` | *unset* | §9.4 gives no figure — operator sets it |
+  | `assets/models/props/` | 100–2,500 tris | Operator-approved after the first crate measured 1,996 tris |
   | `assets/models/kits/` | *unset* | §9.4 gives no figure — operator sets it |
 
   An unset category **fails the lint closed** with the exact line to add to
   `data/tuning/art_budget.tres`. That is deliberate: §9.4 specifies per-asset caps for
-  characters, enemies and bosses only, and props and kit pieces are governed by the
-  whole-frame budget instead. Rather than invent a per-asset number nobody chose, the
-  lint stops and asks the operator to choose one the first time such an asset lands.
+  characters, enemies and bosses only, while props, rideables and kit pieces are
+  governed by the whole-frame budget instead. The operator approved the 100–2,500
+  prop band on 2026-07-28 after the first real crate measured 1,996 triangles; kit
+  pieces and rideables remain unset until their first real assets land.
 
 ## Godot side
 

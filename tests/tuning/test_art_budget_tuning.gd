@@ -14,6 +14,8 @@ func test_authored_budget_matches_the_design_doc_per_asset_caps() -> void:
 	assert_eq(budget.enemy_max_triangles, 6000)
 	assert_eq(budget.boss_min_triangles, 15000)
 	assert_eq(budget.boss_max_triangles, 25000)
+	assert_eq(budget.prop_min_triangles, 100)
+	assert_eq(budget.prop_max_triangles, 2500)
 
 
 func test_authored_budget_matches_the_design_doc_frame_budgets() -> void:
@@ -32,16 +34,16 @@ func test_lookup_returns_the_category_cap() -> void:
 	assert_eq(budget.max_triangles_for(&"hero"), 12000)
 	assert_eq(budget.min_triangles_for(&"enemy"), 3000)
 	assert_eq(budget.max_triangles_for(&"boss"), 25000)
+	assert_eq(budget.min_triangles_for(&"prop"), 100)
+	assert_eq(budget.max_triangles_for(&"prop"), 2500)
 
 
-## Props, kit pieces and rideables have no per-asset figure in design doc §9.4 --
-## they are governed by the whole-frame budget instead. An unbudgeted category
-## must report itself as unbudgeted so the lint can fail closed and ask the
-## operator, rather than silently passing everything through a default nobody chose.
-func test_unbudgeted_categories_report_no_cap() -> void:
+## Kit pieces and rideables still have no operator-approved per-asset figure.
+## They must report themselves as unbudgeted so the lint can fail closed and
+## ask rather than silently passing through a default nobody chose.
+func test_categories_without_an_operator_budget_report_no_cap() -> void:
 	var budget: ArtBudgetTuning = load(AUTHORED_PATH)
 
-	assert_eq(budget.max_triangles_for(&"prop"), -1)
 	assert_eq(budget.max_triangles_for(&"kit_piece"), -1)
 	assert_eq(budget.max_triangles_for(&"rideable"), -1)
 	assert_eq(budget.max_triangles_for(&"not_a_category"), -1)

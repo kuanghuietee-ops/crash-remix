@@ -6,15 +6,17 @@ extends Resource
 ## mid-session, and they must not move the gameplay tuning fingerprint.
 ## Follows the LevelMeta precedent for a standalone authored resource.
 
-## Per-asset triangle caps. §9.4 specifies these three categories and no others;
-## props, kit pieces and rideables are governed by the frame budgets below, so
-## their per-asset caps are deliberately absent rather than invented.
+## Per-asset triangle caps. §9.4 specifies hero, enemy and boss bands. The
+## operator approved the prop band after measuring the first real crate at
+## 1,996 triangles. Kit pieces and rideables remain deliberately unbudgeted.
 @export var hero_min_triangles: int = 0
 @export var hero_max_triangles: int = 0
 @export var enemy_min_triangles: int = 0
 @export var enemy_max_triangles: int = 0
 @export var boss_min_triangles: int = 0
 @export var boss_max_triangles: int = 0
+@export var prop_min_triangles: int = 0
+@export var prop_max_triangles: int = 0
 
 ## Texture rules. §9.4: 1-2 x 2048 atlases + trim sheet per kit, ASTC.
 @export var max_texture_dimension_px: int = 0
@@ -38,6 +40,8 @@ func max_triangles_for(category: StringName) -> int:
 			return enemy_max_triangles
 		&"boss":
 			return boss_max_triangles
+		&"prop":
+			return prop_max_triangles
 	return UNBUDGETED
 
 
@@ -49,4 +53,6 @@ func min_triangles_for(category: StringName) -> int:
 			return enemy_min_triangles
 		&"boss":
 			return boss_min_triangles
+		&"prop":
+			return prop_min_triangles
 	return UNBUDGETED

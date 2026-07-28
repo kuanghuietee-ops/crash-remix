@@ -188,6 +188,63 @@ class LevelAuthoringLintTests(unittest.TestCase):
             ):
                 self.assertAlmostEqual(actual, authored, places=5)
 
+    def test_flatten_treats_an_imported_glb_as_an_opaque_visual_leaf(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repo_root = Path(temporary_directory)
+            asset_path = (
+                repo_root
+                / "assets"
+                / "models"
+                / "props"
+                / "SM_test.glb"
+            )
+            asset_path.parent.mkdir(parents=True)
+            asset_path.write_bytes(b"binary visual payload")
+            scene_path = repo_root / "visual_instance.tscn"
+            scene_path.write_text(
+                "\n".join(
+                    [
+                        "[gd_scene load_steps=2 format=3]",
+                        "",
+                        (
+                            "[ext_resource type=\"PackedScene\" "
+                            "path=\"res://assets/models/props/"
+                            "SM_test.glb\" id=\"1_model\"]"
+                        ),
+                        "",
+                        "[node name=\"Root\" type=\"Node3D\"]",
+                        "",
+                        (
+                            "[node name=\"Visual\" parent=\".\" "
+                            "instance=ExtResource(\"1_model\")]"
+                        ),
+                        "position = Vector3(1, 2, 3)",
+                        "",
+                        (
+                            "[node name=\"Anchor\" type=\"Marker3D\" "
+                            "parent=\"Visual\"]"
+                        ),
+                        "position = Vector3(0, 1, 0)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            nodes = _flatten_scene(scene_path, repo_root)
+            nodes_by_path = {node.path: node for node in nodes}
+
+            self.assertEqual(nodes_by_path["Visual"].node_type, "Node3D")
+            self.assertEqual(
+                nodes_by_path["Visual"].world_position,
+                (1.0, 2.0, 3.0),
+            )
+            self.assertEqual(
+                nodes_by_path["Visual/Anchor"].world_position,
+                (1.0, 3.0, 3.0),
+            )
+
     def test_nested_crate_total_fires_the_authoring_rule(self) -> None:
         self.assertEqual(
             self._rules("level_crate_count_bad.tscn"),

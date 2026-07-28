@@ -94,6 +94,12 @@ CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 WUMPA_PICKUP_GROUP = "wumpa_pickup"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
+# Imported glTF scenes can only contribute visual hierarchy/material data to
+# these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
+# groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
+# roots in the flattened hierarchy, but do not decode their binary payload as
+# UTF-8. Unknown/binary Godot scene formats still fail closed.
+OPAQUE_VISUAL_SCENE_SUFFIXES = frozenset({".glb", ".gltf"})
 
 STRING_PATTERN = re.compile(r'(?:&)?"([^"]*)"')
 NODE_PATH_PATTERN = re.compile(r'NodePath\("([^"]*)"\)')
@@ -1188,6 +1194,41 @@ def _flatten_into(
                 scene_path,
                 repo_root,
             )
+            if (
+                instance_path.suffix.lower()
+                in OPAQUE_VISUAL_SCENE_SUFFIXES
+            ):
+                world_transform = _compose_transform(
+                    resolved_parent_world,
+                    _node_transform(properties),
+                )
+                instance_root = FlatNode(
+                    name=(
+                        source_node.name
+                        if source_node.path != "."
+                        else _path_name(prefix, source_node.name)
+                    ),
+                    node_type="Node3D",
+                    path=flat_path,
+                    parent=resolved_parent_path,
+                    properties=properties,
+                    groups=groups,
+                    script_path=_script_path(
+                        properties,
+                        scene.ext_resources,
+                    ),
+                    world_transform=world_transform,
+                    world_position=world_transform.origin,
+                    order=order[0],
+                    source_scene=scene,
+                )
+                order[0] += 1
+                flattened.append(instance_root)
+                nodes_by_path[flat_path] = instance_root
+                local_to_flat[source_node.path] = instance_root
+                if source_node.path == ".":
+                    root_result = instance_root
+                continue
             instance_root = _flatten_into(
                 instance_path,
                 repo_root,
