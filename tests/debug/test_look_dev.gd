@@ -16,6 +16,40 @@ const CRAB_CLIPS := [
 	&"A_crab_hit",
 	&"A_crab_defeat",
 ]
+const SKINK_PATH := "res://assets/models/enemies/SK_skink.glb"
+const SKINK_CLIPS := [
+	&"A_skink_idle",
+	&"A_skink_telegraph",
+	&"A_skink_dart",
+	&"A_skink_return",
+	&"A_skink_hit",
+	&"A_skink_defeat",
+]
+const PLANT_PATH := "res://assets/models/enemies/SK_plant.glb"
+const PLANT_CLIPS := [
+	&"A_plant_idle",
+	&"A_plant_telegraph",
+	&"A_plant_chomp",
+	&"A_plant_recover",
+	&"A_plant_hit",
+	&"A_plant_defeat",
+]
+const HOG_PATH := "res://assets/models/rideables/SK_hog.glb"
+const HOG_CLIPS := [
+	&"A_hog_idle",
+	&"A_hog_run",
+	&"A_hog_jump",
+	&"A_hog_land",
+]
+const PAPU_PATH := "res://assets/models/bosses/SK_papu.glb"
+const PAPU_CLIPS := [
+	&"A_papu_idle",
+	&"A_papu_taunt",
+	&"A_papu_slam",
+	&"A_papu_hit",
+	&"A_papu_phase",
+	&"A_papu_defeat",
+]
 const CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const CRASH_IDLE := &"A_crash_idle"
 const CRASH_CORE_CLIPS := [
@@ -295,6 +329,410 @@ func test_crab_import_is_one_skinned_budget_mesh_with_gameplay_actions() -> void
 		assert_gt(clip.length, 0.0)
 		assert_gt(clip.get_track_count(), 0)
 		if clip_name in [&"A_crab_idle", &"A_crab_walk"]:
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		else:
+			assert_eq(clip.loop_mode, Animation.LOOP_NONE)
+
+
+func test_skink_import_is_one_skinned_budget_mesh_with_gameplay_actions() -> void:
+	assert_true(
+		ResourceLoader.exists(SKINK_PATH),
+		"the Beach enemy batch must export an original skink"
+	)
+	if not ResourceLoader.exists(SKINK_PATH):
+		return
+	var asset_scene := load(SKINK_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes := asset.find_children("*", "MeshInstance3D", true, false)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "the skink must remain one draw-call surface")
+	assert_eq(skeletons.size(), 1, "the skink must retain one compact skeleton")
+	assert_eq(animation_players.size(), 1)
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	assert_between(
+		indices.size() / 3,
+		3000,
+		6000,
+		"the skink must stay inside the immutable enemy triangle budget"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_gt(
+		unique_colors.size(),
+		6,
+		"body, stripe, belly, eyes, pupils and mouth must read at phone size"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_eq(material.resource_name, "M_skink_body")
+		assert_null(material.albedo_texture)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"body",
+		"head",
+		"tail.001",
+		"leg_front.L",
+		"leg_front.R",
+		"leg_back.L",
+		"leg_back.R",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the skink rig must retain %s" % required_bone
+		)
+
+	for clip_name: StringName in SKINK_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship with the skink" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name in [&"A_skink_idle", &"A_skink_dart", &"A_skink_return"]:
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		else:
+			assert_eq(clip.loop_mode, Animation.LOOP_NONE)
+
+
+func test_plant_import_is_one_skinned_budget_mesh_with_gameplay_actions() -> void:
+	assert_true(
+		ResourceLoader.exists(PLANT_PATH),
+		"the Beach enemy batch must export an original carnivorous plant"
+	)
+	if not ResourceLoader.exists(PLANT_PATH):
+		return
+	var asset_scene := load(PLANT_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes := asset.find_children("*", "MeshInstance3D", true, false)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "the plant must remain one draw-call surface")
+	assert_eq(skeletons.size(), 1, "the plant must retain one compact skeleton")
+	assert_eq(animation_players.size(), 1)
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	assert_between(
+		indices.size() / 3,
+		3000,
+		6000,
+		"the plant must stay inside the immutable enemy triangle budget"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_gt(
+		unique_colors.size(),
+		7,
+		"stem, leaves, lips, mouth, teeth, eyes and spots must read at phone size"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_eq(material.resource_name, "M_plant_body")
+		assert_null(material.albedo_texture)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"stem",
+		"stem.001",
+		"head",
+		"jaw_upper",
+		"jaw_lower",
+		"leaf.L",
+		"leaf.R",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the plant rig must retain %s" % required_bone
+		)
+
+	for clip_name: StringName in PLANT_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship with the plant" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name == &"A_plant_idle":
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		else:
+			assert_eq(clip.loop_mode, Animation.LOOP_NONE)
+
+
+func test_hog_import_is_one_skinned_model_inside_the_approved_rideable_band() -> void:
+	assert_true(
+		ResourceLoader.exists(HOG_PATH),
+		"the rideable batch must export an original hog"
+	)
+	if not ResourceLoader.exists(HOG_PATH):
+		return
+	var asset_scene := load(HOG_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes := asset.find_children("*", "MeshInstance3D", true, false)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "the hog must remain one draw-call surface")
+	assert_eq(skeletons.size(), 1, "the hog must retain one compact skeleton")
+	assert_eq(animation_players.size(), 1)
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	assert_between(
+		indices.size() / 3,
+		6000,
+		10000,
+		"the hog must stay inside the operator-approved rideable band"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_gt(
+		unique_colors.size(),
+		7,
+		"hide, mane, snout, tusks, eyes and hooves must read at phone size"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_eq(material.resource_name, "M_hog_body")
+		assert_null(material.albedo_texture)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"spine",
+		"neck",
+		"head",
+		"leg_front.L",
+		"leg_front.R",
+		"leg_back.L",
+		"leg_back.R",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the hog rig must retain %s" % required_bone
+		)
+
+	for clip_name: StringName in HOG_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship with the hog" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name in [&"A_hog_idle", &"A_hog_run"]:
+			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
+		else:
+			assert_eq(clip.loop_mode, Animation.LOOP_NONE)
+
+
+func test_papu_import_is_one_vertex_painted_rigged_boss_with_combat_actions() -> void:
+	assert_true(
+		ResourceLoader.exists(PAPU_PATH),
+		"the five-asset batch must export the Papu Papu boss"
+	)
+	if not ResourceLoader.exists(PAPU_PATH):
+		return
+	var asset_scene := load(PAPU_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset: Node = autofree(asset_scene.instantiate())
+	var meshes := asset.find_children("*", "MeshInstance3D", true, false)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+
+	assert_eq(meshes.size(), 1, "Papu must remain one draw-call surface")
+	assert_eq(skeletons.size(), 1, "Papu must retain one compact skeleton")
+	assert_eq(animation_players.size(), 1)
+	if (
+		meshes.size() != 1
+		or skeletons.size() != 1
+		or animation_players.size() != 1
+	):
+		return
+
+	var mesh_instance := meshes[0] as MeshInstance3D
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(mesh_instance.mesh.get_surface_count(), 1)
+	assert_not_null(mesh_instance.skin)
+	var arrays := mesh_instance.mesh.surface_get_arrays(0)
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	assert_between(
+		indices.size() / 3,
+		15000,
+		25000,
+		"Papu must stay inside the authored boss triangle band"
+	)
+	assert_false(bones.is_empty())
+	assert_false(weights.is_empty())
+	var unique_colors: Dictionary = {}
+	for color: Color in colors:
+		unique_colors[color] = true
+	assert_gt(
+		unique_colors.size(),
+		9,
+		"skin, paint, hair, headdress, cloth and staff must read on phone"
+	)
+	var material := (
+		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
+	)
+	assert_not_null(material)
+	if material != null:
+		assert_eq(material.resource_name, "M_papu_body")
+		assert_null(material.albedo_texture)
+		assert_true(material.vertex_color_use_as_albedo)
+
+	for required_bone: String in [
+		"pelvis",
+		"spine",
+		"chest",
+		"head",
+		"upper_arm.L",
+		"upper_arm.R",
+		"forearm.L",
+		"forearm.R",
+		"thigh.L",
+		"thigh.R",
+		"staff",
+	]:
+		assert_ne(
+			skeleton.find_bone(required_bone),
+			-1,
+			"the Papu rig must retain %s" % required_bone
+		)
+
+	for clip_name: StringName in PAPU_CLIPS:
+		assert_true(
+			animation_player.has_animation(clip_name),
+			"%s must ship with Papu" % clip_name
+		)
+		if not animation_player.has_animation(clip_name):
+			continue
+		var clip := animation_player.get_animation(clip_name)
+		assert_not_null(clip)
+		if clip == null:
+			continue
+		assert_gt(clip.length, 0.0)
+		assert_gt(clip.get_track_count(), 0)
+		if clip_name == &"A_papu_idle":
 			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
 		else:
 			assert_eq(clip.loop_mode, Animation.LOOP_NONE)

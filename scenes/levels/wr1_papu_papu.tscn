@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=24 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
 [ext_resource type="Resource" path="res://data/tuning/levels/papu_papu.tres" id="2_meta"]
@@ -9,6 +9,8 @@
 [ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
 [ext_resource type="PackedScene" path="res://scenes/segments/papu_arena.tscn" id="8_arena"]
 [ext_resource type="Script" path="res://src/gameplay/boss/papu_papu_arena.gd" id="9_boss"]
+[ext_resource type="PackedScene" path="res://assets/models/bosses/SK_papu.glb" id="10_papu_model"]
+[ext_resource type="Script" path="res://src/visual/boss/papu_visual_driver.gd" id="11_papu_visual"]
 
 [sub_resource type="Environment" id="Environment_papu"]
 background_mode = 1
@@ -23,6 +25,81 @@ size = Vector3(6, 3, 4)
 
 [sub_resource type="BoxShape3D" id="Shape_finish"]
 size = Vector3(10, 4, 4)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_slam"]
+emission_shape = 3
+emission_box_extents = Vector3(0.8, 0.08, 0.8)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 2.0
+initial_velocity_max = 4.2
+gravity = Vector3(0, -5.0, 0)
+angular_velocity_min = -420.0
+angular_velocity_max = 420.0
+scale_min = 0.7
+scale_max = 1.45
+color = Color(1, 0.42, 0.08, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_slam"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 0.5, 0.12, 1)
+emission_enabled = true
+emission = Color(0.8, 0.12, 0.01, 1)
+emission_energy_multiplier = 1.4
+
+[sub_resource type="QuadMesh" id="Mesh_slam"]
+material = SubResource("Material_slam")
+size = Vector2(0.18, 0.08)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_phase"]
+emission_shape = 3
+emission_box_extents = Vector3(0.55, 0.8, 0.38)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 1.6
+initial_velocity_max = 3.7
+gravity = Vector3(0, -1.2, 0)
+angular_velocity_min = -500.0
+angular_velocity_max = 500.0
+scale_min = 0.65
+scale_max = 1.35
+color = Color(0.04, 0.9, 0.86, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_phase"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(0.06, 0.95, 0.9, 1)
+emission_enabled = true
+emission = Color(0.02, 0.58, 0.74, 1)
+emission_energy_multiplier = 1.7
+
+[sub_resource type="BoxMesh" id="Mesh_phase"]
+material = SubResource("Material_phase")
+size = Vector3(0.07, 0.20, 0.07)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_defeat"]
+emission_shape = 3
+emission_box_extents = Vector3(0.8, 1.0, 0.5)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 2.0
+initial_velocity_max = 4.6
+gravity = Vector3(0, -4.2, 0)
+angular_velocity_min = -620.0
+angular_velocity_max = 620.0
+scale_min = 0.75
+scale_max = 1.5
+color = Color(0.96, 0.12, 0.08, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_defeat"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 0.18, 0.10, 1)
+
+[sub_resource type="QuadMesh" id="Mesh_defeat"]
+material = SubResource("Material_defeat")
+size = Vector2(0.20, 0.09)
 
 [node name="PapuPapu" type="Node3D"]
 script = ExtResource("1_session")
@@ -99,6 +176,56 @@ position = Vector3(0, 2.2, 0)
 text = "PHASE 3 BEAM"
 font_size = 40
 outline_size = 10
+
+[node name="PapuVisual" type="Node3D" parent="PapuArena"]
+position = Vector3(0, 0.05, -24)
+
+[node name="PapuModel" parent="PapuArena/PapuVisual" instance=ExtResource("10_papu_model")]
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="VisualDriver" type="Node3D" parent="PapuArena/PapuVisual"]
+script = ExtResource("11_papu_visual")
+model_path = NodePath("../PapuModel")
+arena_path = NodePath("../..")
+
+[node name="SlamBurst" type="GPUParticles3D" parent="PapuArena/PapuVisual/VisualDriver"]
+position = Vector3(0, 0.08, 0)
+emitting = false
+amount = 28
+lifetime = 0.55
+one_shot = true
+explosiveness = 1.0
+randomness = 0.42
+visibility_aabb = AABB(-5, -2, -5, 10, 6, 10)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_slam")
+draw_pass_1 = SubResource("Mesh_slam")
+
+[node name="PhaseBurst" type="GPUParticles3D" parent="PapuArena/PapuVisual/VisualDriver"]
+position = Vector3(0, 1.45, 0)
+emitting = false
+amount = 36
+lifetime = 0.85
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+visibility_aabb = AABB(-5, -3, -5, 10, 8, 10)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_phase")
+draw_pass_1 = SubResource("Mesh_phase")
+
+[node name="DefeatBurst" type="GPUParticles3D" parent="PapuArena/PapuVisual/VisualDriver"]
+position = Vector3(0, 1.15, 0)
+emitting = false
+amount = 44
+lifetime = 1.1
+one_shot = true
+explosiveness = 1.0
+randomness = 0.58
+visibility_aabb = AABB(-6, -3, -6, 12, 9, 12)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_defeat")
+draw_pass_1 = SubResource("Mesh_defeat")
 
 [node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("4_camera")
