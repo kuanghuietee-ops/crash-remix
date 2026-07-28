@@ -9,9 +9,12 @@ const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
 const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
+const WALL_RUN := &"A_crash_wall_run"
+const GRIND := &"A_crash_grind"
+const SWING := &"A_crash_swing"
 
 
-func test_clip_selection_covers_the_seven_core_gameplay_actions() -> void:
+func test_clip_selection_covers_the_ten_core_gameplay_actions() -> void:
 	assert_true(
 		ResourceLoader.exists(DRIVER_PATH),
 		"the player scene needs a visual-only Crash animation driver"
@@ -66,6 +69,23 @@ func test_clip_selection_covers_the_seven_core_gameplay_actions() -> void:
 	assert_eq(
 		driver_script.call("clip_for", &"grounded", true, JUMP, true),
 		SPIN
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"wall_run", false, JUMP, true),
+		WALL_RUN
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"grind", false, JUMP, true),
+		GRIND
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"swing", false, JUMP, true),
+		SWING
+	)
+	assert_eq(
+		driver_script.call("clip_for", &"ride", false, JUMP, true),
+		RUN,
+		"ride keeps the grounded locomotion cycle until its own art pass"
 	)
 
 

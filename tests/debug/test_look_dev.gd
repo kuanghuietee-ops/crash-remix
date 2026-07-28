@@ -18,6 +18,9 @@ const CRASH_CORE_CLIPS := [
 	&"A_crash_spin",
 	&"A_crash_slide",
 	&"A_crash_slam",
+	&"A_crash_wall_run",
+	&"A_crash_grind",
+	&"A_crash_swing",
 ]
 
 
@@ -319,7 +322,13 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 			continue
 		assert_gt(clip.length, 0.0)
 		assert_gt(clip.get_track_count(), 0)
-		if clip_name in [&"A_crash_run", &"A_crash_spin"]:
+		if clip_name in [
+			&"A_crash_run",
+			&"A_crash_spin",
+			&"A_crash_wall_run",
+			&"A_crash_grind",
+			&"A_crash_swing",
+		]:
 			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
 
 
@@ -472,6 +481,82 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 		slam_windup[&"hand_l"].distance_to(slam_impact[&"hand_l"]),
 		0.10,
 		"the stomp must carry the hands from windup into impact"
+	)
+
+	var wall_run := animation_player.get_animation(&"A_crash_wall_run")
+	var wall_run_early := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_wall_run",
+		wall_run.length * 0.25
+	)
+	var wall_run_late := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_wall_run",
+		wall_run.length * 0.75
+	)
+	assert_gt(
+		wall_run_early[&"hand_l"].distance_to(
+			wall_run_late[&"hand_l"]
+		),
+		0.08,
+		"wall-running must pump the arms instead of borrowing a static pose"
+	)
+	assert_gt(
+		wall_run_early[&"foot_l"].distance_to(
+			wall_run_late[&"foot_l"]
+		),
+		0.06,
+		"wall-running must cycle the feet against the wall"
+	)
+
+	var grind := animation_player.get_animation(&"A_crash_grind")
+	var grind_left := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_grind",
+		grind.length * 0.25
+	)
+	var grind_right := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_grind",
+		grind.length * 0.75
+	)
+	assert_gt(
+		grind_left[&"hand_l"].distance_to(grind_right[&"hand_l"]),
+		0.08,
+		"grinding must visibly correct balance from left to right"
+	)
+
+	var swing := animation_player.get_animation(&"A_crash_swing")
+	var swing_back := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_swing",
+		swing.length * 0.25
+	)
+	var swing_forward := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_swing",
+		swing.length * 0.75
+	)
+	assert_gt(
+		swing_back[&"hand_l"].y,
+		swing_back[&"chest"].y + 0.10,
+		"the swing pose must keep both hands raised toward the rope"
+	)
+	assert_gt(
+		swing_back[&"hand_r"].y,
+		swing_back[&"chest"].y + 0.10,
+		"the swing pose must keep both hands raised toward the rope"
+	)
+	assert_gt(
+		swing_back[&"foot_l"].distance_to(swing_forward[&"foot_l"]),
+		0.08,
+		"the swing must trail and lead with the legs through the arc"
 	)
 
 

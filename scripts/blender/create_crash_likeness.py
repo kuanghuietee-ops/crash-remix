@@ -8,7 +8,7 @@ Run from the repository root:
 The silhouette was reviewed in uniform clay before this color pass.  This
 stage preserves that geometry while adding a self-contained, matte palette
 through vertex colors: one draw-call material, no copied textures, a
-proportion-matched Rigify basic-human skeleton, and seven authored gameplay
+proportion-matched Rigify basic-human skeleton, and ten authored gameplay
 actions plus idle.  The editable Blender source and inspection renders stay
 under build/; the shipping GLB is written to the hero-character budget
 directory.
@@ -36,6 +36,9 @@ DOUBLE_JUMP_ACTION_NAME = "A_crash_double_jump"
 SPIN_ACTION_NAME = "A_crash_spin"
 SLIDE_ACTION_NAME = "A_crash_slide"
 SLAM_ACTION_NAME = "A_crash_slam"
+WALL_RUN_ACTION_NAME = "A_crash_wall_run"
+GRIND_ACTION_NAME = "A_crash_grind"
+SWING_ACTION_NAME = "A_crash_swing"
 CORE_ACTION_NAMES = (
     RUN_ACTION_NAME,
     CROUCH_ACTION_NAME,
@@ -44,6 +47,9 @@ CORE_ACTION_NAMES = (
     SPIN_ACTION_NAME,
     SLIDE_ACTION_NAME,
     SLAM_ACTION_NAME,
+    WALL_RUN_ACTION_NAME,
+    GRIND_ACTION_NAME,
+    SWING_ACTION_NAME,
 )
 COLOR_ATTRIBUTE = "COLOR_0"
 SOURCE_PATH = REPO_ROOT / "build/art-source/SK_crash_color.blend"
@@ -60,6 +66,9 @@ DOUBLE_JUMP_LAST_FRAME = 19
 SPIN_LAST_FRAME = 13
 SLIDE_LAST_FRAME = 17
 SLAM_LAST_FRAME = 15
+WALL_RUN_LAST_FRAME = 17
+GRIND_LAST_FRAME = 25
+SWING_LAST_FRAME = 25
 Color = tuple[float, float, float, float]
 
 FUR_ORANGE: Color = (0.88, 0.225, 0.035, 1.0)
@@ -877,6 +886,13 @@ def begin_action(
         bone.rotation_euler = (0.0, 0.0, 0.0)
         bone.location = (0.0, 0.0, 0.0)
         bone.scale = (1.0, 1.0, 1.0)
+        # Give every action a deterministic neutral value for controls that
+        # the pose does not otherwise touch.  Without these bookend keys,
+        # Blender keeps the previous action's unkeyed limb values during
+        # validation and inspection renders.
+        for frame in (IDLE_FIRST_FRAME, last_frame):
+            bone.keyframe_insert(data_path="rotation_euler", frame=frame)
+            bone.keyframe_insert(data_path="location", frame=frame)
     for side in ("L", "R"):
         # These actions key the FK controls.  Rigify uses 1.0 for FK; leaving
         # this at 0.0 silently keeps the limbs on their unkeyed IK controls.
@@ -1391,6 +1407,201 @@ def create_slam(rig: bpy.types.Object) -> bpy.types.Action:
     return finish_action(action, "attack", False)
 
 
+def create_wall_run(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, WALL_RUN_ACTION_NAME, WALL_RUN_LAST_FRAME)
+    for frame in (IDLE_FIRST_FRAME, 5, 9, 13, WALL_RUN_LAST_FRAME):
+        phase = math.tau * (
+            (frame - IDLE_FIRST_FRAME)
+            / (WALL_RUN_LAST_FRAME - IDLE_FIRST_FRAME)
+        )
+        stride = math.sin(phase)
+        double_step = math.cos(phase * 2.0)
+        for side, direction in (("L", 1.0), ("R", -1.0)):
+            leg_stride = stride * direction
+            key_rotation(
+                rig.pose.bones[f"thigh_fk.{side}"],
+                frame,
+                (
+                    math.radians(40.0) * leg_stride,
+                    0.0,
+                    math.radians(5.0) * direction,
+                ),
+            )
+            key_rotation(
+                rig.pose.bones[f"shin_fk.{side}"],
+                frame,
+                (
+                    math.radians(20.0)
+                    + math.radians(58.0) * max(-leg_stride, 0.0),
+                    0.0,
+                    0.0,
+                ),
+            )
+            key_rotation(
+                rig.pose.bones[f"foot_fk.{side}"],
+                frame,
+                (-math.radians(20.0) * leg_stride, 0.0, 0.0),
+            )
+            key_rotation(
+                rig.pose.bones[f"upper_arm_fk.{side}"],
+                frame,
+                (
+                    -math.radians(60.0) * leg_stride,
+                    math.radians(20.0) * direction,
+                    math.radians(5.0) * direction,
+                ),
+            )
+            key_rotation(
+                rig.pose.bones[f"forearm_fk.{side}"],
+                frame,
+                (
+                    math.radians(34.0)
+                    + math.radians(22.0) * max(leg_stride, 0.0),
+                    0.0,
+                    -math.radians(10.0) * direction,
+                ),
+            )
+        key_rotation(
+            rig.pose.bones["torso"],
+            frame,
+            (
+                math.radians(22.0)
+                + math.radians(3.0) * double_step,
+                math.radians(3.0) * stride,
+                -math.radians(9.0) * stride,
+            ),
+        )
+        key_rotation(
+            rig.pose.bones["head"],
+            frame,
+            (
+                -math.radians(10.0)
+                - math.radians(3.0) * double_step,
+                -math.radians(2.0) * stride,
+                math.radians(7.0) * stride,
+            ),
+        )
+        key_location(
+            rig.pose.bones["root"],
+            frame,
+            (0.0, 0.0, 0.008 * (1.0 - double_step)),
+        )
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "traversal", True)
+
+
+def create_grind(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, GRIND_ACTION_NAME, GRIND_LAST_FRAME)
+    neutral_pose = {
+        "torso": (26.0, 0.0, 0.0),
+        "head": (-14.0, 0.0, 0.0),
+        "thigh_fk.L": (-28.0, 0.0, -10.0),
+        "thigh_fk.R": (-22.0, 0.0, 10.0),
+        "shin_fk.L": (72.0, 0.0, 0.0),
+        "shin_fk.R": (66.0, 0.0, 0.0),
+        "foot_fk.L": (-36.0, 0.0, 0.0),
+        "foot_fk.R": (-32.0, 0.0, 0.0),
+        "upper_arm_fk.L": (-45.0, -20.0, 60.0),
+        "upper_arm_fk.R": (-45.0, 20.0, -60.0),
+        "forearm_fk.L": (20.0, 0.0, 0.0),
+        "forearm_fk.R": (20.0, 0.0, 0.0),
+    }
+    poses = {
+        1: neutral_pose,
+        7: {
+            "torso": (29.0, 0.0, -16.0),
+            "head": (-15.0, 0.0, 12.0),
+            "thigh_fk.L": (-38.0, 0.0, -17.0),
+            "thigh_fk.R": (-16.0, 0.0, 8.0),
+            "shin_fk.L": (84.0, 0.0, 0.0),
+            "shin_fk.R": (58.0, 0.0, 0.0),
+            "foot_fk.L": (-42.0, 0.0, 0.0),
+            "foot_fk.R": (-28.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-60.0, -20.0, 75.0),
+            "upper_arm_fk.R": (-30.0, 20.0, -45.0),
+            "forearm_fk.L": (20.0, 0.0, 0.0),
+            "forearm_fk.R": (24.0, 0.0, 0.0),
+        },
+        13: neutral_pose,
+        19: {
+            "torso": (29.0, 0.0, 16.0),
+            "head": (-15.0, 0.0, -12.0),
+            "thigh_fk.L": (-16.0, 0.0, -8.0),
+            "thigh_fk.R": (-38.0, 0.0, 17.0),
+            "shin_fk.L": (58.0, 0.0, 0.0),
+            "shin_fk.R": (84.0, 0.0, 0.0),
+            "foot_fk.L": (-28.0, 0.0, 0.0),
+            "foot_fk.R": (-42.0, 0.0, 0.0),
+            "upper_arm_fk.L": (-30.0, -20.0, 45.0),
+            "upper_arm_fk.R": (-60.0, 20.0, -75.0),
+            "forearm_fk.L": (24.0, 0.0, 0.0),
+            "forearm_fk.R": (20.0, 0.0, 0.0),
+        },
+        GRIND_LAST_FRAME: neutral_pose,
+    }
+    for frame, rotations in poses.items():
+        root_drop = -0.018 if frame in (7, 19) else -0.012
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, root_drop))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "traversal", True)
+
+
+def create_swing(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(rig, SWING_ACTION_NAME, SWING_LAST_FRAME)
+    neutral_pose = {
+        "torso": (-2.0, 0.0, 0.0),
+        "head": (4.0, 0.0, 0.0),
+        "thigh_fk.L": (18.0, 0.0, -7.0),
+        "thigh_fk.R": (18.0, 0.0, 7.0),
+        "shin_fk.L": (36.0, 0.0, 0.0),
+        "shin_fk.R": (36.0, 0.0, 0.0),
+        "foot_fk.L": (-16.0, 0.0, 0.0),
+        "foot_fk.R": (-16.0, 0.0, 0.0),
+        "upper_arm_fk.L": (150.0, -20.0, -25.0),
+        "upper_arm_fk.R": (150.0, 20.0, 25.0),
+        "forearm_fk.L": (50.0, 0.0, 0.0),
+        "forearm_fk.R": (50.0, 0.0, 0.0),
+    }
+    poses = {
+        1: neutral_pose,
+        7: {
+            "torso": (-17.0, 0.0, -4.0),
+            "head": (11.0, 0.0, 4.0),
+            "thigh_fk.L": (-42.0, 0.0, -9.0),
+            "thigh_fk.R": (-32.0, 0.0, 9.0),
+            "shin_fk.L": (22.0, 0.0, 0.0),
+            "shin_fk.R": (30.0, 0.0, 0.0),
+            "foot_fk.L": (10.0, 0.0, 0.0),
+            "foot_fk.R": (6.0, 0.0, 0.0),
+            "upper_arm_fk.L": (148.0, -22.0, -25.0),
+            "upper_arm_fk.R": (152.0, 18.0, 25.0),
+            "forearm_fk.L": (48.0, 0.0, 0.0),
+            "forearm_fk.R": (52.0, 0.0, 0.0),
+        },
+        13: neutral_pose,
+        19: {
+            "torso": (17.0, 0.0, 4.0),
+            "head": (-11.0, 0.0, -4.0),
+            "thigh_fk.L": (52.0, 0.0, -9.0),
+            "thigh_fk.R": (42.0, 0.0, 9.0),
+            "shin_fk.L": (62.0, 0.0, 0.0),
+            "shin_fk.R": (54.0, 0.0, 0.0),
+            "foot_fk.L": (-28.0, 0.0, 0.0),
+            "foot_fk.R": (-24.0, 0.0, 0.0),
+            "upper_arm_fk.L": (152.0, -18.0, -25.0),
+            "upper_arm_fk.R": (148.0, 22.0, 25.0),
+            "forearm_fk.L": (52.0, 0.0, 0.0),
+            "forearm_fk.R": (48.0, 0.0, 0.0),
+        },
+        SWING_LAST_FRAME: neutral_pose,
+    }
+    for frame, rotations in poses.items():
+        root_lift = 0.010 if frame in (7, 19) else 0.0
+        key_action_pose(rig, frame, rotations, (0.0, 0.0, root_lift))
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "traversal", True)
+
+
 def create_animation_set(
     rig: bpy.types.Object,
 ) -> dict[str, bpy.types.Action]:
@@ -1403,6 +1614,9 @@ def create_animation_set(
         SPIN_ACTION_NAME: create_spin(rig),
         SLIDE_ACTION_NAME: create_slide(rig),
         SLAM_ACTION_NAME: create_slam(rig),
+        WALL_RUN_ACTION_NAME: create_wall_run(rig),
+        GRIND_ACTION_NAME: create_grind(rig),
+        SWING_ACTION_NAME: create_swing(rig),
     }
     rig.animation_data.action = actions[IDLE_ACTION_NAME]
     bpy.context.scene.frame_start = IDLE_FIRST_FRAME
@@ -1458,6 +1672,22 @@ def validate_action_poses(
                         f"{action_name} frame {frame} hand {side} trails "
                         f"the chest: clearance={clearance:.4f}"
                     )
+
+    rig.animation_data.action = actions[SWING_ACTION_NAME]
+    first_frame, last_frame = (
+        round(value)
+        for value in actions[SWING_ACTION_NAME].frame_range
+    )
+    for frame in range(first_frame, last_frame + 1):
+        scene.frame_set(frame)
+        chest_z = rig.pose.bones["DEF-spine.003"].head.z
+        for side in ("L", "R"):
+            hand_z = rig.pose.bones[f"DEF-hand.{side}"].head.z
+            if hand_z - chest_z < 0.100:
+                raise RuntimeError(
+                    f"{SWING_ACTION_NAME} frame {frame} hand {side} is "
+                    f"not overhead: rise={hand_z - chest_z:.4f}"
+                )
 
     # Scaling a short Rigify spine control previously produced an 8.7x head
     # stretch in the exported run clip.  Every authored pose must instead
@@ -1705,7 +1935,7 @@ def create_inspection_previews(
         else "BLENDER_EEVEE"
     )
     if hasattr(scene, "eevee"):
-        scene.eevee.taa_render_samples = 24
+        scene.eevee.taa_render_samples = 16
     scene.render.resolution_x = 640
     scene.render.resolution_y = 640
     scene.render.resolution_percentage = 100
@@ -1740,6 +1970,9 @@ def create_inspection_previews(
         SPIN_ACTION_NAME: 7,
         SLIDE_ACTION_NAME: 12,
         SLAM_ACTION_NAME: 10,
+        WALL_RUN_ACTION_NAME: 5,
+        GRIND_ACTION_NAME: 7,
+        SWING_ACTION_NAME: 7,
     }
     for action_name, frame in preview_frames.items():
         rig.animation_data.action = bpy.data.actions[action_name]
@@ -1749,14 +1982,21 @@ def create_inspection_previews(
         )
         bpy.ops.render.render(write_still=True)
 
-    # The forward leg is most legible in profile, so keep a dedicated slide
-    # check alongside the standard front-facing action sheets.
+    # The forward leg and hanging silhouette are most legible in profile, so
+    # keep dedicated checks alongside the standard front-facing action sheets.
     camera.location = views["side"]
     point_at(camera, Vector((0.0, 0.0, 0.55)))
     rig.animation_data.action = bpy.data.actions[SLIDE_ACTION_NAME]
     scene.frame_set(12)
     scene.render.filepath = str(
         PREVIEW_ROOT / f"{SLIDE_ACTION_NAME}_pose_side.png"
+    )
+    bpy.ops.render.render(write_still=True)
+
+    rig.animation_data.action = bpy.data.actions[SWING_ACTION_NAME]
+    scene.frame_set(7)
+    scene.render.filepath = str(
+        PREVIEW_ROOT / f"{SWING_ACTION_NAME}_pose_side.png"
     )
     bpy.ops.render.render(write_still=True)
 

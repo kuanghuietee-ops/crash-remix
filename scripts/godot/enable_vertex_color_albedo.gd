@@ -8,7 +8,14 @@ extends EditorScenePostImport
 ## also made explicitly cyclic here because glTF does not carry Blender's
 ## action-level looping intent.
 
-const LOOPING_ANIMATION_SUFFIXES := ["_walk", "_idle", "_run", "_spin"]
+const LOOPING_ANIMATION_SUFFIXES := [
+	"_walk",
+	"_idle",
+	"_run",
+	"_spin",
+	"_grind",
+	"_swing",
+]
 
 
 func _post_import(scene: Node) -> Object:

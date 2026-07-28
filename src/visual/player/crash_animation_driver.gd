@@ -16,6 +16,9 @@ const DOUBLE_JUMP := &"A_crash_double_jump"
 const SPIN := &"A_crash_spin"
 const SLIDE := &"A_crash_slide"
 const SLAM := &"A_crash_slam"
+const WALL_RUN := &"A_crash_wall_run"
+const GRIND := &"A_crash_grind"
+const SWING := &"A_crash_swing"
 
 const STATE_GROUNDED := PlayerStateMachineType.STATE_GROUNDED
 const STATE_CROUCHED := PlayerStateMachineType.STATE_CROUCHED
@@ -108,10 +111,14 @@ static func clip_for(
 				if airborne_clip in [JUMP, DOUBLE_JUMP]
 				else JUMP
 			)
-		STATE_GRIND, STATE_WALL_RUN, STATE_RIDE:
-			return RUN
+		STATE_GRIND:
+			return GRIND
+		STATE_WALL_RUN:
+			return WALL_RUN
 		STATE_SWING:
-			return JUMP
+			return SWING
+		STATE_RIDE:
+			return RUN
 	return IDLE
 
 
