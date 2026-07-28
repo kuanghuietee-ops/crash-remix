@@ -175,10 +175,10 @@ func test_lab_assistant_import_is_one_skinned_budget_mesh_with_walk() -> void:
 		assert_eq(walk.loop_mode, Animation.LOOP_LINEAR)
 
 
-func test_crash_likeness_candidate_is_one_untextured_rigged_hero() -> void:
+func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 	assert_true(
 		ResourceLoader.exists(CRASH_PATH),
-		"art-ladder rung 3 must export the untextured Crash candidate"
+		"art-ladder rung 3 must export the colored Crash candidate"
 	)
 	if not ResourceLoader.exists(CRASH_PATH):
 		return
@@ -252,19 +252,24 @@ func test_crash_likeness_candidate_is_one_untextured_rigged_hero() -> void:
 	var unique_colors: Dictionary = {}
 	for color: Color in colors:
 		unique_colors[color] = true
-	assert_eq(
+	assert_gt(
 		unique_colors.size(),
-		1,
-		"the likeness gate must see a uniform clay model, not color cues"
+		8,
+		"the reviewed silhouette must now carry Crash's readable color regions"
 	)
 	var material := (
 		mesh_instance.mesh.surface_get_material(0) as BaseMaterial3D
 	)
 	assert_not_null(material)
 	if material != null:
+		assert_eq(
+			material.resource_name,
+			"M_crash_body",
+			"the one-slot hero material must follow the import contract"
+		)
 		assert_null(
 			material.albedo_texture,
-			"the cold likeness candidate must be genuinely untextured"
+			"the first color pass must stay self-contained and vertex painted"
 		)
 		assert_true(material.vertex_color_use_as_albedo)
 

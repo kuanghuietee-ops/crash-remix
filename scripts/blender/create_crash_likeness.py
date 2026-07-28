@@ -1,15 +1,16 @@
-"""Build the original untextured Crash likeness candidate for Godot.
+"""Build the original vertex-painted Crash character candidate for Godot.
 
 Run from the repository root:
 
     blender --background --factory-startup \
         --python scripts/blender/create_crash_likeness.py
 
-This is the deliberately color-blind rung-three gate candidate: original
-geometry, a uniform clay vertex color, one material, a proportion-matched
-Rigify basic-human skeleton, and one subtle looping idle.  The editable
-Blender source and inspection renders stay under build/; the shipping GLB is
-written to the hero-character budget directory.
+The silhouette was reviewed in uniform clay before this color pass.  This
+stage preserves that geometry while adding a self-contained, matte palette
+through vertex colors: one draw-call material, no copied textures, a
+proportion-matched Rigify basic-human skeleton, and one subtle looping idle.
+The editable Blender source and inspection renders stay under build/; the
+shipping GLB is written to the hero-character budget directory.
 """
 
 from __future__ import annotations
@@ -25,17 +26,30 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPERS_PATH = REPO_ROOT / "scripts/blender/create_lab_assistant.py"
 ASSET_NAME = "SK_crash"
 RIG_NAME = "RIG_crash"
-MATERIAL_NAME = "M_crash_clay"
+MATERIAL_NAME = "M_crash_body"
 IDLE_ACTION_NAME = "A_crash_idle"
 COLOR_ATTRIBUTE = "COLOR_0"
-SOURCE_PATH = REPO_ROOT / "build/art-source/SK_crash_likeness.blend"
+SOURCE_PATH = REPO_ROOT / "build/art-source/SK_crash_color.blend"
 EXPORT_PATH = REPO_ROOT / "assets/models/characters/SK_crash.glb"
 PREVIEW_ROOT = REPO_ROOT / "build/art-previews"
 
 IDLE_FIRST_FRAME = 1
 IDLE_LAST_FRAME = 49
 IDLE_FPS = 24
-CLAY = (0.40, 0.45, 0.52, 1.0)
+Color = tuple[float, float, float, float]
+
+FUR_ORANGE: Color = (0.88, 0.225, 0.035, 1.0)
+FUR_DARK: Color = (0.155, 0.030, 0.012, 1.0)
+MUZZLE_TAN: Color = (0.94, 0.545, 0.205, 1.0)
+SHORTS_BLUE: Color = (0.025, 0.145, 0.525, 1.0)
+SHOE_RED: Color = (0.72, 0.035, 0.018, 1.0)
+SHOE_SOLE: Color = (0.105, 0.020, 0.014, 1.0)
+SHOE_WHITE: Color = (0.94, 0.90, 0.72, 1.0)
+EYE_WHITE: Color = (0.96, 0.94, 0.72, 1.0)
+PUPIL: Color = (0.018, 0.010, 0.008, 1.0)
+NOSE: Color = (0.012, 0.008, 0.010, 1.0)
+MOUTH: Color = (0.16, 0.010, 0.018, 1.0)
+TEETH: Color = (1.0, 0.88, 0.56, 1.0)
 
 
 def load_geometry_helpers():
@@ -77,6 +91,7 @@ def add_polyhedron(
     name: str,
     vertices: list[tuple[float, float, float]],
     faces: list[tuple[int, ...]],
+    color: Color,
     material: bpy.types.Material,
     deform_bone: str,
     smooth: bool = False,
@@ -89,7 +104,7 @@ def add_polyhedron(
     return geometry.finish_part(
         part,
         name,
-        CLAY,
+        color,
         material,
         deform_bone,
         smooth,
@@ -125,6 +140,7 @@ def add_ear(
         f"ear_{side}",
         vertices,
         faces,
+        FUR_ORANGE,
         material,
         "DEF-spine.006",
     )
@@ -164,6 +180,7 @@ def add_brow(
         f"brow_{side}",
         vertices,
         faces,
+        FUR_DARK,
         material,
         "DEF-spine.006",
     )
@@ -173,7 +190,7 @@ def carve_smile(
     muzzle: bpy.types.Object,
     deform_bone: str,
 ) -> None:
-    """Cut a broad recessed grin into the muzzle without a color cue."""
+    """Cut a broad recessed grin into the muzzle."""
     bpy.ops.mesh.primitive_uv_sphere_add(
         segments=18,
         ring_count=10,
@@ -195,7 +212,7 @@ def carve_smile(
     bpy.ops.object.modifier_apply(modifier=modifier.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
 
-    geometry.paint_mesh(muzzle.data, CLAY)
+    geometry.paint_mesh(muzzle.data, MUZZLE_TAN)
     group = muzzle.vertex_groups.get(deform_bone)
     if group is None:
         group = muzzle.vertex_groups.new(name=deform_bone)
@@ -214,7 +231,7 @@ def add_tapered_head(
         "head",
         (0.0, 0.020, center_z),
         (0.255, 0.190, half_height),
-        CLAY,
+        FUR_ORANGE,
         material,
         "DEF-spine.006",
         segments=28,
@@ -260,6 +277,7 @@ def add_nose_wedge(
         "nose_wedge",
         vertices,
         faces,
+        NOSE,
         material,
         "DEF-spine.006",
     )
@@ -278,7 +296,7 @@ def build_character_parts(
                 f"shoe_sole_{side}",
                 (x, -0.075, 0.0225),
                 (0.205, 0.335, 0.045),
-                CLAY,
+                SHOE_SOLE,
                 material,
                 f"DEF-foot.{side}",
                 bevel=0.014,
@@ -289,7 +307,7 @@ def build_character_parts(
                 f"shoe_{side}",
                 (x, -0.075, 0.082),
                 (0.135, 0.205, 0.078),
-                CLAY,
+                SHOE_RED,
                 material,
                 f"DEF-foot.{side}",
                 segments=28,
@@ -301,7 +319,7 @@ def build_character_parts(
                 f"ankle_cuff_{side}",
                 (0.080 * sign, 0.005, 0.145),
                 (0.090, 0.085, 0.055),
-                CLAY,
+                SHOE_WHITE,
                 material,
                 f"DEF-shin.{side}",
                 segments=18,
@@ -314,7 +332,7 @@ def build_character_parts(
                 (0.078 * sign, 0.012, 0.105),
                 (0.078 * sign, 0.008, 0.205),
                 0.053,
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-shin.{side}",
                 vertices=18,
@@ -325,7 +343,7 @@ def build_character_parts(
                 f"knee_{side}",
                 (0.078 * sign, 0.005, 0.205),
                 (0.058, 0.057, 0.055),
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-shin.{side}",
                 segments=16,
@@ -338,7 +356,7 @@ def build_character_parts(
                 (0.078 * sign, 0.005, 0.205),
                 (0.078 * sign, 0.006, 0.330),
                 0.057,
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-thigh.{side}",
                 vertices=18,
@@ -349,7 +367,7 @@ def build_character_parts(
                 f"shorts_leg_{side}",
                 (0.065 * sign, 0.000, 0.325),
                 (0.082, 0.088, 0.075),
-                CLAY,
+                SHORTS_BLUE,
                 material,
                 "DEF-spine",
                 segments=18,
@@ -362,7 +380,7 @@ def build_character_parts(
             "shorts_waist",
             (0.0, 0.012, 0.355),
             (0.138, 0.103, 0.090),
-            CLAY,
+            SHORTS_BLUE,
             material,
             "DEF-spine",
             segments=18,
@@ -376,7 +394,7 @@ def build_character_parts(
             (0.0, 0.008, 0.610),
             0.108,
             0.160,
-            CLAY,
+            FUR_ORANGE,
             material,
             "DEF-spine.003",
             vertices=22,
@@ -388,10 +406,22 @@ def build_character_parts(
             (0.0, 0.005, 0.590),
             (0.0, 0.005, 0.660),
             0.060,
-            CLAY,
+            FUR_ORANGE,
             material,
             "DEF-spine.005",
             vertices=20,
+        )
+    )
+    parts.append(
+        geometry.add_sphere(
+            "chest_patch",
+            (0.0, -0.105, 0.490),
+            (0.095, 0.026, 0.135),
+            MUZZLE_TAN,
+            material,
+            "DEF-spine.003",
+            segments=18,
+            rings=10,
         )
     )
 
@@ -416,7 +446,7 @@ def build_character_parts(
                 f"shoulder_{side}",
                 shoulder,
                 (0.083, 0.080, 0.083),
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-upper_arm.{side}",
                 segments=16,
@@ -429,7 +459,7 @@ def build_character_parts(
                 shoulder,
                 elbow,
                 0.060,
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-upper_arm.{side}",
                 vertices=18,
@@ -440,7 +470,7 @@ def build_character_parts(
                 f"elbow_{side}",
                 elbow,
                 (0.066, 0.063, 0.066),
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-forearm.{side}",
                 segments=16,
@@ -453,7 +483,7 @@ def build_character_parts(
                 elbow,
                 wrist,
                 0.057,
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-forearm.{side}",
                 vertices=18,
@@ -464,7 +494,7 @@ def build_character_parts(
                 f"palm_{side}",
                 (0.272 * sign, -0.010, 0.235),
                 (0.072, 0.065, 0.088),
-                CLAY,
+                FUR_ORANGE,
                 material,
                 f"DEF-hand.{side}",
                 segments=18,
@@ -490,7 +520,7 @@ def build_character_parts(
                     f"finger_{side}_{finger_index}",
                     (finger_x * sign, finger_y, finger_z),
                     (scale_x, scale_y, scale_z),
-                    CLAY,
+                    FUR_ORANGE,
                     material,
                     f"DEF-hand.{side}",
                     segments=10,
@@ -506,7 +536,7 @@ def build_character_parts(
         "muzzle",
         (0.0, -0.190, 0.730),
         (0.198, 0.160, 0.112),
-        CLAY,
+        MUZZLE_TAN,
         material,
         "DEF-spine.006",
         segments=26,
@@ -520,7 +550,7 @@ def build_character_parts(
                 f"eye_mass_{side}",
                 (0.058 * sign, -0.220, 0.865),
                 (0.063, 0.060, 0.135),
-                CLAY,
+                EYE_WHITE,
                 material,
                 "DEF-spine.006",
                 segments=18,
@@ -532,7 +562,7 @@ def build_character_parts(
                 f"pupil_relief_{side}",
                 (0.058 * sign, -0.292, 0.885),
                 (0.024, 0.018, 0.053),
-                CLAY,
+                PUPIL,
                 material,
                 "DEF-spine.006",
                 segments=12,
@@ -548,11 +578,22 @@ def build_character_parts(
             "lower_jaw",
             (0.0, -0.205, 0.635),
             (0.148, 0.095, 0.052),
-            CLAY,
+            MUZZLE_TAN,
             material,
             "DEF-spine.006",
             segments=18,
             rings=10,
+        )
+    )
+    parts.append(
+        geometry.add_rounded_box(
+            "mouth_cavity",
+            (0.0, -0.315, 0.675),
+            (0.145, 0.014, 0.055),
+            MOUTH,
+            material,
+            "DEF-spine.006",
+            bevel=0.012,
         )
     )
     for tooth_index, tooth_x in enumerate((-0.045, -0.015, 0.015, 0.045)):
@@ -561,7 +602,7 @@ def build_character_parts(
                 f"tooth_{tooth_index}",
                 (tooth_x, -0.326, 0.697),
                 (0.027, 0.018, 0.036),
-                CLAY,
+                TEETH,
                 material,
                 "DEF-spine.006",
                 bevel=0.006,
@@ -585,7 +626,7 @@ def build_character_parts(
                 end,
                 radius,
                 0.006,
-                CLAY,
+                FUR_DARK,
                 material,
                 "DEF-spine.006",
                 vertices=16,
@@ -749,7 +790,7 @@ def join_and_skin(
     character["asset_role"] = "hero"
     character["original_asset"] = True
     character["material_slots"] = 1
-    character["likeness_stage"] = "uniform_clay_candidate"
+    character["likeness_stage"] = "vertex_color_candidate"
     character["idle_action"] = IDLE_ACTION_NAME
     character.data.validate(verbose=True)
     character.data.update()
@@ -850,20 +891,26 @@ def validate_asset(
             f"{ASSET_NAME} has {triangles} triangles; hero band is 10000-12000"
         )
     if len(character.data.materials) != 1:
-        raise RuntimeError("Crash likeness candidate must export one material")
+        raise RuntimeError("Crash color pass must export one material")
+    if character.data.materials[0].name != MATERIAL_NAME:
+        raise RuntimeError(
+            f"Crash color pass material must be named {MATERIAL_NAME}"
+        )
     color_attribute = character.data.color_attributes.get(COLOR_ATTRIBUTE)
     if color_attribute is None:
-        raise RuntimeError("Crash likeness candidate has no vertex colors")
+        raise RuntimeError("Crash color pass has no vertex colors")
     unique_colors = {
         tuple(round(channel, 6) for channel in value.color)
         for value in color_attribute.data
     }
-    if len(unique_colors) != 1:
-        raise RuntimeError("cold likeness gate must remain one uniform clay color")
+    if len(unique_colors) < 9:
+        raise RuntimeError(
+            "Crash color pass must retain at least nine readable color regions"
+        )
     if not character.data.uv_layers:
-        raise RuntimeError("Crash likeness candidate has no UV map")
+        raise RuntimeError("Crash color pass has no UV map")
     if not character.vertex_groups:
-        raise RuntimeError("Crash likeness candidate has no deform weights")
+        raise RuntimeError("Crash color pass has no deform weights")
     if action.name != IDLE_ACTION_NAME:
         raise RuntimeError("idle action lost its authored name")
     required_bones = {
@@ -1038,7 +1085,7 @@ def create_inspection_previews(
         camera.location = position
         point_at(camera, Vector((0.0, 0.0, 0.55)))
         scene.render.filepath = str(
-            PREVIEW_ROOT / f"SK_crash_likeness_{view_name}.png"
+            PREVIEW_ROOT / f"SK_crash_color_{view_name}.png"
         )
         bpy.ops.render.render(write_still=True)
 
@@ -1062,14 +1109,14 @@ def main() -> None:
     save_source_and_export(character, rig)
     create_inspection_previews(character, rig)
     print(
-        "CRASH_LIKENESS_BUILD_OK "
+        "CRASH_COLOR_BUILD_OK "
         f"name={ASSET_NAME} vertices={vertices} faces={faces} "
         f"triangles={triangles} materials=1 "
         f"rig=rigify_basic_human idle={IDLE_ACTION_NAME}"
     )
-    print(f"CRASH_LIKENESS_SOURCE={SOURCE_PATH}")
-    print(f"CRASH_LIKENESS_GLB={EXPORT_PATH}")
-    print(f"CRASH_LIKENESS_PREVIEWS={PREVIEW_ROOT}")
+    print(f"CRASH_COLOR_SOURCE={SOURCE_PATH}")
+    print(f"CRASH_COLOR_GLB={EXPORT_PATH}")
+    print(f"CRASH_COLOR_PREVIEWS={PREVIEW_ROOT}")
 
 
 if __name__ == "__main__":
