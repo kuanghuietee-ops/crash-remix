@@ -25,6 +25,9 @@ fog_height = 0.5
 fog_height_density = 0.4
 fog_depth_begin = 15.0
 fog_depth_end = 80.0
+adjustment_enabled = true
+adjustment_contrast = 1.04
+adjustment_saturation = 1.06
 
 [sub_resource type="StandardMaterial3D" id="Material_floor"]
 albedo_color = Color(0.13, 0.16, 0.26, 1)

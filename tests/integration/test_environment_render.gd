@@ -311,3 +311,108 @@ func test_every_playable_level_is_covered_by_this_policy() -> void:
 				)
 		entry = dir.get_next()
 	dir.list_dir_end()
+
+
+## --- per-level grade (review §5.7, Tier B7) -------------------------------
+##
+## A post-tonemap brightness/contrast/saturation knob per level. It is the last
+## item in the tier on purpose: a grade tuned before fog, ambient and the skies
+## settled would have been tuned against an image that no longer exists.
+##
+## Verified against the engine rather than assumed: the tonemap pass carries
+## FLAG_USE_BCS and applies it, so this works on the Mobile backend.
+
+## Scenes whose whole job is judging an asset under a known key. Grading these
+## would put a per-level look between the operator and the thing being judged,
+## which is exactly backwards -- look_dev is where rung-1 art decisions get made.
+const UNGRADED_SCENES := [
+	"res://scenes/debug/look_dev.tscn",
+	"res://scenes/game.tscn",
+]
+
+## Saturation is a nudge, not a look. Past this the palette stops being the
+## palette the kit was painted to.
+const MIN_SATURATION := 1.0
+const MAX_SATURATION := 1.2
+const MIN_CONTRAST := 0.95
+const MAX_CONTRAST := 1.15
+
+
+func test_every_level_carries_a_grade() -> void:
+	for scene_path in LEVEL_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			assert_true(
+				env.adjustment_enabled,
+				"%s must enable its grade or the values do nothing" % scene_path
+			)
+			assert_between(
+				env.adjustment_saturation,
+				MIN_SATURATION,
+				MAX_SATURATION,
+				"%s saturation is outside the nudge range" % scene_path
+			)
+			assert_between(
+				env.adjustment_contrast,
+				MIN_CONTRAST,
+				MAX_CONTRAST,
+				"%s contrast is outside the nudge range" % scene_path
+			)
+		root.queue_free()
+
+
+func test_the_grade_never_fakes_exposure() -> void:
+	# Brightness here would paper over a lighting problem at the very last stage
+	# of the frame, after tonemapping, where it cannot be reasoned about. If a
+	# level is too dark the fix belongs on its light or its ambient.
+	for scene_path in LEVEL_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			assert_almost_eq(
+				env.adjustment_brightness,
+				1.0,
+				0.001,
+				"%s grades brightness; fix the lighting instead" % scene_path
+			)
+		root.queue_free()
+
+
+func test_the_asset_judging_scenes_stay_ungraded() -> void:
+	for scene_path in UNGRADED_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			assert_false(
+				env.adjustment_enabled,
+				(
+					"%s is where assets are judged; a grade here misleads every "
+					+ "art decision made in it"
+				) % scene_path
+			)
+		root.queue_free()
+
+
+func test_the_tonemapper_stays_filmic_everywhere() -> void:
+	# The mobile white point is fixed at 2.0 with HDR-2D off, so there is nothing
+	# to win by switching mappers at this dynamic range. Pinned so a grade pass
+	# does not quietly churn it.
+	for scene_path in AMBIENT_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			assert_eq(
+				env.tonemap_mode,
+				Environment.TONE_MAPPER_FILMIC,
+				"%s should stay on the filmic tonemapper" % scene_path
+			)
+		root.queue_free()

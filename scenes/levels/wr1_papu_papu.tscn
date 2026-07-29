@@ -25,6 +25,9 @@ fog_mode = 1
 fog_light_color = Color(0.05, 0.06, 0.12, 1)
 fog_depth_begin = 20.0
 fog_depth_end = 90.0
+adjustment_enabled = true
+adjustment_contrast = 1.06
+adjustment_saturation = 1.05
 
 [sub_resource type="BoxShape3D" id="Shape_strike"]
 size = Vector3(6, 3, 4)

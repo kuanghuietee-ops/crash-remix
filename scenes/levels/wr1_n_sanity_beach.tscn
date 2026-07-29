@@ -45,6 +45,9 @@ fog_sun_scatter = 0.1
 fog_aerial_perspective = 0.5
 fog_depth_begin = 40.0
 fog_depth_end = 180.0
+adjustment_enabled = true
+adjustment_contrast = 1.02
+adjustment_saturation = 1.1
 
 [sub_resource type="BoxShape3D" id="Shape_finish"]
 size = Vector3(12, 3, 5)
