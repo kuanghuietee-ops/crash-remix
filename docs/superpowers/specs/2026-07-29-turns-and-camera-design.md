@@ -82,7 +82,11 @@ must move when they land (rule 2).
 ## Decision 3 — closer chase camera (tuning only)
 
 `data/tuning/camera.tres`: `default_offset` (3.6, 4.8, 8.5) →
-**(1.2, 3.9, 6.8)**, `field_of_view_degrees` 58 → **56**. ~20 % closer,
+**(1.2, 4.1, 6.8)**, `field_of_view_degrees` 58 → **56**. (The spec's
+original y=3.9 failed the ≥ 15° authored-jump lint by 0.46°; 4.1 is the
+minimal 0.1-step that clears it — the spec's number was the wrong side.
+`swing_offset.x` 7.0 → 7.5 rides along: the shared FOV cut shrank the
+side-on swing frustum and the swing test's frame guarantee bound it.) ~20 % closer,
 nearly dead-behind (the on-screen left composition is kept by
 `player_screen_left_bias_m`, not by the big lateral rig offset). Depression
 stays ≈ 30°, inside the spec's 30–35° band and clear of the ≥ 15° authored
@@ -101,8 +105,11 @@ resources so the operator can pull any of them back live on device:
   values), not a rework.
 - **Hog Wild** (`hog.tres`): higher ride speed, so the new swerves demand
   real steering.
-- **Boulders** (`chase.tres`): faster boulder / tighter start gap — chase
-  pressure is the level's whole point and is currently forgiving.
+- **Boulders** (`chase.tres`): tighter start gap only (6.0 → 5.1).
+  Raising boulder speed as well was built and then reverted: 6.8 × 1.15 =
+  7.82 exceeds `run_speed_mps` 7.0 and makes the level uncompletable — the
+  spec's "faster boulder" was the wrong side. A fail-closed tuning guard
+  (boulder speed must stay below run speed) now enforces this.
 - **Papu** (`boss_papu.tres`): faster shockwave tempo.
 - **Retrofit geometry**: required jumps in the reworked Beach/Hog segments
   authored nearer the movement kit's limits (still lint-green for the ≥ 15°
