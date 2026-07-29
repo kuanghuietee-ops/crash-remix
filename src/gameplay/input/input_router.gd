@@ -56,7 +56,7 @@ func push_button(
 	push_intent(InputIntent.button(action, pressed, timestamp_s, source))
 
 
-func set_corridor_axis(axis: Vector2) -> void:
+func set_corridor_axis(axis: Vector2, delta_s: float = 0.0) -> void:
 	if axis.is_zero_approx():
 		return
 	var next_axis := axis.normalized()
@@ -66,6 +66,24 @@ func set_corridor_axis(axis: Vector2) -> void:
 	if _screen_relative_tracking_enabled:
 		_gesture_corridor_axis = _corridor_axis
 		_route_screen_movement()
+	elif not _screen_movement.is_zero_approx():
+		_slew_gesture_corridor_axis(delta_s)
+		_route_screen_movement()
+
+
+func _slew_gesture_corridor_axis(delta_s: float) -> void:
+	if _input_tuning == null or delta_s <= 0.0:
+		return
+	var remaining_radians := _gesture_corridor_axis.angle_to(_corridor_axis)
+	var max_step_radians := (
+		deg_to_rad(_input_tuning.gesture_axis_slew_degrees_per_s) * delta_s
+	)
+	var step_radians := clampf(
+		remaining_radians,
+		-max_step_radians,
+		max_step_radians
+	)
+	_gesture_corridor_axis = _gesture_corridor_axis.rotated(step_radians)
 
 
 func corridor_axis() -> Vector2:

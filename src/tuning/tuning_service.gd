@@ -41,6 +41,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"hud_reserved_top_px",
 		],
+		[
+			&"gesture_axis_slew_degrees_per_s",
+		],
 	],
 	&"swing": [
 		[
@@ -271,6 +274,10 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 			> 1.0
 		)
 		or input.hud_reserved_top_px < 0.0
+		# A non-positive slew rate means a held drag's gesture axis can
+		# never reach the corridor axis, silently reproducing the
+		# pre-corner-heading latch bug this field exists to fix.
+		or input.gesture_axis_slew_degrees_per_s <= 0.0
 	):
 		return false
 

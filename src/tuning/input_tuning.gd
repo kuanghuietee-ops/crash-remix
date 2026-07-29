@@ -28,6 +28,11 @@ extends Resource
 @export var corridor_magnet_strength: float
 @export var gamepad_magnet_disable_magnitude: float
 @export var gamepad_dead_zone: float
+# A held drag's gesture-relative corridor axis rotates toward the current
+# corridor axis at up to this rate while a drag is live, so the thumb's
+# forward direction follows a rail corner instead of staying latched to the
+# heading captured when the gesture started.
+@export var gesture_axis_slew_degrees_per_s: float
 
 @export_category("Buttons")
 @export var jump_button_diameter_mm: float

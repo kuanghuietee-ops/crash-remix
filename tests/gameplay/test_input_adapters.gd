@@ -137,6 +137,77 @@ func test_router_keeps_held_stick_stable_when_camera_axis_changes() -> void:
 	)
 
 
+func test_router_slews_gesture_axis_toward_corner_during_held_drag() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var filter_script: Script = load(FILTER_SCRIPT_PATH)
+	assert_not_null(filter_script, "InputVectorFilter implementation must exist")
+	if router == null or filter_script == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	router.call("set_corridor_axis", Vector2.UP)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		0.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(router.get("buffer").call("movement"), Vector2.UP)
+
+	router.call("set_corridor_axis", Vector2.RIGHT, 0.1)
+
+	var max_step_radians := deg_to_rad(
+		_input_tuning.gesture_axis_slew_degrees_per_s
+	) * 0.1
+	assert_almost_eq(max_step_radians, deg_to_rad(24.0), 0.0001)
+	var slewed_axis: Vector2 = Vector2.UP.rotated(
+		clampf(
+			Vector2.UP.angle_to(Vector2.RIGHT),
+			-max_step_radians,
+			max_step_radians
+		)
+	)
+	var expected_input: Vector2 = filter_script.call(
+		"to_corridor_input",
+		Vector2.UP,
+		slewed_axis
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		expected_input,
+		(
+			"a held drag's corridor axis must slew part-way toward a "
+			+ "corner instead of staying latched to the pre-corner heading"
+		)
+	)
+
+	# A fresh gesture (zero -> non-zero) must still snap-latch to whatever
+	# the corridor axis currently is, not continue the previous drag's
+	# partially-slewed gesture axis.
+	router.call(
+		"push_move",
+		Vector2.ZERO,
+		0.2,
+		InputIntent.SOURCE_TOUCH
+	)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		0.3,
+		InputIntent.SOURCE_TOUCH
+	)
+	var expected_fresh_input: Vector2 = filter_script.call(
+		"to_corridor_input",
+		Vector2.UP,
+		Vector2.RIGHT
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		expected_fresh_input,
+		"a fresh gesture must snap-latch to the current corridor axis"
+	)
+
+
 func test_router_tracks_held_stick_during_screen_relative_chase() -> void:
 	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
 	if router == null:

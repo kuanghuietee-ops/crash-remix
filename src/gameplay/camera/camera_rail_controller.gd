@@ -243,7 +243,7 @@ func update_camera(delta_s: float) -> void:
 	_apply_basis_blend(target_basis, basis_mode, delta_s)
 	if _player.has_method("set_corridor_forward"):
 		_player.call("set_corridor_forward", _corridor_forward)
-	_update_input_corridor_axis()
+	_update_input_corridor_axis(delta_s)
 
 
 func _physics_process(delta_s: float) -> void:
@@ -267,14 +267,14 @@ func _ensure_curve_from_markers() -> void:
 	)
 
 
-func _update_input_corridor_axis() -> void:
+func _update_input_corridor_axis(delta_s: float) -> void:
 	if _input_router == null or _camera == null or _player == null:
 		return
 	var screen_origin := _camera.unproject_position(_player.global_position)
 	var screen_forward := _camera.unproject_position(
 		_player.global_position + _corridor_forward
 	)
-	_input_router.set_corridor_axis(screen_forward - screen_origin)
+	_input_router.set_corridor_axis(screen_forward - screen_origin, delta_s)
 
 
 func _traversal_camera_context() -> Dictionary:

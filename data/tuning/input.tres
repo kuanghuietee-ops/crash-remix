@@ -26,6 +26,7 @@ corridor_magnet_cone_degrees = 15.0
 corridor_magnet_strength = 0.5
 gamepad_magnet_disable_magnitude = 0.6
 gamepad_dead_zone = 0.15
+gesture_axis_slew_degrees_per_s = 240.0
 jump_button_diameter_mm = 14.0
 spin_button_diameter_mm = 12.0
 down_button_diameter_mm = 12.0
