@@ -1443,14 +1443,18 @@ func _reset_hog_mounts_for_checkpoint(
 
 
 func _checkpoint_spawn_transform(crate: Node) -> Transform3D:
+	# The player CharacterBody3D root must stay at identity rotation
+	# forever -- crash_animation_driver.gd writes the model's WORLD yaw
+	# into the visual's LOCAL rotation, which only produces the right
+	# facing under an identity root. A checkpoint crate's own basis is
+	# still used to rotate the respawn OFFSET (so the nudge lands beside
+	# the crate the way it was authored), but the transform handed back
+	# never carries that basis.
 	var crate_transform := (crate as Node3D).global_transform
-	if _economy == null:
-		return crate_transform
-	crate_transform.origin += (
-		crate_transform.basis
-		* _economy.checkpoint_respawn_offset
-	)
-	return crate_transform
+	var origin := crate_transform.origin
+	if _economy != null:
+		origin += crate_transform.basis * _economy.checkpoint_respawn_offset
+	return Transform3D(Basis.IDENTITY, origin)
 
 
 func _sync_crate_visuals(reset_unbroken: bool) -> void:
