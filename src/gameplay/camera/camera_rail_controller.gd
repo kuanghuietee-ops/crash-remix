@@ -98,11 +98,21 @@ func update_camera(delta_s: float) -> void:
 	var rail_offset := _rail.curve.get_closest_offset(local_player)
 	var rail_length := _rail.curve.get_baked_length()
 	var rail_position := _rail.to_global(_rail.curve.sample_baked(rail_offset))
-	var look_offset := minf(rail_offset + _camera_tuning.look_ahead_m, rail_length)
-	var look_position := _rail.to_global(_rail.curve.sample_baked(look_offset))
-	var forward := (look_position - rail_position).normalized()
+	# A short baseline keeps the sampled tangent close to the rail's true
+	# local direction through a bend; look_ahead_m stays reserved for how
+	# far ahead the camera looks, not for how the corridor forward is
+	# derived (a long chord here would cut corners early).
+	var tangent_offset := minf(
+		rail_offset + _camera_tuning.corridor_tangent_baseline_m,
+		rail_length
+	)
+	var tangent_position := _rail.to_global(_rail.curve.sample_baked(tangent_offset))
+	var forward := (tangent_position - rail_position).normalized()
 	if forward.is_zero_approx():
-		var behind_offset := maxf(rail_offset - _camera_tuning.look_ahead_m, 0.0)
+		var behind_offset := maxf(
+			rail_offset - _camera_tuning.corridor_tangent_baseline_m,
+			0.0
+		)
 		var behind := _rail.to_global(_rail.curve.sample_baked(behind_offset))
 		forward = (rail_position - behind).normalized()
 	if not forward.is_zero_approx():

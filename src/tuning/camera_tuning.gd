@@ -8,6 +8,7 @@ extends Resource
 @export var rail_follow_speed_mps: float
 @export var region_blend_s: float
 @export var look_ahead_m: float
+@export var corridor_tangent_baseline_m: float
 @export var look_at_height_m: float
 @export var player_screen_left_bias_m: float
 @export var default_offset: Vector3

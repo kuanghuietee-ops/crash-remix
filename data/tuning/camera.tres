@@ -10,6 +10,7 @@ rail_handle_length_factor = 0.1667
 rail_follow_speed_mps = 16.0
 region_blend_s = 0.35
 look_ahead_m = 2.0
+corridor_tangent_baseline_m = 0.4
 look_at_height_m = 0.65
 player_screen_left_bias_m = 0.45
 default_offset = Vector3(3.6, 4.8, 8.5)

@@ -814,6 +814,95 @@ func test_rig_blends_through_wall_attach_and_detach_without_roll() -> void:
 		)
 
 
+func test_corridor_forward_tracks_axis_well_before_a_corner() -> void:
+	# (0,0,20) is a straight lead-in marker, 25 m of clean rail ahead of the
+	# turn at (0,0,-20). At (0,0,5) the true rail tangent is exactly -Z, so
+	# this proves corridor_forward tracks the corridor and not some artifact
+	# of the corner's Catmull-Rom handles reaching this far back.
+	var rig := _l_shaped_corridor_rig(_camera, Vector3(0.0, 0.0, 5.0))
+	if rig.is_empty():
+		return
+	var controller: Node3D = rig[&"controller"]
+	var forward: Vector3 = controller.call("corridor_forward")
+	assert_lt(
+		_angle_between_deg(forward, Vector3(0.0, 0.0, -1.0)),
+		2.0,
+		"well before the L-shaped rail's corner, corridor_forward must "
+		+ "track -Z tightly"
+	)
+
+
+func test_corridor_forward_short_baseline_holds_the_true_tangent_near_a_corner() -> void:
+	# At (0,0,-17), 3 m short of the corner marker, the rail's true local
+	# tangent is ~10.9 degrees off -Z. The old 2 m look-ahead chord samples
+	# so far into the bend that it reads ~18.7 degrees off -Z (verified by
+	# running this test against the unfixed controller) -- it cuts the
+	# corner. A short baseline must stay meaningfully closer to the true
+	# tangent than that chord.
+	var rig := _l_shaped_corridor_rig(_camera, Vector3(0.0, 0.0, -17.0))
+	if rig.is_empty():
+		return
+	var controller: Node3D = rig[&"controller"]
+	var forward: Vector3 = controller.call("corridor_forward")
+	assert_lt(
+		_angle_between_deg(forward, Vector3(0.0, 0.0, -1.0)),
+		15.0,
+		"approaching the corner, a short tangent baseline must stay far "
+		+ "closer to the rail's true local direction than the old "
+		+ "look_ahead_m chord, which cuts across the bend early"
+	)
+
+
+func _l_shaped_corridor_rig(
+	camera_tuning: CameraTuning,
+	player_position: Vector3
+) -> Dictionary:
+	var controller_script := _load_script_with_method(
+		CAMERA_CONTROLLER_SCRIPT_PATH,
+		&"update_camera"
+	)
+	if controller_script == null:
+		return {}
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var rail := Path3D.new()
+	root.add_child(rail)
+	for marker_position: Vector3 in [
+		Vector3(0.0, 0.0, 20.0),
+		Vector3.ZERO,
+		Vector3(0.0, 0.0, -20.0),
+		Vector3(-20.0, 0.0, -20.0),
+	]:
+		var marker := Marker3D.new()
+		marker.position = marker_position
+		rail.add_child(marker)
+	var player := CharacterBody3D.new()
+	player.position = player_position
+	root.add_child(player)
+	var controller: Node3D = controller_script.new()
+	root.add_child(controller)
+	var camera := Camera3D.new()
+	controller.add_child(camera)
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		camera_tuning,
+		[]
+	)
+	return {
+		&"controller": controller,
+		&"player": player,
+		&"camera": camera,
+		&"rail": rail,
+	}
+
+
+func _angle_between_deg(a: Vector3, b: Vector3) -> float:
+	return rad_to_deg(a.normalized().angle_to(b.normalized()))
+
+
 func _live_wall_run_camera_frames() -> Array[Dictionary]:
 	var frames: Array[Dictionary] = []
 	var segment_packed: PackedScene = load(WALL_RUN_SEGMENT_PATH)
