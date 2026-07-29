@@ -180,18 +180,49 @@ func test_trigger_handlers_ignore_non_player_bodies() -> void:
 	assert_eq(player.dismount_calls, dismount_calls_before)
 
 
-func _new_mount_fixture() -> Dictionary:
+func test_hog_visual_yaws_to_face_travel_around_a_corner() -> void:
+	var fixture := _new_mount_fixture([
+		Vector3.ZERO,
+		Vector3(0.0, 0.0, -20.0),
+		Vector3(-20.0, 0.0, -20.0),
+	])
+	var mount: HogMount = fixture["mount"]
+	var visual: Node3D = fixture["visual"]
+	var player := HogPlayerStub.new()
+	player.position = Vector3(0.0, 0.0, -10.0)
+	add_child_autofree(player)
+	mount.configure(player)
+	assert_true(mount.is_mounted())
+
+	player.global_position = Vector3(-10.0, 0.0, -20.0)
+	mount.call("_physics_process", 0.0)
+
+	var facing := -visual.global_transform.basis.z
+	var expected := Vector3(-1.0, 0.0, 0.0)
+	var angle_deg := rad_to_deg(facing.angle_to(expected))
+	assert_true(
+		angle_deg < 5.0,
+		(
+			"hog visual must face -X travel around the corner, got %s (angle %.2f deg)"
+			% [facing, angle_deg]
+		)
+	)
+
+
+func _new_mount_fixture(
+	markers: Array[Vector3] = [
+		Vector3.ZERO,
+		Vector3(0.0, 0.0, -10.0),
+		Vector3(0.0, 0.0, -20.0),
+	]
+) -> Dictionary:
 	var mount := HogMount.new()
 	mount.name = "HogMount"
 	mount.mounted_visual_offset = Vector3(0.0, 0.5, -0.25)
 
 	var path := Path3D.new()
 	path.name = "Path"
-	for marker_position: Vector3 in [
-		Vector3.ZERO,
-		Vector3(0.0, 0.0, -10.0),
-		Vector3(0.0, 0.0, -20.0),
-	]:
+	for marker_position: Vector3 in markers:
 		var marker := Marker3D.new()
 		marker.position = marker_position
 		path.add_child(marker)

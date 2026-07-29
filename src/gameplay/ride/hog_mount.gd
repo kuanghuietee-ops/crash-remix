@@ -72,6 +72,48 @@ func is_mounted() -> bool:
 	return _mounted
 
 
+func _physics_process(_delta_s: float) -> void:
+	if (
+		not _mounted
+		or _player == null
+		or not is_instance_valid(_hog_visual)
+		or not _path_is_usable()
+	):
+		return
+	_face_travel_direction()
+
+
+func _face_travel_direction() -> void:
+	var curve := _ride_path.curve
+	var length_m := curve.get_baked_length()
+	var progress_m := progress_for_position(_player.global_position)
+	var step_m := curve.bake_interval
+	var origin_global := _ride_path.to_global(
+		curve.sample_baked(progress_m)
+	)
+	var ahead_offset_m := minf(progress_m + step_m, length_m)
+	var ahead_global := _ride_path.to_global(
+		curve.sample_baked(ahead_offset_m)
+	)
+	var forward := _flattened(ahead_global - origin_global)
+	if forward.is_zero_approx():
+		var behind_offset_m := maxf(progress_m - step_m, 0.0)
+		var behind_global := _ride_path.to_global(
+			curve.sample_baked(behind_offset_m)
+		)
+		forward = _flattened(origin_global - behind_global)
+	if forward.is_zero_approx():
+		return
+	_hog_visual.look_at(
+		_hog_visual.global_position + forward.normalized(),
+		Vector3.UP
+	)
+
+
+func _flattened(vector: Vector3) -> Vector3:
+	return Vector3(vector.x, 0.0, vector.z)
+
+
 func progress_for_position(world_position: Vector3) -> float:
 	if not _path_is_usable():
 		return 0.0
