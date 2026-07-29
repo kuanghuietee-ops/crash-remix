@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1_camera")
-field_of_view_degrees = 58.0
+field_of_view_degrees = 56.0
 rail_bake_interval_m = 0.2
 rail_handle_length_factor = 0.1667
 rail_follow_speed_mps = 16.0
@@ -13,12 +13,12 @@ look_ahead_m = 2.0
 corridor_tangent_baseline_m = 0.4
 look_at_height_m = 0.65
 player_screen_left_bias_m = 0.45
-default_offset = Vector3(3.6, 4.8, 8.5)
+default_offset = Vector3(1.2, 4.1, 6.8)
 close_offset = Vector3(2.8, 3.6, 6.4)
 side_on_offset = Vector3(9.5, 4.2, 0.8)
 grind_offset = Vector3(0, 3.5, -7)
 wall_run_offset = Vector3(6, 1.5, 0)
-swing_offset = Vector3(7, 1, 0)
+swing_offset = Vector3(7.5, 1, 0)
 toward_camera_offset = Vector3(0, 4.8, -8.5)
 wall_run_bank_degrees = 0.0
 minimum_jump_depression_degrees = 15.0

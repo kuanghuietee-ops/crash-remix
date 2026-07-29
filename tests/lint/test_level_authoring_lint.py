@@ -313,7 +313,7 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [finding.rule for finding in findings],
             [REQUIRED_JUMP_RULE],
         )
-        self.assertIn("9.486 degrees", findings[0].detail)
+        self.assertIn("8.689 degrees", findings[0].detail)
 
     def test_jump_depression_uses_camera_rail_anchor(self) -> None:
         findings = find_authoring_violations(
@@ -324,7 +324,7 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [finding.rule for finding in findings],
             [REQUIRED_JUMP_RULE],
         )
-        self.assertIn("14.801 degrees", findings[0].detail)
+        self.assertIn("14.647 degrees", findings[0].detail)
 
     def test_jump_depression_uses_camera_corridor_alignment(
         self,
@@ -338,7 +338,7 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [finding.rule for finding in findings],
             [REQUIRED_JUMP_RULE],
         )
-        self.assertIn("14.907 degrees", findings[0].detail)
+        self.assertIn("14.720 degrees", findings[0].detail)
 
     def test_wall_run_camera_mode_cannot_bypass_jump_depression(
         self,
