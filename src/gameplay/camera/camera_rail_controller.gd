@@ -28,6 +28,16 @@ var _basis_blend_elapsed_s: float
 var _basis_mode := CameraRegionType.MODE_DEFAULT
 var _basis_initialized: bool
 var _initialized: bool
+# CRITICAL-1: game_root.gd (and phase0_game.gd) add a level's CameraRig to
+# the tree BEFORE calling configure(), so _ready() always runs first with
+# _camera_tuning still null. _ensure_curve_from_markers() must rebuild once
+# real tuning arrives instead of treating the pre-tuning build as final --
+# these track the params the currently-baked curve was built with so a
+# rebuild only happens when they actually change (never on a scene-authored,
+# marker-less curve, and never redundantly once tuning is stable).
+var _rail_curve_built: bool
+var _rail_curve_bake_interval_m := -1.0
+var _rail_curve_handle_length_factor := -1.0
 
 
 func _ready() -> void:
@@ -80,6 +90,10 @@ func refresh_tuning(camera_tuning: CameraTuning) -> void:
 	_camera_tuning = camera_tuning
 	if _camera != null:
 		_camera.fov = _camera_tuning.field_of_view_degrees
+	# A live on-device tuning edit to rail_handle_length_factor (or the bake
+	# interval) must actually reshape a marker-authored rail, not just the
+	# one built the first time configure() ran -- see _ensure_curve_from_markers.
+	_ensure_curve_from_markers()
 	if _rail != null and _rail.curve != null:
 		_rail.curve.bake_interval = _camera_tuning.rail_bake_interval_m
 
@@ -253,18 +267,42 @@ func _physics_process(delta_s: float) -> void:
 func _ensure_curve_from_markers() -> void:
 	if _rail == null:
 		return
-	if _rail.curve != null and _rail.curve.point_count > 0:
+	var has_markers := false
+	for child: Node in _rail.get_children():
+		if child is Marker3D:
+			has_markers = true
+			break
+	if not has_markers:
+		# A marker-less Path3D carries a scene-authored curve; never
+		# clobber it -- there is nothing here for the builder to rebuild
+		# from anyway.
 		return
 	var bake_interval_m := 0.0
 	var handle_length_factor := 0.0
 	if _camera_tuning != null:
 		bake_interval_m = _camera_tuning.rail_bake_interval_m
 		handle_length_factor = _camera_tuning.rail_handle_length_factor
+	if (
+		_rail_curve_built
+		and _rail.curve != null
+		and _rail.curve.point_count > 0
+		and is_equal_approx(bake_interval_m, _rail_curve_bake_interval_m)
+		and is_equal_approx(
+			handle_length_factor,
+			_rail_curve_handle_length_factor
+		)
+	):
+		# Already built from these exact tuning-derived params -- rebuilding
+		# again would be wasted work, not a correctness fix.
+		return
 	_rail.curve = RailCurveBuilderType.curve_from_markers(
 		_rail,
 		bake_interval_m,
 		handle_length_factor
 	)
+	_rail_curve_built = true
+	_rail_curve_bake_interval_m = bake_interval_m
+	_rail_curve_handle_length_factor = handle_length_factor
 
 
 func _update_input_corridor_axis(delta_s: float) -> void:
