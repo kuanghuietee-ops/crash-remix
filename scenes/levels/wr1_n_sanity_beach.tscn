@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
 [ext_resource type="Resource" path="res://data/tuning/levels/n_sanity_beach.tres" id="2_meta"]
@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://scenes/segments/beach_crescendo.tscn" id="14_crescendo"]
 [ext_resource type="PackedScene" path="res://scenes/props/stopwatch.tscn" id="15_stopwatch"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_time.tscn" id="16_time"]
+[ext_resource type="PackedScene" path="res://scenes/segments/corner_left_90.tscn" id="17_corner"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_beach"]
 sky_top_color = Color(0.18, 0.45, 0.72, 1)
@@ -85,17 +86,20 @@ position = Vector3(0, 0, -96)
 [node name="JungleCorridor" parent="Segments" instance=ExtResource("10_jungle")]
 position = Vector3(0, 0, -192)
 
-[node name="CrateCadence" parent="Segments" instance=ExtResource("11_cadence")]
+[node name="CornerJungle" parent="Segments" instance=ExtResource("17_corner")]
 position = Vector3(0, 0, -288)
 
+[node name="CrateCadence" parent="Segments" instance=ExtResource("11_cadence")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -12, 0, -300)
+
 [node name="TNTIntroduction" parent="Segments" instance=ExtResource("12_tnt")]
-position = Vector3(0, 0, -384)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -108, 0, -300)
 
 [node name="PlantGauntlet" parent="Segments" instance=ExtResource("13_plants")]
-position = Vector3(0, 0, -480)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -204, 0, -300)
 
 [node name="Crescendo" parent="Segments" instance=ExtResource("14_crescendo")]
-position = Vector3(0, 0, -576)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -300, 0, -300)
 
 [node name="Player" parent="." instance=ExtResource("3_player")]
 position = Vector3(0, 0.05, 0)
@@ -111,13 +115,13 @@ crate_id = 201
 segment_group = &"Relic Only"
 
 [node name="TimeMedium" parent="RelicOnly" groups=["relic_only"] instance=ExtResource("16_time")]
-position = Vector3(3, 0.7, -336)
+position = Vector3(-60, 0.7, -303)
 crate_id = 202
 segment_group = &"Relic Only"
 time_crate_size = &"medium"
 
 [node name="TimeLarge" parent="RelicOnly" groups=["relic_only"] instance=ExtResource("16_time")]
-position = Vector3(0, 0.7, -548)
+position = Vector3(-272, 0.7, -300)
 crate_id = 203
 segment_group = &"Relic Only"
 time_crate_size = &"large"
@@ -139,17 +143,23 @@ position = Vector3(0, 0, -192)
 [node name="JungleEnd" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(0, 0, -288)
 
+[node name="CornerMid30" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(-1.6077, 0, -294)
+
+[node name="CornerMid60" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(-6, 0, -298.3923)
+
 [node name="CadenceEnd" type="Marker3D" parent="CameraRig/Rail"]
-position = Vector3(0, 0, -384)
+position = Vector3(-108, 0, -300)
 
 [node name="TNTEnd" type="Marker3D" parent="CameraRig/Rail"]
-position = Vector3(0, 0, -480)
+position = Vector3(-204, 0, -300)
 
 [node name="PlantsEnd" type="Marker3D" parent="CameraRig/Rail"]
-position = Vector3(0, 0, -576)
+position = Vector3(-300, 0, -300)
 
 [node name="Finish" type="Marker3D" parent="CameraRig/Rail"]
-position = Vector3(0, 0, -672)
+position = Vector3(-396, 0, -300)
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
@@ -179,7 +189,7 @@ mouse_filter = 2
 script = ExtResource("7_touch")
 
 [node name="Finish" type="Area3D" parent="."]
-position = Vector3(0, 1.5, -666)
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -390, 1.5, -300)
 collision_layer = 0
 collision_mask = 1
 

@@ -1293,14 +1293,27 @@ func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
 	var finish_shape := (
 		finish.get_node("CollisionShape3D").shape as BoxShape3D
 	)
+	# H10 (turns-camera-difficulty Task 8): the real Finish gate now sits
+	# past a 90° corner with a +90° yaw of its own (see
+	# scenes/levels/wr1_n_sanity_beach.tscn) -- "outside, on the approach
+	# side" is whatever the gate's own local +Z axis points at in world
+	# space now, and "forward progress" is measured along the level's
+	# real camera rail (which is built from the same markers the runtime
+	# camera uses, so it already bends through the corner) instead of a
+	# single frozen world axis.
+	var approach_axis := Vector3(
+		finish.global_transform.basis.z.x,
+		0.0,
+		finish.global_transform.basis.z.z
+	).normalized()
+	var approach_target := (
+		finish.global_position
+		+ approach_axis * (finish_shape.size.z * 0.5 + 1.0)
+	)
 	player.global_position = Vector3(
-		finish.global_position.x,
+		approach_target.x,
 		player.global_position.y,
-		(
-			finish.global_position.z
-			+ finish_shape.size.z * 0.5
-			+ 1.0
-		)
+		approach_target.z
 	)
 	player.velocity = Vector3.ZERO
 	player.reset_physics_interpolation()
@@ -1309,7 +1322,10 @@ func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
 		finish.overlaps_body(player),
 		"the failed-save scenario must begin outside the real exit"
 	)
-	var start_z := player.global_position.z
+	var rail := level.get_node("CameraRig/Rail") as Path3D
+	var start_offset := rail.curve.get_closest_offset(
+		rail.to_local(player.global_position)
+	)
 	var router := level.get_node(
 		"Input/InputRouter"
 	) as InputRouter
@@ -1325,9 +1341,12 @@ func test_failed_completion_save_keeps_snapshot_and_withholds_award() -> void:
 		if root.get("last_save_error") != OK:
 			break
 		if is_instance_valid(player):
+			var current_offset := rail.curve.get_closest_offset(
+				rail.to_local(player.global_position)
+			)
 			walked_forward = (
 				walked_forward
-				or player.global_position.z < start_z
+				or current_offset > start_offset
 			)
 		await wait_physics_frames(1)
 

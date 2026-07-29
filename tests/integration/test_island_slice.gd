@@ -232,14 +232,10 @@ func test_real_player_walking_into_finish_completes_level() -> void:
 	if finish_shape == null:
 		return
 	await wait_physics_frames(2)
-	player.global_position = Vector3(
-		finish.global_position.x,
-		player.global_position.y,
-		(
-			finish.global_position.z
-			+ finish_shape.size.z * 0.5
-			+ 1.0
-		)
+	player.global_position = _finish_approach_point(
+		finish,
+		finish_shape,
+		player.global_position.y
 	)
 	player.velocity = Vector3.ZERO
 	player.reset_physics_interpolation()
@@ -248,7 +244,7 @@ func test_real_player_walking_into_finish_completes_level() -> void:
 		finish.overlaps_body(player),
 		"the test must begin outside the real Finish trigger"
 	)
-	var start_z := player.global_position.z
+	var start_offset := _rail_offset(level, player.global_position)
 	var router := level.get_node("Input/InputRouter") as InputRouter
 	router.push_intent(
 		InputIntent.move(
@@ -264,7 +260,10 @@ func test_real_player_walking_into_finish_completes_level() -> void:
 		if is_instance_valid(player):
 			walked_forward = (
 				walked_forward
-				or player.global_position.z < start_z
+				or (
+					_rail_offset(level, player.global_position)
+					> start_offset
+				)
 			)
 		await wait_physics_frames(1)
 
@@ -578,14 +577,10 @@ func test_island_slice_full_loop() -> void:
 	var finish_shape := (
 		finish.get_node("CollisionShape3D").shape as BoxShape3D
 	)
-	player.global_position = Vector3(
-		finish.global_position.x,
-		player.global_position.y,
-		(
-			finish.global_position.z
-			+ finish_shape.size.z * 0.5
-			+ 1.0
-		)
+	player.global_position = _finish_approach_point(
+		finish,
+		finish_shape,
+		player.global_position.y
 	)
 	player.velocity = Vector3.ZERO
 	player.reset_physics_interpolation()
@@ -594,7 +589,7 @@ func test_island_slice_full_loop() -> void:
 		finish.overlaps_body(player),
 		"the completion proof must begin outside the real exit"
 	)
-	var finish_start_z := player.global_position.z
+	var finish_start_offset := _rail_offset(level, player.global_position)
 	router.push_intent(
 		InputIntent.move(
 			Vector2(0.0, -1.0),
@@ -609,7 +604,10 @@ func test_island_slice_full_loop() -> void:
 		if is_instance_valid(player):
 			walked_into_finish = (
 				walked_into_finish
-				or player.global_position.z < finish_start_z
+				or (
+					_rail_offset(level, player.global_position)
+					> finish_start_offset
+				)
 			)
 		await wait_physics_frames(1)
 	assert_true(
@@ -2194,14 +2192,10 @@ func _walk_real_player_into_finish(
 	var finish_shape := (
 		finish.get_node("CollisionShape3D").shape as BoxShape3D
 	)
-	player.global_position = Vector3(
-		finish.global_position.x,
-		player.global_position.y,
-		(
-			finish.global_position.z
-			+ finish_shape.size.z * 0.5
-			+ 1.0
-		)
+	player.global_position = _finish_approach_point(
+		finish,
+		finish_shape,
+		player.global_position.y
 	)
 	player.velocity = Vector3.ZERO
 	player.reset_physics_interpolation()
@@ -2210,7 +2204,7 @@ func _walk_real_player_into_finish(
 		finish.overlaps_body(player),
 		"the mercy completion must begin outside the real Finish trigger"
 	)
-	var start_z := player.global_position.z
+	var start_offset := _rail_offset(level, player.global_position)
 	var router := level.get_node("Input/InputRouter") as InputRouter
 	router.push_intent(
 		InputIntent.move(
@@ -2226,13 +2220,50 @@ func _walk_real_player_into_finish(
 		if is_instance_valid(player):
 			walked_forward = (
 				walked_forward
-				or player.global_position.z < start_z
+				or (
+					_rail_offset(level, player.global_position)
+					> start_offset
+				)
 			)
 		await wait_physics_frames(1)
 	assert_true(
 		walked_forward,
 		"the real controller must walk the skipped run into the exit"
 	)
+
+
+# H10 (turns-camera-difficulty Task 8): the real Finish gate now sits
+# past a 90° corner, re-seated with a +90° yaw (see
+# scenes/levels/wr1_n_sanity_beach.tscn). "Outside the trigger, on the
+# approach side" and "made real forward progress" used to be expressible
+# as raw world -Z math because the whole corridor ran straight down -Z.
+# That assumption is gone: the approach direction is now whatever the
+# Finish gate's own local +Z axis points at in world space (the same
+# axis the pre-turn code implicitly relied on when the gate carried no
+# rotation at all), and "forward progress" has to be measured along the
+# level's own camera rail -- which is built from the same authored
+# markers the runtime camera uses, so it already bends through the
+# corner correctly -- rather than along a single frozen world axis.
+func _finish_approach_point(
+	finish: Area3D,
+	finish_shape: BoxShape3D,
+	preserved_y: float
+) -> Vector3:
+	var approach_axis := Vector3(
+		finish.global_transform.basis.z.x,
+		0.0,
+		finish.global_transform.basis.z.z
+	).normalized()
+	var target := (
+		finish.global_position
+		+ approach_axis * (finish_shape.size.z * 0.5 + 1.0)
+	)
+	return Vector3(target.x, preserved_y, target.z)
+
+
+func _rail_offset(level: LevelSession, world_position: Vector3) -> float:
+	var rail := level.get_node("CameraRig/Rail") as Path3D
+	return rail.curve.get_closest_offset(rail.to_local(world_position))
 
 
 func _remove_tree(path: String) -> void:

@@ -116,6 +116,35 @@ func test_n_sanity_beach_has_the_seven_segment_contract() -> void:
 			"%s must be instanced into the authored route"
 			% segment_name
 		)
+	assert_not_null(
+		level.get_node_or_null("Segments/CornerJungle"),
+		(
+			"the left-90 corner must be instanced between "
+			+ "JungleCorridor and CrateCadence"
+		)
+	)
+
+
+# H10 (turns-camera-difficulty Task 8): SEGMENT_NAMES lists the seven
+# gameplay/content segments only -- CornerJungle is a structural turn
+# connector authored by Task 7 with no crates, enemies, or ExitSurface /
+# EntrySurface floor nodes of its own (just Spine markers and numbered
+# floor Slabs). ROUTE_NAMES is the real, physically-adjacent traversal
+# order including that connector, used only for the handoff continuity
+# check below so the corner's own handoffs into and out of it get the
+# exact same "spine markers meet, floors overlap on all 3 axes" proof
+# the straight segments already had -- porting the pre-turn assertion
+# instead of narrowing it to skip the one pair that now bends.
+const ROUTE_NAMES: Array[StringName] = [
+	&"BeachLanding",
+	&"FirstCrates",
+	&"JungleCorridor",
+	&"CornerJungle",
+	&"CrateCadence",
+	&"TNTIntroduction",
+	&"PlantGauntlet",
+	&"Crescendo",
+]
 
 
 func test_segment_handoffs_overlap_as_full_aabbs_on_all_axes() -> void:
@@ -125,25 +154,31 @@ func test_segment_handoffs_overlap_as_full_aabbs_on_all_axes() -> void:
 	add_child_autofree(level)
 	await wait_process_frames(1)
 
-	for index: int in range(SEGMENT_NAMES.size() - 1):
-		var current := _segment(level, index)
-		var next := _segment(level, index + 1)
+	for index: int in range(ROUTE_NAMES.size() - 1):
+		var current := level.get_node_or_null(
+			"Segments/%s" % ROUTE_NAMES[index]
+		) as Node3D
+		var next := level.get_node_or_null(
+			"Segments/%s" % ROUTE_NAMES[index + 1]
+		) as Node3D
 		if current == null or next == null:
 			continue
-		var exit_surface := (
-			current.get_node_or_null("ExitSurface") as Node3D
-		)
-		var entry_surface := (
-			next.get_node_or_null("EntrySurface") as Node3D
-		)
+		var exit_surface := _exit_floor_surface(current)
+		var entry_surface := _entry_floor_surface(next)
 		var exit_marker := (
 			current.get_node_or_null("Spine/Exit") as Marker3D
 		)
 		var entry_marker := (
 			next.get_node_or_null("Spine/Entry") as Marker3D
 		)
-		assert_not_null(exit_surface)
-		assert_not_null(entry_surface)
+		assert_not_null(
+			exit_surface,
+			"%s must resolve an exit floor" % current.name
+		)
+		assert_not_null(
+			entry_surface,
+			"%s must resolve an entry floor" % next.name
+		)
 		assert_not_null(exit_marker)
 		assert_not_null(entry_marker)
 		if (
@@ -451,6 +486,88 @@ func test_required_jump_is_authored_inside_a_camera_region() -> void:
 			"%s must stay inside one authored camera region"
 			% required_jump.name
 		)
+
+
+# H10 (turns-camera-difficulty Task 8): regression lock for the corner
+# retrofit. Two independent things must stay true even if the level
+# scene is hand-edited again later: (1) the camera rail's own arc
+# markers must sit on CornerJungle's *real* authored arc geometry, not a
+# hand-recomputed duplicate that could silently drift from Task 7's
+# scene; (2) CrateCadence's re-seated transform must carry the exact
+# +90°-yaw basis documented in the plan, with local -Z (its authored
+# forward direction) mapped to world -X -- the direction the corner
+# actually exits into. A transposed or sign-flipped basis component
+# would pass a superficial glance at the .tscn text but send the
+# segment's forward direction the wrong way; this assertion is the
+# thing that would have caught that DOC's own draft matrix was wrong.
+func test_n_sanity_beach_corner_rail_markers_and_transforms() -> void:
+	var level := _instantiate_level()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	var corner := level.get_node_or_null("Segments/CornerJungle") as Node3D
+	var rail := level.get_node_or_null("CameraRig/Rail") as Path3D
+	var cadence := level.get_node_or_null("Segments/CrateCadence") as Node3D
+	assert_not_null(corner)
+	assert_not_null(rail)
+	assert_not_null(cadence)
+	if corner == null or rail == null or cadence == null:
+		return
+
+	var mid_30 := corner.get_node_or_null("Spine/Mid30") as Marker3D
+	var mid_60 := corner.get_node_or_null("Spine/Mid60") as Marker3D
+	assert_not_null(mid_30)
+	assert_not_null(mid_60)
+	if mid_30 == null or mid_60 == null:
+		return
+
+	var closest_to_30_m := INF
+	var closest_to_60_m := INF
+	for child: Node in rail.get_children():
+		if not child is Marker3D:
+			continue
+		var marker := child as Marker3D
+		closest_to_30_m = minf(
+			closest_to_30_m,
+			marker.global_position.distance_to(mid_30.global_position)
+		)
+		closest_to_60_m = minf(
+			closest_to_60_m,
+			marker.global_position.distance_to(mid_60.global_position)
+		)
+	assert_lt(
+		closest_to_30_m,
+		0.01,
+		"the rail must carry a marker on the corner's true 30° arc point"
+	)
+	assert_lt(
+		closest_to_60_m,
+		0.01,
+		"the rail must carry a marker on the corner's true 60° arc point"
+	)
+
+	var expected_basis := Basis(
+		Vector3(0, 0, -1),
+		Vector3(0, 1, 0),
+		Vector3(1, 0, 0)
+	)
+	assert_true(
+		cadence.transform.basis.is_equal_approx(expected_basis),
+		"CrateCadence must carry the documented +90° yaw basis"
+	)
+	assert_true(
+		cadence.transform.origin.is_equal_approx(Vector3(-12, 0, -300)),
+		"CrateCadence must be re-seated at the corner's exit"
+	)
+	assert_true(
+		(-cadence.transform.basis.z).is_equal_approx(Vector3(-1, 0, 0)),
+		(
+			"CrateCadence's local forward (-Z) must map to world -X, "
+			+ "the direction the corner actually exits into"
+		)
+	)
 
 
 func test_boulders_has_the_nine_segment_chase_contract() -> void:
@@ -1884,6 +2001,55 @@ func _enemies(level: Node) -> Array[Node]:
 		if level.is_ancestor_of(candidate):
 			result.append(candidate)
 	return result
+
+
+# H10: CornerJungle (and any future turn connector) has no named
+# ExitSurface/EntrySurface node -- it authors numbered floor Slabs along
+# the arc instead. Fall back to whichever floor slab sits nearest the
+# relevant Spine marker so the handoff-overlap check above still proves
+# real, gap-free floor continuity across a turn instead of skipping it.
+func _exit_floor_surface(segment: Node3D) -> Node3D:
+	var named := segment.get_node_or_null("ExitSurface") as Node3D
+	if named != null:
+		return named
+	var exit_marker := segment.get_node_or_null("Spine/Exit") as Marker3D
+	if exit_marker == null:
+		return null
+	return _nearest_floor_slab(segment, exit_marker.global_position)
+
+
+func _entry_floor_surface(segment: Node3D) -> Node3D:
+	var named := segment.get_node_or_null("EntrySurface") as Node3D
+	if named != null:
+		return named
+	var entry_marker := segment.get_node_or_null("Spine/Entry") as Marker3D
+	if entry_marker == null:
+		return null
+	return _nearest_floor_slab(segment, entry_marker.global_position)
+
+
+func _nearest_floor_slab(
+	segment: Node3D,
+	near_global_position: Vector3
+) -> Node3D:
+	var nearest: Node3D = null
+	var nearest_distance_m := INF
+	for candidate: Node in segment.find_children(
+		"*",
+		"StaticBody3D",
+		true,
+		false
+	):
+		var candidate_3d := candidate as Node3D
+		if candidate_3d == null or not candidate_3d is GrayboxPlatform:
+			continue
+		var distance_m := candidate_3d.global_position.distance_to(
+			near_global_position
+		)
+		if distance_m < nearest_distance_m:
+			nearest_distance_m = distance_m
+			nearest = candidate_3d
+	return nearest
 
 
 func _full_aabbs_overlap(
