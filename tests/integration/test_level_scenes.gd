@@ -81,6 +81,28 @@ const HOG_WILD_SEGMENT_NAMES: Array[StringName] = [
 	&"HogCrescendo",
 	&"HogDismountFinish",
 ]
+# H11 (turns-camera-difficulty Task 9): HOG_WILD_SEGMENT_NAMES lists the
+# eight gameplay/content segments only -- SwerveLeft45 and SwerveRight45 are
+# structural turn connectors authored by Task 7 with no crates, enemies, or
+# named ExitSurface/EntrySurface floor nodes of their own (just Spine
+# markers and numbered floor Slabs, the same shape as the beach's
+# CornerJungle from Task 8). HOG_WILD_ROUTE_NAMES is the real,
+# physically-adjacent traversal order including both connectors, used only
+# for the handoff continuity check below so each swerve's own handoffs into
+# and out of it get the exact same "spine markers meet, floors overlap on
+# all 3 axes" proof the straight segments already had.
+const HOG_WILD_ROUTE_NAMES: Array[StringName] = [
+	&"HogMountStart",
+	&"HogWeaveGates",
+	&"SwerveLeft45",
+	&"HogJumpGaps",
+	&"HogPlantChomp",
+	&"SwerveRight45",
+	&"HogCrateSlalom",
+	&"HogGapCombine",
+	&"HogCrescendo",
+	&"HogDismountFinish",
+]
 const HOG_WILD_EXPECTED_CHECKPOINTS := 2
 const CHASE_GAP_TOLERANCE_M := 0.001
 const TOWARD_CAMERA_OPPOSITION_DOT := -0.9
@@ -1215,6 +1237,20 @@ func test_hog_wild_has_the_eight_segment_graybox_contract() -> void:
 			"%s must be instanced into the Hog Wild route"
 			% segment_name
 		)
+	assert_not_null(
+		level.get_node_or_null("Segments/SwerveLeft45"),
+		(
+			"the left-45 swerve must be instanced after "
+			+ "HogWeaveGates"
+		)
+	)
+	assert_not_null(
+		level.get_node_or_null("Segments/SwerveRight45"),
+		(
+			"the right-45 swerve must be instanced after "
+			+ "HogPlantChomp"
+		)
+	)
 
 
 func test_hog_wild_spine_marker_names_match_authored_landmarks() -> void:
@@ -1269,26 +1305,32 @@ func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 
 	var verified_handoffs := 0
 	for index: int in range(
-		HOG_WILD_SEGMENT_NAMES.size() - 1
+		HOG_WILD_ROUTE_NAMES.size() - 1
 	):
-		var current := _hog_wild_segment(level, index)
-		var next := _hog_wild_segment(level, index + 1)
+		var current := level.get_node_or_null(
+			"Segments/%s" % HOG_WILD_ROUTE_NAMES[index]
+		) as Node3D
+		var next := level.get_node_or_null(
+			"Segments/%s" % HOG_WILD_ROUTE_NAMES[index + 1]
+		) as Node3D
 		if current == null or next == null:
 			continue
-		var exit_surface := (
-			current.get_node_or_null("ExitSurface") as Node3D
-		)
-		var entry_surface := (
-			next.get_node_or_null("EntrySurface") as Node3D
-		)
+		var exit_surface := _exit_floor_surface(current)
+		var entry_surface := _entry_floor_surface(next)
 		var exit_marker := (
 			current.get_node_or_null("Spine/Exit") as Marker3D
 		)
 		var entry_marker := (
 			next.get_node_or_null("Spine/Entry") as Marker3D
 		)
-		assert_not_null(exit_surface)
-		assert_not_null(entry_surface)
+		assert_not_null(
+			exit_surface,
+			"%s must resolve an exit floor" % current.name
+		)
+		assert_not_null(
+			entry_surface,
+			"%s must resolve an entry floor" % next.name
+		)
 		assert_not_null(exit_marker)
 		assert_not_null(entry_marker)
 		if (
@@ -1313,7 +1355,7 @@ func test_hog_wild_handoffs_overlap_on_all_three_axes() -> void:
 		verified_handoffs += 1
 	assert_eq(
 		verified_handoffs,
-		HOG_WILD_SEGMENT_NAMES.size() - 1,
+		HOG_WILD_ROUTE_NAMES.size() - 1,
 		"every adjacent Hog Wild segment pair must be verified"
 	)
 
@@ -1555,16 +1597,53 @@ func test_hog_wild_mounts_forced_run_and_dismounts_at_finish() -> void:
 	assert_not_null(dismount_box)
 	if mount_box == null or dismount_box == null:
 		return
-	assert_true(
-		dismount_trigger.global_position.is_equal_approx(
-			Vector3(
-				finish.global_position.x,
-				dismount_trigger.global_position.y,
-				finish.global_position.z
+	# H12 (turns-camera-difficulty Task 9): dismount and finish used to sit
+	# on the same straight -Z corridor, so a raw world x/z comparison was
+	# an exact stand-in for "same point along the route". The swerves bend
+	# the corridor, so that raw comparison would only stay valid by
+	# accident wherever the route happens to still be straight. Port to a
+	# transform-aware equivalence against the level's own real camera
+	# rail: same progress along the corridor (rail offset) and the same
+	# lateral distance from the rail's centerline, both measured with
+	# height flattened out the same way the raw x/z check did (dismount
+	# and finish are authored at different heights on purpose).
+	var rail := level.get_node_or_null(
+		"CameraRig/Rail"
+	) as Path3D
+	assert_not_null(rail)
+	if rail != null and rail.curve != null:
+		var dismount_flat := Vector3(
+			dismount_trigger.global_position.x,
+			0.0,
+			dismount_trigger.global_position.z
+		)
+		var finish_flat := Vector3(
+			finish.global_position.x,
+			0.0,
+			finish.global_position.z
+		)
+		var dismount_local := rail.to_local(dismount_flat)
+		var finish_local := rail.to_local(finish_flat)
+		assert_almost_eq(
+			rail.curve.get_closest_offset(dismount_local),
+			rail.curve.get_closest_offset(finish_local),
+			CHASE_GAP_TOLERANCE_M,
+			(
+				"dismount must reach the same point along the "
+				+ "corridor as finish so manual braking cannot "
+				+ "stall the run"
 			)
-		),
-		"dismount must coincide with finish so manual braking cannot stall the run"
-	)
+		)
+		assert_almost_eq(
+			dismount_local.distance_to(
+				rail.curve.get_closest_point(dismount_local)
+			),
+			finish_local.distance_to(
+				rail.curve.get_closest_point(finish_local)
+			),
+			CHASE_GAP_TOLERANCE_M,
+			"dismount must sit the same lateral distance from the rail as finish"
+		)
 
 	player.set_physics_process(false)
 	player.global_position = (
@@ -1745,6 +1824,139 @@ func test_hog_wild_uses_ride_pace_and_authors_required_jumps() -> void:
 	for required_jump: Node in required_jumps:
 		assert_not_null(required_jump.get_node_or_null("Takeoff"))
 		assert_not_null(required_jump.get_node_or_null("Landing"))
+
+
+# H14 (turns-camera-difficulty Task 9): regression lock for the two 45 deg
+# swerve retrofit, mirroring test_n_sanity_beach_corner_rail_markers_and_
+# transforms from Task 8. Asserts (a) the camera rail carries a marker
+# within 0.01m of each swerve's real, live Spine/Mid15 and Spine/Mid30
+# global positions; (b) HogJumpGaps (the first re-seated segment after the
+# first swerve) carries the exact derived +45 deg yaw, including the
+# explicit local -Z -> world exit-heading check; and (c) the second swerve
+# cancels the first, so HogCrateSlalom (the first segment after the second
+# swerve) carries an identity basis -- a pure translation, no rotation.
+func test_hog_wild_swerve_rail_markers_and_transforms() -> void:
+	var level := _instantiate_hog_wild()
+	if level == null:
+		return
+	add_child_autofree(level)
+	await wait_process_frames(1)
+
+	var swerve_left := level.get_node_or_null(
+		"Segments/SwerveLeft45"
+	) as Node3D
+	var swerve_right := level.get_node_or_null(
+		"Segments/SwerveRight45"
+	) as Node3D
+	var jump_gaps := level.get_node_or_null(
+		"Segments/HogJumpGaps"
+	) as Node3D
+	var crate_slalom := level.get_node_or_null(
+		"Segments/HogCrateSlalom"
+	) as Node3D
+	var rail := level.get_node_or_null(
+		"CameraRig/Rail"
+	) as Path3D
+	assert_not_null(swerve_left)
+	assert_not_null(swerve_right)
+	assert_not_null(jump_gaps)
+	assert_not_null(crate_slalom)
+	assert_not_null(rail)
+	if (
+		swerve_left == null
+		or swerve_right == null
+		or jump_gaps == null
+		or crate_slalom == null
+		or rail == null
+	):
+		return
+
+	var left_mid15 := swerve_left.get_node_or_null(
+		"Spine/Mid15"
+	) as Marker3D
+	var left_mid30 := swerve_left.get_node_or_null(
+		"Spine/Mid30"
+	) as Marker3D
+	var right_mid15 := swerve_right.get_node_or_null(
+		"Spine/Mid15"
+	) as Marker3D
+	var right_mid30 := swerve_right.get_node_or_null(
+		"Spine/Mid30"
+	) as Marker3D
+	assert_not_null(left_mid15)
+	assert_not_null(left_mid30)
+	assert_not_null(right_mid15)
+	assert_not_null(right_mid30)
+	if (
+		left_mid15 == null
+		or left_mid30 == null
+		or right_mid15 == null
+		or right_mid30 == null
+	):
+		return
+
+	var rail_markers: Array[Vector3] = []
+	for marker: Node in rail.get_children():
+		if marker is Marker3D:
+			rail_markers.append(
+				(marker as Marker3D).global_position
+			)
+	for expected: Vector3 in [
+		left_mid15.global_position,
+		left_mid30.global_position,
+		right_mid15.global_position,
+		right_mid30.global_position,
+	]:
+		var found := false
+		for candidate: Vector3 in rail_markers:
+			if candidate.distance_to(expected) <= 0.01:
+				found = true
+				break
+		assert_true(
+			found,
+			(
+				"camera rail must carry a marker within 0.01m of "
+				+ "the live swerve arc marker at %s" % expected
+			)
+		)
+
+	# A +45 deg yaw about Y (same right-handed, Y-up convention Task 8
+	# verified) must send local -Z to the swerve's authored exit heading
+	# (-sin45, 0, -cos45). basis.z is the world image of local +Z, so
+	# local -Z is -basis.z; columns X=(cos45,0,-sin45), Y=(0,1,0),
+	# Z=(sin45,0,cos45) satisfy that.
+	var swerve_yaw := Basis(
+		Vector3(0.7071068, 0.0, -0.7071068),
+		Vector3(0.0, 1.0, 0.0),
+		Vector3(0.7071068, 0.0, 0.7071068)
+	)
+	assert_true(
+		swerve_yaw.is_equal_approx(swerve_yaw.orthonormalized()),
+		"the derived swerve yaw matrix must be orthonormal"
+	)
+	assert_almost_eq(
+		swerve_yaw.determinant(),
+		1.0,
+		0.0001,
+		"the derived swerve yaw matrix must be a proper rotation (det=+1)"
+	)
+	assert_true(
+		jump_gaps.transform.basis.is_equal_approx(swerve_yaw),
+		"HogJumpGaps must carry the exact derived +45 deg yaw"
+	)
+	assert_true(
+		(-jump_gaps.transform.basis.z).is_equal_approx(
+			Vector3(-0.7071068, 0.0, -0.7071068)
+		),
+		"local -Z must map to the left swerve's real exit heading"
+	)
+	assert_true(
+		crate_slalom.transform.basis.is_equal_approx(Basis()),
+		(
+			"the second swerve must cancel the first: net "
+			+ "rotation after it must be identity"
+		)
+	)
 
 
 func _instantiate_level() -> Node:
@@ -1939,13 +2151,50 @@ func _hog_wild_checkpoint(
 	for crate: Node in _crates(level):
 		if StringName(crate.get("crate_type")) == &"checkpoint":
 			checkpoints.append(crate)
-	checkpoints.sort_custom(
-		func(first: Node, second: Node) -> bool:
-			return (
-				(first as Node3D).global_position.z
-				> (second as Node3D).global_position.z
-			)
-	)
+	# H13 (turns-camera-difficulty Task 9): checkpoints used to be reliably
+	# orderable by raw descending world Z because the corridor only ever
+	# ran along -Z. The swerves bend the corridor through two 45 deg
+	# turns, so raw Z is no longer a safe stand-in for "how far along the
+	# route" a checkpoint sits -- it would only keep working by accident
+	# for as long as no future turn exceeds 90 deg of cumulative bend.
+	# Port to the level's own real camera rail: sort by ascending progress
+	# (get_closest_offset) along the rail's baked curve, which stays
+	# correct through any bend. Falls back to the original raw-Z sort if
+	# the rail isn't available, so this never regresses below the old
+	# behavior.
+	var rail := level.get_node_or_null(
+		"CameraRig/Rail"
+	) as Path3D
+	if rail != null and rail.curve != null:
+		checkpoints.sort_custom(
+			func(first: Node, second: Node) -> bool:
+				var first_flat := Vector3(
+					(first as Node3D).global_position.x,
+					0.0,
+					(first as Node3D).global_position.z
+				)
+				var second_flat := Vector3(
+					(second as Node3D).global_position.x,
+					0.0,
+					(second as Node3D).global_position.z
+				)
+				return (
+					rail.curve.get_closest_offset(
+						rail.to_local(first_flat)
+					)
+					< rail.curve.get_closest_offset(
+						rail.to_local(second_flat)
+					)
+				)
+		)
+	else:
+		checkpoints.sort_custom(
+			func(first: Node, second: Node) -> bool:
+				return (
+					(first as Node3D).global_position.z
+					> (second as Node3D).global_position.z
+				)
+		)
 	if index < 0 or index >= checkpoints.size():
 		return null
 	return checkpoints[index]
