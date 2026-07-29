@@ -1,0 +1,74 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/wall_run_strip.gd" id="1_strip"]
+[ext_resource type="Script" path="res://src/gameplay/traversal/traversal_rail.gd" id="2_rail"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="3_region"]
+
+[sub_resource type="BoxShape3D" id="Shape_target"]
+size = Vector3(8, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_run_region"]
+size = Vector3(12, 10, 40)
+
+[sub_resource type="BoxShape3D" id="Shape_grind_region"]
+size = Vector3(12, 8, 44)
+
+[node name="RotatedAncestorFixture" type="Node3D"]
+
+[node name="Group1" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 0)
+
+[node name="RunStrip" type="Path3D" parent="Group1"]
+position = Vector3(-2, 3, 0)
+script = ExtResource("1_strip")
+surface_normal = Vector3(1, 0, 0)
+
+[node name="Start" type="Marker3D" parent="Group1/RunStrip"]
+
+[node name="Finish" type="Marker3D" parent="Group1/RunStrip"]
+position = Vector3(0, 0, -16)
+
+[node name="LandingPad" type="StaticBody3D" parent="Group1"]
+position = Vector3(0, -0.5, -28)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Group1/LandingPad"]
+shape = SubResource("Shape_target")
+
+[node name="WallRunCameraRegion" type="Area3D" parent="Group1"]
+position = Vector3(0, 3, -12)
+script = ExtResource("3_region")
+camera_mode = &"wall_run"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Group1/WallRunCameraRegion"]
+shape = SubResource("Shape_wall_run_region")
+
+[node name="Group2" type="Node3D" parent="."]
+rotation = Vector3(0, 1.570796, 0)
+
+[node name="RailA" type="Path3D" parent="Group2"]
+position = Vector3(0, 2, 0)
+script = ExtResource("2_rail")
+
+[node name="Start" type="Marker3D" parent="Group2/RailA"]
+
+[node name="Finish" type="Marker3D" parent="Group2/RailA"]
+position = Vector3(0, 0, -32)
+
+[node name="GrindCameraRegion" type="Area3D" parent="Group2"]
+position = Vector3(0, 2, -14)
+script = ExtResource("3_region")
+camera_mode = &"grind"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Group2/GrindCameraRegion"]
+shape = SubResource("Shape_grind_region")
+
+[node name="SelfRotatedStrip" type="Path3D" parent="."]
+position = Vector3(-2, 3, 0)
+rotation = Vector3(0, 0.5, 0)
+script = ExtResource("1_strip")
+surface_normal = Vector3(1, 0, 0)
+
+[node name="Start" type="Marker3D" parent="SelfRotatedStrip"]
+
+[node name="Finish" type="Marker3D" parent="SelfRotatedStrip"]
+position = Vector3(0, 0, -16)

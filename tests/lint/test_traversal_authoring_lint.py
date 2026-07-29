@@ -4,6 +4,7 @@ from pathlib import Path
 from scripts.lint_traversal_authoring import (
     DETACH_VISIBILITY_RULE,
     RAIL_READABILITY_RULE,
+    ROTATED_ANCESTOR_RULE,
     WALL_CAMERA_RULE,
     _parse_scene,
     _path_endpoints,
@@ -49,6 +50,46 @@ class TraversalAuthoringLintTests(unittest.TestCase):
         details = " ".join(finding.detail for finding in findings)
         self.assertIn("grind camera region", details)
         self.assertIn("symmetric", details)
+
+    def test_rotated_ancestor_fixture_flags_transform_rotation_and_self(
+        self,
+    ) -> None:
+        # Corridor turns (spec 2026-07-29) rotate level segments, but
+        # _world_position only ever sums ancestor origins and ignores
+        # basis entirely -- porting oriented math is deferred. Until
+        # then any rotation in a wall-run strip or traversal rail's
+        # ancestor chain -- expressed either as a Transform3D with a
+        # non-identity basis (Group1) or a bare rotation = Vector3(...)
+        # property (Group2) -- must fail closed. So must a strip/rail's
+        # own rotation (SelfRotatedStrip): the runtime honours it via
+        # global_basis, but this lint's geometry rules cannot.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "traversal_rotated_ancestor_bad.tscn"
+        )
+
+        self.assertEqual(
+            {finding.rule for finding in findings},
+            {ROTATED_ANCESTOR_RULE},
+        )
+        self.assertEqual(len(findings), 3)
+        details = " ".join(finding.detail for finding in findings)
+        self.assertIn("Group1/RunStrip", details)
+        self.assertIn("Group2/RailA", details)
+        self.assertIn("SelfRotatedStrip", details)
+        self.assertIn("spec 2026-07-29", details)
+        self.assertIn("deferred", details)
+
+    def test_unrotated_identity_transform_ancestor_stays_clean(self) -> None:
+        # An editor re-save of a translated-only node produces
+        # transform = Transform3D(...) with an *identity* basis (see
+        # test_editor_transform_form_computes_real_world_position); the
+        # rotated-ancestor guard must not false-positive on that common
+        # form.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "traversal_rotated_ancestor_ok.tscn"
+        )
+
+        self.assertEqual(findings, [])
 
     def test_all_real_traversal_segments_pass(self) -> None:
         findings = find_authoring_violations(

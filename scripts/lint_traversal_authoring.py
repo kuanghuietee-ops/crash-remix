@@ -14,9 +14,11 @@ from typing import Iterable, Sequence
 
 try:
     from scene_transform_parsing import (
+        IDENTITY_BASIS,
         PROPERTY_PATTERN,
         UP,
         ZERO,
+        Basis3,
         Vector3,
         assignment_values,
         header_attributes as _header_attributes,
@@ -27,9 +29,11 @@ try:
     )
 except ImportError:  # pragma: no cover - exercised via scripts.* imports
     from scripts.scene_transform_parsing import (
+        IDENTITY_BASIS,
         PROPERTY_PATTERN,
         UP,
         ZERO,
+        Basis3,
         Vector3,
         assignment_values,
         header_attributes as _header_attributes,
@@ -43,6 +47,7 @@ except ImportError:  # pragma: no cover - exercised via scripts.* imports
 WALL_CAMERA_RULE = "wall_run_horizon_stable"
 DETACH_VISIBILITY_RULE = "wall_run_detach_target_visible"
 RAIL_READABILITY_RULE = "rail_readability"
+ROTATED_ANCESTOR_RULE = "traversal_rotated_ancestor"
 
 WALL_STRIP_SCRIPT = "res://src/gameplay/traversal/wall_run_strip.gd"
 TRAVERSAL_RAIL_SCRIPT = "res://src/gameplay/traversal/traversal_rail.gd"
@@ -56,6 +61,21 @@ SCREEN_TOLERANCE = 0.02
 MAXIMUM_COMFORT_ROLL_DEGREES = 10.0
 VISIBILITY_SAMPLES = 9
 VISIBILITY_MARGIN = 1.05
+
+# Corridor turns (spec 2026-07-29) rotate level segments, but composing
+# oriented wall-run/rail geometry through a rotated ancestor is deferred
+# work -- _world_position below only ever sums ancestor origins and
+# never touches basis. ROTATION_EPSILON is the tolerance (radians for a
+# raw `rotation = Vector3(...)` property, absolute per-component for a
+# `transform = Transform3D(...)` basis) below which an authored value is
+# treated as floating-point noise from an editor re-save rather than a
+# real rotation.
+ROTATION_EPSILON = 1e-4
+ROTATED_ANCESTOR_MESSAGE = (
+    "wall-run/rail authoring under a rotated parent is unsupported "
+    "until the traversal lint composes rotations (spec 2026-07-29, "
+    "deferred)"
+)
 
 
 @dataclass(frozen=True)
@@ -152,6 +172,16 @@ def _wall_run_findings(
     findings: list[AuthoringViolation] = []
     readable_strips: list[tuple[SceneNode, tuple[Vector3, Vector3], Vector3]] = []
     for strip in strips:
+        rotated = _rotated_ancestor(scene, strip)
+        if rotated is not None:
+            findings.append(
+                AuthoringViolation(
+                    scene_path,
+                    ROTATED_ANCESTOR_RULE,
+                    _rotated_ancestor_detail(strip, rotated),
+                )
+            )
+            continue
         endpoints = _path_endpoints(scene, strip)
         if endpoints is None:
             findings.append(
@@ -256,6 +286,16 @@ def _rail_findings(
     regions = _camera_regions(scene, GRIND_MODE)
     findings: list[AuthoringViolation] = []
     for rail in rails:
+        rotated = _rotated_ancestor(scene, rail)
+        if rotated is not None:
+            findings.append(
+                AuthoringViolation(
+                    scene_path,
+                    ROTATED_ANCESTOR_RULE,
+                    _rotated_ancestor_detail(rail, rotated),
+                )
+            )
+            continue
         endpoints = _path_endpoints(scene, rail)
         if (
             endpoints is None
@@ -509,6 +549,76 @@ def _world_position(scene: ParsedScene, node: SceneNode) -> Vector3:
         position = _add(position, _node_origin(parent.properties))
         parent_path = parent.parent
     return position
+
+
+def _basis_is_identity(basis: Basis3) -> bool:
+    return all(
+        math.isclose(
+            basis[row][column],
+            IDENTITY_BASIS[row][column],
+            abs_tol=ROTATION_EPSILON,
+        )
+        for row in range(3)
+        for column in range(3)
+    )
+
+
+def _rotation_vector_is_identity(rotation: Vector3) -> bool:
+    return _length(rotation) <= ROTATION_EPSILON
+
+
+def _node_is_rotated(properties: dict[str, str]) -> bool:
+    # The two ways a .tscn file encodes rotation: a compact
+    # transform = Transform3D(...) re-save (basis carries the
+    # rotation), or the editor's separate position=/rotation=/scale=
+    # form (rotation = Vector3(...) in radians). _node_origin above
+    # only ever reads the translation component of either form, so
+    # this must be checked independently of it.
+    authored_transform = _parse_transform(properties.get("transform", ""))
+    if authored_transform is not None:
+        return not _basis_is_identity(authored_transform.basis)
+    rotation = _parse_vector(properties.get("rotation", ""))
+    if rotation is not None:
+        return not _rotation_vector_is_identity(rotation)
+    return False
+
+
+def _rotated_ancestor(
+    scene: ParsedScene,
+    node: SceneNode,
+) -> SceneNode | None:
+    """Return the node itself or the nearest ancestor carrying authored
+    rotation, walking the same parent chain and cycle-guard as
+    ``_world_position`` -- or ``None`` if the whole chain is unrotated.
+
+    The strip/rail's own rotation is included in the walk on purpose:
+    the runtime honours it via ``global_basis``, but this lint's rules
+    (endpoint math, camera frustum checks, region containment) all read
+    authored positions as if unrotated, so even a node's own rotation
+    cannot be verified here and must fail closed too.
+    """
+    nodes = scene.nodes_by_path
+    if _node_is_rotated(node.properties):
+        return node
+    parent_path = node.parent
+    visited = {node.path}
+    while parent_path:
+        parent = nodes.get(parent_path)
+        if parent is None or parent.path in visited:
+            break
+        visited.add(parent.path)
+        if _node_is_rotated(parent.properties):
+            return parent
+        parent_path = parent.parent
+    return None
+
+
+def _rotated_ancestor_detail(node: SceneNode, rotated: SceneNode) -> str:
+    if rotated.path == node.path:
+        cause = f"{node.path} is itself rotated"
+    else:
+        cause = f"{node.path} has rotated ancestor {rotated.path}"
+    return f"{cause}; {ROTATED_ANCESTOR_MESSAGE}"
 
 
 def _resolve_node_path(node_path: str, raw_value: str) -> str:

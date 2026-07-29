@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/traversal/wall_run_strip.gd" id="1_strip"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+
+[sub_resource type="BoxShape3D" id="Shape_target"]
+size = Vector3(8, 1, 8)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_run_region"]
+size = Vector3(12, 10, 40)
+
+[node name="RotatedAncestorOkFixture" type="Node3D"]
+
+[node name="Group1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="RunStrip" type="Path3D" parent="Group1"]
+position = Vector3(-2, 3, 0)
+script = ExtResource("1_strip")
+surface_normal = Vector3(1, 0, 0)
+
+[node name="Start" type="Marker3D" parent="Group1/RunStrip"]
+
+[node name="Finish" type="Marker3D" parent="Group1/RunStrip"]
+position = Vector3(0, 0, -16)
+
+[node name="LandingPad" type="StaticBody3D" parent="Group1"]
+position = Vector3(0, -0.5, -28)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Group1/LandingPad"]
+shape = SubResource("Shape_target")
+
+[node name="WallRunCameraRegion" type="Area3D" parent="Group1"]
+position = Vector3(0, 3, -12)
+script = ExtResource("2_region")
+camera_mode = &"wall_run"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Group1/WallRunCameraRegion"]
+shape = SubResource("Shape_wall_run_region")
