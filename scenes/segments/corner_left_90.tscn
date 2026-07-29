@@ -1,0 +1,74 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
+[ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+
+[sub_resource type="BoxShape3D" id="Shape_camera"]
+size = Vector3(20, 12, 20)
+
+[node name="CornerLeft90" type="Node3D"]
+
+[node name="Title" type="Label3D" parent="."]
+position = Vector3(-3, 2.5, -6)
+text = "CORNER — LEFT 90"
+font_size = 48
+outline_size = 10
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Entry" type="Marker3D" parent="Spine"]
+
+[node name="Mid30" type="Marker3D" parent="Spine"]
+position = Vector3(-1.6077, 0, -6)
+
+[node name="Mid60" type="Marker3D" parent="Spine"]
+position = Vector3(-6, 0, -10.3923)
+
+[node name="Exit" type="Marker3D" parent="Spine"]
+position = Vector3(-12, 0, -12)
+
+[node name="Slab0" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-0.1027, -0.5, -1.5663)
+rotation_degrees = Vector3(0, 7.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="Slab1" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-0.9134, -0.5, -4.5922)
+rotation_degrees = Vector3(0, 22.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="Slab2" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-2.4798, -0.5, -7.3051)
+rotation_degrees = Vector3(0, 37.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="Slab3" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-4.6949, -0.5, -9.5202)
+rotation_degrees = Vector3(0, 52.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="Slab4" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-7.4078, -0.5, -11.0866)
+rotation_degrees = Vector3(0, 67.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="Slab5" parent="." instance=ExtResource("1_platform")]
+position = Vector3(-10.4337, -0.5, -11.8973)
+rotation_degrees = Vector3(0, 82.5, 0)
+size = Vector3(12.5, 1, 6)
+color = Color(0.23, 0.4, 0.2, 1)
+
+[node name="CameraRegion" type="Area3D" parent="."]
+position = Vector3(-3, 3, -9)
+collision_layer = 0
+collision_mask = 1
+script = ExtResource("2_region")
+camera_mode = &"default"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraRegion"]
+shape = SubResource("Shape_camera")
