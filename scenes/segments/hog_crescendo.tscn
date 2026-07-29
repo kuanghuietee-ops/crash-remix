@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="5_m_beach_kit_foliage"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/bush_cluster_a.res" id="env_bush_cluster_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/canopy_frond_arch.res" id="env_canopy_frond_arch"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="env_cliff_low_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/fern_cluster_a.res" id="env_fern_cluster_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/fringe_grass_a.res" id="env_fringe_grass_a"]
@@ -228,6 +229,18 @@ rotation_degrees = Vector3(0, 301.084, 0)
 mesh = ExtResource("env_fern_cluster_a")
 material_override = ExtResource("5_m_beach_kit_foliage")
 
+[node name="CanopyArchL40" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.5, 10.65, -38)
+rotation_degrees = Vector3(0, 63.674, 0)
+mesh = ExtResource("env_canopy_frond_arch")
+material_override = ExtResource("5_m_beach_kit_foliage")
+
+[node name="CanopyArchL120" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-11.5, 10.65, -118)
+rotation_degrees = Vector3(0, 132.475, 0)
+mesh = ExtResource("env_canopy_frond_arch")
+material_override = ExtResource("5_m_beach_kit_foliage")
+
 [node name="WallL0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -22)
 rotation_degrees = Vector3(0, 180, 0)
@@ -370,6 +383,12 @@ material_override = ExtResource("5_m_beach_kit_foliage")
 position = Vector3(25.528, -0.15, -123.4)
 rotation_degrees = Vector3(0, 353.377, 0)
 mesh = ExtResource("env_grass_patch_a")
+material_override = ExtResource("5_m_beach_kit_foliage")
+
+[node name="CanopyArchR80" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(11.5, 10.65, -78)
+rotation_degrees = Vector3(0, 115.373, 0)
+mesh = ExtResource("env_canopy_frond_arch")
 material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="WallR0_0" type="MeshInstance3D" parent="EnvironmentArt"]

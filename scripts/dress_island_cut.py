@@ -72,6 +72,23 @@ FRINGE_SINK_M = 0.05
 # make a level unplayable, so it stays short and explicit.
 EDGE_PIECES = frozenset({"fringe_grass_a", "fringe_beach_a"})
 
+# Overhead canopy arches, for the ride level only. Hog Wild is a forced run down
+# a long straight corridor: the verge slides past in the periphery, but nothing
+# crosses the top of the frame, so at speed the screen is static apart from the
+# ground. Arches passing overhead at an even beat are what reads as speed --
+# evenly, because randomly spaced ones read as clutter instead of rhythm.
+CANOPY_ARCH_PIECE = "canopy_frond_arch"
+CANOPY_ARCH_CADENCE_M = 40.0
+
+# Measured off the built mesh, not guessed: the piece is a stub at its origin
+# with fronds hanging to y -6.13, so the origin has to sit this far above the
+# height the lowest frond should reach.
+CANOPY_ARCH_DROOP_M = 6.15
+
+# How much air stays under the lowest frond. The player rides at roughly two
+# metres; this keeps the fronds in the top of the frame and out of the ride.
+CANOPY_ARCH_CLEARANCE_M = 4.5
+
 SEGMENT_DIR = Path("scenes/segments")
 MESH_DIR = "res://assets/models/kits/mesh"
 
@@ -239,6 +256,8 @@ CANYON_STYLE = {
 
 JUNGLE_STYLE = {
     "fringe": "fringe_grass_a",
+    # The ride level, and the only one that gets overhead arches.
+    "canopy_arch": True,
     "walls": ["cliff_low_a"],
     "bank": "terrain_jungle_bank",
     "scatter": ["bush_cluster_a", "fern_cluster_a", "grass_patch_a", "rock_cluster_a"],
@@ -354,6 +373,31 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                         yaw=_hash01(seed + index, side_index * 11 + 5) * 360.0,
                     )
                 )
+
+        # Overhead arches, alternating sides so the eye gets a left-right beat
+        # rather than a single file. Each side steps twice the cadence, offset
+        # by one, which makes the combined rhythm land on the cadence itself.
+        if style.get("canopy_arch"):
+            stride = CANOPY_ARCH_CADENCE_M * 2.0
+            offset = CANOPY_ARCH_CADENCE_M if side > 0 else 0.0
+            along = offset + CANOPY_ARCH_CADENCE_M
+            while along < corridor.length:
+                z = corridor.z_near - along
+                placements.append(
+                    Placement(
+                        node=f"CanopyArch{'L' if side < 0 else 'R'}{int(along)}",
+                        piece=CANOPY_ARCH_PIECE,
+                        position=(
+                            side * inner,
+                            corridor.floor_at(z)
+                            + CANOPY_ARCH_CLEARANCE_M
+                            + CANOPY_ARCH_DROOP_M,
+                            z,
+                        ),
+                        yaw=_hash01(seed + int(along), side_index * 23 + 13) * 360.0,
+                    )
+                )
+                along += stride
 
         # Each wall style entry forms its own depth layer; every layer has to
         # run the whole corridor or the background shows through the gaps.

@@ -5,6 +5,8 @@ from pathlib import Path
 from scripts.dress_island_cut import (
     BAND_DEPTH_M,
     BANK_TILE_LENGTH_M,
+    CANOPY_ARCH_CLEARANCE_M,
+    CANOPY_ARCH_DROOP_M,
     EDGE_PIECES,
     CLEARANCE_M,
     CANYON_STYLE,
@@ -629,3 +631,89 @@ class FringeTests(unittest.TestCase):
         placements = placements_for("papu_arena", corridor, VILLAGE_STYLE)
 
         self.assertEqual([one for one in placements if one.node.startswith("Fringe")], [])
+
+
+class CanopyCadenceTests(unittest.TestCase):
+    """Hog Wild's sense of speed comes from things passing overhead.
+
+    The level is a forced ride down a long straight corridor. Trees at the verge
+    slide past in the periphery, but nothing crosses the top of the frame, so at
+    speed the screen is static apart from the ground. The kit already contains
+    the fix -- canopy_frond_arch, 130 tris, built to be "hung above the corridor
+    to frame the top of the screen" -- and the dresser never placed one.
+
+    The cadence is fixed rather than scattered on purpose: an even rhythm is
+    what reads as speed. Randomly spaced arches read as clutter.
+    """
+
+    def _arches(self, placements):
+        return [one for one in placements if one.node.startswith("Canopy")
+                and one.piece == "canopy_frond_arch"]
+
+    def test_the_ride_level_gets_overhead_arches(self) -> None:
+        corridor = _straight_corridor(256.0)
+
+        arches = self._arches(placements_for("hog_probe", corridor, JUNGLE_STYLE))
+
+        self.assertTrue(arches, "Hog Wild must have something crossing the frame")
+
+    def test_only_the_ride_level_gets_them(self) -> None:
+        # Boulders is a chase on foot with the camera flipped toward the runner;
+        # arches overhead there would occlude the thing chasing the player.
+        corridor = _straight_corridor(256.0)
+
+        for style_name, style in (("canyon", CANYON_STYLE), ("village", VILLAGE_STYLE)):
+            self.assertEqual(
+                self._arches(placements_for("probe", corridor, style)),
+                [],
+                f"{style_name} should not get overhead arches",
+            )
+
+    def test_the_cadence_is_even(self) -> None:
+        corridor = _straight_corridor(256.0)
+
+        arches = self._arches(placements_for("hog_probe", corridor, JUNGLE_STYLE))
+        zs = sorted((one.position[2] for one in arches), reverse=True)
+        gaps = [round(abs(b - a), 3) for a, b in zip(zs, zs[1:])]
+
+        self.assertTrue(gaps, "need at least two arches to have a rhythm")
+        self.assertEqual(
+            len(set(gaps)),
+            1,
+            f"arch spacing must be even to read as speed, got {sorted(set(gaps))}",
+        )
+
+    def test_arches_alternate_sides(self) -> None:
+        # A left-right rhythm gives the eye more to lock onto than a single file.
+        corridor = _straight_corridor(256.0)
+
+        arches = self._arches(placements_for("hog_probe", corridor, JUNGLE_STYLE))
+        by_z = sorted(arches, key=lambda one: -one.position[2])
+        sides = [one.position[0] > 0 for one in by_z]
+
+        for first, second in zip(sides, sides[1:]):
+            self.assertNotEqual(first, second, "consecutive arches sit on one side")
+
+    def test_arches_hang_clear_above_the_player(self) -> None:
+        corridor = _straight_corridor(256.0)
+
+        for one in self._arches(placements_for("hog_probe", corridor, JUNGLE_STYLE)):
+            lowest_frond = one.position[1] - CANOPY_ARCH_DROOP_M
+
+            self.assertGreaterEqual(
+                lowest_frond - corridor.floor_y,
+                CANOPY_ARCH_CLEARANCE_M - 1e-6,
+                f"{one.node} hangs into the ride",
+            )
+
+    def test_arches_claim_no_clearance_exemption(self) -> None:
+        # They frame the top of the screen by drooping inward from the verge,
+        # not by being placed over the corridor, so the ordinary rule holds.
+        corridor = _straight_corridor(256.0)
+
+        for one in self._arches(placements_for("hog_probe", corridor, JUNGLE_STYLE)):
+            self.assertGreaterEqual(
+                abs(one.position[0]),
+                corridor.half_width + CLEARANCE_M,
+                f"{one.node} is inside the clearance band",
+            )
