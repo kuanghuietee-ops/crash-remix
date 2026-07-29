@@ -181,6 +181,37 @@ func test_router_slews_gesture_axis_toward_corner_during_held_drag() -> void:
 		)
 	)
 
+	# A zero-delta call with the SAME (already-adopted) corridor axis must
+	# not advance the slew at all -- existing 1-arg call sites rely on this.
+	router.call("set_corridor_axis", Vector2.RIGHT)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		expected_input,
+		"a zero-delta call must not advance the gesture-axis slew"
+	)
+
+	# R1: the camera rig calls set_corridor_axis every physics frame. Once a
+	# fast corner resolves in a single frame, later frames report the SAME
+	# (already-adopted) corridor axis -- this must not stall the slew.
+	# Holding the drag on that steady axis for many more frames must keep
+	# closing the remaining angle until the gesture axis is fully aligned.
+	for _frame in range(5):
+		router.call("set_corridor_axis", Vector2.RIGHT, 0.1)
+	var expected_converged_input: Vector2 = filter_script.call(
+		"to_corridor_input",
+		Vector2.UP,
+		Vector2.RIGHT
+	)
+	assert_almost_eq(
+		router.get("buffer").call("movement"),
+		expected_converged_input,
+		Vector2(0.0001, 0.0001),
+		(
+			"a held drag on a steady post-corner axis must keep slewing "
+			+ "until the gesture axis fully converges, not stall part-way"
+		)
+	)
+
 	# A fresh gesture (zero -> non-zero) must still snap-latch to whatever
 	# the corridor axis currently is, not continue the previous drag's
 	# partially-slewed gesture axis.

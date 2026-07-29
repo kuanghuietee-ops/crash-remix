@@ -60,13 +60,25 @@ func set_corridor_axis(axis: Vector2, delta_s: float = 0.0) -> void:
 	if axis.is_zero_approx():
 		return
 	var next_axis := axis.normalized()
-	if next_axis.is_equal_approx(_corridor_axis):
-		return
-	_corridor_axis = next_axis
-	if _screen_relative_tracking_enabled:
-		_gesture_corridor_axis = _corridor_axis
-		_route_screen_movement()
-	elif not _screen_movement.is_zero_approx():
+	if not next_axis.is_equal_approx(_corridor_axis):
+		_corridor_axis = next_axis
+		if _screen_relative_tracking_enabled:
+			_gesture_corridor_axis = _corridor_axis
+			_route_screen_movement()
+			return
+	# Slewing is driven by "has the gesture axis caught up to the corridor
+	# axis yet", not by "did the corridor axis change this call". The
+	# camera rig calls this every physics frame; once a corner resolves and
+	# the incoming axis holds steady, the block above stops touching
+	# _corridor_axis, but the gesture axis can still be mid-rotation and
+	# must keep closing the remaining angle over subsequent frames instead
+	# of freezing wherever the single frame of axis-change left it.
+	if (
+		not _screen_relative_tracking_enabled
+		and not _screen_movement.is_zero_approx()
+		and delta_s > 0.0
+		and not _gesture_corridor_axis.is_equal_approx(_corridor_axis)
+	):
 		_slew_gesture_corridor_axis(delta_s)
 		_route_screen_movement()
 
