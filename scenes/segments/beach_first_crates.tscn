@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=3]
+[gd_scene load_steps=29 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
@@ -22,6 +22,9 @@
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/rock_cluster_a.res" id="50_rockc"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/driftwood_a.res" id="51_drift"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/shell_scatter_a.res" id="52_shell"]
+[ext_resource type="Material" path="res://assets/materials/M_beach_kit_sea.tres" id="53_m_beach_kit_sea"]
+[ext_resource type="Material" path="res://assets/materials/M_beach_kit_foam.tres" id="54_m_beach_kit_foam"]
+[ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="55_m_beach_kit_foliage"]
 
 [sub_resource type="BoxShape3D" id="Shape_camera"]
 size = Vector3(18, 12, 100)
@@ -132,12 +135,14 @@ position = Vector3(-18, -1.7, -96)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("33_sea")
 cast_shadow = 0
+material_override = ExtResource("53_m_beach_kit_sea")
 
 [node name="Surf" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-14.9, -1.62, -96)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("34_surf")
 cast_shadow = 0
+material_override = ExtResource("54_m_beach_kit_foam")
 
 [node name="Headland" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-118, -6, -40)
@@ -156,74 +161,89 @@ mesh = ExtResource("46_fringeb")
 [node name="FringeLand" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(6.35, -0.05, 0)
 mesh = ExtResource("45_fringeg")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="PalmShoreA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-11.6, -0.78, -14)
 rotation_degrees = Vector3(0, 25, 0)
 mesh = ExtResource("38_palmt")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="PalmShoreB" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-13.6, -1.2, -44)
 rotation_degrees = Vector3(0, -55, 0)
 mesh = ExtResource("39_palml")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="PalmShoreC" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-11.3, -0.72, -78)
 rotation_degrees = Vector3(0, 150, 0)
 mesh = ExtResource("38_palmt")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="PalmBankA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(10.5, 1.3, -24)
 rotation_degrees = Vector3(0, 70, 0)
 mesh = ExtResource("39_palml")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="TreeBankA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(13.5, 2.4, -52)
 rotation_degrees = Vector3(0, -30, 0)
 mesh = ExtResource("41_treeb")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="TreeBankB" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(15, 2.9, -88)
 rotation_degrees = Vector3(0, 40, 0)
 mesh = ExtResource("41_treeb")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="FernBankA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(9.6, 1.2, -16)
 mesh = ExtResource("42_fern")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="FernBankB" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(10, 1.35, -58)
 rotation_degrees = Vector3(0, 120, 0)
 mesh = ExtResource("42_fern")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="FernBankC" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(10.0, 1.15, -92)
 rotation_degrees = Vector3(0, 210, 0)
 mesh = ExtResource("42_fern")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="BushBankA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(9.8, 0.9, -34)
 rotation_degrees = Vector3(0, 60, 0)
 mesh = ExtResource("43_bush")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="BushBankB" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(9.2, 0.75, -72)
 rotation_degrees = Vector3(0, 160, 0)
 mesh = ExtResource("43_bush")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="GrassBankA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(11, 1.5, -42)
 mesh = ExtResource("44_grass")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="GrassShoreA" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-10.5, -0.52, -30)
 rotation_degrees = Vector3(0, 40, 0)
 mesh = ExtResource("44_grass")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="GrassShoreB" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-10.2, -0.46, -64)
 rotation_degrees = Vector3(0, 140, 0)
 mesh = ExtResource("44_grass")
+material_override = ExtResource("55_m_beach_kit_foliage")
 
 [node name="BoulderShore" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-15, -1.35, -22)

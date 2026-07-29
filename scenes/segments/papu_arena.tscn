@@ -1,7 +1,8 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
+[ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="3_m_beach_kit_foliage"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="env_cliff_low_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/hut_thatch_a.res" id="env_hut_thatch_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/log_fence_a.res" id="env_log_fence_a"]
@@ -137,6 +138,7 @@ mesh = ExtResource("env_log_fence_a")
 position = Vector3(-23.016, -0.4, -33.429)
 rotation_degrees = Vector3(0, 296.021, 0)
 mesh = ExtResource("env_palm_tall_a")
+material_override = ExtResource("3_m_beach_kit_foliage")
 
 [node name="ScatterL3" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-20.869, 1.85, -43.5)
@@ -167,6 +169,7 @@ mesh = ExtResource("env_log_fence_a")
 position = Vector3(-23.328, 3.6, -87.714)
 rotation_degrees = Vector3(0, 43.99, 0)
 mesh = ExtResource("env_palm_tall_a")
+material_override = ExtResource("3_m_beach_kit_foliage")
 
 [node name="WallL0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, 4)
@@ -205,6 +208,7 @@ mesh = ExtResource("env_standing_stone_a")
 position = Vector3(24.479, -0.4, -6.286)
 rotation_degrees = Vector3(0, 183.639, 0)
 mesh = ExtResource("env_palm_tall_a")
+material_override = ExtResource("3_m_beach_kit_foliage")
 
 [node name="ScatterR1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(13.168, -0.15, -16.357)
@@ -235,6 +239,7 @@ mesh = ExtResource("env_standing_stone_a")
 position = Vector3(21.217, 3.6, -60.571)
 rotation_degrees = Vector3(0, 344.098, 0)
 mesh = ExtResource("env_palm_tall_a")
+material_override = ExtResource("3_m_beach_kit_foliage")
 
 [node name="ScatterR5" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(14.577, 3.85, -70.643)

@@ -1,9 +1,10 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_crate"]
 [ext_resource type="PackedScene" path="res://scenes/props/wumpa.tscn" id="4_wumpa"]
+[ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="5_m_beach_kit_foliage"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="env_cliff_low_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_tall_a.res" id="env_cliff_tall_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/fern_cluster_a.res" id="env_fern_cluster_a"]
@@ -131,6 +132,7 @@ mesh = ExtResource("env_rock_boulder_a")
 position = Vector3(-22.684, -0.4, -7.167)
 rotation_degrees = Vector3(0, 297.785, 0)
 mesh = ExtResource("env_jungle_tree_b")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterL1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-18.31, -0.15, -15)
@@ -146,6 +148,7 @@ mesh = ExtResource("env_rock_cluster_a")
 position = Vector3(-15.432, -0.4, -29.833)
 rotation_degrees = Vector3(0, 71.289, 0)
 mesh = ExtResource("env_fern_cluster_a")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterL3" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-15.372, -0.15, -37.667)
@@ -161,6 +164,7 @@ mesh = ExtResource("env_rock_boulder_a")
 position = Vector3(-16.4, -0.4, -52.5)
 rotation_degrees = Vector3(0, 326.865, 0)
 mesh = ExtResource("env_jungle_tree_b")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterL5" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-25.746, -0.15, -60.333)
@@ -216,6 +220,7 @@ mesh = ExtResource("env_rock_boulder_b")
 position = Vector3(18.809, -0.4, -7.167)
 rotation_degrees = Vector3(0, 352.806, 0)
 mesh = ExtResource("env_fern_cluster_a")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterR1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(20.767, -0.15, -15)
@@ -231,6 +236,7 @@ mesh = ExtResource("env_stone_cairn_a")
 position = Vector3(21.021, -0.4, -29.833)
 rotation_degrees = Vector3(0, 90.328, 0)
 mesh = ExtResource("env_jungle_tree_b")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterR3" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(23.346, -0.15, -37.667)
@@ -246,6 +252,7 @@ mesh = ExtResource("env_rock_boulder_b")
 position = Vector3(24.913, -0.4, -52.5)
 rotation_degrees = Vector3(0, 192.98, 0)
 mesh = ExtResource("env_fern_cluster_a")
+material_override = ExtResource("5_m_beach_kit_foliage")
 
 [node name="ScatterR5" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(13.793, -0.15, -60.333)

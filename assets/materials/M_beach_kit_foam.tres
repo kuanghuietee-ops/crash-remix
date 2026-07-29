@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://assets/shaders/surf_foam.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/textures/T_beach_kit_atlas.png" id="2_texture"]
+
+[resource]
+resource_name = "M_beach_kit_foam"
+shader = ExtResource("1_shader")
+shader_parameter/albedo_texture = ExtResource("2_texture")
+shader_parameter/roughness_value = 0.92

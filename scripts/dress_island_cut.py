@@ -557,6 +557,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         total += count
         print(f"DRESSED {warp_room.name} {count}")
     print(f"DRESS_TOTAL {dressed} scene(s), {total} scenery node(s)")
+
+    # Regenerating EnvironmentArt drops the animated material overrides with it,
+    # so re-attach them here rather than trusting anyone to remember a second
+    # command. Without this a re-dress silently freezes every palm and fern it
+    # touches, and nothing in the engine or the lints would say so.
+    from scripts.route_kit_materials import main as route_materials
+
+    route_materials(["--repo-root", str(arguments.repo_root)])
     return 0
 
 

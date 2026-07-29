@@ -117,6 +117,22 @@ write `"vram_texture": true` and `"imported_formats": ["s3tc_bptc", "etc2_astc"]
 the sidecar's own metadata — the importer stating it produced the ASTC the mobile
 budget assumes. Check that metadata rather than trusting the enum ordering.
 
+**Animated pieces are routed by name, not by hand.** Three pieces of the kit move:
+the sea, the surf foam, and the plant family (palms, ferns, bushes, grass, canopy
+arches). They get a `ShaderMaterial` as a `material_override` on each instance, chosen
+from the table in `scripts/kit_material_routing.py` and applied by
+`scripts/route_kit_materials.py`, which is idempotent and runs automatically at the end
+of `dress_island_cut.py`. Routing is keyed on the **piece stem** — `palm_tall_a`, not a
+mesh path — so when the operator's own palm replaces the generated one at rung 4 of the
+art ladder, it inherits the sway with no change to any of this. A piece that must stay
+still is listed in `STATIC_BY_DESIGN` with the reason, so stillness reads as a decision.
+
+The shaders are vertex-only and opaque by design. They never touch `UV`: the palette
+lives in the UVs — each face points at one 256 px atlas cell — so sliding a UV repaints
+the piece with its neighbour's colour. Note that `water_sea_tile` and `surf_foam_edge`
+each span *two* cells, so no single cell rect can bound a scroll for them; that is why
+the water animates by displacement and brightness rather than by scrolling.
+
 **`mipmaps/generate=true` is mandatory on every kit texture.** The atlas is *designed*
 around mip behaviour: the 16 px guard band exists because mipmapping averages
 neighbouring texels and by the fifth mip a 256 px cell is 8 px wide, and the grain is

@@ -143,3 +143,78 @@ func test_both_kit_textures_exist_and_are_referenced_by_the_kit() -> void:
 	# the one most at risk of becoming that.
 	assert_true(used.has(ATLAS_PATH), "no piece samples the atlas")
 	assert_true(used.has(TRIM_PATH), "no piece samples the trim sheet")
+
+
+## --- animated kit materials (review Tier B2) -----------------------------
+##
+## The island was a diorama: correct, textured, and completely motionless. These
+## three materials are the cheapest fix available -- vertex-only animation, no
+## extra passes, no transparency, no extra draw calls -- but they are attached
+## by a script (scripts/route_kit_materials.py) across ~30 scenes, so a silent
+## miss looks exactly like "we decided not to animate that one".
+
+const ANIMATED_MATERIALS := {
+	"res://assets/materials/M_beach_kit_sea.tres": "res://assets/shaders/sea_surface.gdshader",
+	"res://assets/materials/M_beach_kit_foam.tres": "res://assets/shaders/surf_foam.gdshader",
+	"res://assets/materials/M_beach_kit_foliage.tres": "res://assets/shaders/foliage_sway.gdshader",
+}
+
+const SEA_SEGMENT := "res://scenes/segments/beach_landing.tscn"
+
+
+func test_animated_materials_load_and_carry_their_shader() -> void:
+	for material_path: String in ANIMATED_MATERIALS:
+		assert_true(ResourceLoader.exists(material_path), "%s must exist" % material_path)
+		var material := load(material_path) as ShaderMaterial
+		assert_not_null(material, "%s must be a ShaderMaterial" % material_path)
+		if material != null:
+			assert_not_null(material.shader, "%s has no shader" % material_path)
+			if material.shader != null:
+				assert_eq(
+					material.shader.resource_path,
+					ANIMATED_MATERIALS[material_path],
+					"%s points at the wrong shader" % material_path
+				)
+
+
+func test_animated_materials_still_sample_the_kit_atlas() -> void:
+	# The whole point of the atlas is that one texture paints the kit. A shader
+	# that forgot to sample it renders the piece untextured while still looking
+	# "animated", which is a worse failure than no animation at all.
+	for material_path: String in ANIMATED_MATERIALS:
+		var material := load(material_path) as ShaderMaterial
+		if material == null:
+			continue
+		var texture := material.get_shader_parameter("albedo_texture") as Texture2D
+		assert_not_null(texture, "%s must sample a texture" % material_path)
+		if texture != null:
+			assert_eq(
+				texture.resource_path,
+				ATLAS_PATH,
+				"%s must sample the kit atlas" % material_path
+			)
+
+
+func test_the_sea_instance_on_the_beach_actually_carries_the_sea_material() -> void:
+	# End of the chain: routing table -> script -> scene -> instance. This is the
+	# only assertion that proves the ocean itself moves.
+	var packed := load(SEA_SEGMENT) as PackedScene
+	assert_not_null(packed, "beach landing must load")
+	if packed == null:
+		return
+	var root := packed.instantiate()
+	var found_sea := false
+	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var instance := node as MeshInstance3D
+		if instance.mesh == null:
+			continue
+		if not instance.mesh.resource_path.ends_with("water_sea_tile.res"):
+			continue
+		found_sea = true
+		var override := instance.material_override as ShaderMaterial
+		assert_not_null(
+			override,
+			"%s renders the sea with no animated material" % instance.name
+		)
+	assert_true(found_sea, "beach landing should instance the sea tile")
+	root.queue_free()
