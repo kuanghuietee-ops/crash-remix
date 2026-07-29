@@ -447,6 +447,12 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or chase.boulder_start_gap_m
 		<= chase.boulder_kill_distance_m
 		or chase.opening_auto_run_duration_s < 0.0
+		# With no rubber-band mechanic, a boulder at or above the player's
+		# own run speed closes the gap regardless of skill and the level
+		# cannot be finished -- bound it against the field that already
+		# governs it (the same N1 lesson as the shockwave-vs-jump guard
+		# above).
+		or chase.boulder_speed_mps >= move.run_speed_mps
 	):
 		return false
 

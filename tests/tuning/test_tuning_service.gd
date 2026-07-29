@@ -820,6 +820,30 @@ func test_chase_tuning_rejects_invalid_pressure_contracts() -> void:
 	assert_true(service.call("catalog_is_usable"))
 
 
+func test_an_uncompletable_boulder_chase_is_refused() -> void:
+	# The boulder must never be faster than the player's own run speed:
+	# with no rubber-band mechanic, a faster boulder closes the gap and
+	# catches Crash regardless of player skill, and the level cannot be
+	# finished. Bound it against the field that already governs it -- the
+	# same N1 lesson as the boss shockwave-vs-jump-height guard.
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var catalog := service.get("catalog") as GameplayTuning
+	var run_speed_mps: float = catalog.move.run_speed_mps
+	assert_true(
+		service.call("catalog_is_usable", catalog),
+		"the authored catalog must be usable before the guard is proved"
+	)
+
+	catalog.chase.boulder_speed_mps = run_speed_mps
+
+	assert_false(
+		service.call("catalog_is_usable", catalog),
+		"a boulder at or above the player's run speed is uncompletable"
+	)
+
+
 func test_old_chase_override_backfills_opening_auto_run_duration() -> void:
 	var service: RefCounted = _new_service()
 	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
