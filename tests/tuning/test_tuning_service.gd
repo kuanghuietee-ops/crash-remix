@@ -1625,6 +1625,144 @@ func test_old_economy_override_backfills_mercy_banner_duration() -> void:
 	)
 
 
+func test_old_camera_override_backfills_rail_handle_length_factor() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"rail_handle_length_factor"
+	assert_true(
+		_exported_property_names(authored.camera).has(field),
+		"the rail handle length factor must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.camera).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.camera.set(field, CameraTuning.new().get(field))
+	stale.camera.field_of_view_degrees = 62.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.camera.get(field),
+		authored.camera.get(field),
+		"an older phone override must receive the authored handle length factor"
+	)
+	assert_almost_eq(
+		migrated.camera.field_of_view_degrees,
+		62.0,
+		0.001,
+		"migration must preserve existing camera edits"
+	)
+
+
+func test_old_camera_override_backfills_corridor_tangent_baseline_m() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"corridor_tangent_baseline_m"
+	assert_true(
+		_exported_property_names(authored.camera).has(field),
+		"the corridor tangent baseline must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.camera).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.camera.set(field, CameraTuning.new().get(field))
+	stale.camera.field_of_view_degrees = 63.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.camera.get(field),
+		authored.camera.get(field),
+		"an older phone override must receive the authored corridor tangent baseline"
+	)
+	assert_almost_eq(
+		migrated.camera.field_of_view_degrees,
+		63.0,
+		0.001,
+		"migration must preserve existing camera edits"
+	)
+
+
+func test_old_input_override_backfills_gesture_axis_slew_degrees_per_s() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"gesture_axis_slew_degrees_per_s"
+	assert_true(
+		_exported_property_names(authored.input).has(field),
+		"the gesture axis slew rate must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.input).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.input.set(field, InputTuning.new().get(field))
+	stale.input.fallback_dpi = 179.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.input.get(field),
+		authored.input.get(field),
+		"an older phone override must receive the authored gesture axis slew rate"
+	)
+	assert_almost_eq(
+		migrated.input.fallback_dpi,
+		179.0,
+		0.001,
+		"migration must preserve existing input edits"
+	)
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script
