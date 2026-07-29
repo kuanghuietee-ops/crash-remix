@@ -8,7 +8,7 @@ Run from the repository root:
 The silhouette was reviewed in uniform clay before this color pass.  This
 stage preserves that geometry while adding a self-contained, matte palette
 through vertex colors: one draw-call material, no copied textures, a
-proportion-matched Rigify basic-human skeleton, and fifteen authored gameplay
+proportion-matched Rigify basic-human skeleton, and sixteen authored gameplay
 and personality actions plus idle.  The editable Blender source and
 inspection renders stay under build/; the shipping GLB is written to the
 hero-character budget directory.
@@ -44,6 +44,7 @@ WIN_ACTION_NAME = "A_crash_win"
 WALL_RUN_ACTION_NAME = "A_crash_wall_run"
 GRIND_ACTION_NAME = "A_crash_grind"
 SWING_ACTION_NAME = "A_crash_swing"
+HOG_RIDE_ACTION_NAME = "A_crash_hog_ride"
 CORE_ACTION_NAMES = (
     BORED_IDLE_ACTION_NAME,
     RUN_ACTION_NAME,
@@ -60,6 +61,7 @@ CORE_ACTION_NAMES = (
     WALL_RUN_ACTION_NAME,
     GRIND_ACTION_NAME,
     SWING_ACTION_NAME,
+    HOG_RIDE_ACTION_NAME,
 )
 COLOR_ATTRIBUTE = "COLOR_0"
 SOURCE_PATH = REPO_ROOT / "build/art-source/SK_crash_color.blend"
@@ -84,6 +86,7 @@ WIN_LAST_FRAME = 33
 WALL_RUN_LAST_FRAME = 17
 GRIND_LAST_FRAME = 25
 SWING_LAST_FRAME = 25
+HOG_RIDE_LAST_FRAME = 25
 Color = tuple[float, float, float, float]
 
 FUR_ORANGE: Color = (0.88, 0.225, 0.035, 1.0)
@@ -2028,6 +2031,70 @@ def create_swing(rig: bpy.types.Object) -> bpy.types.Action:
     return finish_action(action, "traversal", True)
 
 
+def create_hog_ride(rig: bpy.types.Object) -> bpy.types.Action:
+    action = begin_action(
+        rig,
+        HOG_RIDE_ACTION_NAME,
+        HOG_RIDE_LAST_FRAME,
+    )
+    for frame in (
+        IDLE_FIRST_FRAME,
+        7,
+        13,
+        19,
+        HOG_RIDE_LAST_FRAME,
+    ):
+        phase = math.tau * (
+            (frame - IDLE_FIRST_FRAME)
+            / (HOG_RIDE_LAST_FRAME - IDLE_FIRST_FRAME)
+        )
+        bounce = math.cos(phase)
+        sway = math.sin(phase)
+        rotations = {
+            "torso": (
+                17.0 + 2.5 * bounce,
+                0.0,
+                3.0 * sway,
+            ),
+            "head": (
+                -10.0 - 1.5 * bounce,
+                -2.0 * sway,
+                -2.0 * sway,
+            ),
+            "hips": (
+                -4.0,
+                0.0,
+                -2.0 * sway,
+            ),
+            "thigh_fk.L": (-82.0, -34.0, -22.0),
+            "thigh_fk.R": (-82.0, 34.0, 22.0),
+            "shin_fk.L": (94.0, 0.0, 0.0),
+            "shin_fk.R": (94.0, 0.0, 0.0),
+            "foot_fk.L": (-28.0, 0.0, -5.0),
+            "foot_fk.R": (-28.0, 0.0, 5.0),
+            "upper_arm_fk.L": (
+                54.0 + 2.0 * bounce,
+                -28.0,
+                -20.0,
+            ),
+            "upper_arm_fk.R": (
+                54.0 + 2.0 * bounce,
+                28.0,
+                20.0,
+            ),
+            "forearm_fk.L": (64.0, 0.0, -8.0),
+            "forearm_fk.R": (64.0, 0.0, 8.0),
+        }
+        root_location = (
+            0.004 * sway,
+            0.0,
+            -0.018 + 0.008 * (1.0 - bounce),
+        )
+        key_action_pose(rig, frame, rotations, root_location)
+    bpy.context.scene.frame_set(IDLE_FIRST_FRAME)
+    return finish_action(action, "ride", True)
+
+
 def create_animation_set(
     rig: bpy.types.Object,
 ) -> dict[str, bpy.types.Action]:
@@ -2048,6 +2115,7 @@ def create_animation_set(
         WALL_RUN_ACTION_NAME: create_wall_run(rig),
         GRIND_ACTION_NAME: create_grind(rig),
         SWING_ACTION_NAME: create_swing(rig),
+        HOG_RIDE_ACTION_NAME: create_hog_ride(rig),
     }
     rig.animation_data.action = actions[IDLE_ACTION_NAME]
     bpy.context.scene.frame_start = IDLE_FIRST_FRAME
@@ -2414,6 +2482,7 @@ def create_inspection_previews(
         WALL_RUN_ACTION_NAME: 5,
         GRIND_ACTION_NAME: 7,
         SWING_ACTION_NAME: 7,
+        HOG_RIDE_ACTION_NAME: 7,
     }
     for action_name, frame in preview_frames.items():
         rig.animation_data.action = bpy.data.actions[action_name]

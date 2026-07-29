@@ -17,6 +17,7 @@ const WIN := &"A_crash_win"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
+const HOG_RIDE := &"A_crash_hog_ride"
 
 
 func test_clip_selection_covers_gameplay_and_personality_actions() -> void:
@@ -107,8 +108,8 @@ func test_clip_selection_covers_gameplay_and_personality_actions() -> void:
 	)
 	assert_eq(
 		driver_script.call("clip_for", &"ride", false, JUMP, true, false),
-		RUN,
-		"ride keeps the grounded locomotion cycle until its own art pass"
+		HOG_RIDE,
+		"mounted Crash must sit and ride instead of running on the hog"
 	)
 
 

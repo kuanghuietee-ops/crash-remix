@@ -68,6 +68,7 @@ const CRASH_CORE_CLIPS := [
 	&"A_crash_wall_run",
 	&"A_crash_grind",
 	&"A_crash_swing",
+	&"A_crash_hog_ride",
 ]
 
 
@@ -881,6 +882,7 @@ func test_crash_color_pass_is_one_vertex_painted_rigged_hero() -> void:
 			&"A_crash_wall_run",
 			&"A_crash_grind",
 			&"A_crash_swing",
+			&"A_crash_hog_ride",
 		]:
 			assert_eq(clip.loop_mode, Animation.LOOP_LINEAR)
 		if clip_name in [
@@ -1267,6 +1269,75 @@ func test_crash_core_actions_move_hands_and_feet_through_readable_arcs() -> void
 	)
 
 
+func test_crash_hog_ride_pose_is_seated_straddling_and_braced() -> void:
+	var asset_scene := load(CRASH_PATH) as PackedScene
+	assert_not_null(asset_scene)
+	if asset_scene == null:
+		return
+	var asset := asset_scene.instantiate()
+	add_child_autofree(asset)
+	await wait_process_frames(1)
+	var skeletons := asset.find_children("*", "Skeleton3D", true, false)
+	var animation_players := asset.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	assert_eq(skeletons.size(), 1)
+	assert_eq(animation_players.size(), 1)
+	if skeletons.size() != 1 or animation_players.size() != 1:
+		return
+	var skeleton := skeletons[0] as Skeleton3D
+	var animation_player := animation_players[0] as AnimationPlayer
+	var ride := animation_player.get_animation(&"A_crash_hog_ride")
+	assert_not_null(ride)
+	if ride == null:
+		return
+	var pose := _sample_bones(
+		animation_player,
+		skeleton,
+		&"A_crash_hog_ride",
+		ride.length * 0.25
+	)
+
+	assert_gt(
+		pose[&"knee_l"].z,
+		pose[&"seat"].z + 0.06,
+		"the left thigh must reach forward from the seated hips"
+	)
+	assert_gt(
+		pose[&"knee_r"].z,
+		pose[&"seat"].z + 0.06,
+		"the right thigh must reach forward from the seated hips"
+	)
+	assert_gt(
+		absf(pose[&"foot_l"].x - pose[&"foot_r"].x),
+		0.24,
+		"both legs must visibly straddle the hog instead of standing together"
+	)
+	assert_lt(
+		pose[&"foot_l"].y,
+		pose[&"seat"].y - 0.10,
+		"the left lower leg must hang below the seated hips"
+	)
+	assert_lt(
+		pose[&"foot_r"].y,
+		pose[&"seat"].y - 0.10,
+		"the right lower leg must hang below the seated hips"
+	)
+	assert_gt(
+		pose[&"hand_l"].z,
+		pose[&"chest"].z + 0.06,
+		"the left hand must brace forward over the hog"
+	)
+	assert_gt(
+		pose[&"hand_r"].z,
+		pose[&"chest"].z + 0.06,
+		"the right hand must brace forward over the hog"
+	)
+
+
 func test_look_dev_auto_plays_and_phone_frames_crash_idle() -> void:
 	assert_true(ResourceLoader.exists(CRASH_PATH))
 	if not ResourceLoader.exists(CRASH_PATH):
@@ -1462,15 +1533,23 @@ func _sample_bones(
 		&"hand_l",
 		&"hand_r",
 		&"foot_l",
+		&"foot_r",
 		&"chest",
 		&"head",
+		&"seat",
+		&"knee_l",
+		&"knee_r",
 	]:
 		var bone_name := {
 			&"hand_l": "DEF-hand.L",
 			&"hand_r": "DEF-hand.R",
 			&"foot_l": "DEF-foot.L",
+			&"foot_r": "DEF-foot.R",
 			&"chest": "DEF-spine.003",
 			&"head": "DEF-spine.006",
+			&"seat": "DEF-spine",
+			&"knee_l": "DEF-shin.L",
+			&"knee_r": "DEF-shin.R",
 		}[key] as String
 		var bone_index := skeleton.find_bone(bone_name)
 		assert_ne(bone_index, -1, "%s must remain exported" % bone_name)

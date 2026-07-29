@@ -24,6 +24,7 @@ const WIN := &"A_crash_win"
 const WALL_RUN := &"A_crash_wall_run"
 const GRIND := &"A_crash_grind"
 const SWING := &"A_crash_swing"
+const HOG_RIDE := &"A_crash_hog_ride"
 
 const STATE_GROUNDED := PlayerStateMachineType.STATE_GROUNDED
 const STATE_CROUCHED := PlayerStateMachineType.STATE_CROUCHED
@@ -140,7 +141,7 @@ static func clip_for(
 		STATE_SWING:
 			return SWING
 		STATE_RIDE:
-			return RUN
+			return HOG_RIDE
 	return IDLE
 
 

@@ -1252,17 +1252,22 @@ func test_hog_wild_uses_the_rigged_hog_and_run_animation_while_mounted() -> void
 	) as MeshInstance3D
 	var model := hog_visual.get_node_or_null("HogModel")
 	var driver := hog_visual.get_node_or_null("VisualDriver")
+	var crash_animation_driver := player.get_node_or_null(
+		"Visual/CrashAnimationDriver"
+	)
 	assert_not_null(player)
 	assert_not_null(hog_visual)
 	assert_not_null(proxy)
 	assert_not_null(model)
 	assert_not_null(driver)
+	assert_not_null(crash_animation_driver)
 	if (
 		player == null
 		or hog_visual == null
 		or proxy == null
 		or model == null
 		or driver == null
+		or crash_animation_driver == null
 	):
 		return
 	assert_false(proxy.visible, "the old capsule must be a bounds proxy only")
@@ -1282,9 +1287,14 @@ func test_hog_wild_uses_the_rigged_hog_and_run_animation_while_mounted() -> void
 		"A_hog_run",
 		"the mounted forced run must visibly cycle the hog gait"
 	)
+	assert_eq(
+		crash_animation_driver.call("current_clip"),
+		&"A_crash_hog_ride",
+		"mounted Crash must use the seated riding pose, not his run cycle"
+	)
 
 
-func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
+func test_hog_wild_mounted_player_sits_with_legs_beside_hog_back() -> void:
 	var level := await _configured_hog_wild()
 	if level == null:
 		return
@@ -1295,14 +1305,14 @@ func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
 	var crash_model := player.get_node_or_null(
 		"Visual/SpinPivot/CrashModel"
 	) as Node3D
-	var crash_meshes: Array[Node] = (
-		crash_model.find_children("*", "MeshInstance3D", true, false)
+	var crash_skeletons: Array[Node] = (
+		crash_model.find_children("*", "Skeleton3D", true, false)
 		if crash_model != null
 		else []
 	)
-	var player_body := (
-		crash_meshes[0] as MeshInstance3D
-		if crash_meshes.size() == 1
+	var crash_skeleton := (
+		crash_skeletons[0] as Skeleton3D
+		if crash_skeletons.size() == 1
 		else null
 	)
 	var hog_capsule := player.get_node_or_null(
@@ -1310,29 +1320,64 @@ func test_hog_wild_mounted_player_visual_rests_on_hog_back() -> void:
 	) as MeshInstance3D
 	assert_not_null(mount)
 	assert_not_null(player)
-	assert_not_null(player_body)
+	assert_not_null(crash_skeleton)
 	assert_not_null(hog_capsule)
 	if (
 		mount == null
 		or player == null
-		or player_body == null
+		or crash_skeleton == null
 		or hog_capsule == null
 	):
 		return
 	assert_true(mount.call("is_mounted"))
-	assert_true(player_body.is_visible_in_tree())
-	var player_bounds := (
-		player_body.global_transform * player_body.get_aabb()
-	)
+	crash_skeleton.force_update_all_bone_transforms()
+	var seat_index := crash_skeleton.find_bone("DEF-spine")
+	var left_foot_index := crash_skeleton.find_bone("DEF-foot.L")
+	var right_foot_index := crash_skeleton.find_bone("DEF-foot.R")
+	assert_ne(seat_index, -1)
+	assert_ne(left_foot_index, -1)
+	assert_ne(right_foot_index, -1)
+	if (
+		seat_index < 0
+		or left_foot_index < 0
+		or right_foot_index < 0
+	):
+		return
+	var seat_y := (
+		crash_skeleton.global_transform
+		* crash_skeleton.get_bone_global_pose(seat_index).origin
+	).y
+	var left_foot_y := (
+		crash_skeleton.global_transform
+		* crash_skeleton.get_bone_global_pose(left_foot_index).origin
+	).y
+	var right_foot_y := (
+		crash_skeleton.global_transform
+		* crash_skeleton.get_bone_global_pose(right_foot_index).origin
+	).y
 	var hog_bounds := (
 		hog_capsule.global_transform * hog_capsule.get_aabb()
 	)
 	var hog_back_y := hog_bounds.position.y + hog_bounds.size.y
-	assert_almost_eq(
-		player_bounds.position.y,
+	assert_gt(
+		seat_y,
 		hog_back_y,
-		CHASE_GAP_TOLERANCE_M,
-		"the mounted player body must sit visibly above the Hog capsule"
+		"Crash's seated hips must rest just above the hog's back"
+	)
+	assert_lt(
+		seat_y - hog_back_y,
+		0.12,
+		"Crash must not float above the hog while using the seated pose"
+	)
+	assert_lt(
+		left_foot_y,
+		hog_back_y,
+		"the left leg must hang beside the hog instead of standing on it"
+	)
+	assert_lt(
+		right_foot_y,
+		hog_back_y,
+		"the right leg must hang beside the hog instead of standing on it"
 	)
 
 

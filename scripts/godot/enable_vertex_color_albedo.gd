@@ -18,6 +18,7 @@ const LOOPING_ANIMATION_SUFFIXES := [
 	"_spin",
 	"_grind",
 	"_swing",
+	"_hog_ride",
 ]
 
 
