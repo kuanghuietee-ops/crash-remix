@@ -475,7 +475,16 @@ func test_service_catalog_exposes_hog_section() -> void:
 	if hog == null:
 		return
 	assert_eq(_global_class_name(hog), "HogTuning")
-	assert_eq(hog.get("ride_speed_mps"), 9.0)
+	# Difficulty-pass (2026-07-29, spec Decision 4): ride_speed_mps is
+	# operator tuning — read the authored source instead of freezing it
+	# a second time.
+	var authored_hog_section := (
+		load(BASE_CATALOG_PATH) as GameplayTuning
+	).hog
+	assert_eq(
+		hog.get("ride_speed_mps"),
+		authored_hog_section.ride_speed_mps
+	)
 	assert_eq(hog.get("steer_lateral_speed_mps"), 5.0)
 	assert_eq(hog.get("hog_jump_height_m"), 2.0)
 

@@ -4,6 +4,6 @@
 
 [resource]
 script = ExtResource("1_hog")
-ride_speed_mps = 9.0
+ride_speed_mps = 10.35
 steer_lateral_speed_mps = 5.0
 hog_jump_height_m = 2.0
