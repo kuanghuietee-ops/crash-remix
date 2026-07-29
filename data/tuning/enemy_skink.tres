@@ -4,11 +4,11 @@
 
 [resource]
 script = ExtResource("1_enemy")
-patrol_speed_mps = 6.0
+patrol_speed_mps = 6.9
 patrol_span_m = 6.0
 turn_pause_s = 0.0
-telegraph_s = 0.35
+telegraph_s = 0.2975
 attack_active_s = 1.0
-attack_cooldown_s = 1.2
+attack_cooldown_s = 1.02
 trigger_range_m = 9.5
 trigger_lateral_m = 5.0

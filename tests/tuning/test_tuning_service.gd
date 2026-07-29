@@ -383,20 +383,28 @@ func test_service_catalog_exposes_all_three_enemy_sections() -> void:
 		OK
 	)
 	var catalog: Resource = service.get("catalog")
+	# Difficulty-pass (2026-07-29): patrol/telegraph/chomp values are operator
+	# tuning, not frozen constants — read the authored source instead of
+	# hardcoding it a second time, so this stays a dead-wiring check rather
+	# than a value-freeze.
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(authored)
+	if authored == null:
+		return
 	var expected_values := {
 		&"enemy_crab": {
-			&"patrol_speed_mps": 2.0,
+			&"patrol_speed_mps": authored.enemy_crab.patrol_speed_mps,
 			&"patrol_span_m": 4.0,
 			&"trigger_lateral_m": 0.0,
 		},
 		&"enemy_skink": {
-			&"telegraph_s": 0.35,
+			&"telegraph_s": authored.enemy_skink.telegraph_s,
 			&"attack_active_s": 1.0,
 			&"trigger_range_m": 9.5,
 			&"trigger_lateral_m": 5.0,
 		},
 		&"enemy_plant": {
-			&"attack_active_s": 0.6,
+			&"attack_active_s": authored.enemy_plant.attack_active_s,
 			&"trigger_range_m": 2.5,
 			&"trigger_lateral_m": 0.0,
 		},
@@ -428,9 +436,17 @@ func test_service_catalog_exposes_chase_section() -> void:
 	if chase == null:
 		return
 	assert_eq(_global_class_name(chase), "ChaseTuning")
-	assert_eq(chase.get("boulder_speed_mps"), 6.8)
+	# Difficulty-pass (2026-07-29): boulder speed/gap are operator tuning —
+	# read the authored source rather than freezing it a second time.
+	var authored_chase := (
+		load(BASE_CATALOG_PATH) as GameplayTuning
+	).chase
+	assert_eq(chase.get("boulder_speed_mps"), authored_chase.boulder_speed_mps)
 	assert_eq(chase.get("boulder_kill_distance_m"), 1.0)
-	assert_eq(chase.get("boulder_start_gap_m"), 6.0)
+	assert_eq(
+		chase.get("boulder_start_gap_m"),
+		authored_chase.boulder_start_gap_m
+	)
 	assert_true(
 		_exported_property_names(chase).has(
 			&"opening_auto_run_duration_s"
@@ -477,13 +493,24 @@ func test_service_catalog_exposes_boss_papu_section() -> void:
 	if boss == null:
 		return
 	assert_eq(_global_class_name(boss), "BossTuning")
-	# 01-DESIGN §4.2: phase_count is [spec] §8.2; the rest are [proposed].
+	# 01-DESIGN §4.2: phase_count is [spec] §8.2; the rest are [proposed] —
+	# and, being [proposed] operator tuning, difficulty-pass (2026-07-29)
+	# retimes them. Read the authored source instead of freezing it again.
+	var authored_boss := (
+		load(BASE_CATALOG_PATH) as GameplayTuning
+	).boss_papu
 	assert_eq(boss.get("phase_count"), 3)
 	assert_eq(boss.get("arena_strikes_per_phase"), 1)
-	assert_eq(boss.get("slam_period_s"), 2.5)
-	assert_eq(boss.get("shockwave_speed_mps"), 6.0)
+	assert_eq(boss.get("slam_period_s"), authored_boss.slam_period_s)
+	assert_eq(
+		boss.get("shockwave_speed_mps"),
+		authored_boss.shockwave_speed_mps
+	)
 	assert_eq(boss.get("shockwave_height_m"), 0.8)
-	assert_eq(boss.get("debris_telegraph_s"), 0.8)
+	assert_eq(
+		boss.get("debris_telegraph_s"),
+		authored_boss.debris_telegraph_s
+	)
 
 
 func test_fingerprint_moves_when_a_boss_papu_value_changes() -> void:
