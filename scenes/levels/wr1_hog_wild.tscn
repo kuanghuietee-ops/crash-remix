@@ -152,6 +152,9 @@ position = Vector3(-0.4089, 0, -259.1058)
 [node name="Swerve1Mid30" type="Marker3D" parent="HogRide/Path"]
 position = Vector3(-1.6077, 0, -262)
 
+[node name="Swerve1Exit" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(-3.5147, 0, -264.4853)
+
 [node name="PlantEnd" type="Marker3D" parent="HogRide/Path"]
 position = Vector3(-184.53403598375618, 0, -445.5046359837562)
 
@@ -160,6 +163,9 @@ position = Vector3(-186.44103226193818, 0, -447.9899041875926)
 
 [node name="Swerve2Mid30" type="Marker3D" parent="HogRide/Path"]
 position = Vector3(-187.63986109876186, 0, -450.8840922429891)
+
+[node name="Swerve2Exit" type="Marker3D" parent="HogRide/Path"]
+position = Vector3(-188.04878095032203, 0, -453.9899173579948)
 
 [node name="CombineEnd" type="Marker3D" parent="HogRide/Path"]
 position = Vector3(-188.04878095032203, 0, -709.9899173579947)
@@ -227,6 +233,9 @@ position = Vector3(-0.4089, 0, -259.1058)
 [node name="Swerve1Mid30" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-1.6077, 0, -262)
 
+[node name="Swerve1Exit" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(-3.5147, 0, -264.4853)
+
 [node name="JumpEnd" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-94.0243679918781, 0, -354.99496799187807)
 
@@ -238,6 +247,9 @@ position = Vector3(-186.44103226193818, 0, -447.9899041875926)
 
 [node name="Swerve2Mid30" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-187.63986109876186, 0, -450.8840922429891)
+
+[node name="Swerve2Exit" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(-188.04878095032203, 0, -453.9899173579948)
 
 [node name="CrateEnd" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-188.04878095032203, 0, -581.9899173579947)

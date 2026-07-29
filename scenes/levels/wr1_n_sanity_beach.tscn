@@ -149,6 +149,9 @@ position = Vector3(-1.6077, 0, -294)
 [node name="CornerMid60" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-6, 0, -298.3923)
 
+[node name="CornerExit" type="Marker3D" parent="CameraRig/Rail"]
+position = Vector3(-12, 0, -300)
+
 [node name="CadenceEnd" type="Marker3D" parent="CameraRig/Rail"]
 position = Vector3(-108, 0, -300)
 

@@ -540,13 +540,19 @@ func test_n_sanity_beach_corner_rail_markers_and_transforms() -> void:
 
 	var mid_30 := corner.get_node_or_null("Spine/Mid30") as Marker3D
 	var mid_60 := corner.get_node_or_null("Spine/Mid60") as Marker3D
+	var exit_marker := corner.get_node_or_null("Spine/Exit") as Marker3D
 	assert_not_null(mid_30)
 	assert_not_null(mid_60)
-	if mid_30 == null or mid_60 == null:
+	assert_not_null(exit_marker)
+	if mid_30 == null or mid_60 == null or exit_marker == null:
 		return
 
 	var closest_to_30_m := INF
 	var closest_to_60_m := INF
+	# MINOR-5: the rail used to omit the arc's own exit point, so the last
+	# third of the corner (60°->90°) was chorded straight to CadenceEnd,
+	# 96m downstream -- well outside the authored R=12 arc.
+	var closest_to_exit_m := INF
 	for child: Node in rail.get_children():
 		if not child is Marker3D:
 			continue
@@ -559,6 +565,10 @@ func test_n_sanity_beach_corner_rail_markers_and_transforms() -> void:
 			closest_to_60_m,
 			marker.global_position.distance_to(mid_60.global_position)
 		)
+		closest_to_exit_m = minf(
+			closest_to_exit_m,
+			marker.global_position.distance_to(exit_marker.global_position)
+		)
 	assert_lt(
 		closest_to_30_m,
 		0.01,
@@ -568,6 +578,11 @@ func test_n_sanity_beach_corner_rail_markers_and_transforms() -> void:
 		closest_to_60_m,
 		0.01,
 		"the rail must carry a marker on the corner's true 60° arc point"
+	)
+	assert_lt(
+		closest_to_exit_m,
+		0.01,
+		"the rail must carry a marker on the corner's true exit arc point"
 	)
 
 	var expected_basis := Basis(
@@ -1877,21 +1892,31 @@ func test_hog_wild_swerve_rail_markers_and_transforms() -> void:
 	var left_mid30 := swerve_left.get_node_or_null(
 		"Spine/Mid30"
 	) as Marker3D
+	var left_exit := swerve_left.get_node_or_null(
+		"Spine/Exit"
+	) as Marker3D
 	var right_mid15 := swerve_right.get_node_or_null(
 		"Spine/Mid15"
 	) as Marker3D
 	var right_mid30 := swerve_right.get_node_or_null(
 		"Spine/Mid30"
 	) as Marker3D
+	var right_exit := swerve_right.get_node_or_null(
+		"Spine/Exit"
+	) as Marker3D
 	assert_not_null(left_mid15)
 	assert_not_null(left_mid30)
+	assert_not_null(left_exit)
 	assert_not_null(right_mid15)
 	assert_not_null(right_mid30)
+	assert_not_null(right_exit)
 	if (
 		left_mid15 == null
 		or left_mid30 == null
+		or left_exit == null
 		or right_mid15 == null
 		or right_mid30 == null
+		or right_exit == null
 	):
 		return
 
@@ -1901,11 +1926,27 @@ func test_hog_wild_swerve_rail_markers_and_transforms() -> void:
 			rail_markers.append(
 				(marker as Marker3D).global_position
 			)
+	var ride_path := level.get_node_or_null(
+		"HogRide/Path"
+	) as Path3D
+	assert_not_null(ride_path)
+	var ride_path_markers: Array[Vector3] = []
+	if ride_path != null:
+		for marker: Node in ride_path.get_children():
+			if marker is Marker3D:
+				ride_path_markers.append(
+					(marker as Marker3D).global_position
+				)
+	# MINOR-5: both swerves used to omit their own exit arc point, so the
+	# rail (and the hog's own ride path) chorded the last 15° of each 45°
+	# turn straight to the next segment's marker, well downstream.
 	for expected: Vector3 in [
 		left_mid15.global_position,
 		left_mid30.global_position,
+		left_exit.global_position,
 		right_mid15.global_position,
 		right_mid30.global_position,
+		right_exit.global_position,
 	]:
 		var found := false
 		for candidate: Vector3 in rail_markers:
@@ -1917,6 +1958,22 @@ func test_hog_wild_swerve_rail_markers_and_transforms() -> void:
 			(
 				"camera rail must carry a marker within 0.01m of "
 				+ "the live swerve arc marker at %s" % expected
+			)
+		)
+	for expected: Vector3 in [
+		left_exit.global_position,
+		right_exit.global_position,
+	]:
+		var found_on_ride_path := false
+		for candidate: Vector3 in ride_path_markers:
+			if candidate.distance_to(expected) <= 0.01:
+				found_on_ride_path = true
+				break
+		assert_true(
+			found_on_ride_path,
+			(
+				"the hog's own ride path must also carry a marker "
+				+ "within 0.01m of the live swerve exit at %s" % expected
 			)
 		)
 
