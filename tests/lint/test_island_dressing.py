@@ -5,6 +5,7 @@ from pathlib import Path
 from scripts.dress_island_cut import (
     BAND_DEPTH_M,
     BANK_TILE_LENGTH_M,
+    EDGE_PIECES,
     CLEARANCE_M,
     CANYON_STYLE,
     JUNGLE_STYLE,
@@ -87,10 +88,32 @@ class ClearanceTests(unittest.TestCase):
 
         for style in (CANYON_STYLE, JUNGLE_STYLE, VILLAGE_STYLE):
             for placement in placements_for("probe_segment", corridor, style):
+                # Edge markers are built to sit on the boundary and are the one
+                # documented exception; they still may not cross onto the floor.
+                floor_limit = (
+                    corridor.half_width
+                    if placement.piece in EDGE_PIECES
+                    else corridor.half_width + CLEARANCE_M
+                )
+                self.assertGreaterEqual(
+                    abs(placement.position[0]) + 1e-6,
+                    floor_limit,
+                    f"{placement.node} ({placement.piece}) is inside the corridor",
+                )
+
+    def test_only_the_edge_markers_may_use_the_clearance_exemption(self) -> None:
+        # Keeps the exemption from quietly growing into "scenery may sit
+        # anywhere", which is the rule that makes a level unplayable.
+        corridor = Corridor(half_width=9.0, z_near=2.0, z_far=-130.0, floor_y=0.0)
+
+        for style in (CANYON_STYLE, JUNGLE_STYLE, VILLAGE_STYLE):
+            for placement in placements_for("probe_segment", corridor, style):
+                if placement.piece in EDGE_PIECES:
+                    continue
                 self.assertGreaterEqual(
                     abs(placement.position[0]),
                     corridor.half_width + CLEARANCE_M,
-                    f"{placement.node} ({placement.piece}) is inside the corridor",
+                    f"{placement.node} ({placement.piece}) claims an exemption it lacks",
                 )
 
     def test_no_placement_strays_past_the_dressing_band(self) -> None:
@@ -107,9 +130,13 @@ class ClearanceTests(unittest.TestCase):
 
         for style in (CANYON_STYLE, JUNGLE_STYLE):
             for placement in placements_for("probe", corridor, style):
-                self.assertLessEqual(placement.position[2], corridor.z_near, placement.node)
+                # The geometry's span is what has to land on the segment; a
+                # mirrored strip's *origin* sits a span past the far edge by
+                # construction, which is why checking the origin missed the bug.
+                near, far = covered_z(placement)
+                self.assertLessEqual(near, corridor.z_near + 1e-6, placement.node)
                 self.assertGreaterEqual(
-                    placement.position[2], corridor.z_far - 8.0, placement.node
+                    far, corridor.z_far - placement.span_m - 8.0, placement.node
                 )
 
     def test_both_verges_are_dressed(self) -> None:
@@ -229,20 +256,50 @@ class DressedSceneTests(unittest.TestCase):
     def test_committed_scenery_clears_the_committed_corridor(self) -> None:
         # The generator's own margin is checked above; this checks the files as
         # they actually sit on disk, which is what the game loads.
+        #
+        # Piece-aware on purpose. The previous version matched every position
+        # line in the subtree by regex and so could not tell a fringe -- which
+        # belongs on the boundary -- from a tree, which must never be near it.
+        # That made the edge markers unrepresentable rather than merely absent.
         import re
+
+        from scripts.route_kit_materials import mesh_ids
+
+        node_header = re.compile(r'^\[node name="([^"]+)"[^\]]*\]$', re.MULTILINE)
+        mesh_line = re.compile(r'^mesh = ExtResource\("([^"]+)"\)$', re.MULTILINE)
+        position_line = re.compile(r"^position = Vector3\(([-\d.]+),", re.MULTILINE)
 
         for path in dressed_segments():
             text = path.read_text(encoding="utf-8")
             corridor = corridor_of(parse_platforms(text))
+            ids = mesh_ids(text)
             start = text.find('[node name="EnvironmentArt"')
             self.assertGreater(start, -1, path.name)
-            for match in re.finditer(
-                r"^position = Vector3\(([-\d.]+),", text[start:], flags=re.MULTILINE
-            ):
+
+            subtree = text[start:]
+            headers = list(node_header.finditer(subtree))
+            for index, header in enumerate(headers):
+                end = (
+                    headers[index + 1].start()
+                    if index + 1 < len(headers)
+                    else len(subtree)
+                )
+                block = subtree[header.end() : end]
+                position = position_line.search(block)
+                mesh = mesh_line.search(block)
+                if position is None or mesh is None:
+                    continue
+                piece = ids.get(mesh.group(1), "")
+                limit = (
+                    corridor.half_width
+                    if piece in EDGE_PIECES
+                    else corridor.half_width + CLEARANCE_M
+                )
+
                 self.assertGreaterEqual(
-                    abs(float(match.group(1))),
-                    corridor.half_width + CLEARANCE_M,
-                    f"{path.name}: scenery at x={match.group(1)} is in the corridor",
+                    abs(float(position.group(1))) + 1e-6,
+                    limit,
+                    f"{path.name}: {piece} at x={position.group(1)} is in the corridor",
                 )
 
 
@@ -305,6 +362,20 @@ class WarpRoomTests(unittest.TestCase):
         names = [placement.node for placement in WARP_ROOM_PLACEMENTS]
 
         self.assertEqual(len(names), len(set(names)))
+
+
+def covered_z(placement) -> tuple[float, float]:
+    """The z range a placement's geometry actually occupies, accounting for yaw.
+
+    The kit's long pieces run from their origin toward -z, so a piece mirrored
+    with yaw 180 covers +z from its origin instead. Checking the origin rather
+    than the span is what let the left verge drift onto the previous segment.
+    """
+    z = placement.position[2]
+    span = placement.span_m
+    if abs(placement.yaw - 180.0) < 1e-6:
+        return (z, z + span)
+    return (z - span, z)
 
 
 def _straight_corridor(length_m: float, half_width: float = 9.0) -> Corridor:
@@ -383,13 +454,18 @@ class CoverageTests(unittest.TestCase):
 
         placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
 
+        # covered_z returns (lower_z, upper_z). The corridor runs toward -z, so
+        # the upper bound is the end nearest the player's entry.
         for side, banks in self._by_side(placements, "Bank").items():
-            zs = [placement.position[2] for placement in banks]
-            self.assertAlmostEqual(max(zs), corridor.z_near, places=6, msg=side)
-            # The last tile must start early enough that its 96 m body reaches
-            # the far edge of the corridor.
+            spans = [covered_z(placement) for placement in banks]
+            self.assertAlmostEqual(
+                max(upper for _, upper in spans),
+                corridor.z_near,
+                places=6,
+                msg=f"{side} banks do not reach the segment entry",
+            )
             self.assertLessEqual(
-                min(zs) - BANK_TILE_LENGTH_M,
+                min(lower for lower, _ in spans),
                 corridor.z_far + 1e-6,
                 f"{side} banks stop short of the corridor's far edge",
             )
@@ -417,8 +493,12 @@ class CoverageTests(unittest.TestCase):
 
         placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
 
-        inner = corridor.half_width + CLEARANCE_M
         for placement in placements:
+            inner = (
+                corridor.half_width
+                if placement.piece in EDGE_PIECES
+                else corridor.half_width + CLEARANCE_M
+            )
             self.assertGreaterEqual(
                 abs(placement.position[0]) + 1e-6,
                 inner,
@@ -432,3 +512,120 @@ class CoverageTests(unittest.TestCase):
 
         names = [placement.node for placement in placements]
         self.assertEqual(len(names), len(set(names)))
+
+
+class MirroredCoverageTests(unittest.TestCase):
+    """Both verges must dress the same stretch of corridor.
+
+    The kit's long pieces -- banks, cliffs, fringes -- are origin-anchored, not
+    centred: a bank's geometry runs from its origin to 96 m in -z, and a cliff
+    ~26 m. Rotating one 180 degrees to mirror it onto the left verge therefore
+    flips that span to +z, so a left piece placed at the same z as its right
+    twin covers the segment *behind* this one and leaves this segment's left
+    side bare.
+
+    That is invisible to a clearance or band-depth check, which only ever looks
+    at x. These tests look at what the pieces actually cover along z, which is
+    the question that was never asked.
+    """
+
+    def _covered(self, placement) -> tuple[float, float]:
+        return covered_z(placement)
+
+    def _spans_by_side(self, placements, prefix: str):
+        left, right = [], []
+        for placement in placements:
+            if not placement.node.startswith(prefix) or placement.span_m <= 0.0:
+                continue
+            (left if placement.position[0] < 0 else right).append(self._covered(placement))
+        return sorted(left), sorted(right)
+
+    def test_both_verges_cover_the_same_stretch(self) -> None:
+        corridor = _straight_corridor(128.0)
+
+        for style_name, style in (("canyon", CANYON_STYLE), ("jungle", JUNGLE_STYLE)):
+            placements = placements_for("probe_segment", corridor, style)
+            for prefix in ("Bank", "Wall", "Fringe"):
+                left, right = self._spans_by_side(placements, prefix)
+                if not left and not right:
+                    continue
+
+                self.assertEqual(
+                    left,
+                    right,
+                    f"{style_name} {prefix} verges cover different z ranges",
+                )
+
+    def test_no_long_piece_dresses_a_neighbouring_segment(self) -> None:
+        corridor = _straight_corridor(128.0)
+
+        for style in (CANYON_STYLE, JUNGLE_STYLE):
+            for placement in placements_for("probe_segment", corridor, style):
+                if placement.span_m <= 0.0:
+                    continue
+                near, far = self._covered(placement)
+
+                self.assertLessEqual(
+                    near,
+                    corridor.z_near + 1e-6,
+                    f"{placement.node} spills past the start of the segment",
+                )
+                self.assertGreaterEqual(
+                    far,
+                    corridor.z_far - placement.span_m - 1e-6,
+                    f"{placement.node} sits beyond the end of the segment",
+                )
+
+
+class FringeTests(unittest.TestCase):
+    """The corridor edge has to be marked, and the kit already ships the marker.
+
+    fringe_beach_a and fringe_grass_a were built for exactly this -- a narrow
+    strip that puts a hard line on the play-surface boundary without occluding
+    anything or narrowing the corridor -- and the hand-dressed beach uses them.
+    The generated dresser never placed one, so Boulders and Hog Wild had raw box
+    arrises where the floor meets the verge.
+    """
+
+    def test_the_fast_levels_get_a_marked_corridor_edge(self) -> None:
+        corridor = _straight_corridor(128.0)
+
+        for style_name, style in (("canyon", CANYON_STYLE), ("jungle", JUNGLE_STYLE)):
+            placements = placements_for("probe_segment", corridor, style)
+            fringes = [one for one in placements if one.node.startswith("Fringe")]
+
+            self.assertTrue(fringes, f"{style_name} must mark its corridor edge")
+            for side in (-1.0, 1.0):
+                self.assertTrue(
+                    any(one.position[0] * side > 0 for one in fringes),
+                    f"{style_name} must fringe both verges",
+                )
+
+    def test_fringes_hug_the_edge_without_crossing_onto_the_floor(self) -> None:
+        corridor = _straight_corridor(128.0)
+
+        for style in (CANYON_STYLE, JUNGLE_STYLE):
+            for placement in placements_for("probe_segment", corridor, style):
+                if not placement.node.startswith("Fringe"):
+                    continue
+                # The whole point is to sit ON the boundary, so it is exempt from
+                # the scenery clearance band -- but it must never cross inside it.
+                self.assertGreaterEqual(
+                    abs(placement.position[0]) + 1e-6,
+                    corridor.half_width,
+                    f"{placement.node} crosses onto the play surface",
+                )
+                self.assertLess(
+                    abs(placement.position[0]),
+                    corridor.half_width + CLEARANCE_M,
+                    f"{placement.node} is too far out to mark the edge",
+                )
+
+    def test_the_terraced_arena_gets_no_fringe(self) -> None:
+        # Papu's arena climbs three terraces; a continuous 96 m edge strip
+        # authored at one height would float over two of them.
+        corridor = _straight_corridor(96.0)
+
+        placements = placements_for("papu_arena", corridor, VILLAGE_STYLE)
+
+        self.assertEqual([one for one in placements if one.node.startswith("Fringe")], [])

@@ -59,6 +59,18 @@ BAND_DEPTH_M = 26.0
 # wall at all, showing raw background colour between the trees at speed.
 BANK_TILE_LENGTH_M = 96.0
 WALL_PIECE_LENGTH_M = 24.0
+FRINGE_TILE_LENGTH_M = 96.0
+
+# How far below the corridor floor the edge fringe sits, so its roots are buried
+# rather than hovering on top of the play surface.
+FRINGE_SINK_M = 0.05
+
+# The only pieces allowed to sit inside the clearance band, because marking the
+# play-surface boundary is their entire job. They are built for it: narrow, low,
+# with blades that fan outward and never reach back across the corridor. Every
+# other piece keeps CLEARANCE_M. Adding to this set widens the one rule that can
+# make a level unplayable, so it stays short and explicit.
+EDGE_PIECES = frozenset({"fringe_grass_a", "fringe_beach_a"})
 
 SEGMENT_DIR = Path("scenes/segments")
 MESH_DIR = "res://assets/models/kits/mesh"
@@ -115,6 +127,26 @@ class Placement:
     position: tuple[float, float, float]
     yaw: float
     cast_shadow: bool = True
+    # Length along z that this piece's geometry occupies, for the long
+    # origin-anchored strips (banks, walls, fringes). Zero for compact props
+    # like rocks and trees, which are centred on their origin and so are
+    # unaffected by yaw. Recorded because mirroring a strip onto the left verge
+    # flips its span, and nothing could check that without knowing the length.
+    span_m: float = 0.0
+
+
+def mirrored_z(z_right: float, side: float, span_m: float) -> float:
+    """Where to place a piece on ``side`` so it covers the same z as its twin.
+
+    The kit's long pieces run from their origin toward -z. The left verge is
+    dressed by rotating them 180 degrees, which flips that span to +z -- so a
+    left piece placed at its twin's z covers the *previous* segment and leaves
+    this one bare. Shifting the origin back by the span puts the two spans on
+    top of each other, which is what "mirrored" was always supposed to mean.
+    """
+    if side > 0:
+        return z_right
+    return z_right - span_m
 
 
 def parse_platforms(text: str) -> list[Platform]:
@@ -197,6 +229,7 @@ def _hash01(seed: int, salt: int) -> float:
 # flat-out jungle sprint, so it is banked and treed. Both draw on the same kit.
 
 CANYON_STYLE = {
+    "fringe": "fringe_grass_a",
     "walls": ["cliff_tall_a", "cliff_low_a"],
     "bank": "terrain_jungle_bank",
     "scatter": ["rock_boulder_a", "rock_boulder_b", "rock_cluster_a", "stone_cairn_a"],
@@ -205,6 +238,7 @@ CANYON_STYLE = {
 }
 
 JUNGLE_STYLE = {
+    "fringe": "fringe_grass_a",
     "walls": ["cliff_low_a"],
     "bank": "terrain_jungle_bank",
     "scatter": ["bush_cluster_a", "fern_cluster_a", "grass_patch_a", "rock_cluster_a"],
@@ -248,11 +282,44 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                     position=(
                         side * inner,
                         corridor.floor_y,
-                        corridor.z_near - tile_index * BANK_TILE_LENGTH_M,
+                        mirrored_z(
+                            corridor.z_near - tile_index * BANK_TILE_LENGTH_M,
+                            side,
+                            BANK_TILE_LENGTH_M,
+                        ),
                     ),
                     yaw=0.0 if side > 0 else 180.0,
+                    span_m=BANK_TILE_LENGTH_M,
                 )
             )
+
+        # The corridor edge itself. The kit ships fringe strips built for this
+        # exact job -- a narrow line of planting hard against the floor edge,
+        # blades fanning outward so nothing reaches back over the play surface --
+        # and until now only the hand-dressed beach used them, leaving the two
+        # fast levels with raw box arrises where the floor meets the verge.
+        fringe = style.get("fringe")
+        if fringe:
+            fringe_tiles = max(1, math.ceil(corridor.length / FRINGE_TILE_LENGTH_M))
+            for tile_index in range(fringe_tiles):
+                placements.append(
+                    Placement(
+                        node=f"Fringe{'L' if side < 0 else 'R'}{tile_index}",
+                        piece=str(fringe),
+                        position=(
+                            side * corridor.half_width,
+                            corridor.floor_y - FRINGE_SINK_M,
+                            mirrored_z(
+                                corridor.z_near - tile_index * FRINGE_TILE_LENGTH_M,
+                                side,
+                                FRINGE_TILE_LENGTH_M,
+                            ),
+                        ),
+                        yaw=0.0 if side > 0 else 180.0,
+                        cast_shadow=False,
+                        span_m=FRINGE_TILE_LENGTH_M,
+                    )
+                )
 
         count = max(2, int(corridor.length / float(style["scatter_every_m"])))
         for index in range(count):
@@ -301,12 +368,17 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                         position=(
                             side * (BAND_DEPTH_M - 2.0 - index * 5.0),
                             corridor.floor_y - 0.5,
-                            corridor.z_near
-                            - index * 6.0
-                            - step * WALL_PIECE_LENGTH_M,
+                            mirrored_z(
+                                corridor.z_near
+                                - index * 6.0
+                                - step * WALL_PIECE_LENGTH_M,
+                                side,
+                                WALL_PIECE_LENGTH_M,
+                            ),
                         ),
                         yaw=0.0 if side > 0 else 180.0,
                         cast_shadow=False,
+                        span_m=WALL_PIECE_LENGTH_M,
                     )
                 )
     return placements

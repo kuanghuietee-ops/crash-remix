@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
@@ -9,6 +9,7 @@
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/bush_cluster_a.res" id="env_bush_cluster_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="env_cliff_low_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/fern_cluster_a.res" id="env_fern_cluster_a"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/fringe_grass_a.res" id="env_fringe_grass_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/grass_patch_a.res" id="env_grass_patch_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/jungle_tree_a.res" id="env_jungle_tree_a"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/jungle_tree_b.res" id="env_jungle_tree_b"]
@@ -105,14 +106,28 @@ position = Vector3(-3.8, 1, -82)
 [node name="EnvironmentArt" type="Node3D" parent="."]
 
 [node name="BankLeft0" type="MeshInstance3D" parent="EnvironmentArt"]
-position = Vector3(-11.5, 0, 2)
+position = Vector3(-11.5, 0, -94)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_terrain_jungle_bank")
 
 [node name="BankLeft1" type="MeshInstance3D" parent="EnvironmentArt"]
-position = Vector3(-11.5, 0, -94)
+position = Vector3(-11.5, 0, -190)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_terrain_jungle_bank")
+
+[node name="FringeL0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-9, -0.05, -94)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_fringe_grass_a")
+cast_shadow = 0
+material_override = ExtResource("6_m_beach_kit_foliage")
+
+[node name="FringeL1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-9, -0.05, -190)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_fringe_grass_a")
+cast_shadow = 0
+material_override = ExtResource("6_m_beach_kit_foliage")
 
 [node name="ScatterL0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-18.76, -0.15, -4.6)
@@ -203,37 +218,37 @@ mesh = ExtResource("env_fern_cluster_a")
 material_override = ExtResource("6_m_beach_kit_foliage")
 
 [node name="WallL0_0" type="MeshInstance3D" parent="EnvironmentArt"]
-position = Vector3(-24, -0.5, 2)
-rotation_degrees = Vector3(0, 180, 0)
-mesh = ExtResource("env_cliff_low_a")
-cast_shadow = 0
-
-[node name="WallL0_1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -22)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="WallL0_2" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -46)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="WallL0_3" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_2" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -70)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="WallL0_4" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_3" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -94)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="WallL0_5" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_4" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, -118)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallL0_5" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -142)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
@@ -245,6 +260,18 @@ mesh = ExtResource("env_terrain_jungle_bank")
 [node name="BankRight1" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(11.5, 0, -94)
 mesh = ExtResource("env_terrain_jungle_bank")
+
+[node name="FringeR0" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9, -0.05, 2)
+mesh = ExtResource("env_fringe_grass_a")
+cast_shadow = 0
+material_override = ExtResource("6_m_beach_kit_foliage")
+
+[node name="FringeR1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(9, -0.05, -94)
+mesh = ExtResource("env_fringe_grass_a")
+cast_shadow = 0
+material_override = ExtResource("6_m_beach_kit_foliage")
 
 [node name="ScatterR0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(15.623, -0.15, -4.6)
