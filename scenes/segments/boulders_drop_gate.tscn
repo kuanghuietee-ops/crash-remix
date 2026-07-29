@@ -117,7 +117,7 @@ segment_group = &"Boulder Drop Gate"
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 
-[node name="BankLeft" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="BankLeft0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-10.5, 0, 2)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_terrain_jungle_bank")
@@ -167,19 +167,43 @@ position = Vector3(-25.746, -0.15, -60.333)
 rotation_degrees = Vector3(0, 45.392, 0)
 mesh = ExtResource("env_rock_boulder_b")
 
-[node name="WallL0" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, 2)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_tall_a")
 cast_shadow = 0
 
-[node name="WallL1" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -22)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_tall_a")
+cast_shadow = 0
+
+[node name="WallL0_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -46)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_tall_a")
+cast_shadow = 0
+
+[node name="WallL1_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-19, -0.5, -4)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="BankRight" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL1_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-19, -0.5, -28)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallL1_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-19, -0.5, -52)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="BankRight0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(10.5, 0, 2)
 mesh = ExtResource("env_terrain_jungle_bank")
 
@@ -228,12 +252,32 @@ position = Vector3(13.793, -0.15, -60.333)
 rotation_degrees = Vector3(0, 317.081, 0)
 mesh = ExtResource("env_rock_cluster_a")
 
-[node name="WallR0" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallR0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(24, -0.5, 2)
 mesh = ExtResource("env_cliff_tall_a")
 cast_shadow = 0
 
-[node name="WallR1" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallR0_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, -22)
+mesh = ExtResource("env_cliff_tall_a")
+cast_shadow = 0
+
+[node name="WallR0_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, -46)
+mesh = ExtResource("env_cliff_tall_a")
+cast_shadow = 0
+
+[node name="WallR1_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(19, -0.5, -4)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallR1_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(19, -0.5, -28)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallR1_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(19, -0.5, -52)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0

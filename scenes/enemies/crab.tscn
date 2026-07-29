@@ -1,8 +1,9 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/enemies/enemy_crab.gd" id="1_crab"]
 [ext_resource type="PackedScene" path="res://assets/models/enemies/SK_crab.glb" id="2_model"]
 [ext_resource type="Script" path="res://src/visual/enemies/crab_visual_driver.gd" id="3_visual"]
+[ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="4_blob"]
 
 [sub_resource type="BoxMesh" id="Mesh_bounds_proxy"]
 size = Vector3(1.35, 0.55, 0.9)
@@ -119,3 +120,5 @@ visibility_aabb = AABB(-3, -3, -3, 6, 6, 6)
 fixed_fps = 30
 process_material = SubResource("ParticleProcess_defeat")
 draw_pass_1 = SubResource("Mesh_defeat")
+
+[node name="BlobShadow" parent="." instance=ExtResource("4_blob")]

@@ -1,8 +1,9 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/enemies/enemy_plant.gd" id="1_plant"]
 [ext_resource type="PackedScene" path="res://assets/models/enemies/SK_plant.glb" id="2_model"]
 [ext_resource type="Script" path="res://src/visual/enemies/plant_visual_driver.gd" id="3_visual"]
+[ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="4_blob"]
 
 [sub_resource type="StandardMaterial3D" id="Material_stem"]
 albedo_color = Color(0.12, 0.52, 0.18, 1)
@@ -207,3 +208,5 @@ mesh = SubResource("Mesh_telegraph")
 position = Vector3(0, 0.48, -0.12)
 visible = false
 mesh = SubResource("Mesh_active")
+
+[node name="BlobShadow" parent="." instance=ExtResource("4_blob")]

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.dress_island_cut import (
     BAND_DEPTH_M,
+    BANK_TILE_LENGTH_M,
     CLEARANCE_M,
     CANYON_STYLE,
     JUNGLE_STYLE,
@@ -11,6 +12,7 @@ from scripts.dress_island_cut import (
     Platform,
     STYLE_BY_PREFIX,
     PORTAL_KEEPOUT_M,
+    WALL_PIECE_LENGTH_M,
     WARP_ROOM_PATH,
     WARP_ROOM_PLACEMENTS,
     WARP_ROOM_PORTALS,
@@ -302,4 +304,131 @@ class WarpRoomTests(unittest.TestCase):
     def test_placements_have_unique_names(self) -> None:
         names = [placement.node for placement in WARP_ROOM_PLACEMENTS]
 
+        self.assertEqual(len(names), len(set(names)))
+
+
+def _straight_corridor(length_m: float, half_width: float = 9.0) -> Corridor:
+    """A single flat slab running `length_m` metres away from the origin."""
+    return corridor_of(
+        [
+            Platform(
+                position=(0.0, -0.5, -length_m / 2.0),
+                size=(half_width * 2.0, 1.0, length_m),
+            )
+        ]
+    )
+
+
+class CoverageTests(unittest.TestCase):
+    """The dressing must actually reach the end of the segment it dresses.
+
+    The kit builds its bank tiles 96 m long because "segments are 96 m end to
+    end" -- true of the beach, which was hand-dressed to that rhythm. Boulders
+    segments are 64 m and Hog Wild's are 128 m, and the dresser placed exactly
+    one bank and one wall piece per style entry per side regardless. So a 128 m
+    Hog Wild segment ran 32 m per side with no verge ground under its scatter
+    and ~104 m per side with no back wall, showing flat background colour
+    between the trees at the speed the level is built around.
+
+    The pre-existing lints checked clearance, determinism and band depth --
+    every question except whether the scenery covers the corridor -- which is
+    why this passed review. These tests ask the coverage question directly, on
+    synthetic corridors, so they hold for any segment length a future level
+    uses rather than only the ones that exist today.
+    """
+
+    def _by_side(self, placements, prefix: str) -> dict[str, list]:
+        sides: dict[str, list] = {"L": [], "R": []}
+        for placement in placements:
+            if not placement.node.startswith(prefix):
+                continue
+            # Bank nodes spell the side out; scatter/wall nodes abbreviate it.
+            side = "L" if "Left" in placement.node or placement.node[len(prefix)] == "L" else "R"
+            sides[side].append(placement)
+        return sides
+
+    def test_banks_tile_the_full_corridor_on_both_sides(self) -> None:
+        for length in (64.0, 96.0, 128.0, 200.0):
+            for style_name, style in (("canyon", CANYON_STYLE), ("jungle", JUNGLE_STYLE)):
+                corridor = _straight_corridor(length)
+
+                placements = placements_for("probe_segment", corridor, style)
+
+                expected = math.ceil(length / BANK_TILE_LENGTH_M)
+                for side, banks in self._by_side(placements, "Bank").items():
+                    self.assertGreaterEqual(
+                        len(banks),
+                        expected,
+                        f"{style_name} {length} m needs {expected} bank tiles on {side}, "
+                        f"got {len(banks)}",
+                    )
+
+    def test_bank_tiles_leave_no_gap_between_them(self) -> None:
+        corridor = _straight_corridor(200.0)
+
+        placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
+
+        for side, banks in self._by_side(placements, "Bank").items():
+            zs = sorted((placement.position[2] for placement in banks), reverse=True)
+            for near, far in zip(zs, zs[1:]):
+                self.assertLessEqual(
+                    abs(near - far),
+                    BANK_TILE_LENGTH_M + 1e-6,
+                    f"{side} bank tiles are more than one tile length apart",
+                )
+
+    def test_banks_span_from_the_near_edge_to_the_far_edge(self) -> None:
+        length = 128.0
+        corridor = _straight_corridor(length)
+
+        placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
+
+        for side, banks in self._by_side(placements, "Bank").items():
+            zs = [placement.position[2] for placement in banks]
+            self.assertAlmostEqual(max(zs), corridor.z_near, places=6, msg=side)
+            # The last tile must start early enough that its 96 m body reaches
+            # the far edge of the corridor.
+            self.assertLessEqual(
+                min(zs) - BANK_TILE_LENGTH_M,
+                corridor.z_far + 1e-6,
+                f"{side} banks stop short of the corridor's far edge",
+            )
+
+    def test_walls_tile_the_full_corridor_on_both_sides(self) -> None:
+        for length in (64.0, 128.0):
+            for style_name, style in (("canyon", CANYON_STYLE), ("jungle", JUNGLE_STYLE)):
+                corridor = _straight_corridor(length)
+
+                placements = placements_for("probe_segment", corridor, style)
+
+                per_entry = math.ceil(length / WALL_PIECE_LENGTH_M)
+                expected = per_entry * len(style["walls"])
+                for side, walls in self._by_side(placements, "Wall").items():
+                    self.assertGreaterEqual(
+                        len(walls),
+                        expected,
+                        f"{style_name} {length} m needs {expected} wall pieces on {side}, "
+                        f"got {len(walls)} -- the horizon leaks between them",
+                    )
+
+    def test_coverage_still_respects_the_clearance_rule(self) -> None:
+        # Tiling must not be bought by moving scenery into the play corridor.
+        corridor = _straight_corridor(128.0)
+
+        placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
+
+        inner = corridor.half_width + CLEARANCE_M
+        for placement in placements:
+            self.assertGreaterEqual(
+                abs(placement.position[0]) + 1e-6,
+                inner,
+                f"{placement.node} sits inside the clearance band",
+            )
+
+    def test_placement_names_stay_unique_once_tiled(self) -> None:
+        corridor = _straight_corridor(200.0)
+
+        placements = placements_for("probe_segment", corridor, JUNGLE_STYLE)
+
+        names = [placement.node for placement in placements]
         self.assertEqual(len(names), len(set(names)))

@@ -13,7 +13,7 @@
 [sub_resource type="Environment" id="Environment_graybox"]
 background_mode = 1
 background_color = Color(0.055, 0.075, 0.11, 1)
-ambient_light_source = 3
+ambient_light_source = 2
 ambient_light_color = Color(0.48, 0.55, 0.68, 1)
 ambient_light_energy = 0.72
 tonemap_mode = 2

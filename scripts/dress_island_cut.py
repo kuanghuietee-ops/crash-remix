@@ -49,6 +49,17 @@ CLEARANCE_M = 2.5
 # stop earning their draw calls.
 BAND_DEPTH_M = 26.0
 
+# The physical length of the kit pieces this script tiles. These mirror the
+# geometry built by scripts/blender/build_beach_env_kit.py -- TILE_LENGTH for the
+# bank/ground tiles and the cliff pieces' own extent -- and exist because the
+# dresser previously placed exactly one of each per side regardless of how long
+# the segment was. The kit was built to the beach's 96 m rhythm, but Boulders
+# segments are 64 m and Hog Wild's are 128 m, so a Hog Wild segment ran 32 m per
+# side with no verge ground beneath its scatter and ~104 m per side with no back
+# wall at all, showing raw background colour between the trees at speed.
+BANK_TILE_LENGTH_M = 96.0
+WALL_PIECE_LENGTH_M = 24.0
+
 SEGMENT_DIR = Path("scenes/segments")
 MESH_DIR = "res://assets/models/kits/mesh"
 
@@ -226,15 +237,22 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
     seed = sum(ord(character) for character in name)
 
     for side_index, side in enumerate((-1.0, 1.0)):
-        # The bank tile runs the length of the segment and hides the horizon.
-        placements.append(
-            Placement(
-                node=f"Bank{'Left' if side < 0 else 'Right'}",
-                piece=str(style["bank"]),
-                position=(side * inner, corridor.floor_y, corridor.z_near),
-                yaw=0.0 if side > 0 else 180.0,
+        # Bank tiles hide the horizon, so they have to reach the end of the
+        # corridor. One tile only covers BANK_TILE_LENGTH_M of it.
+        bank_tiles = max(1, math.ceil(corridor.length / BANK_TILE_LENGTH_M))
+        for tile_index in range(bank_tiles):
+            placements.append(
+                Placement(
+                    node=f"Bank{'Left' if side < 0 else 'Right'}{tile_index}",
+                    piece=str(style["bank"]),
+                    position=(
+                        side * inner,
+                        corridor.floor_y,
+                        corridor.z_near - tile_index * BANK_TILE_LENGTH_M,
+                    ),
+                    yaw=0.0 if side > 0 else 180.0,
+                )
             )
-        )
 
         count = max(2, int(corridor.length / float(style["scatter_every_m"])))
         for index in range(count):
@@ -270,21 +288,27 @@ def placements_for(name: str, corridor: Corridor, style: dict) -> list[Placement
                     )
                 )
 
+        # Each wall style entry forms its own depth layer; every layer has to
+        # run the whole corridor or the background shows through the gaps.
         walls = list(style["walls"])
+        wall_steps = max(1, math.ceil(corridor.length / WALL_PIECE_LENGTH_M))
         for index, wall in enumerate(walls):
-            placements.append(
-                Placement(
-                    node=f"Wall{'L' if side < 0 else 'R'}{index}",
-                    piece=wall,
-                    position=(
-                        side * (BAND_DEPTH_M - 2.0 - index * 5.0),
-                        corridor.floor_y - 0.5,
-                        corridor.z_near - index * 6.0,
-                    ),
-                    yaw=0.0 if side > 0 else 180.0,
-                    cast_shadow=False,
+            for step in range(wall_steps):
+                placements.append(
+                    Placement(
+                        node=f"Wall{'L' if side < 0 else 'R'}{index}_{step}",
+                        piece=wall,
+                        position=(
+                            side * (BAND_DEPTH_M - 2.0 - index * 5.0),
+                            corridor.floor_y - 0.5,
+                            corridor.z_near
+                            - index * 6.0
+                            - step * WALL_PIECE_LENGTH_M,
+                        ),
+                        yaw=0.0 if side > 0 else 180.0,
+                        cast_shadow=False,
+                    )
                 )
-            )
     return placements
 
 

@@ -347,6 +347,24 @@ func _refresh_enemy_tuning(
 		enemy_tuning,
 		_move
 	)
+	if initial_configuration:
+		_configure_blob_shadow(enemy)
+
+
+## Spec §5.4.2 wants a blob under every dynamic object, not just the player.
+## The blob sizes itself and starts raycasting only once it is handed the depth
+## tuning, so an unconfigured one would sit frozen at the world origin -- which
+## is why this runs off the same discovery pass as the enemy's own tuning
+## rather than the enemy scene wiring itself up.
+func _configure_blob_shadow(host: Node) -> void:
+	if _gameplay_tuning == null or not is_instance_valid(host):
+		return
+	var blob := host.get_node_or_null("BlobShadow")
+	if blob == null or not blob.has_method("configure"):
+		return
+	if not (host is Node3D):
+		return
+	blob.call("configure", host as Node3D, _gameplay_tuning.depth)
 
 
 func _pause_gameplay_timers(now_s: float) -> void:

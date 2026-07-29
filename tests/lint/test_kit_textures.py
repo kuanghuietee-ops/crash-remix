@@ -24,7 +24,14 @@ from scripts.build_kit_textures import (
     main,
     trim_pixels,
 )
-from scripts.texture_budget import is_power_of_two, png_dimensions
+from scripts.texture_budget import (
+    import_generates_mipmaps,
+    is_power_of_two,
+    png_dimensions,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEXTURE_DIR = REPO_ROOT / "assets" / "textures"
 
 # The images are ~2 MB and every test wants one. Paint each once.
 ATLAS = atlas_pixels()
@@ -153,3 +160,40 @@ class PngEncodingTests(unittest.TestCase):
                 self.assertTrue(is_power_of_two(width), name)
                 self.assertTrue(is_power_of_two(height), name)
                 self.assertLessEqual(max(width, height), 2048, name)
+
+
+class MipmapImportTests(unittest.TestCase):
+    """The atlas is designed around mip behaviour; importing without mips
+    silently throws that design away.
+
+    The 16 px guard band exists because mipmapping averages neighbouring texels
+    and by the fifth mip a 256 px cell is 8 px wide, and the grain is zero-mean
+    precisely so every mip level averages back to the exact palette colour. With
+    mipmaps/generate=false none of that machinery does anything: the GPU point-
+    samples a 2048 px texture at all distances, which shimmers as the camera
+    rails forward and thrashes the texture cache on a bandwidth-limited tiled
+    mobile GPU. Nothing errors, so it needs a lint.
+    """
+
+    def test_kit_textures_are_imported_with_mipmaps(self) -> None:
+        for name in (ATLAS_NAME, TRIM_NAME):
+            sidecar = TEXTURE_DIR / f"{name}.import"
+
+            self.assertTrue(sidecar.is_file(), f"{name} must have a .import sidecar")
+            self.assertTrue(
+                import_generates_mipmaps(sidecar),
+                f"{name} must set mipmaps/generate=true; the atlas guard band and "
+                "zero-mean grain exist to make mips correct and do nothing without them",
+            )
+
+    def test_a_sidecar_without_the_key_is_not_treated_as_mipmapped(self) -> None:
+        # Absent means false in Godot's importer, and a lint that reads absence
+        # as success would pass on a sidecar that never opted in.
+        with tempfile.TemporaryDirectory() as directory:
+            sidecar = Path(directory) / "T_probe.png.import"
+            sidecar.write_text("[params]\ncompress/mode=2\n", encoding="utf-8")
+
+            self.assertFalse(import_generates_mipmaps(sidecar))
+
+    def test_a_missing_sidecar_is_not_treated_as_mipmapped(self) -> None:
+        self.assertFalse(import_generates_mipmaps(TEXTURE_DIR / "T_absent.png.import"))

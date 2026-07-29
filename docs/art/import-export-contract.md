@@ -117,6 +117,17 @@ write `"vram_texture": true` and `"imported_formats": ["s3tc_bptc", "etc2_astc"]
 the sidecar's own metadata — the importer stating it produced the ASTC the mobile
 budget assumes. Check that metadata rather than trusting the enum ordering.
 
+**`mipmaps/generate=true` is mandatory on every kit texture.** The atlas is *designed*
+around mip behaviour: the 16 px guard band exists because mipmapping averages
+neighbouring texels and by the fifth mip a 256 px cell is 8 px wide, and the grain is
+zero-mean so every mip level averages back to the exact palette colour. Import without
+mips and none of that machinery does anything — the GPU point-samples a 2048 px texture
+at all distances, which shimmers as the camera rails forward and thrashes the texture
+cache on a bandwidth-limited tiled GPU. It costs ~33% texture memory (~3 MB across both
+sheets) and *reduces* sampling bandwidth. Both kit sheets shipped with it off until the
+2026-07-29 environment review; `tests/lint/test_kit_textures.py` now fails if either
+regresses, and a sidecar missing the key counts as off.
+
 ## Checking an asset before committing it
 
 ```bash

@@ -1,0 +1,20 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/depth/blob_shadow.gd" id="1_blob"]
+[ext_resource type="Shader" path="res://assets/shaders/blob_shadow.gdshader" id="2_shader"]
+
+[sub_resource type="ShaderMaterial" id="Material_shadow"]
+shader = ExtResource("2_shader")
+shader_parameter/shadow_opacity = 0.72
+
+[sub_resource type="PlaneMesh" id="Mesh_shadow"]
+material = SubResource("Material_shadow")
+size = Vector2(0.8, 0.8)
+
+[node name="BlobShadow" type="Node3D"]
+script = ExtResource("1_blob")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+material_override = SubResource("Material_shadow")
+mesh = SubResource("Mesh_shadow")

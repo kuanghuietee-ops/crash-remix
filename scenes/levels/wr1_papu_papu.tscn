@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/run/level_session.gd" id="1_session"]
 [ext_resource type="Resource" path="res://data/tuning/levels/papu_papu.tres" id="2_meta"]
@@ -11,14 +11,20 @@
 [ext_resource type="Script" path="res://src/gameplay/boss/papu_papu_arena.gd" id="9_boss"]
 [ext_resource type="PackedScene" path="res://assets/models/bosses/SK_papu.glb" id="10_papu_model"]
 [ext_resource type="Script" path="res://src/visual/boss/papu_visual_driver.gd" id="11_papu_visual"]
+[ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="12_blob"]
 
 [sub_resource type="Environment" id="Environment_papu"]
 background_mode = 1
 background_color = Color(0.09, 0.07, 0.05, 1)
-ambient_light_source = 3
+ambient_light_source = 2
 ambient_light_color = Color(0.68, 0.5, 0.34, 1)
 ambient_light_energy = 0.72
 tonemap_mode = 2
+fog_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.13, 0.1, 0.07, 1)
+fog_depth_begin = 20.0
+fog_depth_end = 90.0
 
 [sub_resource type="BoxShape3D" id="Shape_strike"]
 size = Vector3(6, 3, 4)
@@ -113,6 +119,8 @@ rotation_degrees = Vector3(-52, 22, 0)
 light_color = Color(1, 0.74, 0.49, 1)
 light_energy = 1.25
 shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 45.0
 
 [node name="Segments" type="Node3D" parent="."]
 
@@ -183,6 +191,8 @@ position = Vector3(0, 0.05, -24)
 [node name="PapuModel" parent="PapuArena/PapuVisual" instance=ExtResource("10_papu_model")]
 rotation = Vector3(0, 3.1415927, 0)
 
+[node name="BlobShadow" parent="PapuArena/PapuVisual" instance=ExtResource("12_blob")]
+
 [node name="VisualDriver" type="Node3D" parent="PapuArena/PapuVisual"]
 script = ExtResource("11_papu_visual")
 model_path = NodePath("../PapuModel")
@@ -251,6 +261,8 @@ position = Vector3(0, 4, -90)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6, 4.8, 8.5)
 current = true
 fov = 58.0
+near = 0.3
+far = 300.0
 
 [node name="Input" type="Node" parent="."]
 

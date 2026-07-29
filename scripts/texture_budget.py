@@ -49,3 +49,16 @@ def import_uses_vram_compression(import_path: Path) -> bool:
         return False
     values = assignment_values(import_path.read_text(encoding="utf-8"))
     return values.get("compress/mode") == VRAM_COMPRESSED_MODE
+
+
+def import_generates_mipmaps(import_path: Path) -> bool:
+    """Return whether a .import sidecar opts a texture into mipmap generation.
+
+    Absence is false, matching Godot: a sidecar that never wrote the key is not
+    mipmapped, and treating a missing key as success would let the setting the
+    kit atlas depends on regress unnoticed.
+    """
+    if not import_path.is_file():
+        return False
+    values = assignment_values(import_path.read_text(encoding="utf-8"))
+    return values.get("mipmaps/generate") == "true"

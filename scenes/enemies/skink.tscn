@@ -1,8 +1,9 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/enemies/enemy_skink.gd" id="1_skink"]
 [ext_resource type="PackedScene" path="res://assets/models/enemies/SK_skink.glb" id="2_model"]
 [ext_resource type="Script" path="res://src/visual/enemies/skink_visual_driver.gd" id="3_visual"]
+[ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="4_blob"]
 
 [sub_resource type="StandardMaterial3D" id="Material_body"]
 albedo_color = Color(0.15, 0.65, 0.46, 1)
@@ -215,3 +216,5 @@ mesh = SubResource("Mesh_telegraph")
 position = Vector3(0, 0.04, 0)
 visible = false
 mesh = SubResource("Mesh_active")
+
+[node name="BlobShadow" parent="." instance=ExtResource("4_blob")]

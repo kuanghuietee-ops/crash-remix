@@ -85,7 +85,7 @@ shape = SubResource("Shape_camera")
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 
-[node name="BankLeft" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="BankLeft0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-11.5, 0, 4)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_terrain_jungle_bank")
@@ -145,13 +145,31 @@ position = Vector3(-23.328, 3.6, -87.714)
 rotation_degrees = Vector3(0, 43.99, 0)
 mesh = ExtResource("env_palm_tall_a")
 
-[node name="WallL0" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(-24, -0.5, 4)
 rotation_degrees = Vector3(0, 180, 0)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0
 
-[node name="BankRight" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallL0_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -20)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallL0_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -44)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallL0_3" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-24, -0.5, -68)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="BankRight0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(11.5, 0, 4)
 mesh = ExtResource("env_terrain_jungle_bank")
 
@@ -210,7 +228,22 @@ position = Vector3(27.339, 3.6, -87.714)
 rotation_degrees = Vector3(0, 108.305, 0)
 mesh = ExtResource("env_hut_thatch_a")
 
-[node name="WallR0" type="MeshInstance3D" parent="EnvironmentArt"]
+[node name="WallR0_0" type="MeshInstance3D" parent="EnvironmentArt"]
 position = Vector3(24, -0.5, 4)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallR0_1" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, -20)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallR0_2" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, -44)
+mesh = ExtResource("env_cliff_low_a")
+cast_shadow = 0
+
+[node name="WallR0_3" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(24, -0.5, -68)
 mesh = ExtResource("env_cliff_low_a")
 cast_shadow = 0

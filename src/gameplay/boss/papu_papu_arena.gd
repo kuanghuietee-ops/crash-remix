@@ -52,6 +52,22 @@ func configure(
 	_flow.configure(tuning)
 	reset_phase_hazards()
 	_connect_strike_triggers()
+	_configure_boss_blob_shadow()
+
+
+## Papu gets the same ground contact as every other dynamic object (spec
+## §5.4.2). His visual pivot is what the visual driver moves, so the blob
+## targets that rather than this arena node, which never moves.
+func _configure_boss_blob_shadow() -> void:
+	if _depth == null:
+		return
+	var pivot := get_node_or_null("PapuVisual") as Node3D
+	if pivot == null:
+		return
+	var blob := pivot.get_node_or_null("BlobShadow")
+	if blob == null or not blob.has_method("configure"):
+		return
+	blob.call("configure", pivot, _depth)
 
 
 ## A phase restart clears its ripples: the player must not inherit waves
