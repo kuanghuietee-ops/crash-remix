@@ -73,6 +73,29 @@ position = Vector3(0, 3.5, -84)
 size = Vector3(18, 1, 14)
 color = Color(0.58, 0.42, 0.26, 1)
 
+[node name="TorchLights" type="Node3D" parent="."]
+
+[node name="TerraceOne" type="OmniLight3D" parent="TorchLights"]
+position = Vector3(0, 3, -20)
+light_color = Color(1, 0.62, 0.28, 1)
+light_energy = 2.2
+shadow_enabled = false
+omni_range = 18.0
+
+[node name="TerraceTwo" type="OmniLight3D" parent="TorchLights"]
+position = Vector3(0, 5, -44)
+light_color = Color(1, 0.62, 0.28, 1)
+light_energy = 2.2
+shadow_enabled = false
+omni_range = 18.0
+
+[node name="TerraceThree" type="OmniLight3D" parent="TorchLights"]
+position = Vector3(0, 7, -68)
+light_color = Color(1, 0.58, 0.24, 1)
+light_energy = 2.4
+shadow_enabled = false
+omni_range = 18.0
+
 [node name="CameraRegion" type="Area3D" parent="."]
 position = Vector3(0, 4, -44)
 collision_layer = 0
