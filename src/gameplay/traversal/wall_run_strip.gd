@@ -1,6 +1,10 @@
 class_name WallRunStrip
 extends Path3D
 
+const RailCurveBuilderType := preload(
+	"res://src/gameplay/common/rail_curve_builder.gd"
+)
+
 const STRIP_GROUP := &"wall_run_strip"
 
 @export var surface_normal := Vector3.RIGHT
@@ -60,8 +64,4 @@ func length_m() -> float:
 func _ensure_curve_from_markers() -> void:
 	if curve != null and curve.point_count > 0:
 		return
-	var authored_curve := Curve3D.new()
-	for child: Node in get_children():
-		if child is Marker3D:
-			authored_curve.add_point((child as Marker3D).position)
-	curve = authored_curve
+	curve = RailCurveBuilderType.curve_from_markers(self, 0.0, 0.0)

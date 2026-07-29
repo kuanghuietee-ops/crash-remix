@@ -25,6 +25,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"toward_camera_offset",
 		],
+		[
+			&"rail_handle_length_factor",
+		],
 	],
 	&"input": [
 		[
@@ -272,6 +275,8 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 	if (
 		camera.field_of_view_degrees <= 0.0
 		or camera.rail_bake_interval_m <= 0.0
+		or camera.rail_handle_length_factor < 0.0
+		or camera.rail_handle_length_factor > 0.5
 		or camera.rail_follow_speed_mps < 0.0
 		or camera.region_blend_s < 0.0
 		or camera.toward_camera_offset.y <= 0.0

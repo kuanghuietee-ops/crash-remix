@@ -4,6 +4,7 @@ extends Resource
 @export_category("Rail")
 @export var field_of_view_degrees: float
 @export var rail_bake_interval_m: float
+@export var rail_handle_length_factor: float
 @export var rail_follow_speed_mps: float
 @export var region_blend_s: float
 @export var look_ahead_m: float

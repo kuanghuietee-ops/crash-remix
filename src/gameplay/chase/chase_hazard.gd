@@ -1,6 +1,10 @@
 class_name ChaseHazard
 extends Node3D
 
+const RailCurveBuilderType := preload(
+	"res://src/gameplay/common/rail_curve_builder.gd"
+)
+
 const EVENT_START := &"start"
 const EVENT_STOP := &"stop"
 
@@ -279,11 +283,11 @@ func _ensure_curve_from_markers() -> void:
 		and _chase_path.curve.point_count > 0
 	):
 		return
-	var curve := Curve3D.new()
-	for marker: Node in _chase_path.get_children():
-		if marker is Marker3D:
-			curve.add_point((marker as Marker3D).position)
-	_chase_path.curve = curve
+	_chase_path.curve = RailCurveBuilderType.curve_from_markers(
+		_chase_path,
+		0.0,
+		0.0
+	)
 
 
 func _connect_segment_triggers() -> void:

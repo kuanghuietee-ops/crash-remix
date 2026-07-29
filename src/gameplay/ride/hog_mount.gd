@@ -1,6 +1,10 @@
 class_name HogMount
 extends Node3D
 
+const RailCurveBuilderType := preload(
+	"res://src/gameplay/common/rail_curve_builder.gd"
+)
+
 signal mounted
 signal dismounted
 
@@ -164,11 +168,11 @@ func _ensure_curve_from_markers() -> void:
 		and _ride_path.curve.point_count > 0
 	):
 		return
-	var curve := Curve3D.new()
-	for marker: Node in _ride_path.get_children():
-		if marker is Marker3D:
-			curve.add_point((marker as Marker3D).position)
-	_ride_path.curve = curve
+	_ride_path.curve = RailCurveBuilderType.curve_from_markers(
+		_ride_path,
+		0.0,
+		0.0
+	)
 
 
 func _connect_triggers() -> void:

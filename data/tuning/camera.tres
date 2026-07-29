@@ -6,6 +6,7 @@
 script = ExtResource("1_camera")
 field_of_view_degrees = 58.0
 rail_bake_interval_m = 0.2
+rail_handle_length_factor = 0.1667
 rail_follow_speed_mps = 16.0
 region_blend_s = 0.35
 look_ahead_m = 2.0

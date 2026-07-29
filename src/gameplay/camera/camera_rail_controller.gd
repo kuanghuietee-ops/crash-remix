@@ -6,6 +6,9 @@ const CameraArchetypesType := preload(
 	"res://src/gameplay/camera/camera_archetypes.gd"
 )
 const CameraRegionType := preload("res://src/gameplay/camera/camera_region.gd")
+const RailCurveBuilderType := preload(
+	"res://src/gameplay/common/rail_curve_builder.gd"
+)
 
 var _player: CharacterBody3D
 var _rail: Path3D
@@ -242,13 +245,16 @@ func _ensure_curve_from_markers() -> void:
 		return
 	if _rail.curve != null and _rail.curve.point_count > 0:
 		return
-	var curve := Curve3D.new()
+	var bake_interval_m := 0.0
+	var handle_length_factor := 0.0
 	if _camera_tuning != null:
-		curve.bake_interval = _camera_tuning.rail_bake_interval_m
-	for marker: Node in _rail.get_children():
-		if marker is Marker3D:
-			curve.add_point((marker as Marker3D).position)
-	_rail.curve = curve
+		bake_interval_m = _camera_tuning.rail_bake_interval_m
+		handle_length_factor = _camera_tuning.rail_handle_length_factor
+	_rail.curve = RailCurveBuilderType.curve_from_markers(
+		_rail,
+		bake_interval_m,
+		handle_length_factor
+	)
 
 
 func _update_input_corridor_axis() -> void:
