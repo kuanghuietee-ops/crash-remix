@@ -304,6 +304,26 @@ func test_a_hidden_readout_costs_a_release_build_nothing() -> void:
 	assert_true(readout.text.is_empty(), "and must not build display strings")
 
 
+func test_art_budget_is_loaded_only_when_the_readout_needs_status() -> void:
+	# The readout exists in the shipping main scene even when debug tools are
+	# disabled. Instantiating that hidden node must not load a debug-only
+	# resource; the first actual status read may load it once.
+	var readout: PerfReadoutType = autofree(PerfReadoutType.new())
+
+	assert_null(
+		readout.get("_art_budget"),
+		"constructing the hidden release readout must not load art_budget.tres"
+	)
+
+	readout.rendering_info_source = _fixed_rendering_info(0, 0, 0)
+	readout.budget_status()
+
+	assert_not_null(
+		readout.get("_art_budget"),
+		"the first requested budget status must load its authored limits"
+	)
+
+
 func _fixed_rendering_info(
 	draw_calls: int,
 	primitives: int,
@@ -376,3 +396,26 @@ func test_readout_text_carries_the_budget_status_and_texture_memory() -> void:
 
 	assert_string_contains(text, "TEX")
 	assert_string_contains(text, "OK")
+
+
+func test_readout_text_samples_each_rendering_counter_once() -> void:
+	var readout: PerfReadout = autofree(PerfReadout.new())
+	var calls_by_info_id: Dictionary = {}
+	readout.rendering_info_source = func(info_id: int) -> int:
+		calls_by_info_id[info_id] = int(calls_by_info_id.get(info_id, 0)) + 1
+		return 0
+
+	var text := readout.readout_text()
+
+	assert_false(text.is_empty())
+	for info_id: int in [
+		RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME,
+		RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME,
+		RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME,
+		RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED,
+	]:
+		assert_eq(
+			int(calls_by_info_id.get(info_id, 0)),
+			1,
+			"readout_text must sample rendering metric %d exactly once" % info_id
+		)

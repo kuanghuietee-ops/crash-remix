@@ -36,7 +36,8 @@ var rendering_info_source: Callable = Callable()
 # can read them anyway.
 const REFRESH_INTERVAL_S := 0.25
 
-var _art_budget: ArtBudgetTuning = load(ART_BUDGET_PATH)
+var _art_budget: ArtBudgetTuning
+var _art_budget_load_attempted := false
 var _frame_times_s: Array[float] = []
 var _since_refresh_s := REFRESH_INTERVAL_S
 
@@ -117,24 +118,34 @@ func texture_memory_mb() -> float:
 	) / float(BYTES_PER_MEGABYTE)
 
 
+func _get_art_budget() -> ArtBudgetTuning:
+	if not _art_budget_load_attempted:
+		_art_budget = load(ART_BUDGET_PATH) as ArtBudgetTuning
+		_art_budget_load_attempted = true
+	return _art_budget
+
+
 ## The worst of the two whole-frame metrics wins: draw calls over peak must not
 ## be hidden by a triangle count that happens to be fine.
-func budget_status() -> String:
-	if _art_budget == null:
+func _budget_status_for(calls: int, triangles: int) -> String:
+	var art_budget := _get_art_budget()
+	if art_budget == null:
 		return STATUS_OK
-	var calls := draw_calls()
-	var triangles := primitives()
 	if (
-		calls > _art_budget.frame_draw_calls_peak
-		or triangles > _art_budget.frame_triangles_peak
+		calls > art_budget.frame_draw_calls_peak
+		or triangles > art_budget.frame_triangles_peak
 	):
 		return STATUS_OVER_PEAK
 	if (
-		calls > _art_budget.frame_draw_calls_typical
-		or triangles > _art_budget.frame_triangles_typical
+		calls > art_budget.frame_draw_calls_typical
+		or triangles > art_budget.frame_triangles_typical
 	):
 		return STATUS_OVER_TYPICAL
 	return STATUS_OK
+
+
+func budget_status() -> String:
+	return _budget_status_for(draw_calls(), primitives())
 
 
 ## The 3D render scale §9.4 watches fall toward 0.7 under load. The readout
@@ -147,6 +158,10 @@ func render_scale() -> float:
 
 
 func readout_text() -> String:
+	var calls := draw_calls()
+	var triangles := primitives()
+	var object_count := objects_in_frame()
+	var texture_mb := texture_memory_mb()
 	return (
 		(
 			"FPS %.1f  1%% LOW %.1f  DRAW %d  PRIM %d  OBJ %d  "
@@ -155,12 +170,12 @@ func readout_text() -> String:
 		% [
 			sampled_average_fps(),
 			sampled_one_percent_low_fps(),
-			draw_calls(),
-			primitives(),
-			objects_in_frame(),
+			calls,
+			triangles,
+			object_count,
 			render_scale(),
-			texture_memory_mb(),
-			budget_status(),
+			texture_mb,
+			_budget_status_for(calls, triangles),
 		]
 	)
 
