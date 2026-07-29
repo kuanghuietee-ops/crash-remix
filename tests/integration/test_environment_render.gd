@@ -31,6 +31,16 @@ const AMBIENT_SCENES := [
 	"res://scenes/levels/warp_room_1.tscn",
 ]
 
+## The two levels with an open horizon. They carry a real Sky, so sky-sourced
+## ambient is correct for them -- it was only ever wrong when the source was SKY
+## with nothing to sample, which bound a black cubemap. Everywhere else COLOR is
+## both the correct fallback and the intended end state: Papu is a night arena
+## lit by torches, the warp room is an interior, and look_dev is a turntable.
+const SKY_SCENES := [
+	"res://scenes/levels/wr1_n_sanity_beach.tscn",
+	"res://scenes/levels/wr1_hog_wild.tscn",
+]
+
 ## Playable levels: these additionally carry fog, a shadow policy and camera
 ## planes. look_dev is deliberately excluded -- it is the turntable the operator
 ## judges individual assets in, and fogging it would grade the very asset under
@@ -79,21 +89,41 @@ func _environment_of(root: Node, scene_path: String) -> Environment:
 	return world.environment
 
 
-func test_ambient_source_is_colour_not_sky() -> void:
+func test_no_scene_samples_ambient_from_a_sky_it_does_not_have() -> void:
+	# THE original P0, and the invariant that actually matters. Ambient source
+	# SKY with no Sky resource binds the engine's default *black* radiance
+	# cubemap and mixes the authored ambient toward it by
+	# ambient_light_sky_contribution, which defaults to 1.0 -- so every authored
+	# tint is multiplied to zero and the level is lit by the sun alone.
+	#
+	# Note this is deliberately not "ambient must always be COLOR". COLOR is the
+	# correct fallback, and the correct end state indoors and at night, but a
+	# scene that ships a real Sky is entitled to sample it.
 	for scene_path in AMBIENT_SCENES:
 		var root := _instantiate(scene_path)
 		if root == null:
 			continue
 		var env := _environment_of(root, scene_path)
 		if env != null:
-			assert_eq(
-				env.ambient_light_source,
-				Environment.AMBIENT_SOURCE_COLOR,
-				(
-					"%s must source ambient from its authored colour; SKY with no Sky "
-					+ "resource binds a black cubemap and zeroes the ambient"
-				) % scene_path
-			)
+			if env.ambient_light_source == Environment.AMBIENT_SOURCE_SKY:
+				assert_not_null(
+					env.sky,
+					(
+						"%s samples ambient from a sky it does not define; that "
+						+ "binds a black cubemap and zeroes the ambient"
+					) % scene_path
+				)
+				if env.sky != null:
+					assert_not_null(
+						env.sky.sky_material,
+						"%s has a Sky with no material to sample" % scene_path
+					)
+			else:
+				assert_eq(
+					env.ambient_light_source,
+					Environment.AMBIENT_SOURCE_COLOR,
+					"%s must use COLOR ambient when it has no sky" % scene_path
+				)
 			assert_gt(
 				env.ambient_light_energy,
 				0.0,
@@ -102,19 +132,78 @@ func test_ambient_source_is_colour_not_sky() -> void:
 		root.queue_free()
 
 
-func test_no_scene_relies_on_a_missing_sky() -> void:
-	# Guards the other half of the same bug: if a future change puts the ambient
-	# source back to SKY, it must come with an actual Sky resource.
+func test_the_interior_and_night_scenes_stay_on_colour_ambient() -> void:
+	# Their end state is COLOR by design, not by default: Papu is a torchlit
+	# night arena, the warp room is a vault, look_dev is a turntable whose whole
+	# job is judging an asset under a known key.
 	for scene_path in AMBIENT_SCENES:
+		if scene_path in SKY_SCENES:
+			continue
 		var root := _instantiate(scene_path)
 		if root == null:
 			continue
 		var env := _environment_of(root, scene_path)
-		if env != null and env.ambient_light_source == Environment.AMBIENT_SOURCE_SKY:
-			assert_not_null(
-				env.sky,
-				"%s uses SKY ambient so it must define a Sky resource" % scene_path
+		if env != null:
+			assert_eq(
+				env.ambient_light_source,
+				Environment.AMBIENT_SOURCE_COLOR,
+				"%s should not acquire a sky" % scene_path
 			)
+		root.queue_free()
+
+
+func test_the_open_levels_have_a_real_sky() -> void:
+	for scene_path in SKY_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			assert_eq(
+				env.background_mode,
+				Environment.BG_SKY,
+				"%s must draw its sky, not a flat colour" % scene_path
+			)
+			assert_not_null(env.sky, "%s must define a Sky" % scene_path)
+			if env.sky != null:
+				assert_true(
+					env.sky.sky_material is ProceduralSkyMaterial,
+					"%s should use a procedural sky, not an imported panorama" % scene_path
+				)
+				# The sky never moves, so its radiance is computed once rather
+				# than per frame. REALTIME would pay that cost every frame for a
+				# gradient that cannot change.
+				assert_ne(
+					env.sky.process_mode,
+					Sky.PROCESS_MODE_REALTIME,
+					"%s sky is static; it must not update in realtime" % scene_path
+				)
+		root.queue_free()
+
+
+func test_aerial_perspective_is_on_exactly_where_it_works() -> void:
+	# fog_aerial_perspective needs BG_SKY to have anything to blend toward. It
+	# was pinned at 0 while the levels had no sky; now the two that do should
+	# actually use it, and the rest must still leave it alone.
+	for scene_path in LEVEL_SCENES:
+		var root := _instantiate(scene_path)
+		if root == null:
+			continue
+		var env := _environment_of(root, scene_path)
+		if env != null:
+			if env.background_mode == Environment.BG_SKY:
+				assert_gt(
+					env.fog_aerial_perspective,
+					0.0,
+					"%s has a sky, so distant geometry should tint toward it" % scene_path
+				)
+			else:
+				assert_almost_eq(
+					env.fog_aerial_perspective,
+					0.0,
+					0.001,
+					"%s has no sky, so aerial perspective must stay 0" % scene_path
+				)
 		root.queue_free()
 
 

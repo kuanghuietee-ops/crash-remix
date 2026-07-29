@@ -17,17 +17,32 @@
 [ext_resource type="PackedScene" path="res://scenes/props/stopwatch.tscn" id="15_stopwatch"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_time.tscn" id="16_time"]
 
+[sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_beach"]
+sky_top_color = Color(0.18, 0.45, 0.72, 1)
+sky_horizon_color = Color(0.65, 0.8, 0.9, 1)
+sky_curve = 0.18
+ground_horizon_color = Color(0.55, 0.68, 0.76, 1)
+ground_bottom_color = Color(0.16, 0.3, 0.4, 1)
+ground_curve = 0.15
+
+[sub_resource type="Sky" id="Sky_beach"]
+sky_material = SubResource("SkyMaterial_beach")
+process_mode = 1
+radiance_size = 2
+
 [sub_resource type="Environment" id="Environment_beach"]
-background_mode = 1
-background_color = Color(0.12, 0.38, 0.58, 1)
-ambient_light_source = 2
+background_mode = 2
+sky = SubResource("Sky_beach")
+ambient_light_source = 3
 ambient_light_color = Color(0.72, 0.82, 0.92, 1)
 ambient_light_energy = 0.82
+reflected_light_source = 2
 tonemap_mode = 2
 fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.7, 0.82, 0.9, 1)
 fog_sun_scatter = 0.1
+fog_aerial_perspective = 0.5
 fog_depth_begin = 40.0
 fog_depth_end = 180.0
 
