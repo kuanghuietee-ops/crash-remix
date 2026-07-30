@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Resource" path="res://tests/fixtures/level_zero_crate_meta.tres" id="1_meta"]
+[ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="2_platform"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/plant.tscn" id="3_plant"]
+
+[node name="EnemyFloatingBad" type="Node3D"]
+metadata/level_meta = ExtResource("1_meta")
+
+[node name="Spine" type="Node3D" parent="."]
+
+[node name="Start" type="Marker3D" parent="Spine"]
+
+[node name="End" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, -10)
+
+[node name="Floor" parent="." instance=ExtResource("2_platform")]
+position = Vector3(0, -0.5, -5)
+size = Vector3(12, 1, 12)
+
+[node name="FloatingPlant" parent="." instance=ExtResource("3_plant")]
+position = Vector3(0, 0.75, -5)

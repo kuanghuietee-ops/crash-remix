@@ -140,6 +140,7 @@ shape = SubResource("Shape_attack")
 
 [node name="Visual" type="MeshInstance3D" parent="."]
 visible = false
+position = Vector3(0, 0.675, 0)
 mesh = SubResource("Mesh_body")
 
 [node name="Head" type="MeshInstance3D" parent="."]

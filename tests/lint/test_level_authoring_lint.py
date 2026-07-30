@@ -12,6 +12,7 @@ from scripts.lint_level_authoring import (
     CHECKPOINT_SPACING_RULE,
     CRATE_AUTHORING_RULE,
     CRATE_ID_RULE,
+    ENEMY_FLOOR_CONTACT_RULE,
     REQUIRED_JUMP_RULE,
     SPAWN_FLOOR_RULE,
     SPINE_ORDER_RULE,
@@ -563,6 +564,47 @@ class LevelAuthoringLintTests(unittest.TestCase):
             [SPAWN_FLOOR_RULE],
         )
         self.assertIn("no authored GrayboxPlatform", findings[0].detail)
+
+    def test_real_hog_wild_level_passes_the_authoring_lint(
+        self,
+    ) -> None:
+        level_path = (
+            REPO_ROOT
+            / "scenes"
+            / "levels"
+            / "wr1_hog_wild.tscn"
+        )
+        self.assertTrue(level_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(level_path),
+            [],
+        )
+
+    def test_enemy_hovering_above_its_floor_fires_its_rule(
+        self,
+    ) -> None:
+        # The operator's "the plant is hanging in the air" report traced to
+        # scenes/enemies/plant.tscn's hidden "Visual" proxy mesh (the sole
+        # input to EnemyBase._apply_visual_shape_ratios()'s runtime hurtbox
+        # sizing) missing the bottom-anchoring position offset that
+        # crab.tscn and skink.tscn both carry. Segment authors compensated
+        # by raising every authored Plant instance 0.75m so the runtime
+        # hurtbox would still land near the floor, which floated the
+        # already-base-anchored visible glTF model instead. Nothing
+        # generalized that check, so the next enemy placement could
+        # silently reintroduce the same shape -- this fixture authors a
+        # Plant 0.75m above a GrayboxPlatform with no compensating scene
+        # fix, the same shape as the real bug.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "level_enemy_floating_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [ENEMY_FLOOR_CONTACT_RULE],
+        )
+        self.assertIn("FloatingPlant", findings[0].detail)
+        self.assertIn("y=0.750", findings[0].detail)
 
     def test_warp_room_is_not_misclassified_as_a_collectible_level(
         self,

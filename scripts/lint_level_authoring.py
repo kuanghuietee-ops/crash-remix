@@ -60,6 +60,7 @@ REQUIRED_JUMP_RULE = "required_jump_depression"
 TIME_CRATE_RULE = "time_crate_relic_only"
 SPAWN_FLOOR_RULE = "player_spawn_has_reachable_floor"
 CHASE_START_GAP_RULE = "chase_start_gap"
+ENEMY_FLOOR_CONTACT_RULE = "enemy_floor_contact"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -76,6 +77,23 @@ CHASE_HAZARD_SCRIPT = (
 GRAYBOX_PLATFORM_SCRIPT = (
     "res://src/graybox/graybox_platform.gd"
 )
+# The three EnemyBase subclasses. Static .tscn parsing only sees the exact
+# script attached to a node, not its GDScript "extends" chain, so a new
+# enemy type must be added here too -- the same shape as
+# LEVEL_META_EXEMPT_SCENES and the crate-type constants below.
+ENEMY_SCRIPTS = frozenset(
+    {
+        "res://src/gameplay/enemies/enemy_plant.gd",
+        "res://src/gameplay/enemies/enemy_crab.gd",
+        "res://src/gameplay/enemies/enemy_skink.gd",
+    }
+)
+# How far an authored enemy's base may sit from the top surface of the
+# GrayboxPlatform beneath it before it reads as floating or embedded on a
+# real phone. Matches the tolerance used to diagnose the "plant is hanging
+# in the air" report (root-caused to scenes/enemies/plant.tscn -- see
+# _enemy_floor_contact_findings).
+ENEMY_FLOOR_TOLERANCE_M = 0.05
 LEVEL_META_SCRIPT = "res://src/tuning/level_meta.gd"
 PLAYER_CONTROLLER_SCRIPT = (
     "res://src/gameplay/player/player_controller.gd"
@@ -268,7 +286,91 @@ def _level_findings(
     findings.extend(
         _chase_start_gap_findings(scene_name, nodes, tuning)
     )
+    findings.extend(_enemy_floor_contact_findings(scene_name, nodes))
     return findings
+
+
+def _enemy_floor_contact_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Every authored enemy must stand on the graybox floor beneath it.
+
+    P0-2 got a generalized "spawn has floor beneath it" guard
+    (SPAWN_FLOOR_RULE); enemies never did, and a real one shipped floating:
+    ``scenes/enemies/plant.tscn``'s hidden "Visual" proxy mesh -- the only
+    input to ``EnemyBase._apply_visual_shape_ratios()``'s runtime hurtbox
+    sizing -- has no ``position`` offset, unlike ``crab.tscn`` and
+    ``skink.tscn``, whose proxies are both bottom-anchored a little above
+    their node root. Segment authors compensated by raising every Plant
+    instance's root 0.75m so the runtime hurtbox would still land near the
+    floor, which floated the already-base-anchored visible glTF model
+    instead. This walks every authored enemy and requires at least one
+    GrayboxPlatform whose horizontal footprint covers its X/Z with a top
+    surface within ``ENEMY_FLOOR_TOLERANCE_M`` of the enemy's own base --
+    the same footprint-and-top-surface test SPAWN_FLOOR_RULE already uses,
+    narrowed to a tight band instead of a wide reachability range because
+    an enemy, unlike a spawn, is expected to be standing exactly on it.
+    """
+    findings: list[AuthoringViolation] = []
+    for enemy in nodes:
+        if enemy.script_path not in ENEMY_SCRIPTS:
+            continue
+        if _enemy_has_floor_contact(enemy, nodes):
+            continue
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                ENEMY_FLOOR_CONTACT_RULE,
+                (
+                    f"{enemy.path} base is at "
+                    f"y={enemy.world_position[1]:.3f} but no authored "
+                    "GrayboxPlatform has a top surface within "
+                    f"{ENEMY_FLOOR_TOLERANCE_M:.3f}m of it"
+                ),
+            )
+        )
+    return findings
+
+
+def _enemy_has_floor_contact(
+    enemy: FlatNode,
+    nodes: list[FlatNode],
+) -> bool:
+    for platform in nodes:
+        if platform.script_path != GRAYBOX_PLATFORM_SCRIPT:
+            continue
+        size = _parse_vector(platform.properties.get("size", ""))
+        if size is None:
+            continue
+        half_size = _multiply(size, 0.5)
+        local_point = _basis_inverse_xform(
+            platform.world_transform.basis,
+            _subtract(
+                enemy.world_position,
+                platform.world_transform.origin,
+            ),
+        )
+        if local_point is None:
+            continue
+        if (
+            abs(local_point[0]) > half_size[0]
+            or abs(local_point[2]) > half_size[2]
+        ):
+            continue
+        top_center = _add(
+            platform.world_transform.origin,
+            _basis_xform(
+                platform.world_transform.basis,
+                (0.0, half_size[1], 0.0),
+            ),
+        )
+        if (
+            abs(top_center[1] - enemy.world_position[1])
+            <= ENEMY_FLOOR_TOLERANCE_M
+        ):
+            return True
+    return False
 
 
 def _chase_start_gap_findings(

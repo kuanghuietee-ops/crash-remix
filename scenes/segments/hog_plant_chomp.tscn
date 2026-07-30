@@ -54,10 +54,10 @@ size = Vector3(18, 1, 116)
 color = Color(0.32, 0.28, 0.08, 1)
 
 [node name="PlantA" parent="." instance=ExtResource("5_plant")]
-position = Vector3(-3.8, 0.75, -38)
+position = Vector3(-3.8, 0, -38)
 
 [node name="PlantB" parent="." instance=ExtResource("5_plant")]
-position = Vector3(3.8, 0.75, -86)
+position = Vector3(3.8, 0, -86)
 
 [node name="ExitSurface" parent="." instance=ExtResource("1_platform")]
 position = Vector3(0, -0.5, -124)
