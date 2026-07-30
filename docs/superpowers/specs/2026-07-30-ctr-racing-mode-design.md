@@ -107,3 +107,39 @@ integration-tested like the platformer.
 Adventure map, multiplayer, more tracks/characters/kart art (graybox kart
 until the art ladder gets there), juiced items, weather. The platformer's
 roadmap is unchanged.
+
+## Recorded debts (R3+)
+
+Findings from the R1/R2 final fix wave (2026-07-30) that are correctly out of
+scope for this pass but must not be forgotten when the phases that touch them
+start.
+
+1. **R4-BINDING**: `apply_spin_out()` (kart_controller.gd) only calls
+   `KartMotor.apply_spin_out()` — it never cancels `DriftStateMachine`. A hit
+   landing mid-slide zeroes the motor's yaw authority but leaves the drift FSM
+   still reporting `is_sliding()` true and still boostable, since nothing
+   about a spin-out tells it the slide is over (parked Task-3 review finding).
+   The R4 (items/hazards) plan MUST add a drift cancel alongside the spin-out,
+   plus gate `boost_tap()` so a hit can't be "rewarded" with a boost stacked
+   the instant before or during it.
+2. Boost pads / jump pads are listed under "Kart feel" above as a kart verb,
+   but no such mechanic exists anywhere in `src/racing/` or `scenes/racing/`
+   — Task 8's boost-pad line was deliberately skipped (no track-side trigger,
+   no kart-side response). R3+ candidate; needs its own tuning fields and a
+   track-authoring rule (author-lint) once built, not just a scene prop.
+3. Five `RaceTuning` fields are authored and validated (registered,
+   fingerprinted, panel-editable, rejected if non-positive) but read by
+   nothing in `src/racing/`: `countdown_step_s`, `start_boost_window_s`,
+   `start_bog_penalty_s`, `checkpoint_tolerance_m`, `respawn_drop_height_m`.
+   They exist for R5's countdown/start-boost/respawn systems, which haven't
+   been built yet — expected, not a bug, but worth naming so a future pass
+   doesn't assume they're already wired because they validate cleanly.
+4. **Known feel-gate note**: `RaceSession._route_input()` samples
+   `is_action_pressed(InputIntent.ACTION_JUMP)` once per physics tick and only
+   reacts to a change from the previous tick's sampled state (the same
+   inherited input-polling architecture the platformer uses). A HOP press and
+   release that both land inside the same physics tick's polling window —
+   plausible on a touch button under a fast tap — produces no edge at all and
+   is silently swallowed. If a human tester reports dropped boost taps or
+   missed hops on device, this poll-vs-edge gap is the mechanism to check
+   first, not the drift FSM's own timing.
