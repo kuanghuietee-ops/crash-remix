@@ -89,8 +89,13 @@ Wumpa-juiced variants deferred.
 ## Race flow (phase R5)
 
 Countdown + start boost, live positions, lap/position HUD, results screen,
-one-tap retry. Time trial ships earlier (R2) as race-minus-AI with best-time
-save via the existing save system.
+one-tap retry. Time trial ships as race-minus-AI with best-time save via the
+existing save system -- authored in R2 as the two race scenes' own default
+shape (no AI existed yet), then reintroduced in the R3 fix-wave as an
+explicit `RaceSession.spawn_opponents` flag (default `true`) once R3 gave
+those same two scenes an AI-populated default: four level-list entries now
+exist (RACE/TIME TRIAL × Graybox/Sanity Shores), not two AI-only ones -- see
+Recorded debts #8.
 
 ## Phases and gates
 
@@ -157,21 +162,23 @@ start.
    `set_speed_scale()`, the same kart-only verbs a human racer has in R1-R3.
    This is an intentional scope split, not a missed line item — the R4 plan
    must add AI item-use once item boxes/roulette actually exist.
-6. **Stuck detector fires on any 3s net-stationary AI kart — fine in R3,
-   binding on R5.** `AiKartAgent._check_stuck_and_respawn()`
-   (ai_kart_agent.gd) respawns any AI kart whose net horizontal displacement
-   stays below `respawn_stuck_speed_mps * respawn_stuck_after_s` (ai.tres:
-   1.5 m/s × 3.0s) over a rolling window — correct in R3, where every AI kart
-   drives itself from tick 1 of `configure()` onward, so "stationary" always
-   means "actually stuck." R5's countdown/grid-hold (race flow, not yet
-   built) will legitimately hold every kart still at the start line for
-   several seconds before GO fires; without an explicit gate, that hold alone
-   would cross the stuck threshold and force-respawn the entire AI grid
-   before the race even starts. The R5 plan MUST gate `AiKartAgent`
-   (equivalent to Task 5's own `is_run_active()` binding contract 1 freeze
-   gate, see race_session.gd's `_finish_race()` and ai_kart_agent.gd's RUN-
-   ACTIVE GATE doc) so agents do not accumulate stuck-window time — or drive
-   at all — until the countdown reaches GO.
+6. **Stuck detector fires on any 3s net-stationary-or-non-progressing AI
+   kart — fine in R3, binding on R5.** `AiKartAgent._check_stuck_and_
+   respawn()` (ai_kart_agent.gd) respawns any AI kart whose NET SPINE
+   PROGRESS (fix-wave HIGH-1: `follower.total_progress_m()`, not raw
+   position) gains less than `respawn_stuck_speed_mps * respawn_stuck_
+   after_s` (ai.tres: 1.5 m/s × 3.0s) over a rolling window — correct in
+   R3, where every AI kart drives itself from tick 1 of `configure()`
+   onward, so "not progressing" always means "actually stuck." R5's
+   countdown/grid-hold (race flow, not yet built) will legitimately hold
+   every kart still at the start line for several seconds before GO fires;
+   without an explicit gate, that hold alone would cross the stuck
+   threshold and force-respawn the entire AI grid before the race even
+   starts. The R5 plan MUST gate `AiKartAgent` (equivalent to Task 5's own
+   `is_run_active()` binding contract 1 freeze gate, see race_session.gd's
+   `_finish_race()` and ai_kart_agent.gd's RUN-ACTIVE GATE doc) so agents
+   do not accumulate stuck-window time — or drive at all — until the
+   countdown reaches GO.
 7. **Graybox loop East-turn wedge recovers via respawn, not by never
    happening.** The graybox loop's East turn can trap an AI kart oscillating
    against the inner wall for several real seconds (Task 4's own reviewer
@@ -181,12 +188,33 @@ start.
    re-anchoring the window just short of firing. This is accepted, tested
    (`test_east_turn_never_permanently_wedges_over_twenty_real_seconds`), and
    working as designed — the safety net is respawn, not corner geometry that
-   prevents the wedge outright. AI line tuning (`lateral_slot_spacing_m`,
-   `steer_gain`, `corner_speed_curvature_gain`/`corner_speed_floor_ratio`,
-   `slide_trigger_curvature`/`slide_exit_curvature` — all in ai.tres) could
-   in principle be retuned to avoid the wedge entirely rather than recover
+   prevents the wedge outright. Fix-wave HIGH-1 replaced the detector's own
+   net-DISPLACEMENT window (fix round 1) with net SPINE PROGRESS instead
+   (a kart can rack up real straight-line displacement without ever
+   advancing along the racing line -- see ai_kart_agent.gd's STUCK
+   DETECTION doc for the full "moving without progressing" finding and
+   `test_lateral_oscillation_with_flat_spine_progress_triggers_respawn_
+   within_two_windows`'s own regression lock) -- the East turn's own worst-
+   case recovery-window bound above is unchanged by that swap, since both
+   detector generations share the same tumbling-window shape and the same
+   two tuning fields, only the "is this kart actually progressing" signal
+   itself changed. AI line tuning (`lateral_slot_spacing_m`, `steer_gain`,
+   `corner_speed_curvature_gain`/`corner_speed_floor_ratio`, `slide_
+   trigger_curvature`/`slide_exit_curvature` — all in ai.tres) could in
+   principle be retuned to avoid the wedge entirely rather than recover
    from it; this is an operator-tunable, on-device follow-up, not a code
    change.
+8. **Solo time trial is a scene-level flag, not a tuning override (fix-wave
+   MEDIUM-5).** `RaceSession.spawn_opponents` (default `true`) owns whether
+   a race spawns `AiTuning.opponent_count` AI karts at all;
+   `opponent_count` itself keeps validating strictly positive regardless
+   (see tuning_service.gd, unchanged). Two thin scene variants
+   (`race_time_trial_solo.tscn`/`race_sanity_shores_solo.tscn`) instance
+   the ordinary `race_time_trial.tscn`/`race_sanity_shores.tscn` scenes and
+   override only this one value; the level list now shows four racing
+   entries (RACE/TIME TRIAL × Graybox/Sanity Shores) instead of the two
+   AI-populated-only entries R3 shipped with. See race_session.gd's own
+   `spawn_opponents` doc and game_root.gd's `_RACE_SCENES_BY_LEVEL_ID`.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
