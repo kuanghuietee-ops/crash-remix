@@ -137,7 +137,14 @@ func test_steer_rate_falls_off_with_speed_at_rest_half_and_top() -> void:
 			1.0
 		)
 		var expected_falloff := 1.0 - speed_ratio * _kart.steer_speed_falloff
-		var expected_yaw_rate := (
+		# Negated (world-space steering-polarity fix): positive steer (stick
+		# right) must produce a NEGATIVE yaw delta under Godot's CCW-positive
+		# rotation about +Y -- see kart_motor.gd's single sign-conversion
+		# comment. This test only ever pinned the RELATIVE falloff-vs-speed
+		# shape, not an absolute sign; test_kart_controller.gd's
+		# test_steering_right_turns_toward_world_positive_x_not_negative pins
+		# the absolute polarity end to end.
+		var expected_yaw_rate := -(
 			steer_value * _kart.steer_rate_degrees_per_s * expected_falloff
 		)
 		var measured_yaw_rate := (
@@ -165,9 +172,12 @@ func test_zero_speed_uses_full_steer_authority() -> void:
 
 	motor.call("tick", step_s, 1.0, false, false, false, 0)
 
+	# Negated (world-space steering-polarity fix, see kart_motor.gd):
+	# steer(+1) yields a negative yaw rate now -- this test only pins that
+	# falloff doesn't shrink the MAGNITUDE at rest, not the sign.
 	assert_almost_eq(
 		float(motor.call("yaw_degrees")) / step_s,
-		_kart.steer_rate_degrees_per_s,
+		-_kart.steer_rate_degrees_per_s,
 		0.01,
 		"at rest, falloff must not meaningfully reduce steer authority"
 	)
@@ -188,9 +198,13 @@ func test_slide_adds_yaw_bonus_toward_locked_direction_with_no_steer() -> void:
 
 		motor.call("tick", step_s, 0.0, false, false, true, slide_direction)
 
+		# Negated (world-space steering-polarity fix, see kart_motor.gd): the
+		# slide bonus must push yaw FURTHER INTO the locked direction under the
+		# corrected convention, so slide_direction=+1 (a rightward-locked slide)
+		# now adds a NEGATIVE yaw rate (turns right), not positive.
 		assert_almost_eq(
 			float(motor.call("yaw_degrees")) / step_s,
-			float(slide_direction) * _kart.slide_yaw_bonus_degrees_per_s,
+			-float(slide_direction) * _kart.slide_yaw_bonus_degrees_per_s,
 			0.001,
 			"slide_direction=%s" % slide_direction
 		)
@@ -212,7 +226,12 @@ func test_steering_into_slide_direction_adds_full_authority_on_top_of_bonus() ->
 		1.0
 	)
 	var falloff_scale := 1.0 - speed_ratio * _kart.steer_speed_falloff
-	var expected := (
+	# Negated (world-space steering-polarity fix, see kart_motor.gd): both
+	# the bonus-toward-slide_direction term and the steer-into-direction
+	# term go through the same single sign-conversion point, so the whole
+	# sum flips together -- steering into a rightward-locked slide
+	# (slide_direction=1, steer=1.0) now stacks a NEGATIVE (rightward) rate.
+	var expected := -(
 		float(slide_direction) * _kart.slide_yaw_bonus_degrees_per_s
 		+ 1.0 * _kart.steer_rate_degrees_per_s * falloff_scale
 	)
@@ -241,7 +260,9 @@ func test_counter_steering_uses_slide_counter_yaw_rate_instead() -> void:
 		1.0
 	)
 	var falloff_scale := 1.0 - speed_ratio * _kart.steer_speed_falloff
-	var expected := (
+	# Negated (world-space steering-polarity fix, see kart_motor.gd): same
+	# single sign-conversion point as above flips this sum too.
+	var expected := -(
 		float(slide_direction) * _kart.slide_yaw_bonus_degrees_per_s
 		+ (-1.0) * _kart.slide_counter_yaw_degrees_per_s * falloff_scale
 	)

@@ -104,9 +104,17 @@ func _apply(delta_s: float) -> void:
 	var target_forward := kart_forward
 	if bool(_kart.call("is_sliding")):
 		var slide_sign := int(_kart.call("slide_direction"))
+		# Negated (world-space steering-polarity fix, see kart_motor.gd's
+		# single sign-conversion comment): Vector3.rotated(Vector3.UP,
+		# +angle) sweeps a facing vector toward the kart's own LEFT (Godot's
+		# CCW-positive rotation about +Y), so a straight `slide_sign *
+		# +angle` biased the camera look INTO the wrong side: slide_direction
+		# = 1 (a rightward-locked slide, since DriftStateMachine locks it to
+		# sign(steer) and positive steer is now a right turn) must yaw the
+		# camera look toward the kart's own right, i.e. a NEGATIVE angle here.
 		target_forward = kart_forward.rotated(
 			Vector3.UP,
-			float(slide_sign) * deg_to_rad(_race_tuning.camera_drift_yaw_degrees)
+			-float(slide_sign) * deg_to_rad(_race_tuning.camera_drift_yaw_degrees)
 		)
 
 	var alpha := _ease_alpha(delta_s, _race_tuning.camera_yaw_lag_s)

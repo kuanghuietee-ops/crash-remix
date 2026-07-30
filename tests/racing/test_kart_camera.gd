@@ -292,6 +292,46 @@ func test_drift_yaw_offset_flips_sign_with_slide_direction() -> void:
 	)
 
 
+## Operator-reported control bug companion pin (see kart_motor.gd's single
+## sign-conversion comment and test_kart_controller.gd's
+## test_steering_right_turns_toward_world_positive_x_not_negative): the
+## test above only proves the two slide directions bias the camera to
+## OPPOSITE sides, never which absolute side either one is. slide_direction()
+## = 1 is locked from a positive steer (stick right -- see drift_state_
+## machine.gd's _start_slide()), which after the motor fix turns the kart
+## right; the camera's "look into the turn" flourish must therefore bias
+## toward the kart's own right for slide_direction=1, not its left.
+## _drift_offset_signed_angle() measures the signed angle from the kart's
+## facing to the camera's look via cross(kart_forward, look_forward).y --
+## the same right-hand convention as Vector3.rotated(Vector3.UP, +angle),
+## so a POSITIVE result there is a turn toward the kart's own LEFT and a
+## NEGATIVE result is toward its own RIGHT (this is the same handedness
+## fact kart_motor.gd's fix comment relies on: positive Y-axis rotation
+## sweeps FORWARD toward -X, the kart's own left).
+func test_drift_yaw_offset_biases_camera_toward_the_kart_own_right_when_slide_direction_is_positive() -> void:
+	var rightward_slide_angle := _drift_offset_signed_angle(1)
+	var leftward_slide_angle := _drift_offset_signed_angle(-1)
+
+	assert_lt(
+		rightward_slide_angle,
+		0.0,
+		(
+			"slide_direction=1 (locked from steering right) must bias the camera "
+			+ "look toward the kart's own RIGHT (a negative signed angle here), "
+			+ "not its left -- got %s"
+		) % rightward_slide_angle
+	)
+	assert_gt(
+		leftward_slide_angle,
+		0.0,
+		(
+			"slide_direction=-1 (locked from steering left) must bias the camera "
+			+ "look toward the kart's own LEFT (a positive signed angle here), "
+			+ "not its right -- got %s"
+		) % leftward_slide_angle
+	)
+
+
 func test_no_drift_offset_while_not_sliding() -> void:
 	var rig := _new_rig()
 	if rig == null:

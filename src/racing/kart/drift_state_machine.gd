@@ -142,6 +142,13 @@ func is_sliding() -> bool:
 	return _sliding
 
 
+## The value itself is unchanged by the world-space steering-polarity fix
+## (kart_motor.gd) -- still exactly sign(steer) at the instant the slide
+## started, still 1 for positive steer -- but its physical MEANING flips
+## with the fix: 1 (locked from stick right / positive steer) is now a
+## RIGHTWARD-turning slide, not leftward. See kart_motor.gd's slide_yaw_
+## bonus_degrees_per_s term and kart_camera.gd's drift-bias term, both of
+## which read this value and were updated to turn/look right for 1.
 func slide_direction() -> int:
 	return _slide_direction
 

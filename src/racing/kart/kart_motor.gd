@@ -134,7 +134,21 @@ func tick(
 					)
 		else:
 			yaw_rate = steer * _tuning.steer_rate_degrees_per_s * falloff_scale
-	_yaw_degrees += yaw_rate * delta_s
+	# Single sign-conversion point (operator-reported control bug, R1 racing
+	# APK: stick right turned the kart left, stick left turned it right).
+	# Every term above (plain steer, the slide's bonus toward slide_direction,
+	# steering-with vs counter-steering) is built as if positive steer /
+	# positive slide_direction should mean "positive yaw", but Godot's
+	# rotation about +Y is CCW-positive: Vector3.FORWARD.rotated(Vector3.UP,
+	# +angle) sweeps the facing vector toward -X, which is the kart's own
+	# LEFT (identity basis has +X as right -- see velocity() below, which
+	# uses this exact same FORWARD.rotated(UP, yaw) convention). So positive
+	# steer (stick right) must produce a NEGATIVE yaw delta, not positive --
+	# negating the whole accumulated yaw_rate right here, in the one place it
+	# turns into a yaw delta, fixes every contributing term at once without
+	# touching the relative-sign relationships (steer-vs-slide_direction
+	# selection, bonus direction, falloff) computed above.
+	_yaw_degrees -= yaw_rate * delta_s
 
 	if grounded:
 		if _vertical_speed_mps < 0.0:

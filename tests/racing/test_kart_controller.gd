@@ -49,6 +49,71 @@ func test_kart_scene_settles_grounded_and_drives_forward_with_zero_steer() -> vo
 	)
 
 
+## Operator-reported control bug (device, R1 racing APK): steering was
+## INVERTED -- stick left turned the kart right, stick right turned it
+## left. The Task 7 reviewer flagged that every existing steer/yaw sign
+## test (test_kart_motor.gd's steer-rate/slide-bonus formulas,
+## test_counter_steering_while_sliding_reaches_the_counter_yaw_rate below,
+## and test_kart_camera.gd's drift-yaw-flip test) is RELATIVE ONLY -- each
+## checks that steer(+1) vs steer(-1), or slide_direction 1 vs -1, produce
+## opposite-signed yaw/heading changes, never which absolute WORLD side
+## either one turns toward. A perfectly self-consistent 180-degree-mirrored
+## implementation passes every one of those. This test pins the missing
+## absolute polarity: the kart spawns facing -Z (Godot's FORWARD, per
+## test_kart_scene_settles_grounded_and_drives_forward_with_zero_steer's own
+## "forward is -Z" comment above); steering RIGHT (stick x=+1, the exact
+## value RacingInputAdapter.apply_move forwards straight through from a
+## right-deflected stick -- see test_racing_input_adapter.gd's
+## test_steer_maps_stick_x_directly_to_controller_steer, which proves the
+## adapter does no negation of its own) must turn the kart's facing and
+## velocity toward world +X, and steering LEFT (stick x=-1) toward world -X.
+func test_steering_right_turns_toward_world_positive_x_not_negative() -> void:
+	var right_kart := _spawn_kart_on_floor(Vector3.ZERO)
+	var left_kart := _spawn_kart_on_floor(Vector3(100.0, 0.0, 0.0))
+	if right_kart == null or left_kart == null:
+		return
+
+	await wait_physics_frames(10)
+	assert_true(right_kart.is_on_floor(), "fixture setup must be grounded before steering")
+	assert_true(left_kart.is_on_floor(), "fixture setup must be grounded before steering")
+
+	right_kart.call("steer", 1.0)
+	left_kart.call("steer", -1.0)
+
+	await wait_physics_frames(30)
+
+	var right_forward: Vector3 = -right_kart.global_transform.basis.z
+	var left_forward: Vector3 = -left_kart.global_transform.basis.z
+
+	assert_gt(
+		right_forward.x,
+		0.05,
+		(
+			"stick RIGHT (steer(+1)) must turn the kart's facing toward world "
+			+ "+X -- got forward=%s (x=%s). A negative x here means steering "
+			+ "right is turning the kart LEFT (the reported device bug)."
+		) % [right_forward, right_forward.x]
+	)
+	assert_lt(
+		left_forward.x,
+		-0.05,
+		(
+			"stick LEFT (steer(-1)) must turn the kart's facing toward world "
+			+ "-X -- got forward=%s (x=%s)."
+		) % [left_forward, left_forward.x]
+	)
+	assert_gt(
+		right_kart.velocity.x,
+		0.0,
+		"steering right must also give the kart's actual velocity a positive X component"
+	)
+	assert_lt(
+		left_kart.velocity.x,
+		0.0,
+		"steering left must also give the kart's actual velocity a negative X component"
+	)
+
+
 func test_hop_press_while_sliding_adds_no_vertical_impulse() -> void:
 	# Fix round 1: RacingInputAdapter now routes every hop press that
 	# arrives while already sliding to boost_tap() instead of
