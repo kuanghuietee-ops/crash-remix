@@ -210,6 +210,119 @@ func test_request_retry_emits_the_retry_requested_signal() -> void:
 	assert_signal_emitted(race, "retry_requested")
 
 
+# ---------------------------------------------------------------------------
+# M1 (final fix wave): elapsed_s() must exclude time the tree is paused.
+# ---------------------------------------------------------------------------
+
+
+## race_session.gd's elapsed_s() used to be a raw MonotonicClock diff against
+## a start timestamp -- correct on a running clock, but GameRoot pauses the
+## whole tree (see game_root.gd's _sync_tree_pause()) while a PAUSED overlay
+## is up, and real wall-clock time keeps moving underneath that regardless.
+## The fix mirrors level_session.gd's own precedent for this exact class of
+## bug (LevelRunState.advance_relic_timer(delta_s), summed only from
+## _physics_process): RaceSession now sets process_mode =
+## PROCESS_MODE_PAUSABLE in configure() (previously left at the INHERIT
+## default, which silently picked up GameRoot's own PROCESS_MODE_ALWAYS) and
+## accumulates its own elapsed timer from delta_s each tick instead of
+## reading the wall clock directly, so a tick that never runs while paused
+## contributes nothing.
+##
+## Simulated here by manipulating the session's own process_mode directly
+## rather than the real SceneTree.paused flag -- a deterministic,
+## tree-global-state-free way to prove a PAUSABLE node's own physics-driven
+## accumulation actually stops when it isn't processing, the same shape
+## GameRoot's real pause achieves by setting SceneTree.paused = true while
+## every PAUSABLE node (this session included, once configured) just stops
+## being ticked.
+func test_elapsed_s_excludes_time_the_race_session_is_not_processing() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+
+	await wait_physics_frames(20)
+	var elapsed_before_pause := float(race.call("elapsed_s"))
+	assert_gt(
+		elapsed_before_pause,
+		0.0,
+		"fixture setup: real time must have elapsed before the simulated pause"
+	)
+
+	race.process_mode = Node.PROCESS_MODE_DISABLED
+	await wait_physics_frames(30)
+	race.process_mode = Node.PROCESS_MODE_PAUSABLE
+
+	var elapsed_after_gap := float(race.call("elapsed_s"))
+	assert_almost_eq(
+		elapsed_after_gap,
+		elapsed_before_pause,
+		0.05,
+		(
+			"elapsed_s() must not advance while the race session isn't "
+			+ "processing -- got before=%s after=%s (background/paused "
+			+ "wall-clock time leaking in is exactly the bug this pins)"
+		) % [elapsed_before_pause, elapsed_after_gap]
+	)
+
+	await wait_physics_frames(20)
+	var elapsed_after_resume := float(race.call("elapsed_s"))
+	assert_gt(
+		elapsed_after_resume,
+		elapsed_after_gap,
+		"elapsed_s() must resume advancing once processing resumes"
+	)
+
+
+## "Lap splits consistent": a split recorded across a simulated pause must
+## still equal the ACTIVE elapsed time between the two boundary crossings,
+## not the wall-clock time (which includes the paused gap). Drives through
+## a real lap via the same teleport-cross technique the rest of this file
+## uses, with a simulated pause inserted partway through.
+func test_lap_split_stays_consistent_across_a_simulated_pause() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	kart.set_physics_process(false)
+	var gate_count := int(race.call("gate_count"))
+
+	# The very first crossing of gate 0 only starts lap 1 -- it records no
+	# split (see lap_validator.gd's own class doc) -- so this establishes
+	# the boundary the eventual lap-1 split will be measured from.
+	await _cross_gate(race, kart, 0)
+	var lap_start_elapsed := float(race.call("elapsed_s"))
+
+	await wait_physics_frames(15)
+	race.process_mode = Node.PROCESS_MODE_DISABLED
+	await wait_physics_frames(30)
+	race.process_mode = Node.PROCESS_MODE_PAUSABLE
+	await wait_physics_frames(15)
+
+	for gate_index: int in range(1, gate_count):
+		await _cross_gate(race, kart, gate_index)
+	# Closes lap 1.
+	await _cross_gate(race, kart, 0)
+
+	var lap_end_elapsed := float(race.call("elapsed_s"))
+	var laps: Array = race.call("lap_times")
+	assert_eq(laps.size(), 1, "fixture setup: exactly one lap must have completed")
+	if laps.size() != 1:
+		return
+	# A couple of ticks of slack: the split's own boundary is stamped
+	# INSIDE the gate's body_entered handler, which can fire on either
+	# physics tick _cross_gate's own wait_physics_frames(2) advances
+	# through -- this tolerance absorbs that natural capture skew while
+	# staying far tighter than the ~0.5s simulated pause gap it must still
+	# catch leaking in.
+	assert_almost_eq(
+		float(laps[0]),
+		lap_end_elapsed - lap_start_elapsed,
+		0.05,
+		"a recorded lap split must equal elapsed_s()'s own active-time "
+		+ "accounting between the two boundary crossings, pause included"
+	)
+
+
 ## H2 fix round: proves the freeze through REAL physics -- the kart's own
 ## _physics_process stays enabled throughout (unlike every gate-crossing
 ## test above, which disables it for teleport determinism; the reviewer's

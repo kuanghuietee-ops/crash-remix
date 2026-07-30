@@ -21,13 +21,25 @@ extends Node3D
 ## drives: routing input into the kart, the wrong-way grace timer, and
 ## noticing when the race is over.
 ##
-## TIMER. elapsed_s() is a live diff against MonotonicClock, the same "now"
-## primitive level_session.gd stamps onto its own events (see
-## MonotonicClockType.now_s() call sites there) -- not a per-tick delta_s
-## accumulator, so it can't drift with physics substep jitter. Lap splits
-## are recorded as the DELTA between consecutive gate-0 crossings (not a
-## cumulative "time at lap N"), which is what a finish panel's "splits"
-## list conventionally shows.
+## TIMER. elapsed_s() sums delta_s from this session's own _physics_process
+## each tick (M1 fix-wave revision -- it used to be a live MonotonicClock
+## diff against a start timestamp, which read real wall-clock time straight
+## through GameRoot pausing the whole tree via SceneTree.paused, since
+## nothing about a raw clock diff cares whether anything actually ticked in
+## between). configure() now sets process_mode = PROCESS_MODE_PAUSABLE
+## (previously left at the INHERIT default, which silently inherited
+## GameRoot's own PROCESS_MODE_ALWAYS and so never stopped ticking for a
+## pause at all) so _physics_process simply doesn't run while paused,
+## mirroring level_session.gd's identical process_mode = PAUSABLE +
+## LevelRunState.advance_relic_timer(delta_s)-every-tick precedent for the
+## platformer's own relic stopwatch. This trades the old approach's
+## immunity to physics-substep jitter for pause-correctness; the resulting
+## drift is bounded by Engine.physics_jitter_fix's own substep accounting
+## and negligible at time-trial race lengths. Lap splits are recorded as
+## the DELTA between consecutive gate-0 crossings (not a cumulative "time
+## at lap N"), which is what a finish panel's "splits" list conventionally
+## shows, and inherit the same pause-correctness for free since both read
+## through elapsed_s().
 ##
 ## INPUT ROUTING. RacingInputAdapter (racing_input_adapter.gd) maps
 ## InputRouter's buffered move vector and the shared HOP action onto the
@@ -44,7 +56,6 @@ const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
 )
 const LapValidatorType := preload("res://src/racing/track/lap_validator.gd")
-const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -90,7 +101,7 @@ var _validator: LapValidatorType = LapValidatorType.new()
 var _configured: bool = false
 var _finished: bool = false
 var _hop_was_pressed: bool = false
-var _start_s: float
+var _elapsed_s: float
 var _final_elapsed_s: float
 var _last_lap_boundary_s: float
 var _lap_times: Array[float] = []
@@ -99,6 +110,13 @@ var _wrong_way_flag: bool = false
 
 
 func configure(catalog: GameplayTuning) -> void:
+	# M1 fix-wave: without this, process_mode stays at the INHERIT default
+	# and silently picks up GameRoot's own PROCESS_MODE_ALWAYS (see
+	# game_root.gd's _ready()), so this session's _physics_process would
+	# keep ticking straight through GameRoot pausing the whole tree -- see
+	# elapsed_s()'s own class-doc TIMER section and level_session.gd's
+	# identical precedent (set as the first line of ITS OWN configure()).
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_kart_tuning = catalog.kart
 	_race_tuning = catalog.race
 	_input_tuning = catalog.input
@@ -172,7 +190,7 @@ func configure(catalog: GameplayTuning) -> void:
 
 	_finished = false
 	_hop_was_pressed = false
-	_start_s = MonotonicClockType.now_s()
+	_elapsed_s = 0.0
 	_final_elapsed_s = 0.0
 	_last_lap_boundary_s = 0.0
 	_lap_times.clear()
@@ -209,7 +227,7 @@ func elapsed_s() -> float:
 		return _final_elapsed_s
 	if not _configured:
 		return 0.0
-	return maxf(MonotonicClockType.now_s() - _start_s, 0.0)
+	return _elapsed_s
 
 
 func lap_times() -> Array[float]:
@@ -245,6 +263,10 @@ func present_best_times(payload: Dictionary) -> void:
 func _physics_process(delta_s: float) -> void:
 	if not _configured or _finished:
 		return
+	# This tick simply never runs while the tree is paused (process_mode =
+	# PAUSABLE, set in configure()), so summing delta_s here naturally
+	# excludes paused time -- see elapsed_s()'s own class-doc TIMER section.
+	_elapsed_s += delta_s
 	_route_input()
 	_update_wrong_way(delta_s)
 
