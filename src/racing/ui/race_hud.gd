@@ -15,9 +15,16 @@ extends Control
 ## same duck-typing convention kart_camera.gd and racing_input_adapter.gd
 ## already use for their own Node/Object collaborators -- this HUD is
 ## testable against a small fake session with no scene tree involved.
+##
+## Fix round (H1 review): RETRY used to call
+## get_tree().change_scene_to_file() directly -- which frees GameRoot (the
+## real scene tree root) out from under itself, and the fresh race scene
+## nobody calls configure() on ever plays again. RETRY now only calls
+## session.request_retry(); see race_session.gd's retry_requested doc and
+## game_root.gd's DEBUG_RACING_LEVEL_ID render branch for the real,
+## GameRoot-owned reload path this routes into instead.
 
 const TimeFormatType := preload("res://src/core/time_format.gd")
-const RACE_SCENE_PATH := "res://scenes/racing/race_time_trial.tscn"
 
 var _session: Object
 
@@ -81,7 +88,8 @@ func _on_race_finished(total_s: float, lap_times: Array) -> void:
 
 
 func _on_retry_pressed() -> void:
-	get_tree().change_scene_to_file(RACE_SCENE_PATH)
+	if _session != null and is_instance_valid(_session):
+		_session.call("request_retry")
 
 
 func _connect_once(

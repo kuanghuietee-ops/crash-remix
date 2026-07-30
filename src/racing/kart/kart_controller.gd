@@ -43,12 +43,14 @@ var _drift: DriftStateMachineType = DriftStateMachineType.new()
 
 var _steer_input: float
 var _brake_input: bool
+var _run_active: bool = true
 
 
 func configure(kart_tuning: KartTuning) -> void:
 	_tuning = kart_tuning
 	_motor.configure(kart_tuning)
 	_drift.configure(kart_tuning)
+	set_run_active(true)
 
 
 func steer(value: float) -> void:
@@ -102,20 +104,52 @@ func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
 
 
+## Fix round (H2 review): a race that just finished must stop the kart
+## driving into walls behind the finish line under its own auto-throttle,
+## and must not leave a mid-finish slide latched forever accumulating yaw.
+## false zeroes the routed steer, releases the held hop latch, and
+## force-ends any active slide (DriftStateMachine.cancel_slide()) as a
+## one-time transition -- _physics_process then branches every following
+## tick to KartMotor.decelerate_to_stop() instead of the normal drift+motor
+## tick, so the kart visually rolls to a stop (brake_mps2) and stays there
+## rather than snapping to zero or creeping back up to speed once it
+## arrives. true is the default and is re-applied by configure(), so a
+## fresh kart (the normal case: race retry reinstantiates the whole scene)
+## always starts active; it also lets a caller that reuses a KartController
+## instance across races reactivate it explicitly.
+func set_run_active(active: bool) -> void:
+	if active == _run_active:
+		return
+	_run_active = active
+	if not active:
+		_steer_input = 0.0
+		_brake_input = false
+		_drift.steer(0.0)
+		_drift.hop_released()
+		_drift.cancel_slide()
+
+
+func is_run_active() -> bool:
+	return _run_active
+
+
 func _physics_process(delta_s: float) -> void:
 	if _tuning == null:
 		return
 	var grounded := is_on_floor()
-	_drift.tick(delta_s, grounded)
-	_motor.add_boost(_drift.consume_boost())
-	_motor.tick(
-		delta_s,
-		_steer_input,
-		_brake_input,
-		grounded,
-		_drift.is_sliding(),
-		_drift.slide_direction()
-	)
+	if _run_active:
+		_drift.tick(delta_s, grounded)
+		_motor.add_boost(_drift.consume_boost())
+		_motor.tick(
+			delta_s,
+			_steer_input,
+			_brake_input,
+			grounded,
+			_drift.is_sliding(),
+			_drift.slide_direction()
+		)
+	else:
+		_motor.decelerate_to_stop(delta_s, grounded)
 	velocity = _motor.velocity()
 	velocity.y = _motor.vertical_speed_mps()
 	# Fix round 1 (KartCamera review): the body's own basis never turned --

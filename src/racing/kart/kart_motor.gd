@@ -147,6 +147,37 @@ func tick(
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
 
 
+## Decelerates the CURRENT forward speed toward a full stop at brake_mps2,
+## and holds there -- unlike tick()'s ordinary brake branch, whose target is
+## -reverse_speed_mps (so a continuously-applied brake eventually creeps
+## into reverse). Fix round (H2): KartController calls this every tick
+## instead of tick() once set_run_active(false) freezes the kart after a
+## race finishes, so a kart still coasting at the finish line visually
+## rolls to a stop -- not a hard snap to zero, and not an auto-throttle
+## creep back up to speed once it gets there.
+##
+## Vertical/gravity integration and the boost/spin-out/invulnerability
+## timers still run exactly like tick() (a kart that finishes mid-air must
+## still settle onto the floor, and no timer should get stuck non-zero
+## forever); yaw is untouched entirely -- the controller has already zeroed
+## steer and cancelled any slide before calling this, so there is nothing
+## here that should still be turning the kart.
+func decelerate_to_stop(delta_s: float, grounded: bool) -> void:
+	_forward_speed_mps = move_toward(
+		_forward_speed_mps,
+		0.0,
+		_tuning.brake_mps2 * delta_s
+	)
+	if grounded:
+		if _vertical_speed_mps < 0.0:
+			_vertical_speed_mps = 0.0
+	else:
+		_vertical_speed_mps -= _tuning.gravity_mps2 * delta_s
+	_boost_time_remaining_s = maxf(_boost_time_remaining_s - delta_s, 0.0)
+	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
+	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
+
+
 func hop() -> void:
 	_vertical_speed_mps = sqrt(
 		ScalarMathType.DOUBLE * _tuning.gravity_mps2 * _tuning.hop_height_m

@@ -17,16 +17,27 @@ extends GutTest
 # test_hog_wild_mounts_forced_run_and_dismounts_at_finish's
 # `player.set_physics_process(false)` before a hand-placed mount-trigger
 # check) so KartController's own motor tick can't fight the teleport.
+#
+# EXCEPTION: the two H2 fix-round tests below (finish-freeze behavior) call
+# the session's private gate-crossing handler directly instead, and
+# deliberately leave the kart's own physics_process running throughout --
+# see their own doc comments. set_physics_process(false) would exclude the
+# very tick the freeze fix operates on, which is exactly what the reviewer
+# flagged in the prior round.
 
 const RACE_SCENE_PATH := "res://scenes/racing/race_time_trial.tscn"
 const CATALOG_PATH := "res://data/tuning/gameplay.tres"
+const KART_TUNING_PATH := "res://data/tuning/racing/kart.tres"
 
 var _catalog: GameplayTuning
+var _kart_tuning: KartTuning
 
 
 func before_all() -> void:
 	_catalog = load(CATALOG_PATH)
 	assert_not_null(_catalog, "gameplay.tres must load")
+	_kart_tuning = load(KART_TUNING_PATH)
+	assert_not_null(_kart_tuning, "kart.tres must load")
 
 
 func test_boot_wiring_gives_the_session_its_kart_spine_and_gates() -> void:
@@ -90,7 +101,13 @@ func test_crossing_every_gate_in_order_for_all_laps_completes_the_race() -> void
 	var total_s := float(race.call("elapsed_s"))
 	assert_gt(total_s, 0.0, "real wall-clock time must have elapsed by the finish")
 
-	# The timer and input routing must both freeze once finished.
+	# The timer must freeze once finished. (Whether the KART itself comes
+	# to rest and stays there is a separate, real-physics-driven proof --
+	# see test_finishing_the_race_decelerates_the_kart_to_a_stop_and_it_
+	# stays_stopped below. This test's kart has its own physics_process
+	# disabled throughout for the gate-teleport determinism every test in
+	# this file needs, so it cannot also be the proof that the freeze
+	# actually stops a REAL moving kart.)
 	await wait_physics_frames(5)
 	assert_almost_eq(
 		float(race.call("elapsed_s")),
@@ -175,6 +192,174 @@ func test_wrong_way_flag_clears_once_travel_direction_corrects() -> void:
 	assert_false(
 		bool(race.call("is_wrong_way")),
 		"correcting direction must clear the flag, not just stop it growing"
+	)
+
+
+func test_request_retry_emits_the_retry_requested_signal() -> void:
+	# H1 fix round: RaceHUD's RETRY button now only calls this -- GameRoot
+	# is the one that actually reloads the race (see race_session.gd's
+	# retry_requested doc and game_root.gd's DEBUG_RACING_LEVEL_ID branch).
+	# This proves the session side of that contract in isolation, headless.
+	var race := _boot_race()
+	if race == null:
+		return
+	watch_signals(race)
+
+	race.call("request_retry")
+
+	assert_signal_emitted(race, "retry_requested")
+
+
+## H2 fix round: proves the freeze through REAL physics -- the kart's own
+## _physics_process stays enabled throughout (unlike every gate-crossing
+## test above, which disables it for teleport determinism; the reviewer's
+## exact finding was that doing so here would exclude the very tick the
+## fix operates on). The race is driven to completion by calling the
+## session's own gate-crossing handler directly with the real authored gate
+## nodes (see _force_finish) so this test isn't ALSO re-proving Area3D
+## wiring already covered by test_crossing_every_gate_in_order_for_all_
+## laps_completes_the_race above -- only the post-finish motor freeze is
+## new ground here.
+func test_finishing_the_race_decelerates_the_kart_to_a_stop_and_it_stays_stopped() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	# Let the real auto-throttle build up real speed first.
+	await wait_physics_frames(30)
+	assert_gt(
+		float(kart.call("speed_mps")),
+		0.0,
+		"fixture setup: the kart must really be moving before it finishes"
+	)
+
+	_force_finish(race)
+	assert_true(bool(race.call("is_finished")))
+
+	# Bounded sim time: enough real ticks for brake_mps2 to bring even a
+	# kart at top speed down to rest, plus margin.
+	var stop_time_s: float = (
+		_kart_tuning.top_speed_mps / _kart_tuning.brake_mps2
+	)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var margin_frames := 10
+	var frames_needed := (
+		int(ceil(stop_time_s * physics_fps)) + margin_frames
+	)
+	await wait_physics_frames(frames_needed)
+
+	assert_almost_eq(
+		float(kart.call("speed_mps")),
+		0.0,
+		0.05,
+		"the kart must come to rest once the race finishes"
+	)
+	assert_false(
+		bool(kart.call("is_run_active")),
+		"the kart must report itself frozen once the race finishes"
+	)
+
+	# And it must STAY there: more real ticks must not creep it forward
+	# again under auto-throttle -- the exact bug this fix closes.
+	var resting_position := kart.global_position
+	await wait_physics_frames(30)
+
+	assert_almost_eq(
+		float(kart.call("speed_mps")),
+		0.0,
+		0.05,
+		"the kart must stay stopped, not resume auto-throttling"
+	)
+	assert_lt(
+		kart.global_position.distance_to(resting_position),
+		0.05,
+		"a stopped kart must not keep creeping forward"
+	)
+
+
+## H2 fix round: a race can finish while the kart is mid-drift -- the slide
+## must end immediately (not just stop being fed real input) and the
+## kart's yaw must not keep accumulating afterward. Real physics
+## throughout, same rationale as the test above.
+func test_finishing_mid_slide_ends_the_slide_with_no_further_rotation() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	# RaceSession's OWN _physics_process routes InputRouter's (here: idle,
+	# zero) buffered move vector into the kart every tick -- steer(0.0) --
+	# which would fight this test's manual steer() calls below on the very
+	# next physics frame. This disables the SESSION's input-routing tick
+	# only; the KART's own _physics_process (the thing actually under test:
+	# DriftStateMachine + KartMotor + the H2 freeze) stays fully enabled the
+	# whole time, unlike the teleport tests above.
+	race.set_physics_process(false)
+
+	await wait_physics_frames(10)
+	assert_true(
+		kart.is_on_floor(),
+		"fixture setup: the kart must be grounded before sliding"
+	)
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(2)
+	assert_true(
+		bool(kart.call("is_sliding")),
+		"fixture setup: the kart must really be sliding before it finishes"
+	)
+
+	_force_finish(race)
+
+	assert_true(bool(race.call("is_finished")))
+	assert_false(
+		bool(kart.call("is_sliding")),
+		"a finish caught mid-slide must force-end the slide immediately"
+	)
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	var yaw_at_finish: float = motor.call("yaw_degrees")
+
+	await wait_physics_frames(30)
+
+	assert_almost_eq(
+		float(motor.call("yaw_degrees")),
+		yaw_at_finish,
+		0.001,
+		"yaw must not keep accumulating after a mid-slide finish"
+	)
+
+
+## Drives the session to race_complete by calling its own gate-crossing
+## handler directly against the real authored gate nodes, instead of
+## teleporting the kart through them under a real Area3D overlap. The
+## sequencing/overlap-detection path this skips is already proven by
+## test_crossing_every_gate_in_order_for_all_laps_completes_the_race; the
+## point of these two tests is what happens to the kart's REAL, still-
+## ticking physics once _finished flips true, which requires the kart's
+## own _physics_process to stay enabled the whole time -- incompatible with
+## the teleport technique's set_physics_process(false).
+func _force_finish(race: Node) -> void:
+	var kart := race.get_node("Kart")
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	for _lap: int in range(lap_count):
+		for gate_index: int in range(gate_count):
+			race.call(
+				"_on_gate_body_entered",
+				kart,
+				race.get_node("Track/Gates/Gate%d" % gate_index)
+			)
+	# See _cross_gate's own comment: one more gate-0 crossing closes the
+	# final lap.
+	race.call(
+		"_on_gate_body_entered",
+		kart,
+		race.get_node("Track/Gates/Gate0")
 	)
 
 

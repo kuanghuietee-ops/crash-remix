@@ -122,6 +122,22 @@ func _steer_sustains_slide() -> bool:
 	return absf(_steer) >= _tuning.slide_min_steer
 
 
+## Force-ends any active slide immediately, forfeiting whatever boost stage
+## was accrued -- the same shape as a too-early cancel (_cancel_slide()
+## below), but reachable from OUTSIDE this class as an explicit "stop
+## drifting right now" request, rather than only ever firing as a side
+## effect of the stick straightening or a mistimed tap. Fix round (H2,
+## KartController.set_run_active(false)): a race that finishes while the
+## kart is mid-slide must not leave the slide latched -- it would keep
+## adding yaw every tick forever with nothing left to poll boost_tap() and
+## end it normally. Safe to call when not sliding (no-op): there is nothing
+## to forfeit and no reason to touch already-zeroed state.
+func cancel_slide() -> void:
+	if not _sliding:
+		return
+	_cancel_slide()
+
+
 func is_sliding() -> bool:
 	return _sliding
 

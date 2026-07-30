@@ -750,6 +750,8 @@ func _render_state(previous_state: int = flow.state) -> void:
 		var race := RACE_TIME_TRIAL_SCENE.instantiate()
 		_content.add_child(race)
 		race.call("configure", tuning_service.catalog)
+		if race.has_signal(&"retry_requested"):
+			race.connect(&"retry_requested", _on_racing_retry_requested)
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -1440,12 +1442,33 @@ func _on_pause_resume_requested() -> void:
 
 
 func _on_pause_retry_requested() -> void:
-	# Retrying from pause round-trips WARP_ROOM as a same-frame FSM
-	# waypoint on the way back into LEVEL (never a rendered frame), so
-	# there is no need to pay for a real hub scene instantiate just to
-	# discard it immediately after. The flag is always cleared right
-	# after this call, regardless of the path _select_level takes, so
-	# it can never leak into suppressing a later, genuine hub render.
+	_retry_current_level()
+
+
+## Fix round (H1 review, Task 7): RaceHUD's RETRY button used to call
+## get_tree().change_scene_to_file() directly, which frees GameRoot (the
+## real scene tree root) out from under itself -- the fresh race scene that
+## replaces it never gets configure() called by anyone, since GameRoot was
+## the only thing that ever called it. RaceSession now emits
+## retry_requested instead (see its own doc), connected to this handler
+## from the DEBUG_RACING_LEVEL_ID render branch below, one connection per
+## fresh race instance. This reuses the exact same _retry_current_level()
+## round-trip the platformer's own working Pause -> Retry path already
+## proved out -- quit the level, re-enter it -- which lands back in
+## _render_state()'s racing branch and instantiates + configure()s a brand
+## new race scene while GameRoot itself stays alive throughout.
+func _on_racing_retry_requested() -> void:
+	_retry_current_level()
+
+
+## Shared by both retry paths above -- see each caller's doc for why they
+## can share this unchanged. Retrying round-trips WARP_ROOM as a same-frame
+## FSM waypoint on the way back into LEVEL (never a rendered frame), so
+## there is no need to pay for a real hub scene instantiate just to discard
+## it immediately after. The suppress flag is always cleared right after
+## this call, regardless of the path _select_level takes, so it can never
+## leak into suppressing a later, genuine hub render.
+func _retry_current_level() -> void:
 	_suppress_next_warp_room_render = true
 	_select_level(
 		flow.active_level_id,

@@ -47,6 +47,18 @@ const LapValidatorType := preload("res://src/racing/track/lap_validator.gd")
 const MonotonicClockType := preload("res://src/core/monotonic_clock.gd")
 
 signal race_finished(total_s: float, lap_times: Array)
+## Fix round (H1 review): RaceHUD's RETRY button used to call
+## get_tree().change_scene_to_file() directly, which frees GameRoot (the
+## actual scene tree root) out from under itself -- the fresh race scene
+## that replaces it never gets configure() called by anyone, since the only
+## thing that ever called configure() was GameRoot, and GameRoot is now
+## gone. RaceHUD now only calls request_retry(), which emits this; GameRoot
+## connects to it (see game_root.gd's DEBUG_RACING_LEVEL_ID render branch)
+## and re-drives the exact same _select_level() round-trip the platformer's
+## own working Pause -> Retry path already uses (quit the level, re-enter
+## it), which re-renders and re-configure()s a fresh race scene while
+## GameRoot itself stays alive the whole time.
+signal retry_requested
 
 var _kart: CharacterBody3D
 var _camera: KartCamera
@@ -184,6 +196,12 @@ func is_finished() -> bool:
 	return _finished
 
 
+## The one thing RaceHUD's RETRY button does now -- see retry_requested's
+## doc above for why it no longer reloads the scene itself.
+func request_retry() -> void:
+	retry_requested.emit()
+
+
 func _physics_process(delta_s: float) -> void:
 	if not _configured or _finished:
 		return
@@ -236,4 +254,11 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 	if outcome == &"race_complete":
 		_finished = true
 		_final_elapsed_s = now_elapsed
+		# H2 review: nothing else stops the kart driving into the walls
+		# behind the finish line under its own auto-throttle, and a finish
+		# caught mid-slide would otherwise leave the slide latched forever.
+		# See KartController.set_run_active()'s doc for exactly what this
+		# does; the camera is deliberately left alone so its own easing
+		# keeps settling the finish shot.
+		_kart.call("set_run_active", false)
 		race_finished.emit(_final_elapsed_s, _lap_times.duplicate())

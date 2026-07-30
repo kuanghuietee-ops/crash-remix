@@ -652,6 +652,83 @@ func test_real_level_list_opens_racing_time_trial_prototype() -> void:
 	)
 
 
+func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> void:
+	# H1 fix round (Task 7 review): RaceHUD's RETRY button used to call
+	# get_tree().change_scene_to_file() directly, which freed GameRoot (this
+	# very root node) out from under itself -- the fresh race scene that
+	# replaced it never got configure() called by anyone. RaceSession now
+	# only emits retry_requested; GameRoot is the one that reloads it, via
+	# the same _select_level() round-trip its working Pause -> Retry path
+	# already uses. Drives that real GameRoot handler end to end (not just
+	# the session's own signal in isolation -- see test_race_session.gd's
+	# test_request_retry_emits_the_retry_requested_signal for that half) and
+	# proves the NEW instance actually got configured: non-null kart tuning,
+	# same shape test_real_level_list_opens_toybox_with_one_tuning_owner
+	# above uses to prove its own embedded scene got wired up for real.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race_before := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race_before, "sanity: the racing entry must already be open")
+	if race_before == null:
+		return
+	var kart_before := race_before.get_node_or_null("Kart")
+	assert_not_null(kart_before)
+	if kart_before == null:
+		return
+	assert_not_null(
+		kart_before.get("_tuning"),
+		"sanity: the first race instance must already be configured"
+	)
+	var race_before_id := race_before.get_instance_id()
+
+	race_before.call("request_retry")
+	await wait_process_frames(1)
+
+	assert_eq(
+		root.call("state_name"),
+		&"level",
+		"retry must land back in the racing state, not drop to the hub"
+	)
+	var race_after := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(
+		race_after,
+		"retry must re-render a real race scene, not leave Content empty"
+	)
+	if race_after == null:
+		return
+	assert_ne(
+		race_after.get_instance_id(),
+		race_before_id,
+		"retry must reinstantiate the race scene, not reuse the old one"
+	)
+	var kart_after := race_after.get_node_or_null("Kart")
+	assert_not_null(kart_after)
+	if kart_after == null:
+		return
+	assert_not_null(
+		kart_after.get("_tuning"),
+		"the new session instance must have been configure()d for real"
+	)
+	assert_true(
+		bool(kart_after.call("is_run_active")),
+		"a fresh/retried kart must start active, not frozen"
+	)
+	assert_false(bool(race_after.call("is_finished")))
+
+
 func test_hub_level_list_actually_pauses_warp_room_gameplay() -> void:
 	var root := _instantiate_main()
 	if root == null:
