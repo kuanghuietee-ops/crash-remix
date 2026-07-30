@@ -6,8 +6,8 @@
 script = ExtResource("1_meta")
 level_id = &"wr1_hog_wild"
 display_name = "Hog Wild"
-crate_count = 32
-wumpa_total = 46
+crate_count = 35
+wumpa_total = 49
 design_pace_mps = 10.35
 relic_sapphire_s = 0.0
 relic_gold_s = 0.0

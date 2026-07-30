@@ -109,6 +109,12 @@ crate_id = 8
 segment_group = &"Hog Weave Gates"
 break_on_touch = true
 
+[node name="Crate33" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-2, 0.5, -81)
+crate_id = 33
+segment_group = &"Hog Weave Gates"
+break_on_touch = true
+
 [node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
 position = Vector3(4.5, 1, -32)
 

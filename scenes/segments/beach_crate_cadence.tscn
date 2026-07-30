@@ -108,11 +108,19 @@ position = Vector3(0, 0.5, -84)
 crate_id = 23
 segment_group = &"Crate Cadence"
 
+[node name="Crate41" parent="." instance=ExtResource("4_bounce")]
+position = Vector3(2, 0.5, -76)
+crate_id = 41
+segment_group = &"Crate Cadence"
+
 [node name="CrabPatrolA" parent="." instance=ExtResource("5_crab")]
 position = Vector3(0, 0, -33)
 
 [node name="CrabPatrolB" parent="." instance=ExtResource("5_crab")]
 position = Vector3(0, 0, -61)
+
+[node name="CrabPatrolC" parent="." instance=ExtResource("5_crab")]
+position = Vector3(0, 0, -77)
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 

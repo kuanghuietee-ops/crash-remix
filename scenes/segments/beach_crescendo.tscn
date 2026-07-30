@@ -1,9 +1,10 @@
-[gd_scene load_steps=27 format=3]
+[gd_scene load_steps=28 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_tnt.tscn" id="4_tnt"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/crab.tscn" id="5_crab"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_beach_shelf.res" id="30_shelf"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_jungle_bank.res" id="32_jbank"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/water_sea_tile.res" id="33_sea"]
@@ -112,6 +113,19 @@ segment_group = &"Crescendo"
 position = Vector3(0, 0.5, -76)
 crate_id = 40
 segment_group = &"Crescendo"
+
+[node name="Crate44" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-1, 0.5, -46)
+crate_id = 44
+segment_group = &"Crescendo"
+
+[node name="Crate45" parent="." instance=ExtResource("3_standard")]
+position = Vector3(1.8, 0.5, -66)
+crate_id = 45
+segment_group = &"Crescendo"
+
+[node name="CrabFinale" parent="." instance=ExtResource("5_crab")]
+position = Vector3(0, 0, -64)
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 

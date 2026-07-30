@@ -3,7 +3,7 @@ extends GutTest
 const MAIN_SCENE_PATH := "res://scenes/main.tscn"
 const LEVEL_ID := &"wr1_n_sanity_beach"
 const TEST_SAVE_DIR := "user://test_sandbox/task13_island_slice"
-const CRATE_TOTAL := 40
+const CRATE_TOTAL := 45
 
 
 func before_each() -> void:
@@ -56,7 +56,7 @@ func test_real_player_death_resets_enemies_to_authored_spawn() -> void:
 	var enemies := _enemies(level)
 	assert_eq(
 		enemies.size(),
-		5,
+		8,
 		"the real beach must contain the Wave B enemy placements"
 	)
 	var crab_tuning := catalog.get("enemy_crab") as Resource

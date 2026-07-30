@@ -109,6 +109,12 @@ crate_id = 20
 segment_group = &"Hog Crate Slalom"
 break_on_touch = true
 
+[node name="Crate34" parent="." instance=ExtResource("3_crate")]
+position = Vector3(-2, 0.5, -100)
+crate_id = 34
+segment_group = &"Hog Crate Slalom"
+break_on_touch = true
+
 [node name="WumpaA" parent="." instance=ExtResource("4_wumpa")]
 position = Vector3(-3.8, 1, -34)
 

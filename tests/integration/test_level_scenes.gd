@@ -30,27 +30,38 @@ const SEGMENT_NAMES: Array[StringName] = [
 ]
 const EXPECTED_CHECKPOINTS := 2
 const EXPECTED_IRON_CRATES := 3
-# H9: per 01-DESIGN.md §5, these three segments are the ones designated to
-# receive an enemy once Task 17 builds them (jungle corridor = skink,
-# crate cadence = crab, plant gauntlet = plant) -- the other four segments
-# are not.
+# H9: per 01-DESIGN.md §5, these were the three segments designated to
+# receive an enemy once Task 17 built them (jungle corridor = skink,
+# crate cadence = crab, plant gauntlet = plant). The mid/late density pass
+# (docs/superpowers/plans density pass) added a second CrateCadence crab
+# guarding a new bonus crate, a recovery-stretch skink in TNTIntroduction,
+# and a finale crab in Crescendo -- BeachLanding and FirstCrates stay the
+# gentle tutorial and remain enemy-free.
 const ENEMY_BEARING_SEGMENTS: Array[StringName] = [
 	&"JungleCorridor",
 	&"CrateCadence",
+	&"TNTIntroduction",
 	&"PlantGauntlet",
+	&"Crescendo",
 ]
 const EXPECTED_ENEMIES_BY_SEGMENT := {
 	&"JungleCorridor": {
 		&"skink": 1,
 	},
 	&"CrateCadence": {
-		&"crab": 2,
+		&"crab": 3,
+	},
+	&"TNTIntroduction": {
+		&"skink": 1,
 	},
 	&"PlantGauntlet": {
 		&"plant": 2,
 	},
+	&"Crescendo": {
+		&"crab": 1,
+	},
 }
-const EXPECTED_ENEMY_TOTAL := 5
+const EXPECTED_ENEMY_TOTAL := 8
 const BOULDERS_SEGMENT_NAMES: Array[StringName] = [
 	&"BouldersIntro",
 	&"ChaseGate",

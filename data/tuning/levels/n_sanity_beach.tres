@@ -6,8 +6,8 @@
 script = ExtResource("1_meta")
 level_id = &"wr1_n_sanity_beach"
 display_name = "N. Sanity Beach"
-crate_count = 40
-wumpa_total = 61
+crate_count = 45
+wumpa_total = 70
 design_pace_mps = 4.5
 relic_sapphire_s = 0.0
 relic_gold_s = 0.0

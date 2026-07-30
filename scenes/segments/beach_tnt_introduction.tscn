@@ -1,9 +1,10 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/segments/graybox_platform.tscn" id="1_platform"]
 [ext_resource type="Script" path="res://src/gameplay/camera/camera_region.gd" id="2_region"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_standard.tscn" id="3_standard"]
 [ext_resource type="PackedScene" path="res://scenes/props/crate_tnt.tscn" id="4_tnt"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/skink.tscn" id="5_skink"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/terrain_jungle_bank.res" id="32_jbank"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_tall_a.res" id="37_clifftall"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/cliff_low_a.res" id="36_clifflow"]
@@ -104,6 +105,19 @@ segment_group = &"TNT Introduction"
 position = Vector3(0, 0.5, -76)
 crate_id = 29
 segment_group = &"TNT Introduction"
+
+[node name="Crate42" parent="." instance=ExtResource("3_standard")]
+position = Vector3(-1.5, 0.5, -56)
+crate_id = 42
+segment_group = &"TNT Introduction"
+
+[node name="Crate43" parent="." instance=ExtResource("3_standard")]
+position = Vector3(1.5, 0.5, -66)
+crate_id = 43
+segment_group = &"TNT Introduction"
+
+[node name="SkinkRecovery" parent="." instance=ExtResource("5_skink")]
+position = Vector3(-4, 0, -60)
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 
