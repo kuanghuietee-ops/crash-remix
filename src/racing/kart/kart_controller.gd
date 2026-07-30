@@ -137,6 +137,37 @@ func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
 
 
+## Proxies straight onto the real KartMotor's own lever -- see kart_motor.gd's
+## set_speed_scale() doc. Task 4's AiKartAgent is the only caller; a
+## human-driven kart never calls this and stays at the motor's default 1.0.
+func set_speed_scale(ratio: float) -> void:
+	_motor.set_speed_scale(ratio)
+
+
+## Proxies straight onto the real DriftStateMachine's own read-only query --
+## see drift_state_machine.gd's boost_window_open() doc. Exposed alongside
+## is_sliding()/boost_tap() so Task 4's AiKartAgent can assemble AiDriver's
+## state dict without reaching past this controller into the private drift
+## FSM it owns.
+func boost_window_open() -> bool:
+	return _drift.boost_window_open()
+
+
+## Zeros the underlying motor's forward/vertical speed and this body's own
+## CharacterBody3D.velocity -- Task 4's AI stuck-kart respawn path (see
+## ai_kart_agent.gd's class doc) calls this right after teleporting a kart
+## onto a fresh centerline position, so it doesn't carry stale motion
+## (residual forward speed, a mid-air fall, or leftover move_and_slide()
+## velocity from wherever it got stuck) into its new spot. Yaw is
+## deliberately untouched -- callers seed that separately via
+## set_yaw_degrees(), the same split race_session.gd's own spawn placement
+## already keeps (place the transform, THEN seed yaw, as two independent
+## steps).
+func reset_speed() -> void:
+	_motor.reset_speed()
+	velocity = Vector3.ZERO
+
+
 ## Fix round (H2 review): a race that just finished must stop the kart
 ## driving into walls behind the finish line under its own auto-throttle,
 ## and must not leave a mid-finish slide latched forever accumulating yaw.

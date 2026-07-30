@@ -127,13 +127,17 @@ start.
    — Task 8's boost-pad line was deliberately skipped (no track-side trigger,
    no kart-side response). R3+ candidate; needs its own tuning fields and a
    track-authoring rule (author-lint) once built, not just a scene prop.
-3. Five `RaceTuning` fields are authored and validated (registered,
+3. Four `RaceTuning` fields are authored and validated (registered,
    fingerprinted, panel-editable, rejected if non-positive) but read by
    nothing in `src/racing/`: `countdown_step_s`, `start_boost_window_s`,
-   `start_bog_penalty_s`, `checkpoint_tolerance_m`, `respawn_drop_height_m`.
-   They exist for R5's countdown/start-boost/respawn systems, which haven't
-   been built yet — expected, not a bug, but worth naming so a future pass
-   doesn't assume they're already wired because they validate cleanly.
+   `start_bog_penalty_s`, `checkpoint_tolerance_m`. They exist for R5's
+   countdown/start-boost systems, which haven't been built yet — expected,
+   not a bug, but worth naming so a future pass doesn't assume they're
+   already wired because they validate cleanly. (`respawn_drop_height_m` was
+   the fifth field on this list; Task 4 (R3: AI opponents) consumed it —
+   `AiKartAgent`'s stuck-kart respawn teleport raises the kart this many
+   meters above the centerline point it drops onto — so it is struck from
+   this unread-fields debt as of 2026-07-30.)
 4. **Known feel-gate note**: `RaceSession._route_input()` samples
    `is_action_pressed(InputIntent.ACTION_JUMP)` once per physics tick and only
    reacts to a change from the previous tick's sampled state (the same

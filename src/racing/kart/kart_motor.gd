@@ -74,6 +74,8 @@ var _boost_time_remaining_s: float
 var _spin_out_remaining_s: float
 var _invulnerable_remaining_s: float
 
+var _speed_scale := 1.0
+
 
 func configure(kart_tuning: KartTuning) -> void:
 	_tuning = kart_tuning
@@ -102,6 +104,13 @@ func tick(
 	var target_speed := _tuning.top_speed_mps
 	if _boost_time_remaining_s > 0.0:
 		target_speed = _tuning.top_speed_mps + _tuning.boost_speed_bonus_mps
+	# Task 4 (AI rubber-band): scales the auto-throttle target AND the
+	# boosted target above identically -- see set_speed_scale()'s own doc --
+	# but this multiply happens BEFORE the brake branch below can overwrite
+	# target_speed, so a braking/reversing kart's target is never touched by
+	# it. A rubber-band ratio has no business making a hard stop/reverse
+	# command faster or slower; it only ever governs forward racing pace.
+	target_speed *= _speed_scale
 	if brake:
 		target_speed = -_tuning.reverse_speed_mps
 
@@ -218,6 +227,32 @@ func add_boost(seconds: float) -> void:
 		_boost_time_remaining_s + seconds,
 		max_boost_s
 	)
+
+
+## Multiplies the auto-throttle target speed (see tick()'s own comment on
+## exactly where this applies, and where it deliberately does not) -- Task
+## 4's AI rubber-band lever, and the ONLY way an AI kart's pace differs from
+## a human's through this same physics path (see ai_kart_agent.gd's class
+## doc). Default 1.0 (no scaling) for every kart that never calls this --
+## i.e. every human-driven kart, unchanged from before this existed. No
+## validation here: AiTuning's own rubber_band_boost_max_ratio/
+## rubber_band_drag_max_ratio fields already bound whatever
+## AiDriver.decide() can produce (see its class doc's RUBBER BAND section),
+## the same "trust the caller" shape add_boost()'s seconds argument already
+## has.
+func set_speed_scale(ratio: float) -> void:
+	_speed_scale = ratio
+
+
+## Zeros forward AND vertical speed -- Task 4's AI stuck-kart respawn
+## teleport (see kart_controller.gd's own reset_speed() proxy doc for the
+## full rationale). Yaw and every timer (boost/spin-out/invulnerability) are
+## untouched: yaw is seeded separately via set_yaw_degrees(), and a
+## teleported-but-not-hit kart has no reason to lose an in-flight boost or
+## have its hazard timers disturbed.
+func reset_speed() -> void:
+	_forward_speed_mps = 0.0
+	_vertical_speed_mps = 0.0
 
 
 func apply_spin_out() -> void:

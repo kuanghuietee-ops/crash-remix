@@ -233,6 +233,109 @@ func test_tap_inside_the_window_fires_and_advances_stage() -> void:
 	assert_eq(fsm.call("boost_stage"), 1)
 
 
+# ---------------------------------------------------------------------------
+# boost_window_open(): Task 4 (CTR R3: AI opponents) addition -- a read-only
+# query mirroring boost_tap()'s own window arithmetic, so AiKartAgent can
+# detect the RISING edge itself (see ai_driver.gd's BOOST TAP section)
+# without ever calling boost_tap() speculatively (which would fire it).
+# ---------------------------------------------------------------------------
+
+
+func test_boost_window_open_is_false_before_the_window_opens() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+
+	assert_false(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_true_exactly_at_the_open_boundary() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("tick", _kart.boost_window_open_s, true)
+
+	assert_true(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_true_inside_the_window() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("tick", _window_midpoint(_kart.boost_window_open_s, _kart.boost_window_close_s), true)
+
+	assert_true(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_true_exactly_at_the_close_boundary() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("tick", _kart.boost_window_close_s, true)
+
+	assert_true(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_false_after_the_window_closes() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("tick", _kart.boost_window_close_s + _EPSILON_S, true)
+
+	assert_false(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_false_when_not_sliding() -> void:
+	var fsm := _new_fsm()
+	if fsm == null:
+		return
+
+	assert_false(fsm.call("boost_window_open"))
+
+
+func test_boost_window_open_is_false_past_the_boost_stack_cap() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	var stack_max := roundi(_kart.boost_stack_max)
+	var stage := 0
+	while stage < stack_max:
+		var open_s: float = (
+			_kart.boost_window_open_s
+			* pow(_kart.boost_window_shrink_factor, float(stage))
+		)
+		var close_s: float = (
+			_kart.boost_window_close_s
+			* pow(_kart.boost_window_shrink_factor, float(stage))
+		)
+		fsm.call("tick", _window_midpoint(open_s, close_s), true)
+		assert_eq(fsm.call("boost_tap"), RESULT_FIRED, "tap %d must fire" % stage)
+		stage += 1
+
+	assert_eq(fsm.call("boost_stage"), stack_max, "fixture sanity: capped")
+	assert_false(
+		fsm.call("boost_window_open"),
+		"a stage past boost_stack_max must never report an open window"
+	)
+
+
+func test_boost_window_open_has_no_side_effects_unlike_a_real_early_tap() -> void:
+	# The exact contrast this query exists for: boost_tap() called before the
+	# window opens is CTR's punish (cancels the slide, forfeits everything
+	# accrued) -- boost_window_open() must be safe to poll every tick with no
+	# such consequence.
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+
+	assert_false(fsm.call("boost_window_open"))
+	assert_true(
+		fsm.call("is_sliding"),
+		"merely checking whether the window is open must never cancel the slide"
+	)
+	assert_eq(fsm.call("boost_stage"), 0)
+
+
 func test_tap_after_window_close_is_ignored_and_slide_continues() -> void:
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:

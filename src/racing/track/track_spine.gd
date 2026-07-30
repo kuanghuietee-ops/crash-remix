@@ -124,6 +124,69 @@ func is_wrong_way(velocity: Vector3, progress_m: float) -> bool:
 	return velocity.dot(tangent) < 0.0
 
 
+## World-space point on the spine at a given distance along it -- Task 4 (CTR
+## R3: AI opponents) addition. AiKartAgent needs this for its lookahead
+## point, its own lateral-offset centerline reference, and the stuck-respawn
+## teleport target (see ai_kart_agent.gd's class doc). progress_m is wrapped
+## via fposmod on this closed loop's length_m() -- unlike tangent_at_progress
+## (which CLAMPS, matching its existing "sample near an in-range progress"
+## callers), a caller here may legitimately hand in an unbounded, continuous
+## progress value (e.g. SpineFollower.total_progress_m() minus a gap, which
+## can run well past a single lap or even negative) and always means "the
+## point that far around the loop" -- fposmod is the correct, total function
+## for that on a closed track, with no clamped edge case to fall into.
+func point_at_progress(progress_m: float) -> Vector3:
+	_ensure_curve()
+	if curve == null or curve.point_count < 1:
+		return Vector3.ZERO
+	var length := curve.get_baked_length()
+	if length <= 0.0:
+		return Vector3.ZERO
+	return to_global(curve.sample_baked(fposmod(progress_m, length)))
+
+
+## Signed curvature (1/m) between the tangent at progress_m and the tangent
+## at progress_m + sample_span_m -- Task 4 (CTR R3: AI opponents) addition.
+## This is the PRODUCER side of ai_driver.gd's SIGNED CURVATURE CONTRACT
+## (binding, see that class doc's own section by that name), reproduced here
+## verbatim so the two stay in lockstep:
+##   tangent_now   = tangent_at_progress(progress_m)
+##   tangent_ahead = tangent_at_progress(progress_m + sample_span_m)
+##   magnitude = tangent_now.angle_to(tangent_ahead) / sample_span_m   (>= 0)
+##   sign      = -signf(tangent_now.cross(tangent_ahead).y)
+##   curvature_at_progress = sign * magnitude
+## (cross() is anti-commutative, so tangent_now/tangent_ahead's ORDER is part
+## of the contract, not an implementation detail.) sign(0.0) falls back to
+## +1.0 to keep the function total, mirroring ai_driver.gd's own
+## _apply_slide_steer_floor fallback for the same unreachable-in-practice
+## exact-zero-cross case.
+##
+## Both progress_m and progress_m + sample_span_m are wrapped via fposmod
+## (see point_at_progress()'s own doc for why fposmod, not clamp, is correct
+## here) before sampling -- this closed loop's seam means a lookahead sample
+## that runs past length_m() must continue into the NEXT lap's early
+## distance, not flatten against the last marker's own arrival tangent. A
+## non-positive sample_span_m (division by zero, or a meaningless "curvature
+## over zero or negative distance") fails closed to 0.0 rather than crashing
+## or returning a nonsensical signed infinity.
+func curvature_at_progress(progress_m: float, sample_span_m: float) -> float:
+	_ensure_curve()
+	if curve == null or curve.point_count < 1 or sample_span_m <= 0.0:
+		return 0.0
+	var length := curve.get_baked_length()
+	if length <= 0.0:
+		return 0.0
+	var tangent_now := tangent_at_progress(fposmod(progress_m, length))
+	var tangent_ahead := tangent_at_progress(fposmod(progress_m + sample_span_m, length))
+	if tangent_now.is_zero_approx() or tangent_ahead.is_zero_approx():
+		return 0.0
+	var magnitude := tangent_now.angle_to(tangent_ahead) / sample_span_m
+	var sign_value := -signf(tangent_now.cross(tangent_ahead).y)
+	if is_zero_approx(sign_value):
+		sign_value = 1.0
+	return sign_value * magnitude
+
+
 func _ensure_curve() -> void:
 	var has_markers := false
 	for child: Node in get_children():

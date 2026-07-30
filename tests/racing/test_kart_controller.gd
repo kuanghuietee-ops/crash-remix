@@ -306,6 +306,89 @@ func test_body_rotation_tracks_motor_yaw_while_steering() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# Task 4 (CTR R3: AI opponents) controller hooks: set_speed_scale()/
+# boost_window_open()/reset_speed() are thin proxies onto the real
+# KartMotor/DriftStateMachine this controller already owns and wires every
+# tick -- the same "proxy straight through" shape is_sliding()/speed_mps()/
+# slide_direction() already use.
+# ---------------------------------------------------------------------------
+
+
+func test_set_speed_scale_reaches_the_real_motor_and_changes_its_target() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("steer", 0.0)
+	var ratio := 1.0 + _kart_tuning.boost_speed_bonus_mps / _kart_tuning.top_speed_mps
+	kart.call("set_speed_scale", ratio)
+
+	await wait_physics_frames(120)
+
+	assert_gt(
+		float(kart.call("speed_mps")),
+		_kart_tuning.top_speed_mps,
+		"set_speed_scale() must reach the real motor and raise its target above the plain top_speed_mps"
+	)
+
+
+func test_boost_window_open_proxies_the_real_drift_fsm() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before starting a slide")
+
+	assert_false(
+		bool(kart.call("boost_window_open")),
+		"a kart that never started a slide must never report an open boost window"
+	)
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(kart.call("is_sliding"), "fixture setup must land inside a slide")
+	assert_false(
+		bool(kart.call("boost_window_open")),
+		"the window must not already be open the instant a slide starts"
+	)
+
+	await wait_physics_frames(int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2)
+
+	assert_true(
+		bool(kart.call("boost_window_open")),
+		"the real DriftStateMachine's window must report open once boost_window_open_s has elapsed"
+	)
+
+
+func test_reset_speed_zeroes_forward_and_vertical_speed_and_body_velocity() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("steer", 0.0)
+	await wait_physics_frames(30)
+	assert_gt(
+		float(kart.call("speed_mps")),
+		0.0,
+		"fixture setup: the kart must really be moving before reset_speed() is called"
+	)
+
+	kart.call("reset_speed")
+
+	assert_almost_eq(
+		float(kart.call("speed_mps")),
+		0.0,
+		0.0001,
+		"reset_speed() must zero the real motor's forward speed"
+	)
+	assert_almost_eq(
+		kart.velocity.length(),
+		0.0,
+		0.0001,
+		"reset_speed() must also zero the body's own CharacterBody3D.velocity"
+	)
+
+
 func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
 	if not ResourceLoader.exists(KART_SCENE_PATH):

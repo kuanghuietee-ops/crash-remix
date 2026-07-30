@@ -180,6 +180,28 @@ func boost_tap() -> StringName:
 	return &"fired"
 
 
+## Read-only query: is the CURRENT boost stage's tap window open RIGHT NOW --
+## the same window arithmetic boost_tap() itself uses (stage_factor =
+## boost_window_shrink_factor^boost_stage, scaling both edges), but with NO
+## side effects: unlike an actual tap, calling this never cancels a slide for
+## asking too early and never advances the stage for asking inside the
+## window. Task 4's AiKartAgent polls this every tick to detect the RISING
+## edge itself (see ai_driver.gd's BOOST TAP section) rather than this class
+## tracking that edge on the caller's behalf -- edge memory belongs to
+## whichever side actually needs it exactly once, and AiDriver already owns
+## an analogous edge (_prev_boost_window_open) for exactly that purpose.
+func boost_window_open() -> bool:
+	if not _sliding:
+		return false
+	var stack_max := roundi(_tuning.boost_stack_max)
+	if _boost_stage >= stack_max:
+		return false
+	var stage_factor: float = pow(_tuning.boost_window_shrink_factor, float(_boost_stage))
+	var open_s: float = _tuning.boost_window_open_s * stage_factor
+	var close_s: float = _tuning.boost_window_close_s * stage_factor
+	return _window_elapsed_s >= open_s and _window_elapsed_s <= close_s
+
+
 func consume_boost() -> float:
 	var boost_s := _accrued_boost_s
 	_accrued_boost_s = 0.0

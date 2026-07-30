@@ -279,6 +279,113 @@ func test_counter_steering_uses_slide_counter_yaw_rate_instead() -> void:
 
 
 # ---------------------------------------------------------------------------
+# set_speed_scale(): Task 4 (CTR R3: AI opponents) addition -- the AI
+# rubber-band lever. Multiplies the auto-throttle target AND the boosted
+# target, but never the brake/reverse target (see kart_motor.gd's own tick()
+# comment for why).
+# ---------------------------------------------------------------------------
+
+
+func test_speed_scale_multiplies_the_auto_throttle_target() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var ratio := 1.0 + _kart.boost_speed_bonus_mps / _kart.top_speed_mps
+	motor.call("set_speed_scale", ratio)
+
+	var elapsed_s := 0.0
+	var step_s := 0.05
+	while elapsed_s < 5.0:
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+		elapsed_s += step_s
+
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		_kart.top_speed_mps * ratio,
+		0.0001,
+		"a scale above 1.0 must let the kart climb past its own top_speed_mps"
+	)
+
+
+func test_speed_scale_multiplies_the_boosted_target_too() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	# A ratio above 1.0 so the scaled, boosted target sits ABOVE the fixture's
+	# starting speed (top_speed_mps) -- keeps this on the fast accel_mps2
+	# ramp (like test_boost_raises_target_speed_above_top_speed's own
+	# fixture) rather than the much slower coast_drag_mps2 path a
+	# below-1.0 ratio would fall onto, which needs far longer than
+	# boost_duration_s to converge and would measure decay instead of scale.
+	var ratio := 1.0 + _kart.boost_speed_bonus_mps / _kart.top_speed_mps
+	motor.call("set_speed_scale", ratio)
+	motor.set("_forward_speed_mps", _kart.top_speed_mps)
+	motor.call("add_boost", _kart.boost_duration_s)
+
+	var target_speed := (_kart.top_speed_mps + _kart.boost_speed_bonus_mps) * ratio
+	var convergence_s := (
+		(target_speed - _kart.top_speed_mps) / _kart.accel_mps2
+	)
+	assert_lt(
+		convergence_s,
+		_kart.boost_duration_s,
+		"fixture sanity: must converge to the scaled boosted target before the boost itself expires"
+	)
+	var elapsed_s := 0.0
+	var step_s := 0.01
+	while elapsed_s < convergence_s + step_s:
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+		elapsed_s += step_s
+
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		target_speed,
+		0.01,
+		"the scale must apply to the boosted target the exact same way as the plain one"
+	)
+
+
+func test_speed_scale_does_not_apply_to_the_brake_target() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_speed_scale", 2.0)
+	motor.set("_forward_speed_mps", _kart.top_speed_mps)
+
+	var elapsed_s := 0.0
+	var step_s := 0.05
+	while elapsed_s < 5.0:
+		motor.call("tick", step_s, 0.0, true, false, false, 0)
+		elapsed_s += step_s
+
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		-_kart.reverse_speed_mps,
+		0.0001,
+		"braking must settle at the plain -reverse_speed_mps regardless of speed_scale"
+	)
+
+
+func test_speed_scale_defaults_to_one_and_does_not_change_unscaled_behavior() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+
+	var elapsed_s := 0.0
+	var step_s := 0.05
+	while elapsed_s < 5.0:
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+		elapsed_s += step_s
+
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		_kart.top_speed_mps,
+		0.0001,
+		"a motor that never calls set_speed_scale() must behave exactly as before (scale=1.0)"
+	)
+
+
+# ---------------------------------------------------------------------------
 # Boost: raises target speed, decays, stacks with a cap.
 # ---------------------------------------------------------------------------
 
