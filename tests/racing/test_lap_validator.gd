@@ -152,6 +152,48 @@ func test_recrossing_the_start_gate_right_after_starting_is_idempotent_ok() -> v
 	assert_eq(validator.call("progress_gates"), 1)
 
 
+# Fix round 1 (review): before _started, _previous_expected(_expected_gate)
+# used to alias the LAST gate in the sequence (wrap-around from expected
+# gate 0), so crossing that gate first -- before the race has genuinely
+# begun -- was misread as idempotent jitter against a gate that was never
+# actually passed. Jitter tolerance only makes sense once there IS a gate
+# that was legitimately just crossed, i.e. once _started is true.
+func test_crossing_the_last_gate_first_before_anything_started_is_out_of_order() -> void:
+	var validator := _new_validator(3, 2)
+	if validator == null:
+		return
+
+	var result: StringName = validator.call("gate_crossed", 2)
+
+	assert_eq(
+		result,
+		OUT_OF_ORDER,
+		"nothing has been crossed yet -- there is no 'gate just passed' to jitter against"
+	)
+	assert_eq(validator.call("current_lap"), 1, "a rejected crossing must not start the race")
+	assert_eq(validator.call("progress_gates"), 0)
+
+	# The real start must still work normally afterward.
+	assert_eq(validator.call("gate_crossed", 0), OK)
+
+
+# Pin: the fix above must not touch the gate-0-straddle-at-the-start-line
+# case, which is already _started by the time it can occur (see
+# test_recrossing_the_start_gate_right_after_starting_is_idempotent_ok
+# above) -- this just names the distinction explicitly for the fix round.
+func test_gate_zero_straddle_at_the_start_line_stays_idempotent_ok_after_the_fix() -> void:
+	var validator := _new_validator(3, 2)
+	if validator == null:
+		return
+	validator.call("gate_crossed", 0)
+
+	assert_eq(
+		validator.call("gate_crossed", 0),
+		OK,
+		"once _started, re-crossing gate 0 right at the start line is still jitter, not a skip"
+	)
+
+
 # ---------------------------------------------------------------------------
 # gate_count == 1 degenerate edge: every crossing after the first advances
 # a lap outright.

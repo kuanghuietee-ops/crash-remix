@@ -25,6 +25,35 @@ extends Path3D
 ## curve is only rebuilt when the tuning-derived bake interval or handle
 ## factor actually changed, so a live tuning edit reshapes the spine without
 ## redoing the work every single frame.
+##
+## SEAM AMBIGUITY IN progress_for_position(). Curve3D.get_closest_offset()
+## has no concept of a closed loop -- it just finds the nearest point on the
+## baked polyline, and the polyline's two ends (offset 0 and offset
+## length_m()) sit at the SAME physical location (see the duplicated seam
+## point in rail_curve_builder.gd). A world position near that shared corner
+## can be almost equidistant from "the start of the first segment" and "the
+## end of the last segment", so the returned offset can jump between ~0 and
+## ~length_m() over sub-meter movement -- empirically confirmed: on a 4m
+## square-loop fixture, moving the query point 0.3m off the corner by just
+## 10 degrees of angle (about 5cm of arc) flipped the offset from 0.0 to
+## ~399.95 of a ~400m loop. This is NOT a bug to fix here; it is inherent to
+## representing a closed loop as an open Curve3D with a duplicated endpoint,
+## and every consumer needs to know which side of that line it's standing
+## on:
+## - Discrete consumers (LapValidator's gate sequence, checkpoint crossings)
+##   are unaffected -- they never read a spine offset at all, only which
+##   CheckpointGate fired.
+## - tangent_at_progress() and is_wrong_way() are safe across the seam: the
+##   tangent direction at offset ~0 and at offset ~length_m() is the same
+##   (see rail_curve_builder.gd's seam in-handle mirroring), so whichever
+##   offset progress_for_position() happens to return, the tangent it feeds
+##   into is correct either way.
+## - Any CONTINUOUS consumer of the raw offset -- a progress bar, distance-
+##   based standings/ranking (future R5) -- must NOT trust frame-to-frame
+##   deltas of this value near the seam. Either add hysteresis (ignore a
+##   jump larger than a plausible one-frame travel distance) or, better,
+##   rank by (current_lap(), progress_gates()) from LapValidator instead of
+##   raw spine distance, which has no seam to begin with.
 
 const RailCurveBuilderType := preload(
 	"res://src/gameplay/common/rail_curve_builder.gd"

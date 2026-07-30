@@ -77,7 +77,7 @@
 - Create: `src/racing/track/lap_validator.gd` (pure), `src/racing/track/track_spine.gd` (closed Path3D helper: progress, tangent, wrong-way test), `src/racing/track/checkpoint_gate.gd` (Area3D)
 - Test: `tests/racing/test_lap_validator.gd`, extend `tests/gameplay/test_rail_curve_builder.gd` (closed loop: point_count, first/last handle continuity)
 
-**Interfaces:** LapValidator: `configure(gate_count, lap_count)`, `gate_crossed(index)` → &"ok"/&"out_of_order"/&"lap_complete"/&"race_complete", `current_lap()`, `progress_ratio(spine_offset)`. Wrong-way: velocity·tangent < 0 sustained beyond `wrong_way_grace_s` → HUD warning flag.
+**Interfaces:** LapValidator: `configure(gate_count, lap_count)`, `gate_crossed(index)` → &"ok"/&"out_of_order"/&"lap_complete"/&"race_complete", `current_lap()`, `progress_gates()` (ratio dropped: no length denominator; seam constraint documented in TrackSpine). Wrong-way: velocity·tangent < 0 sustained beyond `wrong_way_grace_s` → HUD warning flag.
 - [ ] Steps: failing tests (in-order gates lap; skipping a gate doesn't; closed-curve handles wrap) → implement → suites → commit.
 
 ### Task 7: Graybox loop + race session + time-trial HUD (R1 APK checkpoint)

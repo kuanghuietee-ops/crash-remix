@@ -53,9 +53,13 @@ func gate_crossed(index: int) -> StringName:
 		_expected_gate = _next_expected(_expected_gate)
 		_gates_seen_this_lap += 1
 		return &"ok"
-	if index == _previous_expected(_expected_gate):
+	if _started and index == _previous_expected(_expected_gate):
 		# Boundary jitter: the gate just passed re-triggered. Idempotent,
-		# not a skip -- see the class doc above.
+		# not a skip -- see the class doc above. Gated on _started: before
+		# the race has genuinely begun there is no gate that was actually
+		# just passed, so _previous_expected(0) (which aliases the LAST
+		# gate via wrap-around) must not be misread as jitter tolerance
+		# against a gate nothing has crossed yet (fix round 1, review).
 		return &"ok"
 	return &"out_of_order"
 
