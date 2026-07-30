@@ -173,6 +173,30 @@ func test_overspeed_into_a_hairpin_brakes() -> void:
 	assert_true(bool(result.get("brake")), "overspeed past target*margin into a hairpin must brake")
 
 
+# Fix round 1: curvature_ahead is now SIGNED (positive = bends right,
+# negative = bends left -- see ai_driver.gd's SIGNED CURVATURE CONTRACT).
+# Corner-speed/brake math must read it through absf(), so a left-bending
+# hairpin of the same magnitude must brake exactly the same as the
+# right-bending one above.
+func test_overspeed_into_a_left_bending_hairpin_brakes_the_same_via_absf() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
+		"speed_mps": _kart.top_speed_mps,
+	}))
+
+	assert_true(
+		bool(result.get("brake")),
+		"a left-bending hairpin of equal magnitude must brake identically (absf)"
+	)
+
+
 func test_under_target_speed_does_not_brake() -> void:
 	var driver := _new_driver()
 	if driver == null:
@@ -257,6 +281,28 @@ func test_hop_does_not_fire_when_already_sliding() -> void:
 	)
 
 
+# Fix round 1: hop's trigger must be magnitude-only (absf(curvature_ahead)),
+# so a left-bending corner (negative signed curvature) of the same
+# magnitude arms intent and fires hop exactly like a right-bending one.
+func test_tight_curvature_triggers_hop_when_bending_left_via_absf() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
+		"is_sliding": false,
+	}))
+
+	assert_true(
+		bool(result.get("hop")),
+		"a left-bending corner past the trigger magnitude must arm a hop just like a right-bending one"
+	)
+
+
 # ---------------------------------------------------------------------------
 # Hop/slide-min-steer coupling: DriftStateMachine only starts (or sustains)
 # a slide when |steer| >= kart.slide_min_steer on the same tick. A hop
@@ -268,7 +314,12 @@ func test_hop_does_not_fire_when_already_sliding() -> void:
 # ---------------------------------------------------------------------------
 
 
-func test_hop_tick_forces_steer_to_slide_min_steer_when_raw_steer_is_zero() -> void:
+# Fix round 1 ([HIGH]): the floor's direction must come from
+# curvature_ahead's SIGN, not from the (often ~0 at corner entry, per the
+# reviewer's repro) pursuit+lateral steer it's replacing, and not from any
+# remembered steer history. A hairpin bending RIGHT (positive signed
+# curvature) must floor steer POSITIVE...
+func test_hop_tick_on_a_hairpin_bending_right_floors_steer_positive() -> void:
 	var driver := _new_driver()
 	if driver == null:
 		return
@@ -286,35 +337,75 @@ func test_hop_tick_forces_steer_to_slide_min_steer_when_raw_steer_is_zero() -> v
 		float(result.get("steer")),
 		_kart.slide_min_steer,
 		0.0001,
-		"raw steer of ~0 on a hop tick must be floored up to slide_min_steer"
+		"a right-bending hairpin must floor steer to +slide_min_steer"
 	)
 
 
-func test_hop_tick_floors_a_small_positive_steer_preserving_its_sign() -> void:
+## ...and one bending LEFT (negative signed curvature) must floor steer
+## NEGATIVE -- the exact mirror, and the two together are what the old
+## "raw steer of ~0" test used to conflate into a single (sign-blind, and
+## therefore buggy) case.
+func test_hop_tick_on_a_hairpin_bending_left_floors_steer_negative() -> void:
 	var driver := _new_driver()
 	if driver == null:
 		return
 
-	# lateral_term = steer_gain * (0.1 / 10.0), comfortably below
-	# slide_min_steer (0.25 in kart.tres) but not zero -- the floor must
-	# preserve the sign it already had, not fall back to a default.
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
 		"lookahead_point": Vector3(0.0, 0.0, -10.0),
-		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
+		"lateral_error_m": 0.0,
+	}))
+
+	assert_true(bool(result.get("hop")))
+	assert_almost_eq(
+		float(result.get("steer")),
+		-_kart.slide_min_steer,
+		0.0001,
+		"a left-bending hairpin must floor steer to -slide_min_steer"
+	)
+
+
+## The actual reviewer repro: a small NONZERO raw steer whose own sign
+## disagrees with the corner's true (curvature) direction -- e.g. the
+## lookahead point has drifted very slightly to the right of center
+## (raw steer small positive) right as a hard LEFT hairpin starts. The
+## floor must still follow curvature (negative), not the raw sign
+## (positive) -- this is exactly "keep the pursuit sign only when it
+## EXCEEDS the floor already" from the fix-round-1 ruling.
+func test_floor_direction_follows_curvature_even_when_a_small_raw_steer_disagrees() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# lateral_term = steer_gain * (0.1 / 10.0) -- small POSITIVE, well under
+	# slide_min_steer (0.25 in kart.tres).
+	var raw_would_be: float = _ai.steer_gain * (0.1 / 10.0)
+	assert_true(
+		raw_would_be > 0.0 and raw_would_be < _kart.slide_min_steer,
+		"fixture sanity: raw steer must be small, positive, and under the floor"
+	)
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
 		"lateral_error_m": 0.1,
 	}))
 
-	var raw_would_be: float = _ai.steer_gain * (0.1 / 10.0)
-	assert_true(
-		raw_would_be < _kart.slide_min_steer,
-		"fixture sanity: raw steer must fall short of the floor"
+	assert_almost_eq(
+		float(result.get("steer")),
+		-_kart.slide_min_steer,
+		0.0001,
+		"curvature's LEFT direction must win over the small raw steer's own (positive) sign"
 	)
-	assert_almost_eq(float(result.get("steer")), _kart.slide_min_steer, 0.0001)
 
 
-func test_hop_tick_floors_a_small_negative_steer_preserving_its_sign() -> void:
+## Symmetric mirror: small NEGATIVE raw steer, RIGHT-bending curvature ->
+## floor must still be positive.
+func test_floor_direction_follows_curvature_even_when_a_small_raw_steer_disagrees_the_other_way() -> void:
 	var driver := _new_driver()
 	if driver == null:
 		return
@@ -327,7 +418,84 @@ func test_hop_tick_floors_a_small_negative_steer_preserving_its_sign() -> void:
 		"lateral_error_m": -0.1,
 	}))
 
-	assert_almost_eq(float(result.get("steer")), -_kart.slide_min_steer, 0.0001)
+	assert_almost_eq(
+		float(result.get("steer")),
+		_kart.slide_min_steer,
+		0.0001,
+		"curvature's RIGHT direction must win over the small raw steer's own (negative) sign"
+	)
+
+
+## Above-floor raw steer is the one case where curvature must NOT override
+## the sign -- "keep the pursuit sign only when it EXCEEDS the floor
+## already". A large raw steer opposite the corner's curvature (e.g.
+## correcting hard out of a slot on the far side of the track) must pass
+## through unchanged, not get clamped onto curvature's side.
+func test_floor_leaves_an_already_sufficient_raw_steer_unchanged_even_against_curvature() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# lateral_term alone = steer_gain * (5.0 / 10.0) = 1.1, comfortably past
+	# slide_min_steer (0.25) -- curvature says LEFT (negative), raw steer
+	# says strongly RIGHT (positive).
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
+		"lateral_error_m": 5.0,
+	}))
+
+	assert_true(
+		float(result.get("steer")) > 0.0,
+		"a raw steer that already clears the floor must keep its own sign, not curvature's"
+	)
+
+
+## History independence: fix round 1 removed the old _last_steer_sign
+## memory entirely, so a LEFT-bending episode must have zero effect on a
+## later, unrelated RIGHT-bending one's floor direction.
+func test_floor_direction_is_independent_of_a_prior_opposite_direction_tick() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	var base := {
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lateral_error_m": 0.0,
+	}
+
+	# Episode 1: a LEFT-bending hairpin, hop + floor to -slide_min_steer.
+	var left_hop: Dictionary = driver.call("decide", _state(_merged(base, {
+		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
+		"is_sliding": false,
+	})))
+	assert_true(bool(left_hop.get("hop")))
+	assert_almost_eq(float(left_hop.get("steer")), -_kart.slide_min_steer, 0.0001)
+
+	# Curvature drops to/below the exit threshold -- intent clears, the
+	# slide (per the real FSM, simulated here) ends.
+	driver.call("decide", _state(_merged(base, {
+		"curvature_ahead": _ai.slide_exit_curvature,
+		"is_sliding": true,
+	})))
+
+	# Episode 2: an unrelated RIGHT-bending hairpin. If any steer-history
+	# memory survived, it would still be pointing left from episode 1; the
+	# fixed driver must floor this purely from the new curvature sign.
+	var right_hop: Dictionary = driver.call("decide", _state(_merged(base, {
+		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+		"is_sliding": false,
+	})))
+	assert_true(bool(right_hop.get("hop")), "a fresh corner must still arm its own hop edge")
+	assert_almost_eq(
+		float(right_hop.get("steer")),
+		_kart.slide_min_steer,
+		0.0001,
+		"the new RIGHT-bending corner's floor must not be dragged left by episode 1's history"
+	)
 
 
 func test_steer_floor_stays_enforced_while_intent_remains_armed_across_ticks() -> void:
@@ -424,6 +592,35 @@ func test_boost_tap_fires_on_the_window_open_rising_edge_while_sliding() -> void
 	assert_false(
 		bool(still_open.get("boost_tap")),
 		"the window staying open must not machine-gun repeated taps"
+	)
+
+
+## Fix round 1: the missing stage-2 re-open coverage. A real stacked boost
+## sequence is open (tap) -> close (between stages) -> open again (the next
+## stage's window) -- the SECOND open must fire its own tap, not stay
+## suppressed by the first tap's edge memory.
+func test_boost_tap_fires_again_after_the_window_closes_and_reopens_for_the_next_stage() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	var base := _state({"is_sliding": true})
+
+	var stage1_open: Dictionary = driver.call(
+		"decide", _merged_state(base, {"boost_window_open": true})
+	)
+	assert_true(bool(stage1_open.get("boost_tap")), "stage 1's window opening must fire a tap")
+
+	var between_stages_closed: Dictionary = driver.call(
+		"decide", _merged_state(base, {"boost_window_open": false})
+	)
+	assert_false(bool(between_stages_closed.get("boost_tap")))
+
+	var stage2_open: Dictionary = driver.call(
+		"decide", _merged_state(base, {"boost_window_open": true})
+	)
+	assert_true(
+		bool(stage2_open.get("boost_tap")),
+		"stage 2's window opening (a fresh rising edge after closing) must fire its own tap"
 	)
 
 

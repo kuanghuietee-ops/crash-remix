@@ -33,19 +33,34 @@ extends RefCounted
 ## .superpowers/sdd/2026-07-30-ctr-r3-ai-karts/task-3-brief.md):
 ##   position: Vector3, forward: Vector3 (unit, kart's current facing),
 ##   speed_mps: float, is_sliding: bool, boost_window_open: bool,
-##   lookahead_point: Vector3, curvature_ahead: float (1/m, an UNSIGNED
-##   magnitude -- how tight the corner at the lookahead point is, not which
-##   way it turns; turn direction comes entirely from lookahead_point's
-##   bearing and lateral_error_m below), lateral_target_m: float (Task 4's
-##   own bookkeeping -- not read here, lateral_error_m already carries what
-##   this driver needs), lateral_error_m: float (signed, target - actual,
-##   along the SAME world-space "positive = kart's right" axis steer uses --
-##   see the STEERING section: this is the sign convention Task 4 must
-##   produce it with), band_gap_m: float (player_total_progress minus this
-##   kart's total_progress; positive = this kart is behind the player).
+##   lookahead_point: Vector3, curvature_ahead: float (1/m, SIGNED -- fix
+##   round 1: positive = the corner bends toward the kart's world-space
+##   RIGHT, the same "+right" sense steer's own convention uses; negative =
+##   bends left. Magnitude alone drives the trigger/exit/corner-speed math
+##   below (always read through absf()); the SIGN is what tells the slide
+##   floor which way to lock a drift at corner entry, when the natural
+##   pursuit+lateral steer is too small to trust on its own -- see SLIDE
+##   (hop) COUPLING and the SIGNED CURVATURE CONTRACT section, which is
+##   binding on Task 4's producer of this value), lateral_target_m:
+##   float (Task 4's own bookkeeping -- not read here, lateral_error_m
+##   already carries what this driver needs), lateral_error_m: float
+##   (signed, target - actual, along the SAME world-space "positive =
+##   kart's right" axis steer uses -- see the STEERING section: this is the
+##   sign convention Task 4 must produce it with), band_gap_m: float
+##   (player_total_progress minus this kart's total_progress; positive =
+##   this kart is behind the player).
 ##
 ## OUTPUT (Dictionary): steer: float (-1..1), brake: bool, hop: bool (edge),
 ## boost_tap: bool (edge), speed_scale: float.
+##
+## CALL CONTRACT. decide() must be called exactly once per physics tick,
+## and the caller must consume/apply its outputs before the next call --
+## hop and boost_tap are edge outputs whose memory (_was_intending_slide,
+## _prev_boost_window_open) advances every time decide() runs, not only on
+## ticks where the caller acts on the result. Calling decide() twice for
+## the same logical tick (e.g. once to preview, once for real) silently
+## suppresses the second call's edges by design; it is not a bug to work
+## around from the caller's side, and there is no separate "peek" method.
 ##
 ## STEERING. angle = signed angle (radians, about world +Y) from `forward`
 ## to (lookahead_point - position), both flattened to the XZ plane --
@@ -70,19 +85,20 @@ extends RefCounted
 ## enforcement and final clamp below.
 ##
 ## CORNERING / BRAKE. target_speed = kart.top_speed_mps * clamp(1 -
-## ai.corner_speed_curvature_gain * curvature_ahead,
+## ai.corner_speed_curvature_gain * absf(curvature_ahead),
 ## ai.corner_speed_floor_ratio, 1.0); brake = speed_mps > target_speed *
-## ai.brake_margin_ratio.
+## ai.brake_margin_ratio. absf() because how tight a corner is (and how
+## hard to brake for it) does not depend on which way it turns.
 ##
-## SLIDE (hop) COUPLING. curvature_ahead crossing slide_trigger_curvature
-## (from below) while not already sliding arms "intent to slide"; intent
-## clears once curvature_ahead drops to/below slide_exit_curvature -- a
-## hysteresis band between the two thresholds, the same shape
-## DriftStateMachine itself uses for its own start/sustain/end split.
-## hop=true fires exactly once, on the tick intent first arms (and only
-## while the caller's state still reports it is not already sliding) --
-## _was_intending_slide is the edge memory that keeps every later tick of
-## the same corner from re-firing it.
+## SLIDE (hop) COUPLING. absf(curvature_ahead) crossing
+## slide_trigger_curvature (from below) while not already sliding arms
+## "intent to slide"; intent clears once absf(curvature_ahead) drops
+## to/below slide_exit_curvature -- a hysteresis band between the two
+## thresholds, the same shape DriftStateMachine itself uses for its own
+## start/sustain/end split. hop=true fires exactly once, on the tick intent
+## first arms (and only while the caller's state still reports it is not
+## already sliding) -- _was_intending_slide is the edge memory that keeps
+## every later tick of the same corner from re-firing it.
 ##
 ## DriftStateMachine only STARTS a slide on a tick where hop is held AND
 ## |steer| >= kart.slide_min_steer (see its class doc), and only SUSTAINS
@@ -92,17 +108,61 @@ extends RefCounted
 ## silently fail to start anything, or silently end an active slide, and
 ## this driver would have no way to tell from its own state that it
 ## happened. So for as long as intent stays armed -- from the hop tick
-## through every following tick until curvature_ahead drops to/below
+## through every following tick until absf(curvature_ahead) drops to/below
 ## slide_exit_curvature, i.e. "while it intends to hold the slide" --
 ## _apply_slide_steer_floor bumps |steer| up to kart.slide_min_steer
-## whenever the natural pursuit+lateral value falls short, preserving its
-## sign (falling back to the last nonzero commanded steer sign if the
-## natural value was exactly zero -- see _last_steer_sign). This runs
+## whenever the natural pursuit+lateral value falls short of it. This runs
 ## BEFORE the final -1..1 clamp. Once intent clears, the floor releases and
 ## steer follows the natural line again -- which is what lets the real
 ## FSM's own sustain check end the slide naturally when the corner
 ## straightens out, rather than this driver trying to detect "the slide
 ## should end" itself.
+##
+## FLOOR DIRECTION (fix round 1, [HIGH]). The floor's SIGN comes from
+## sign(curvature_ahead), never from the pursuit+lateral steer it is
+## replacing and never from steer history. Reviewer-caught bug: at a
+## typical corner entry (fixed lookahead, the corner just now crossing
+## slide_trigger_curvature) pursuit+lateral steer is often still ~0 -- the
+## lookahead point hasn't swung off-axis yet even though the road is about
+## to turn hard -- so falling back to "whatever steer sign happened to be
+## commanded last" (the previous implementation's _last_steer_sign) could
+## lock DriftStateMachine's slide_direction the WRONG way through the
+## corner, since that direction is LOCKED for the slide's entire life.
+## curvature_ahead's sign, by contract (see SIGNED CURVATURE CONTRACT
+## below), IS the corner's true direction -- it is always the right answer
+## when the driver doesn't yet have a trustworthy pursuit signal, so the
+## floor uses it unconditionally whenever flooring is needed:
+##   if absf(raw_steer) >= slide_min_steer: use raw_steer unchanged
+##   else: use sign(curvature_ahead) * slide_min_steer
+## (sign(0.0) falls back to +1.0 -- an unreachable case in practice, since
+## slide_exit_curvature is validated strictly positive, so absf(
+## curvature_ahead) crosses out of "intending" before curvature_ahead can
+## ever reach exactly 0.0, but the fallback keeps the function total).
+## There is no more steer-history state to carry between ticks for this --
+## _last_steer_sign is gone.
+##
+## SIGNED CURVATURE CONTRACT (binding on Task 4's TrackSpine.
+## curvature_at_progress()). Let tangent_now be the spine tangent at the
+## kart's current progress and tangent_ahead be the spine tangent at the
+## lookahead sample point (in that order -- cross() is anti-commutative,
+## so the order is part of the contract). Then:
+##   magnitude = tangent_now.angle_to(tangent_ahead) / sample_span_m   (>= 0)
+##   sign      = -signf(tangent_now.cross(tangent_ahead).y)
+##   curvature_ahead = sign * magnitude
+## Derivation (verified against a running Godot 4.7.1 instance, matching
+## kart_motor.gd's already-verified world-space convention: positive steer
+## = stick right = turn right = a NEGATIVE yaw delta, and
+## FORWARD.rotated(UP, +angle) sweeps toward -X/left, since rotation about
+## +Y is CCW-positive): a path bending RIGHT is one whose tangent rotates
+## toward the kart's world-space right as you sample further ahead, e.g.
+## tangent_now = (0,0,-1), tangent_ahead = (1,0,-1).normalized(); measured
+## directly, tangent_now.cross(tangent_ahead) = (0, -0.707, 0) -- cross.y
+## NEGATIVE for a RIGHTWARD bend (and, symmetrically, cross.y POSITIVE for
+## a LEFTWARD bend, e.g. tangent_ahead = (-1,0,-1).normalized() gives
+## cross.y = +0.707). Negating that sign is what turns it into this
+## contract's "positive = bends right" convention -- so Task 4 must
+## multiply the raw angle-over-span magnitude by
+## -signf(tangent_now.cross(tangent_ahead).y), not by the bare cross.y sign.
 ##
 ## BOOST TAP. Fires on the RISING EDGE of state.boost_window_open (false on
 ## the previous decide() call, true on this one) while state.is_sliding is
@@ -136,7 +196,6 @@ var _kart_tuning: KartTuning
 var _intending_slide: bool
 var _was_intending_slide: bool
 var _prev_boost_window_open: bool
-var _last_steer_sign: float = 1.0
 
 
 func configure(ai_tuning: AiTuning, kart_tuning: KartTuning) -> void:
@@ -144,15 +203,13 @@ func configure(ai_tuning: AiTuning, kart_tuning: KartTuning) -> void:
 	_kart_tuning = kart_tuning
 
 
-## Clears all per-tick edge memory (slide intent + boost-window edge +
-## remembered steer sign) without touching the configured tuning
-## references. See the class doc's STATEFUL ACROSS TICKS section for when a
-## caller needs this.
+## Clears all per-tick edge memory (slide intent + boost-window edge)
+## without touching the configured tuning references. See the class doc's
+## STATEFUL ACROSS TICKS section for when a caller needs this.
 func reset() -> void:
 	_intending_slide = false
 	_was_intending_slide = false
 	_prev_boost_window_open = false
-	_last_steer_sign = 1.0
 
 
 func decide(state: Dictionary) -> Dictionary:
@@ -180,11 +237,8 @@ func decide(state: Dictionary) -> Dictionary:
 	var hop := _intending_slide and not _was_intending_slide and not is_sliding
 	_was_intending_slide = _intending_slide
 
-	if not is_zero_approx(steer):
-		_last_steer_sign = signf(steer)
-
 	var target_speed: float = _kart_tuning.top_speed_mps * clampf(
-		1.0 - _ai_tuning.corner_speed_curvature_gain * curvature_ahead,
+		1.0 - _ai_tuning.corner_speed_curvature_gain * absf(curvature_ahead),
 		_ai_tuning.corner_speed_floor_ratio,
 		1.0
 	)
@@ -235,28 +289,31 @@ func _steer_for(
 		)
 		raw_steer = pursuit_term + lateral_term
 
-	if curvature_ahead >= _ai_tuning.slide_trigger_curvature:
+	if absf(curvature_ahead) >= _ai_tuning.slide_trigger_curvature:
 		_intending_slide = true
-	elif curvature_ahead <= _ai_tuning.slide_exit_curvature:
+	elif absf(curvature_ahead) <= _ai_tuning.slide_exit_curvature:
 		_intending_slide = false
 
 	var steer := raw_steer
 	if _intending_slide:
-		steer = _apply_slide_steer_floor(steer)
+		steer = _apply_slide_steer_floor(steer, curvature_ahead)
 	return clampf(steer, -1.0, 1.0)
 
 
-## Bumps |steer| up to kart.slide_min_steer, preserving whichever sign it
-## already had (or the last nonzero commanded sign, if steer is exactly
-## zero) -- see the class doc's SLIDE (hop) COUPLING section for why the
-## real FSM needs this to actually start or sustain a slide.
-func _apply_slide_steer_floor(steer: float) -> float:
+## Bumps |steer| up to kart.slide_min_steer whenever the natural
+## pursuit+lateral value falls short of it. The floor's SIGN comes from
+## curvature_ahead (the corner's own true, contract-signed direction), not
+## from raw_steer and not from any remembered steer history -- see the
+## class doc's FLOOR DIRECTION section (fix round 1, [HIGH]) for why
+## history was the bug. A raw_steer that already meets or exceeds the
+## floor is returned unchanged, sign and all.
+func _apply_slide_steer_floor(steer: float, curvature_ahead: float) -> float:
 	var floor_mag: float = _kart_tuning.slide_min_steer
 	if absf(steer) >= floor_mag:
 		return steer
-	var sign_value := _last_steer_sign
-	if not is_zero_approx(steer):
-		sign_value = signf(steer)
+	var sign_value := signf(curvature_ahead)
+	if is_zero_approx(sign_value):
+		sign_value = 1.0
 	return sign_value * floor_mag
 
 
