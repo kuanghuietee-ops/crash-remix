@@ -779,7 +779,7 @@ light_color = Color(1, 0.96, 0.88, 1)
 light_energy = 1.2
 shadow_enabled = true
 directional_shadow_mode = 1
-directional_shadow_max_distance = 220.0
+directional_shadow_max_distance = 90.0
 
 [node name="Spine" type="Path3D" parent="."]
 script = ExtResource("1_track_spine")
