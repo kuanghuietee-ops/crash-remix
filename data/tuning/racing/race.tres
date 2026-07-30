@@ -17,3 +17,4 @@ camera_fov_base = 60.0
 camera_fov_speed_gain = 12.0
 camera_yaw_lag_s = 0.18
 camera_drift_yaw_degrees = 8.0
+camera_look_height_m = 1.0

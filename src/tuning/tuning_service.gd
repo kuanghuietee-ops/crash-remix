@@ -101,6 +101,11 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"opening_auto_run_duration_s",
 		],
 	],
+	&"race": [
+		[
+			&"camera_look_height_m",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -545,6 +550,10 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or race.camera_fov_speed_gain <= 0.0
 		or race.camera_yaw_lag_s <= 0.0
 		or race.camera_drift_yaw_degrees <= 0.0
+		# Task 5 (CTR kart chase camera): a zero or negative look height
+		# would aim the camera at or below the kart's own origin instead
+		# of a point above it.
+		or race.camera_look_height_m <= 0.0
 	):
 		return false
 

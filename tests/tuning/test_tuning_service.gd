@@ -2821,6 +2821,57 @@ func test_kart_boost_window_close_must_exceed_open() -> void:
 	)
 
 
+# Task 5 (CTR kart chase camera): camera_look_height_m was added to the
+# already-shipped race section after Task 1's initial fields, so an
+# override authored before this field existed must be migrated the same
+# functionally-proven way as test_old_input_override_backfills_
+# racing_brake_pull_threshold, not merely registered in a coverage list.
+func test_old_race_override_backfills_camera_look_height_m() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"camera_look_height_m"
+	assert_true(
+		_exported_property_names(authored.race).has(field),
+		"the camera look height must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.race).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.race.set(field, RaceTuning.new().get(field))
+	stale.race.lap_count = 5.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.race.get(field),
+		authored.race.get(field),
+		"an older phone override must receive the authored camera look height"
+	)
+	assert_almost_eq(
+		migrated.race.lap_count,
+		5.0,
+		0.001,
+		"migration must preserve existing race edits"
+	)
+
+
 func test_race_tuning_rejects_nonpositive_fields() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

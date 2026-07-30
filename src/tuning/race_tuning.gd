@@ -17,3 +17,11 @@ extends Resource
 @export var camera_fov_speed_gain: float
 @export var camera_yaw_lag_s: float
 @export var camera_drift_yaw_degrees: float
+# Task 5 (CTR kart chase camera): KartCamera's look-at target is the kart
+# position raised by this much, so the camera aims a little above the
+# kart's origin (roughly cockpit/roof height) instead of dead-level into
+# its base -- kept as its own field rather than reusing camera_height_m (a
+# fraction of the camera's OWN mount height above ground has no reason to
+# equal a good look-at height above the kart) so each stays independently
+# tunable.
+@export var camera_look_height_m: float
