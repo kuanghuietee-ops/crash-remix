@@ -187,12 +187,12 @@ class ScalarMathLaunderingChannelTests(unittest.TestCase):
 
 class RacingScanScopeTests(unittest.TestCase):
     """Task 1 (CTR racing mode): src/racing/** must get the same numeric-
-    literal coverage as src/gameplay/**, even though the directory does not
-    exist in this repo yet -- lint_paths/_gdscript_files already treat a
-    missing directory as contributing zero files, so the only real change
-    is adding it to the default scan roots. These tests prove both halves:
-    the missing directory does not break the default (no-args) scan, and a
-    real violation under src/racing is caught once the directory exists.
+    literal coverage as src/gameplay/**. lint_paths/_gdscript_files already
+    treat a missing directory as contributing zero files, so Task 1 only
+    needed to add it to the default scan roots ahead of any real content.
+    Task 2 (drift_state_machine.gd) is the first file to land under
+    src/racing/, so these tests now prove the scan against the real,
+    populated directory instead of an absent one.
     """
 
     def test_default_scan_roots_include_src_racing(self) -> None:
@@ -200,11 +200,14 @@ class RacingScanScopeTests(unittest.TestCase):
 
         self.assertIn(Path("src/racing"), arguments.paths)
 
-    def test_missing_racing_directory_does_not_break_the_default_scan(self) -> None:
-        # The real repo has no src/racing/ yet (this task only lands the
-        # tuning foundation) -- the default scan over the real repo must
-        # still pass cleanly.
-        self.assertFalse((REPO_ROOT / "src" / "racing").exists())
+    def test_default_scan_passes_over_the_real_populated_racing_directory(
+        self,
+    ) -> None:
+        # src/racing/ now exists for real (Task 2's drift_state_machine.gd)
+        # -- the default scan over the real repo must still pass cleanly,
+        # proving the directory's actual contents stay literal-free rather
+        # than merely proving an empty directory is harmless.
+        self.assertTrue((REPO_ROOT / "src" / "racing").exists())
 
         result = subprocess.run(
             [sys.executable, str(LINT_SCRIPT)],

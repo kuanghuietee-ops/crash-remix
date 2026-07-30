@@ -2714,6 +2714,41 @@ func test_kart_ratio_fields_are_bounded_to_unit_interval() -> void:
 	assert_true(service.call("catalog_is_usable"))
 
 
+# Carried from the Task 1 review: DriftStateMachine (Task 2) computes each
+# boost stage's window as [open_s, close_s] scaled by shrink^n and treats a
+# tap before open_s as mistimed, inside as fired, after close_s as ignored --
+# a close_s at or below open_s collapses or inverts that window, so it must
+# be rejected the same way the other kart cross-field constraints are.
+func test_kart_boost_window_close_must_exceed_open() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	var authored_open: float = kart.get("boost_window_open_s")
+	var authored_close: float = kart.get("boost_window_close_s")
+
+	kart.set("boost_window_close_s", authored_open)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"boost_window_close_s equal to boost_window_open_s must be rejected"
+	)
+
+	kart.set("boost_window_close_s", authored_open - 0.01)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"boost_window_close_s below boost_window_open_s must be rejected"
+	)
+
+	kart.set("boost_window_close_s", authored_close)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"the authored close_s > open_s must remain valid"
+	)
+
+
 func test_race_tuning_rejects_nonpositive_fields() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

@@ -504,6 +504,11 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or kart.slide_min_duration_s <= 0.0
 		or kart.boost_window_open_s <= 0.0
 		or kart.boost_window_close_s <= 0.0
+		# Task 2 (CTR racing mode): DriftStateMachine reads each boost
+		# stage's tap window as [open_s, close_s] -- a close at or below
+		# open collapses or inverts that range, so every tap would be
+		# either mistimed or ignored and the slide-boost could never fire.
+		or kart.boost_window_close_s <= kart.boost_window_open_s
 		or kart.boost_window_shrink_factor <= 0.0
 		or kart.boost_window_shrink_factor > 1.0
 		or kart.boost_speed_bonus_mps <= 0.0
