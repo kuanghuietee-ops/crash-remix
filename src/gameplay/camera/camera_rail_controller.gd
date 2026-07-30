@@ -22,6 +22,16 @@ var _blend_origin := Vector3.ZERO
 var _blend_target := Vector3.ZERO
 var _blend_elapsed_s: float
 var _corridor_forward := Vector3.FORWARD
+# CRITICAL-2 (drift bug): _update_input_corridor_axis used to unproject the
+# corridor direction at the PLAYER'S position. Under the closer camera.tres
+# offset, the camera yaws to track the player while they strafe, so a
+# player-anchored projection point rotates the on-screen axis mid-strafe --
+# the gesture-axis slew then chases that rotating target and decomposes a
+# held "up" input into phantom lateral input. The rail point the camera
+# already tracks toward does not move with the player's lateral position,
+# so anchoring the projection there keeps the axis stable across a strafe.
+var _corridor_axis_anchor := Vector3.ZERO
+var _corridor_axis_anchor_valid: bool
 var _current_basis := Basis.IDENTITY
 var _basis_blend_origin := Basis.IDENTITY
 var _basis_blend_elapsed_s: float
@@ -112,6 +122,8 @@ func update_camera(delta_s: float) -> void:
 	var rail_offset := _rail.curve.get_closest_offset(local_player)
 	var rail_length := _rail.curve.get_baked_length()
 	var rail_position := _rail.to_global(_rail.curve.sample_baked(rail_offset))
+	_corridor_axis_anchor = rail_position
+	_corridor_axis_anchor_valid = true
 	# A short baseline keeps the sampled tangent close to the rail's true
 	# local direction through a bend; look_ahead_m stays reserved for how
 	# far ahead the camera looks, not for how the corridor forward is
@@ -308,9 +320,18 @@ func _ensure_curve_from_markers() -> void:
 func _update_input_corridor_axis(delta_s: float) -> void:
 	if _input_router == null or _camera == null or _player == null:
 		return
-	var screen_origin := _camera.unproject_position(_player.global_position)
+	# Anchor the projection at the rail point, not the player -- see the
+	# _corridor_axis_anchor declaration for why a player-anchored projection
+	# rotates the screen axis mid-strafe. Fall back to the player position
+	# only if update_camera() never ran (anchor never set).
+	var axis_origin := (
+		_corridor_axis_anchor
+		if _corridor_axis_anchor_valid
+		else _player.global_position
+	)
+	var screen_origin := _camera.unproject_position(axis_origin)
 	var screen_forward := _camera.unproject_position(
-		_player.global_position + _corridor_forward
+		axis_origin + _corridor_forward
 	)
 	_input_router.set_corridor_axis(screen_forward - screen_origin, delta_s)
 

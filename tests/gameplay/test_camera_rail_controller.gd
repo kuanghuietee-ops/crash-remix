@@ -84,3 +84,93 @@ func test_configure_after_ready_rebuilds_the_rail_with_real_tuning() -> void:
 		"a rail actually shaped by the handle factor bakes to a " +
 		"different length than the raw marker polyline"
 	)
+
+
+# Drift bug: _update_input_corridor_axis used to unproject the corridor
+# direction AT THE PLAYER'S POSITION. Under the closer camera.tres offset,
+# the camera yaws to track the player as they strafe a corridor, so a
+# player-anchored projection point rotates the on-screen axis mid-strafe --
+# the gesture-axis slew then chases that rotating target and decomposes a
+# held "up" input into phantom lateral input, which reads as steering drift.
+# Anchoring the projection at the rail point (which does not move with the
+# player) must keep the axis stable across the same strafe.
+func test_input_corridor_axis_does_not_rotate_with_player_lateral_strafe() -> void:
+	var catalog: GameplayTuning = load(TUNING_PATH)
+	assert_not_null(catalog)
+	if catalog == null:
+		return
+	var camera_tuning: CameraTuning = catalog.camera
+
+	var root := Node3D.new()
+	add_child_autofree(root)
+	var rail := Path3D.new()
+	rail.name = "Rail"
+	root.add_child(rail)
+	for marker_position: Vector3 in [
+		Vector3(0.0, 0.0, 50.0),
+		Vector3(0.0, 0.0, -50.0),
+	]:
+		var marker := Marker3D.new()
+		marker.position = marker_position
+		rail.add_child(marker)
+	# Parent the player before assigning global_position -- setting it on an
+	# unparented Node3D reads a nonexistent parent transform and logs a
+	# spurious "is_inside_tree" engine error even though it still lands on
+	# the right value for a root-level child.
+	var player := CharacterBody3D.new()
+	root.add_child(player)
+	player.global_position = Vector3(0.0, 0.0, -20.0)
+	var controller: Node3D = load(CONTROLLER_PATH).new()
+	root.add_child(controller)
+	var camera := Camera3D.new()
+	controller.add_child(camera)
+	var input_router := InputRouter.new()
+	root.add_child(input_router)
+	input_router.configure(catalog.input)
+
+	controller.call(
+		"configure",
+		player,
+		rail,
+		camera,
+		camera_tuning,
+		[],
+		input_router
+	)
+	# The camera's RenderingServer-side transform only syncs once a real
+	# frame has been processed; unproject_position() reads stale/degenerate
+	# data before that (verified against a hand-rolled projection). Settle
+	# a couple of physics frames before trusting any unprojected reading,
+	# same as the rig receives every physics frame during real play.
+	await wait_physics_frames(2)
+	controller.call("update_camera", 1.0 / 60.0)
+	await wait_physics_frames(2)
+	var axis_centered: Vector2 = input_router.corridor_axis()
+
+	player.global_position = Vector3(3.0, 0.0, -20.0)
+	controller.call("update_camera", 1.0 / 60.0)
+	await wait_physics_frames(2)
+	var axis_strafed: Vector2 = input_router.corridor_axis()
+
+	var swing_degrees := rad_to_deg(axis_centered.angle_to(axis_strafed))
+	print(
+		"corridor axis swing across a 3m lateral strafe: %.2f degrees"
+		% swing_degrees
+	)
+	# The rail-anchored projection still yaws a little with the camera
+	# itself (the anchor tracks the rail, not the player, but the camera's
+	# look-at basis still turns slightly toward the player as they strafe).
+	# That residual is expected and harmless as long as it stays well
+	# inside the corridor magnet cone that swallows small input-axis
+	# jitter; a player-anchored projection blew straight through it.
+	var magnet_cone_degrees: float = catalog.input.corridor_magnet_cone_degrees
+	var max_allowed_swing_degrees := magnet_cone_degrees * 0.5
+	assert_lt(
+		absf(swing_degrees),
+		max_allowed_swing_degrees,
+		(
+			"a lateral strafe alone must not rotate the corridor screen "
+			+ "axis anywhere near the %.1f degree magnet cone -- measured "
+			+ "%.2f degrees"
+		) % [magnet_cone_degrees, swing_degrees]
+	)
