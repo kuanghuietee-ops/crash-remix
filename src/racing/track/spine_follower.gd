@@ -45,9 +45,17 @@ extends RefCounted
 ##
 ## EDGE CASES (pinned by tests/racing/test_spine_follower.gd):
 ## - configure() with spine_length_m <= 0.0 push_errors and marks the
-##   follower invalid; every update() thereafter fails closed, returning
-##   0.0 and leaving total_progress_m() untouched, rather than dividing by
-##   a zero/negative length.
+##   follower invalid. Every method that reports or mutates progress then
+##   fails closed the SAME way, uniformly, rather than some trusting stale
+##   or fabricated state: update() and reset() push_error + no-op/return
+##   0.0, total_progress_m() and lap_progress_m() return 0.0 instead of
+##   whatever they were last set to. is_valid() exposes the flag directly
+##   so a caller (Task 4's respawn path) can defend without relying on a
+##   side-effecting call or on push_error text. Fix round 1 (reviewer):
+##   originally only update()/lap_progress_m() gated on validity, so
+##   reset(250) after a failed configure() left total_progress_m()
+##   reporting a fabricated 250 forever -- the exact cross-kart gap signal
+##   this class exists to make trustworthy.
 ## - max_step_m <= 0.0 is read as "no clamp" (the wrapped delta passes
 ##   through unclamped) -- the same 0-means-off convention track_spine.gd
 ##   itself uses for bake_interval_m/handle_length_factor -- not "clamp to
@@ -81,14 +89,34 @@ func configure(spine_length_m: float) -> void:
 	_length_m = spine_length_m
 
 
+## True after a configure() call with a positive spine_length_m; false
+## before configure() has ever been called, and again after any configure()
+## call with a non-positive length. Lets a caller check the fail-closed
+## state directly instead of inferring it from a 0.0 return or push_error
+## text (see the class doc's EDGE CASES section).
+func is_valid() -> bool:
+	return _valid
+
+
 ## Seeds total_progress_m() directly to progress_m (a continuous, not
 ## lap-bounded, value -- reset(250.0) on a 100m loop means "already 2.5
 ## laps in", matching a resume-mid-race caller) and derives
 ## lap_progress_m() from it via the same modulo update() uses, so the very
 ## next update() call's seam wrap has a consistent reference point.
+##
+## Fails closed the same way update() does: while invalid (no successful
+## configure() yet), this push_errors and leaves state untouched rather
+## than seeding a total that total_progress_m() would then have no way to
+## know was never actually filtered through a valid spine length.
 func reset(progress_m: float) -> void:
+	if not _valid:
+		push_error(
+			"SpineFollower.reset: cannot reset before a valid configure() "
+			+ "call -- ignoring (see the earlier configure() error)."
+		)
+		return
 	_total_progress_m = progress_m
-	_last_lap_progress_m = _wrap_to_lap(progress_m) if _valid else 0.0
+	_last_lap_progress_m = _wrap_to_lap(progress_m)
 
 
 func update(raw_progress_m: float, max_step_m: float) -> float:
@@ -104,8 +132,11 @@ func update(raw_progress_m: float, max_step_m: float) -> float:
 
 ## Continuous progress that never wraps and grows across laps -- THE value
 ## for cross-kart comparison (gap = difference of two followers' totals).
+## Gated on validity like every other reporting method (see the class doc's
+## EDGE CASES section): 0.0 while invalid, never a stale or fabricated
+## value from before/around a failed configure().
 func total_progress_m() -> float:
-	return _total_progress_m
+	return _total_progress_m if _valid else 0.0
 
 
 ## total_progress_m() taken modulo length_m -- an on-track position in

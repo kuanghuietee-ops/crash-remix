@@ -219,6 +219,40 @@ func test_configure_with_negative_length_pushes_error_and_fails_closed() -> void
 	assert_eq(follower.call("lap_progress_m"), 0.0)
 
 
+## Reviewer fix round 1 [MEDIUM]: reset() and total_progress_m() must fail
+## closed the same way update()/lap_progress_m() already did -- before this
+## fix, reset(250) after an invalid configure() made total_progress_m()
+## report a fabricated 250 forever (the exact cross-kart gap signal Task 4's
+## respawn path reads). is_valid() lets a caller defend without relying on
+## a side-effecting call.
+func test_reset_and_total_progress_m_fail_closed_after_invalid_configure() -> void:
+	var follower := _new_unconfigured_follower()
+	if follower == null:
+		return
+	follower.call("configure", -5.0)
+	assert_push_error("spine_length_m")
+	assert_false(
+		bool(follower.call("is_valid")),
+		"is_valid() must be false after a non-positive configure()"
+	)
+
+	follower.call("reset", 250.0)
+	assert_push_error("cannot reset")
+	assert_eq(
+		follower.call("total_progress_m"),
+		0.0,
+		"total_progress_m() must not report a fabricated total from a reset() while invalid"
+	)
+	assert_false(bool(follower.call("is_valid")))
+
+
+func test_is_valid_is_true_after_a_positive_configure() -> void:
+	var follower := _new_follower(_LENGTH_M)
+	if follower == null:
+		return
+	assert_true(bool(follower.call("is_valid")))
+
+
 # ---------------------------------------------------------------------------
 # (f) max_step_m <= 0 is treated as unclamped (documented choice).
 # ---------------------------------------------------------------------------
@@ -294,6 +328,59 @@ func test_update_return_value_matches_lap_progress_after_the_call() -> void:
 	var lap_progress: float = follower.call("lap_progress_m")
 
 	assert_almost_eq(out, lap_progress, 0.0001)
+
+
+# ---------------------------------------------------------------------------
+# Reviewer fix round 1 [LOW x2]: exact +/-length/2 tie-break, and
+# lap_progress_m() on a negative total.
+# ---------------------------------------------------------------------------
+
+
+func test_exact_half_length_delta_ties_forward_per_the_seam_wrap_convention() -> void:
+	# raw - last = +50 (unambiguous, no wrap needed): applies forward.
+	var forward_follower := _new_follower(_LENGTH_M)
+	if forward_follower == null:
+		return
+	forward_follower.call("reset", 0.0)
+	forward_follower.call("update", 50.0, 50.0)
+	assert_almost_eq(
+		forward_follower.call("total_progress_m"),
+		50.0,
+		0.0001,
+		"a plain +half-length delta must apply forward"
+	)
+
+	# raw - last = -50 exactly: the (-L/2, +L/2] convention EXCLUDES -half
+	# and wraps it UP to +half, so this must land at the same forward +50
+	# step, never a -50 backward one.
+	var tie_follower := _new_follower(_LENGTH_M)
+	if tie_follower == null:
+		return
+	tie_follower.call("reset", 50.0)
+	tie_follower.call("update", 0.0, 50.0)
+	assert_almost_eq(
+		tie_follower.call("total_progress_m"),
+		100.0,
+		0.0001,
+		"a raw delta of exactly -half must tie-break forward to +half, not apply backward"
+	)
+
+
+func test_lap_progress_m_wraps_positive_for_a_negative_total() -> void:
+	var follower := _new_follower(_LENGTH_M)
+	if follower == null:
+		return
+	follower.call("reset", 0.0)
+
+	follower.call("update", -0.03, 1.0)
+
+	assert_almost_eq(follower.call("total_progress_m"), -0.03, 0.0001)
+	assert_almost_eq(
+		follower.call("lap_progress_m"),
+		99.97,
+		0.001,
+		"lap_progress_m() must return the fposmod-positive wrap even when total is negative"
+	)
 
 
 # ---------------------------------------------------------------------------
