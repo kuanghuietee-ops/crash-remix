@@ -48,7 +48,7 @@ fog_depth_begin = 40.0
 fog_depth_end = 180.0
 adjustment_enabled = true
 adjustment_contrast = 1.02
-adjustment_saturation = 1.1
+adjustment_saturation = 1.0
 
 [sub_resource type="BoxShape3D" id="Shape_finish"]
 size = Vector3(12, 3, 5)
@@ -70,7 +70,7 @@ environment = SubResource("Environment_beach")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 rotation_degrees = Vector3(-52, -28, 0)
-light_color = Color(1, 0.9, 0.72, 1)
+light_color = Color(1, 0.96, 0.88, 1)
 light_energy = 1.2
 shadow_enabled = true
 directional_shadow_mode = 1

@@ -27,17 +27,23 @@ from typing import Sequence
 # the beach segments so the dressing and the play surface read as one place.
 
 PALETTE: dict[str, tuple[float, float, float]] = {
-    "sand_light": (0.87, 0.78, 0.57),
-    "sand_mid": (0.76, 0.63, 0.40),
-    "sand_wet": (0.58, 0.48, 0.33),
+    # Retuned 2026-07-30 for colour realism: the stand-in kit palette read as a
+    # stylized lime/yellow-green kit under a heavily warm sun. Foliage, sand and
+    # water below are pulled toward naturalistic reference colours (true leaf
+    # green, pale warm cream sand, turquoise shallow water). Values only --
+    # touching the key set moves every atlas cell index and breaks baked UVs,
+    # see the module docstring and ATLAS_ORDER below.
+    "sand_light": (0.89, 0.83, 0.66),
+    "sand_mid": (0.78, 0.69, 0.50),
+    "sand_wet": (0.60, 0.52, 0.39),
     "rock_light": (0.63, 0.61, 0.56),
     "rock_mid": (0.47, 0.45, 0.43),
     "rock_dark": (0.32, 0.31, 0.30),
     "rock_warm": (0.56, 0.46, 0.34),
-    "leaf_light": (0.52, 0.70, 0.29),
-    "leaf_mid": (0.30, 0.52, 0.24),
-    "leaf_dark": (0.17, 0.34, 0.18),
-    "frond": (0.37, 0.59, 0.26),
+    "leaf_light": (0.29, 0.55, 0.22),
+    "leaf_mid": (0.20, 0.42, 0.16),
+    "leaf_dark": (0.10, 0.26, 0.11),
+    "frond": (0.24, 0.48, 0.20),
     "trunk": (0.45, 0.33, 0.22),
     "trunk_dark": (0.31, 0.23, 0.16),
     "driftwood": (0.66, 0.60, 0.52),
@@ -47,8 +53,8 @@ PALETTE: dict[str, tuple[float, float, float]] = {
     "rock_haze": (0.44, 0.54, 0.63),
     "rock_haze_dark": (0.34, 0.45, 0.56),
     "leaf_haze": (0.35, 0.50, 0.50),
-    "water_shallow": (0.30, 0.67, 0.70),
-    "water_deep": (0.13, 0.42, 0.58),
+    "water_shallow": (0.25, 0.65, 0.62),
+    "water_deep": (0.10, 0.36, 0.52),
     "foam": (0.88, 0.94, 0.95),
     "coconut": (0.38, 0.26, 0.17),
     "shell": (0.92, 0.86, 0.78),
