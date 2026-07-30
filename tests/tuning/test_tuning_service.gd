@@ -235,18 +235,61 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"shockwave_height_m",
 		&"debris_telegraph_s",
 	],
+	# Task 1 (CTR racing mode): kart and race are whole new sections, the
+	# same shape as enemy/chase/hog/boss_papu above -- _backfill_missing_
+	# sections migrates a missing section atomically, so every field authored
+	# at introduction joins this baseline (see the comment below).
+	&"kart": [
+		&"top_speed_mps",
+		&"reverse_speed_mps",
+		&"accel_mps2",
+		&"brake_mps2",
+		&"coast_drag_mps2",
+		&"steer_rate_degrees_per_s",
+		&"steer_speed_falloff",
+		&"hop_height_m",
+		&"gravity_mps2",
+		&"slide_min_steer",
+		&"slide_yaw_bonus_degrees_per_s",
+		&"slide_counter_yaw_degrees_per_s",
+		&"slide_min_duration_s",
+		&"boost_window_open_s",
+		&"boost_window_close_s",
+		&"boost_window_shrink_factor",
+		&"boost_speed_bonus_mps",
+		&"boost_duration_s",
+		&"boost_stack_max",
+		&"spin_out_duration_s",
+		&"spin_out_speed_keep_ratio",
+		&"invulnerable_after_hit_s",
+	],
+	&"race": [
+		&"lap_count",
+		&"countdown_step_s",
+		&"start_boost_window_s",
+		&"start_bog_penalty_s",
+		&"wrong_way_grace_s",
+		&"checkpoint_tolerance_m",
+		&"respawn_drop_height_m",
+		&"camera_trail_m",
+		&"camera_height_m",
+		&"camera_fov_base",
+		&"camera_fov_speed_gain",
+		&"camera_yaw_lag_s",
+		&"camera_drift_yaw_degrees",
+	],
 }
-# Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections, which
-# _backfill_missing_sections migrates atomically for every older override.
-# Their initial fields therefore join this baseline; later fields inside
-# those sections still belong in a legacy cohort. Computed as the
-# sha256 of the sorted "section.field" lines for every entry in that
-# dictionary — recompute deliberately (see
-# test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
-# ever legitimately needs to change, never to make a wrongly-placed new
-# field pass unnoticed.
+# Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections, and
+# Task 1 (CTR racing mode) adds whole kart and race sections; _backfill_missing_
+# sections migrates each atomically for every older override. Their initial
+# fields therefore join this baseline; later fields inside those sections
+# still belong in a legacy cohort. Computed as the sha256 of the sorted
+# "section.field" lines for every entry in that dictionary — recompute
+# deliberately (see test_phase_zero_baseline_field_set_is_frozen) if this
+# dictionary itself ever legitimately needs to change, never to make a
+# wrongly-placed new field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"1ef3f47a0e457abed34f68f2690d58eea25007f66e8c2f3e1104a2ee92364a59"
+	"1a0adb19d5fdf357167e2dc0a5fe8c83cda89f280c30ebb3ffa2e76c7ec79b86"
 )
 
 
@@ -2499,6 +2542,237 @@ func test_a_corrupt_authored_base_catalog_is_rejected_loudly() -> void:
 	DirAccess.remove_absolute(
 		ProjectSettings.globalize_path(broken_base_path)
 	)
+
+
+# Task 1 (CTR racing mode): kart and race are brand-new whole sections, the
+# same shape as enemy/chase/hog/boss_papu when each was introduced -- a
+# missing section backfills wholesale via _backfill_missing_sections rather
+# than needing a LEGACY_FIELD_GROUPS_BY_SECTION cohort (that mechanism is for
+# a new field on an EXISTING section, not a whole new section).
+const KART_RATIO_FIELDS: Array[StringName] = [
+	&"steer_speed_falloff",
+	&"boost_window_shrink_factor",
+	&"spin_out_speed_keep_ratio",
+]
+
+
+func test_service_catalog_exposes_kart_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+
+	assert_not_null(kart, "clone dropped kart — kart tuning is dead-wired")
+	if kart == null:
+		return
+	assert_eq(_global_class_name(kart), "KartTuning")
+	assert_eq(kart.get("top_speed_mps"), 18.0)
+	assert_eq(kart.get("boost_stack_max"), 3.0)
+	assert_eq(kart.get("spin_out_speed_keep_ratio"), 0.35)
+
+
+func test_service_catalog_exposes_race_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+
+	assert_not_null(race, "clone dropped race — race tuning is dead-wired")
+	if race == null:
+		return
+	assert_eq(_global_class_name(race), "RaceTuning")
+	assert_eq(race.get("lap_count"), 3.0)
+	assert_eq(race.get("checkpoint_tolerance_m"), 2.0)
+
+
+func test_fingerprint_moves_when_a_kart_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	kart.set("top_speed_mps", float(kart.get("top_speed_mps")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"kart values never reach the tuning fingerprint"
+	)
+
+
+func test_fingerprint_moves_when_a_race_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+	assert_not_null(race)
+	if race == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	race.set("lap_count", float(race.get("lap_count")) + 1.0)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"race values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_racing_override_backfills_kart_and_race() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	assert_not_null(authored.get("kart"))
+	assert_not_null(authored.get("race"))
+	if authored.get("kart") == null or authored.get("race") == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("kart", null)
+	stale.set("race", null)
+	stale.hog.ride_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a pre-racing phone override must migrate, not reset"
+	)
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("kart"))
+	assert_not_null(migrated.get("race"))
+	assert_eq(
+		migrated.get("kart").get("top_speed_mps"),
+		authored.kart.top_speed_mps
+	)
+	assert_almost_eq(
+		migrated.hog.ride_speed_mps,
+		float(authored.hog.ride_speed_mps) + 0.1,
+		0.0001,
+		"migration must not discard the edit the phone already had"
+	)
+
+
+func test_kart_tuning_rejects_nonpositive_fields() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	for property_name: StringName in _exported_property_names(kart):
+		var authored_value: Variant = kart.get(property_name)
+		kart.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"kart.%s must reject zero" % property_name
+		)
+		kart.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_kart_ratio_fields_are_bounded_to_unit_interval() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	for property_name: StringName in KART_RATIO_FIELDS:
+		var authored_value: Variant = kart.get(property_name)
+		kart.set(property_name, 1.01)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"kart.%s must reject values above 1.0" % property_name
+		)
+		kart.set(property_name, 1.0)
+		assert_true(
+			service.call("catalog_is_usable"),
+			"kart.%s must accept exactly 1.0" % property_name
+		)
+		kart.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_race_tuning_rejects_nonpositive_fields() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+	assert_not_null(race)
+	if race == null:
+		return
+	for property_name: StringName in _exported_property_names(race):
+		var authored_value: Variant = race.get(property_name)
+		race.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"race.%s must reject zero" % property_name
+		)
+		race.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_catalog_is_unusable_without_kart() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("kart"))
+	if catalog.get("kart") == null:
+		return
+	catalog.set("kart", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_catalog_is_unusable_without_race() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("race"))
+	if catalog.get("race") == null:
+		return
+	catalog.set("race", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+func test_loaded_paths_include_the_racing_resources() -> void:
+	var service: RefCounted = _new_service()
+	if service == null:
+		return
+	service.call(
+		"load_from_paths",
+		BASE_CATALOG_PATH,
+		"user://tuning/does_not_exist.tres"
+	)
+	var paths: PackedStringArray = service.call("get_loaded_resource_paths")
+	var joined := "|".join(paths)
+
+	assert_true(joined.contains("kart.tres"), "debug HUD will not list kart.tres")
+	assert_true(joined.contains("race.tres"), "debug HUD will not list race.tres")
 
 
 func _loaded_service() -> RefCounted:

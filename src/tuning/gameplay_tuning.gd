@@ -16,3 +16,5 @@ extends Resource
 @export var chase: ChaseTuning
 @export var hog: HogTuning
 @export var boss_papu: BossTuning
+@export var kart: KartTuning
+@export var race: RaceTuning

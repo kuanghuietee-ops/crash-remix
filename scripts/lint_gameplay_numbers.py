@@ -118,8 +118,13 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "paths",
         nargs="*",
         type=Path,
-        default=[Path("src/gameplay")],
-        help="GDScript files or directories to scan (default: src/gameplay)",
+        # Task 1 (CTR racing mode): src/racing/** carries the same "no
+        # gameplay numbers in code" rule as src/gameplay/**. A missing
+        # directory contributes zero files (see _gdscript_files), so this
+        # default is safe before src/racing/** exists and starts scanning
+        # it for real the moment it does.
+        default=[Path("src/gameplay"), Path("src/racing")],
+        help="GDScript files or directories to scan (default: src/gameplay, src/racing)",
     )
     return parser.parse_args(argv)
 

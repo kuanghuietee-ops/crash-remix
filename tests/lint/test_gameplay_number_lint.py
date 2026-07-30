@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scripts.lint_gameplay_numbers import (
     SCALAR_MATH_ALLOWED_VALUES,
+    _parse_args,
     check_scalar_math_channel,
     find_numeric_literals,
 )
@@ -182,6 +183,63 @@ class ScalarMathLaunderingChannelTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class RacingScanScopeTests(unittest.TestCase):
+    """Task 1 (CTR racing mode): src/racing/** must get the same numeric-
+    literal coverage as src/gameplay/**, even though the directory does not
+    exist in this repo yet -- lint_paths/_gdscript_files already treat a
+    missing directory as contributing zero files, so the only real change
+    is adding it to the default scan roots. These tests prove both halves:
+    the missing directory does not break the default (no-args) scan, and a
+    real violation under src/racing is caught once the directory exists.
+    """
+
+    def test_default_scan_roots_include_src_racing(self) -> None:
+        arguments = _parse_args([])
+
+        self.assertIn(Path("src/racing"), arguments.paths)
+
+    def test_missing_racing_directory_does_not_break_the_default_scan(self) -> None:
+        # The real repo has no src/racing/ yet (this task only lands the
+        # tuning foundation) -- the default scan over the real repo must
+        # still pass cleanly.
+        self.assertFalse((REPO_ROOT / "src" / "racing").exists())
+
+        result = subprocess.run(
+            [sys.executable, str(LINT_SCRIPT)],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_bad_file_under_src_racing_fails_the_default_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            racing_dir = Path(temporary_directory) / "src" / "racing" / "kart"
+            racing_dir.mkdir(parents=True)
+            bad_file = racing_dir / "kart_motor.gd"
+            bad_file.write_text(
+                "class_name KartMotor\n"
+                "extends RefCounted\n"
+                "\n"
+                "var top_speed_mps := 7.0\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(LINT_SCRIPT)],
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=temporary_directory,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("7.0", result.stdout)
+        self.assertIn("src/racing", result.stdout.replace("\\", "/"))
 
 
 if __name__ == "__main__":

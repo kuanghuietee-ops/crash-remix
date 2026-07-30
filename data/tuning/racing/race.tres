@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="RaceTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/race_tuning.gd" id="1_race"]
+
+[resource]
+script = ExtResource("1_race")
+lap_count = 3.0
+countdown_step_s = 1.0
+start_boost_window_s = 0.3
+start_bog_penalty_s = 1.0
+wrong_way_grace_s = 1.5
+checkpoint_tolerance_m = 2.0
+respawn_drop_height_m = 2.0
+camera_trail_m = 4.6
+camera_height_m = 2.2
+camera_fov_base = 60.0
+camera_fov_speed_gain = 12.0
+camera_yaw_lag_s = 0.18
+camera_drift_yaw_degrees = 8.0

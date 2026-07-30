@@ -17,6 +17,8 @@ const SECTION_NAMES: Array[StringName] = [
 	&"chase",
 	&"hog",
 	&"boss_papu",
+	&"kart",
+	&"race",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -477,6 +479,58 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# field that already governs it (the N1 lesson).
 		or boss_papu.shockwave_height_m >= move.jump_full_height_m
 		or boss_papu.debris_telegraph_s <= 0.0
+	):
+		return false
+
+	var kart := checked.kart
+	# Task 1 (CTR racing mode): every field is strictly positive; the three
+	# ratio-typed fields (steer authority falloff, boost-window shrink,
+	# spin-out speed retention) are additionally capped to the (0.0, 1.0]
+	# unit interval per the design brief.
+	if (
+		kart.top_speed_mps <= 0.0
+		or kart.reverse_speed_mps <= 0.0
+		or kart.accel_mps2 <= 0.0
+		or kart.brake_mps2 <= 0.0
+		or kart.coast_drag_mps2 <= 0.0
+		or kart.steer_rate_degrees_per_s <= 0.0
+		or kart.steer_speed_falloff <= 0.0
+		or kart.steer_speed_falloff > 1.0
+		or kart.hop_height_m <= 0.0
+		or kart.gravity_mps2 <= 0.0
+		or kart.slide_min_steer <= 0.0
+		or kart.slide_yaw_bonus_degrees_per_s <= 0.0
+		or kart.slide_counter_yaw_degrees_per_s <= 0.0
+		or kart.slide_min_duration_s <= 0.0
+		or kart.boost_window_open_s <= 0.0
+		or kart.boost_window_close_s <= 0.0
+		or kart.boost_window_shrink_factor <= 0.0
+		or kart.boost_window_shrink_factor > 1.0
+		or kart.boost_speed_bonus_mps <= 0.0
+		or kart.boost_duration_s <= 0.0
+		or kart.boost_stack_max <= 0.0
+		or kart.spin_out_duration_s <= 0.0
+		or kart.spin_out_speed_keep_ratio <= 0.0
+		or kart.spin_out_speed_keep_ratio > 1.0
+		or kart.invulnerable_after_hit_s <= 0.0
+	):
+		return false
+
+	var race := checked.race
+	if (
+		race.lap_count <= 0.0
+		or race.countdown_step_s <= 0.0
+		or race.start_boost_window_s <= 0.0
+		or race.start_bog_penalty_s <= 0.0
+		or race.wrong_way_grace_s <= 0.0
+		or race.checkpoint_tolerance_m <= 0.0
+		or race.respawn_drop_height_m <= 0.0
+		or race.camera_trail_m <= 0.0
+		or race.camera_height_m <= 0.0
+		or race.camera_fov_base <= 0.0
+		or race.camera_fov_speed_gain <= 0.0
+		or race.camera_yaw_lag_s <= 0.0
+		or race.camera_drift_yaw_degrees <= 0.0
 	):
 		return false
 

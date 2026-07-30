@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="KartTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/kart_tuning.gd" id="1_kart"]
+
+[resource]
+script = ExtResource("1_kart")
+top_speed_mps = 18.0
+reverse_speed_mps = 6.0
+accel_mps2 = 14.0
+brake_mps2 = 22.0
+coast_drag_mps2 = 6.0
+steer_rate_degrees_per_s = 95.0
+steer_speed_falloff = 0.35
+hop_height_m = 0.6
+gravity_mps2 = 24.0
+slide_min_steer = 0.25
+slide_yaw_bonus_degrees_per_s = 55.0
+slide_counter_yaw_degrees_per_s = 30.0
+slide_min_duration_s = 0.25
+boost_window_open_s = 0.55
+boost_window_close_s = 0.85
+boost_window_shrink_factor = 0.8
+boost_speed_bonus_mps = 5.0
+boost_duration_s = 1.1
+boost_stack_max = 3.0
+spin_out_duration_s = 1.2
+spin_out_speed_keep_ratio = 0.35
+invulnerable_after_hit_s = 1.5
