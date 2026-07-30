@@ -42,6 +42,20 @@ const RACE_TIME_TRIAL_SCENE := preload(
 const RACE_SANITY_SHORES_SCENE := preload(
 	"res://scenes/racing/race_sanity_shores.tscn"
 )
+# Fix-wave MEDIUM-5: solo time trial restored (spec: "time trial ships as
+# race-minus-AI") -- thin scenes that instance the two RACE scenes above and
+# override only RaceSession.spawn_opponents = false (see race_session.gd's
+# own doc and these two scene files themselves). The two RACE_*_SCENE
+# consts above keep their pre-existing names/behavior unchanged (AI by
+# default) even though the level list now labels their own menu entries
+# "RACE" rather than "TIME TRIAL" -- see _RACE_SCENES_BY_LEVEL_ID below and
+# level_list_overlay.tscn's own button text.
+const RACE_TIME_TRIAL_SOLO_SCENE := preload(
+	"res://scenes/racing/race_time_trial_solo.tscn"
+)
+const RACE_SANITY_SHORES_SOLO_SCENE := preload(
+	"res://scenes/racing/race_sanity_shores_solo.tscn"
+)
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -67,6 +81,18 @@ const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const DEBUG_LOOK_DEV_LEVEL_ID := &"debug_look_dev"
 const DEBUG_RACING_LEVEL_ID := &"debug_racing_time_trial"
 const DEBUG_RACING_SANITY_SHORES_LEVEL_ID := &"debug_racing_sanity_shores"
+# Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries. NOTE:
+# DEBUG_RACING_LEVEL_ID/DEBUG_RACING_SANITY_SHORES_LEVEL_ID's own NAMES
+# still say "time trial" even though they now launch the AI-populated RACE
+# scenes (see RACE_TIME_TRIAL_SCENE's own doc) -- kept unrenamed since
+# flow.active_level_id is pure in-memory FSM state (see game_flow.gd, never
+# persisted/saved), so a rename is safe but purely cosmetic and out of
+# scope for this fix; every actual behavior split lives in which scene
+# each id maps to below, not in the id's own spelling.
+const DEBUG_RACING_TIME_TRIAL_LEVEL_ID := &"debug_racing_time_trial_solo"
+const DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID := (
+	&"debug_racing_sanity_shores_time_trial"
+)
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
@@ -95,6 +121,8 @@ const _LEVEL_SCENE_PATHS: Dictionary = {
 const _RACE_SCENES_BY_LEVEL_ID: Dictionary = {
 	DEBUG_RACING_LEVEL_ID: RACE_TIME_TRIAL_SCENE,
 	DEBUG_RACING_SANITY_SHORES_LEVEL_ID: RACE_SANITY_SHORES_SCENE,
+	DEBUG_RACING_TIME_TRIAL_LEVEL_ID: RACE_TIME_TRIAL_SOLO_SCENE,
+	DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID: RACE_SANITY_SHORES_SOLO_SCENE,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -682,6 +710,15 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	_level_list_overlay.connect(
 		&"racing_sanity_shores_requested",
 		_on_racing_sanity_shores_requested
+	)
+	# Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries.
+	_level_list_overlay.connect(
+		&"racing_time_trial_solo_requested",
+		_on_racing_time_trial_solo_requested
+	)
+	_level_list_overlay.connect(
+		&"racing_sanity_shores_time_trial_requested",
+		_on_racing_sanity_shores_time_trial_requested
 	)
 	_level_list_overlay.connect(
 		&"closed",
@@ -1427,12 +1464,17 @@ func _sync_ui_visibility() -> void:
 		)
 	_hud.call(
 		"set_run_display_visible",
-		flow.active_level_id not in [
-			DEBUG_TOYBOX_LEVEL_ID,
-			DEBUG_LOOK_DEV_LEVEL_ID,
-			DEBUG_RACING_LEVEL_ID,
-			DEBUG_RACING_SANITY_SHORES_LEVEL_ID,
-		]
+		(
+			flow.active_level_id not in [
+				DEBUG_TOYBOX_LEVEL_ID,
+				DEBUG_LOOK_DEV_LEVEL_ID,
+			]
+			# Fix-wave MEDIUM-5: reads the same dictionary _render_state()'s
+			# own racing branch already keys off of, rather than a second,
+			# separately hand-kept id list -- the two new solo-race ids added
+			# alongside it are automatically covered with no edit needed here.
+			and not _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
+		)
 	)
 	_pause_overlay.visible = (
 		flow.state == GameFlow.State.PAUSED
@@ -1632,6 +1674,17 @@ func _on_racing_time_trial_requested() -> void:
 func _on_racing_sanity_shores_requested() -> void:
 	if OS.is_debug_build():
 		_select_level(DEBUG_RACING_SANITY_SHORES_LEVEL_ID)
+
+
+## Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries.
+func _on_racing_time_trial_solo_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_RACING_TIME_TRIAL_LEVEL_ID)
+
+
+func _on_racing_sanity_shores_time_trial_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID)
 
 
 func _on_level_list_closed() -> void:

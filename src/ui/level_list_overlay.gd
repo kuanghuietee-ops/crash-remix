@@ -6,6 +6,10 @@ signal toybox_requested
 signal look_dev_requested
 signal racing_time_trial_requested
 signal racing_sanity_shores_requested
+# Fix-wave MEDIUM-5: solo time trial restored (spawn_opponents=false) --
+# the two RACE signals above keep launching the AI-populated race scenes.
+signal racing_time_trial_solo_requested
+signal racing_sanity_shores_time_trial_requested
 signal closed
 
 
@@ -37,6 +41,13 @@ func _ready() -> void:
 	$SafeArea/Center/Panel/Margin/Rows/RacingSanityShores.pressed.connect(
 		func() -> void: racing_sanity_shores_requested.emit()
 	)
+	# Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries.
+	$SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo.pressed.connect(
+		func() -> void: racing_time_trial_solo_requested.emit()
+	)
+	$SafeArea/Center/Panel/Margin/Rows/RacingSanityShoresTimeTrial.pressed.connect(
+		func() -> void: racing_sanity_shores_time_trial_requested.emit()
+	)
 	$SafeArea/Center/Panel/Margin/Rows/Close.pressed.connect(
 		func() -> void: closed.emit()
 	)
@@ -58,5 +69,11 @@ func configure(debug_tools_enabled: bool) -> void:
 		debug_tools_enabled
 	)
 	$SafeArea/Center/Panel/Margin/Rows/RacingSanityShores.visible = (
+		debug_tools_enabled
+	)
+	$SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo.visible = (
+		debug_tools_enabled
+	)
+	$SafeArea/Center/Panel/Margin/Rows/RacingSanityShoresTimeTrial.visible = (
 		debug_tools_enabled
 	)
