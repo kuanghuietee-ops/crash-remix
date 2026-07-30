@@ -119,14 +119,22 @@ Findings from the R1/R2 final fix wave (2026-07-30) that are correctly out of
 scope for this pass but must not be forgotten when the phases that touch them
 start.
 
-1. **R4-BINDING**: `apply_spin_out()` (kart_controller.gd) only calls
+1. ~~**R4-BINDING**: `apply_spin_out()` (kart_controller.gd) only calls
    `KartMotor.apply_spin_out()` — it never cancels `DriftStateMachine`. A hit
    landing mid-slide zeroes the motor's yaw authority but leaves the drift FSM
    still reporting `is_sliding()` true and still boostable, since nothing
    about a spin-out tells it the slide is over (parked Task-3 review finding).
    The R4 (items/hazards) plan MUST add a drift cancel alongside the spin-out,
    plus gate `boost_tap()` so a hit can't be "rewarded" with a boost stacked
-   the instant before or during it.
+   the instant before or during it.~~ **FIXED, R4 Task 1 (2026-07-30):**
+   `apply_spin_out()` now also calls `DriftStateMachine.cancel_slide()` (ends
+   the slide, zeroes accrued boost/stage/window) plus `hop_released()`
+   (clears a hop latched-but-not-yet-sliding right before the hit, which
+   `cancel_slide()` alone leaves standing since it is a no-op when nothing is
+   sliding); `boost_tap()` and `hop_pressed()` are now gated on the new
+   `KartMotor.is_spinning_out()` for the whole `spin_out_duration_s` stun, at
+   the controller (`kart_controller.gd`), not the drift FSM. See
+   `tests/racing/test_kart_controller.gd`'s R4 Task 1 section.
 2. Boost pads / jump pads are listed under "Kart feel" above as a kart verb,
    but no such mechanic exists anywhere in `src/racing/` or `scenes/racing/`
    — Task 8's boost-pad line was deliberately skipped (no track-side trigger,
@@ -215,6 +223,29 @@ start.
    entries (RACE/TIME TRIAL × Graybox/Sanity Shores) instead of the two
    AI-populated-only entries R3 shipped with. See race_session.gd's own
    `spawn_opponents` doc and game_root.gd's `_RACE_SCENES_BY_LEVEL_ID`.
+9. **New (R4 Task 1): RACE and TIME TRIAL share one best-times record per
+   `track_id`, which R4/R5 will make incoherent.** Debt #8's solo variants
+   (`race_time_trial_solo.tscn`/`race_sanity_shores_solo.tscn`) instance the
+   AI-populated base scene and override only `spawn_opponents` — `track_id`
+   itself is inherited, so `race_time_trial.tscn` (AI, `track_id =
+   "graybox_loop"`) and `race_time_trial_solo.tscn` (solo, same
+   `"graybox_loop"`) write into the exact same `SaveModel.racing[track_id]`
+   slot (`game_root.gd`'s `_present_race_results`-equivalent handler around
+   `SaveModel.racing_record()`/`improved_racing_record()`, `save_model.gd`'s
+   `racing_record()`). This is coherent through R3: nothing about AI
+   opponents on the track changes what a lap-time *means* for the player's
+   own kart, so a RACE personal-best and a TIME TRIAL personal-best on the
+   same track are genuinely comparable. It stops being coherent once either
+   R4 (items — a race lap can be shortened by a boost item or lengthened by
+   getting hit, neither of which time trial has) or R5 (countdown/
+   start-boost — a race start and a time-trial start won't take the same
+   fixed time before the clock effectively "starts" racing) lands: a RACE
+   time will no longer measure the same thing a TIME TRIAL time does, but
+   both will keep overwriting the same best-times slot as if they still did.
+   Revisit at R5 (once both R4 items and R5's start systems exist to
+   actually diverge the two): either split the save key by mode (e.g.
+   `track_id` + a mode suffix) or stop writing best times from AI races
+   (RACE) entirely and keep the personal-best record TIME-TRIAL-only.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that

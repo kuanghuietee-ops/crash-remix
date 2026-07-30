@@ -389,6 +389,238 @@ func test_reset_speed_zeroes_forward_and_vertical_speed_and_body_velocity() -> v
 	)
 
 
+# ---------------------------------------------------------------------------
+# R4 Task 1 (striking the design spec's Recorded debts #1, R4-BINDING): a
+# spin-out landing mid-slide must force-end the drift FSM, not just zero the
+# motor's yaw authority; boost_tap()/hop_pressed() must be gated on the
+# motor's spin-out state for its whole spin_out_duration_s; recovery must be
+# automatic once the stun's own timer expires; invulnerable_after_hit_s must
+# keep running as its own independent window throughout.
+# ---------------------------------------------------------------------------
+
+
+func test_apply_spin_out_mid_slide_ends_the_slide_and_zeroes_accrued_boost() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before starting a slide")
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(kart.call("is_sliding"), "fixture setup must land inside a slide")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_eq(
+		String(kart.call("boost_tap")),
+		"fired",
+		"fixture setup: the tap must land inside the window and actually accrue boost"
+	)
+
+	kart.call("apply_spin_out")
+
+	assert_false(
+		kart.call("is_sliding"),
+		"a spin-out landing mid-slide must end the slide immediately -- the "
+		+ "camera's drift bias (which only applies while is_sliding() is "
+		+ "true, see kart_camera.gd) clears the same tick as a result"
+	)
+
+	var drift: RefCounted = kart.get("_drift")
+	assert_not_null(drift, "the controller must still own its private drift FSM")
+	if drift == null:
+		return
+	assert_eq(
+		int(drift.call("boost_stage")),
+		0,
+		"the spin-out must forfeit the accrued boost stage, not just end the slide"
+	)
+	assert_eq(
+		float(drift.call("consume_boost")),
+		0.0,
+		"any boost accrued before the spin-out must have been zeroed, not merely left orphaned for the next poll"
+	)
+
+
+## Proves the gate lives on the CONTROLLER (checking KartMotor.is_spinning_
+## out() before ever calling DriftStateMachine.boost_tap()), not merely
+## inherited from the FSM's own pre-existing "not sliding" early-return --
+## the motor is spun out directly here while the drift FSM is left mid-slide
+## and inside its own open boost window, which would otherwise fire.
+func test_boost_tap_is_gated_at_the_controller_even_while_the_drift_fsm_would_otherwise_fire() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before starting a slide")
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(kart.call("is_sliding"), "fixture setup must land inside a slide")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	motor.call("apply_spin_out")
+	assert_true(bool(motor.call("is_spinning_out")), "fixture setup: the motor must be spinning out")
+	assert_true(
+		kart.call("is_sliding"),
+		"fixture setup: only the motor was hit directly here, so the drift FSM must still report sliding"
+	)
+
+	assert_eq(
+		String(kart.call("boost_tap")),
+		"ignored",
+		"the controller must gate boost_tap() on the motor's spin-out state "
+		+ "even though the drift FSM's own window would otherwise fire"
+	)
+
+
+func test_hop_pressed_during_spin_out_no_ops_and_does_not_arm_a_slide() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before probing the guard")
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	motor.call("apply_spin_out")
+	assert_true(bool(motor.call("is_spinning_out")), "fixture setup: the motor must be spinning out")
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+
+	assert_false(
+		kart.call("is_sliding"),
+		"a hop press during a spin-out stun must not arm a new slide"
+	)
+	assert_almost_eq(
+		kart.velocity.y,
+		0.0,
+		0.05,
+		"a hop press during a spin-out stun must not add a vertical impulse either"
+	)
+
+
+## A hop can latch _hop_held=true BEFORE a slide actually starts (steer
+## hasn't crossed slide_min_steer yet) -- DriftStateMachine.cancel_slide()
+## is a documented no-op when nothing is sliding, so calling it alone after
+## a hit landing in this exact window would leave that latch standing; the
+## very next tick steer crosses the threshold would then arm a slide DURING
+## the stun with no fresh hop_pressed() edge at all. apply_spin_out() must
+## also force-clear the latch unconditionally via hop_released(), the same
+## pairing set_run_active(false) already uses for the identical reason.
+func test_apply_spin_out_before_a_slide_starts_still_clears_a_pending_hop_latch() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before probing the guard")
+
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_false(
+		kart.call("is_sliding"),
+		"fixture setup: steer below threshold must not have started a slide yet"
+	)
+
+	kart.call("apply_spin_out")
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	await wait_physics_frames(1)
+
+	assert_false(
+		kart.call("is_sliding"),
+		"a hop latch armed before the hit must not survive apply_spin_out() "
+		+ "to arm a slide off stale state during the stun"
+	)
+
+
+func test_control_is_restored_after_spin_out_duration_elapses() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before probing the guard")
+
+	kart.call("apply_spin_out")
+	assert_true(kart.call("is_spinning_out"), "fixture setup: the controller proxy must report spinning out")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.spin_out_duration_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_false(
+		kart.call("is_spinning_out"),
+		"the stun must have ended by its own authored spin_out_duration_s"
+	)
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	var yaw_before: float = float(motor.call("yaw_degrees"))
+	kart.call("steer", 1.0)
+	await wait_physics_frames(20)
+	var yaw_after: float = float(motor.call("yaw_degrees"))
+	assert_gt(
+		absf(yaw_after - yaw_before),
+		1.0,
+		"steering after the stun ends must visibly turn the kart again -- "
+		+ "proves yaw authority is really back, not just that the timer expired"
+	)
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(
+		kart.call("is_sliding"),
+		"a hop press after the stun ends must be able to arm a slide again"
+	)
+
+
+func test_invulnerability_outlasts_spin_out_through_the_controller() -> void:
+	# Mirrors test_kart_motor.gd's test_spin_out_and_invulnerability_run_as_
+	# independent_timers, but pinned through the real controller (is_
+	# spinning_out()/is_invulnerable() proxies) rather than the motor
+	# directly, per the R4 Task 1 brief's own "invulnerable window still
+	# independent" requirement.
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before probing the guard")
+
+	kart.call("apply_spin_out")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.spin_out_duration_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_false(
+		kart.call("is_spinning_out"),
+		"the spin itself must have ended at its own authored duration"
+	)
+	assert_true(
+		kart.call("is_invulnerable"),
+		(
+			"invulnerability (authored longer, kart.tres: %s vs %s) must "
+			+ "outlast the spin"
+		) % [_kart_tuning.invulnerable_after_hit_s, _kart_tuning.spin_out_duration_s]
+	)
+
+
 func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
 	if not ResourceLoader.exists(KART_SCENE_PATH):

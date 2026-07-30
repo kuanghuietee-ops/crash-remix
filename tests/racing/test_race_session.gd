@@ -901,6 +901,25 @@ func test_twenty_second_real_physics_race_with_five_ai_karts_makes_healthy_progr
 			min_totals_seen[slot_index] = minf(min_totals_seen[slot_index], current)
 
 	var healthy_progress_m := spine.length_m() * 0.5
+	# R4 Task 1 tightening: the respawn OR-branch used to accept ANY kart
+	# whose stuck-respawn fired at all and then crawled just respawn_drop_
+	# gap_m (ai.tres: 4.0m) past its own worst point -- "wedge, then a
+	# single 4m nudge" -- with no requirement it ever actually covered
+	# meaningful ground over the full 20s. A badly-degraded AI (e.g. a
+	# regression that makes it wedge, crawl 4m, wedge again, repeat) could
+	# pass that branch forever without ever demonstrating real progress.
+	# _RECOVERY_FRACTION requires a recovered kart's own FINAL total to
+	# still clear a fraction of the healthy floor -- half of it, i.e. a
+	# quarter of the full loop -- so "recovered" means "got meaningfully far
+	# despite needing the safety net once," not "technically wasn't at the
+	# exact same spot it started at." Half was picked (documented here, per
+	# the brief's own example) as the midpoint between the two extremes this
+	# branch has to tell apart: a kart that is basically healthy but dipped
+	# into ONE stuck-respawn cycle (which should still clear most of the
+	# healthy floor) and a kart that is genuinely broken (which a bare
+	# wedge+4m floor let through with arbitrarily little real progress).
+	const _RECOVERY_FRACTION := 0.5
+	var recovery_floor_m := healthy_progress_m * _RECOVERY_FRACTION
 	for slot_index: int in range(opponent_count):
 		var final_total := float(race.call("ai_kart_total_progress_m", slot_index))
 		var respawn_count := int(race.call("ai_agent", slot_index).call("respawn_count"))
@@ -908,19 +927,26 @@ func test_twenty_second_real_physics_race_with_five_ai_karts_makes_healthy_progr
 		var recovered := (
 			respawn_count > 0
 			and final_total > min_totals_seen[slot_index] + _catalog.ai.respawn_drop_gap_m
+			and final_total >= recovery_floor_m
 		)
 		assert_true(
 			gained >= healthy_progress_m or recovered,
 			(
 				"AI kart at slot %d must complete at least half a lap (%s m) "
 				+ "of total progress over 20 real seconds, OR demonstrably "
-				+ "recover via its own stuck-respawn safety net: gained=%s m "
-				+ "healthy_floor=%s m respawn_count=%s min_total_seen=%s"
+				+ "recover via its own stuck-respawn safety net AND still "
+				+ "clear %s m (%s x the healthy floor) of real final "
+				+ "progress: gained=%s m final_total=%s m healthy_floor=%s m "
+				+ "recovery_floor=%s m respawn_count=%s min_total_seen=%s"
 			) % [
 				slot_index + 1,
 				healthy_progress_m,
+				recovery_floor_m,
+				_RECOVERY_FRACTION,
 				gained,
+				final_total,
 				healthy_progress_m,
+				recovery_floor_m,
 				respawn_count,
 				min_totals_seen[slot_index],
 			]

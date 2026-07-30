@@ -23,7 +23,8 @@ extends CharacterBody3D
 ## push into DriftStateMachine directly. hop_pressed() only produces an
 ## actual vertical impulse when the kart is grounded AND not already
 ## sliding (mirrors CTR -- mashing hop mid-air does not stack extra hops,
-## and a hop press mid-drift is a boost tap, not a jump); it still always
+## and a hop press mid-drift is a boost tap, not a jump); outside of a
+## spin-out stun (see the R4-BINDING FIX paragraph below) it still always
 ## forwards to the drift FSM so an airborne hop-then-land can arm a slide on
 ## landing. Fix round 1: RacingInputAdapter now routes every hop press that
 ## arrives while already sliding to boost_tap() instead of calling
@@ -31,6 +32,32 @@ extends CharacterBody3D
 ## machine.gd's class docs for why), so this guard is defense in depth
 ## against any other caller reaching hop_pressed() mid-slide, not something
 ## the adapter's own call pattern currently exercises.
+##
+## R4-BINDING FIX (Task 1, striking the design spec's Recorded debts #1): a
+## hit landing mid-slide used to zero the motor's yaw authority (KartMotor.
+## apply_spin_out()) while leaving DriftStateMachine completely unaware --
+## is_sliding() kept reporting true, KartCamera's drift bias kept reading a
+## now-stale slide_direction(), and boost_tap() could still fire, "rewarding"
+## a hit with a boost stacked the instant before or during it. apply_spin_
+## out() now also calls DriftStateMachine.cancel_slide() -- a real force-end
+## (same shape set_run_active(false) already uses below): zeroes boost_
+## stage/accrued boost/window_elapsed_s and clears is_sliding() the same
+## tick, so a camera reading it stops applying any drift bias immediately --
+## plus hop_released() alongside it, because cancel_slide() only clears the
+## "hop held" latch when a slide was actually active; a hop pressed-but-
+## not-yet-sliding right before the hit would otherwise survive untouched
+## and arm a slide off that stale latch the instant steer crosses the
+## threshold mid-stun (the same latch-leak reason set_run_active(false)
+## also calls hop_released() explicitly rather than trusting cancel_slide()
+## alone). boost_tap() and hop_pressed() are ALSO now gated on KartMotor.
+## is_spinning_out(): a controller-level no-op/&"ignored" for the whole
+## spin_out_duration_s stun, so a hit can never be "rewarded" with a boost
+## tap or a fresh hop/slide-arm landing during or immediately after it,
+## regardless of what the drift FSM's own state would otherwise allow.
+## Recovery needs no controller-side bookkeeping of its own: KartMotor's own
+## spin-out timer expiring is what un-gates both calls again (is_spinning_
+## out() reads straight through), the same "the timer just runs out" shape
+## invulnerable_after_hit_s already uses as its own independent window.
 
 const KartMotorType := preload("res://src/racing/kart/kart_motor.gd")
 const DriftStateMachineType := preload(
@@ -95,7 +122,13 @@ func set_yaw_degrees(degrees: float) -> void:
 	rotation.y = deg_to_rad(degrees)
 
 
+## Gated on the motor's spin-out state (R4 Task 1, see the class doc's
+## R4-BINDING FIX paragraph): a hop press during a stun is a full no-op --
+## it never reaches the drift FSM at all, so it can neither add a vertical
+## impulse nor latch _hop_held to arm a slide the instant the stun ends.
 func hop_pressed() -> void:
+	if _motor.is_spinning_out():
+		return
 	_drift.hop_pressed()
 	if is_on_floor() and not _drift.is_sliding():
 		_motor.hop()
@@ -105,7 +138,13 @@ func hop_released() -> void:
 	_drift.hop_released()
 
 
+## Gated on the motor's spin-out state (R4 Task 1, see the class doc's
+## R4-BINDING FIX paragraph): a boost tap during a stun returns &"ignored"
+## without ever reaching DriftStateMachine.boost_tap() -- a hit can't be
+## "rewarded" with a boost stacked the instant before or during it.
 func boost_tap() -> StringName:
+	if _motor.is_spinning_out():
+		return &"ignored"
 	return _drift.boost_tap()
 
 
@@ -113,8 +152,15 @@ func apply_boost(seconds: float) -> void:
 	_motor.add_boost(seconds)
 
 
+## R4 Task 1 (striking the design spec's Recorded debts #1 -- see the class
+## doc's R4-BINDING FIX paragraph): also force-ends the drift FSM's own
+## slide state, the same cancel_slide() + hop_released() pair set_run_
+## active(false) already uses below for the identical "stop drifting right
+## now, don't leave the hop latch armed" reason.
 func apply_spin_out() -> void:
 	_motor.apply_spin_out()
+	_drift.hop_released()
+	_drift.cancel_slide()
 
 
 func speed_mps() -> float:
@@ -135,6 +181,16 @@ func slide_direction() -> int:
 
 func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
+
+
+## Proxies straight onto the real KartMotor's own query -- see kart_motor.
+## gd's is_spinning_out() doc. Exposed alongside is_invulnerable() so a
+## caller (HUD, AI, or a test) can distinguish "still stunned" (zero yaw
+## authority, boost_tap()/hop_pressed() gated -- see the class doc's
+## R4-BINDING FIX paragraph) from "still can't be hit again" without
+## reaching past this controller into the private motor it owns.
+func is_spinning_out() -> bool:
+	return _motor.is_spinning_out()
 
 
 ## Proxies straight onto the real KartMotor's own lever -- see kart_motor.gd's
