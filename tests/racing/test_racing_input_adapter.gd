@@ -24,6 +24,7 @@ class FakeKartController:
 	var hop_pressed_calls: int
 	var hop_released_calls: int
 	var boost_tap_calls: int
+	var use_item_calls: int
 	var sliding: bool
 
 	func steer(value: float) -> void:
@@ -41,6 +42,10 @@ class FakeKartController:
 	func boost_tap() -> StringName:
 		boost_tap_calls += 1
 		return &"fired"
+
+	func use_item() -> StringName:
+		use_item_calls += 1
+		return &"none"
 
 	func is_sliding() -> bool:
 		return sliding
@@ -243,6 +248,20 @@ func test_hop_released_forwards_to_controller() -> void:
 	adapter.call("apply_hop_released", controller)
 
 	assert_eq(controller.hop_released_calls, 1)
+
+
+## R4 Task 2 (CTR item loop): apply_item_pressed() routes straight to
+## controller.use_item() -- see racing_input_adapter.gd's own doc for why
+## there is no matching apply_item_released().
+func test_item_pressed_forwards_to_controller_use_item() -> void:
+	var adapter := _new_adapter()
+	if adapter == null:
+		return
+	var controller := FakeKartController.new()
+
+	adapter.call("apply_item_pressed", controller)
+
+	assert_eq(controller.use_item_calls, 1)
 
 
 func _new_adapter() -> RefCounted:

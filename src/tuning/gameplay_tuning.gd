@@ -19,3 +19,4 @@ extends Resource
 @export var kart: KartTuning
 @export var race: RaceTuning
 @export var ai: AiTuning
+@export var items: ItemTuning

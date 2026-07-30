@@ -59,15 +59,17 @@ func _handle_button(event: InputEventJoypadButton) -> void:
 			InputIntent.SOURCE_GAMEPAD
 		)
 		return
-	var action := _action_for_button(event.button_index)
-	if action.is_empty():
+	var actions := _actions_for_button(event.button_index)
+	if actions.is_empty():
 		return
-	_router.push_button(
-		action,
-		event.pressed,
-		MonotonicClockType.now_s(),
-		InputIntent.SOURCE_GAMEPAD
-	)
+	var timestamp_s := MonotonicClockType.now_s()
+	for action: StringName in actions:
+		_router.push_button(
+			action,
+			event.pressed,
+			timestamp_s,
+			InputIntent.SOURCE_GAMEPAD
+		)
 
 
 func _update_dpad(event: InputEventJoypadButton) -> bool:
@@ -95,14 +97,27 @@ func _apply_dead_zone(raw_value: Vector2) -> Vector2:
 	return raw_value.normalized() * remapped
 
 
-func _action_for_button(button_index: JoyButton) -> StringName:
+## R4 Task 2 (CTR item loop): a button may map to more than one action --
+## this shared script has no notion of which mode (platformer or racing) is
+## currently active, the same "push everything, let the consumer decide
+## what matters" shape TouchControls already uses in racing layout for the
+## platformer SPIN/DOWN/PHASE buttons it simply stops rendering (see
+## touch_controls.gd's _recalculate_layout()): the platformer's
+## PlayerStateMachine never reads ACTION_ITEM and RaceSession never reads
+## ACTION_DOWN, so pushing both off one real button press is harmless in
+## either mode. JOY_BUTTON_B is CTR's own B/circle-equivalent item button
+## (see input_intent.gd's ACTION_ITEM doc); JOY_BUTTON_RIGHT_SHOULDER stays
+## DOWN-only, unchanged from before.
+func _actions_for_button(button_index: JoyButton) -> Array[StringName]:
 	match button_index:
 		JOY_BUTTON_A:
-			return InputIntent.ACTION_JUMP
+			return [InputIntent.ACTION_JUMP]
 		JOY_BUTTON_X:
-			return InputIntent.ACTION_SPIN
+			return [InputIntent.ACTION_SPIN]
 		JOY_BUTTON_Y:
-			return InputIntent.ACTION_PHASE
-		JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER:
-			return InputIntent.ACTION_DOWN
-	return &""
+			return [InputIntent.ACTION_PHASE]
+		JOY_BUTTON_B:
+			return [InputIntent.ACTION_DOWN, InputIntent.ACTION_ITEM]
+		JOY_BUTTON_RIGHT_SHOULDER:
+			return [InputIntent.ACTION_DOWN]
+	return []

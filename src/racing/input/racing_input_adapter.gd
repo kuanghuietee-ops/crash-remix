@@ -54,6 +54,15 @@ func apply_hop_released(controller: Object) -> void:
 	controller.hop_released()
 
 
+## R4 Task 2 (CTR item loop): routes an ITEM press edge straight to the
+## controller's own use_item() -- a fire-once action, not press-and-hold,
+## so unlike hop there is no matching apply_item_released(). See
+## race_session.gd's _route_input() for the edge-sampling that guarantees
+## this is only ever called once per real press.
+func apply_item_pressed(controller: Object) -> void:
+	controller.use_item()
+
+
 func _is_brake_pull(value: Vector2) -> bool:
 	if _tuning == null:
 		return false

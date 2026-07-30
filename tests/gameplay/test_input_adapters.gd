@@ -576,6 +576,42 @@ func test_gamepad_y_emits_phase_intent() -> void:
 	assert_true(router.get("buffer").call("is_action_pressed", &"phase"))
 
 
+## R4 Task 2 (CTR item loop): B is CTR's own B/circle-equivalent item
+## button. It must keep emitting the platformer's DOWN action too (the
+## same button already routed to before this task -- see gamepad_input.gd's
+## _actions_for_button() doc for why one real press can safely emit both:
+## RaceSession never reads DOWN and PlayerStateMachine never reads ITEM).
+func test_gamepad_b_emits_both_down_and_item_intents() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var gamepad: Node = _new_node(GAMEPAD_SCRIPT_PATH)
+	if router == null or gamepad == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(gamepad)
+	router.call("configure", _input_tuning)
+	gamepad.call("configure", router, _input_tuning)
+	var event := InputEventJoypadButton.new()
+	event.button_index = JOY_BUTTON_B
+	event.pressed = true
+
+	gamepad.call("handle_input", event)
+
+	assert_true(
+		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_DOWN),
+		"B must keep emitting DOWN for the platformer"
+	)
+	assert_true(
+		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_ITEM),
+		"B must also emit ITEM for racing"
+	)
+
+	event.pressed = false
+	gamepad.call("handle_input", event)
+
+	assert_false(router.get("buffer").call("is_action_pressed", InputIntent.ACTION_DOWN))
+	assert_false(router.get("buffer").call("is_action_pressed", InputIntent.ACTION_ITEM))
+
+
 func test_phase_button_absent_when_progression_is_locked() -> void:
 	var input_tuning: Resource = load(TUNING_PATH).get("input").duplicate(true)
 	input_tuning.set("phase_button_unlocked", true)
@@ -704,8 +740,10 @@ func test_unlocked_phase_touch_emits_phase_intent() -> void:
 
 func test_racing_layout_shows_only_hop_button_and_hides_platformer_buttons() -> void:
 	# Task 4 (CTR racing input mode): racing mode reuses the JUMP button's
-	# infra (position, hit target, action) relabeled HOP, and hides SPIN/
-	# DOWN/PHASE entirely -- ITEM is a later task (R4).
+	# infra (position, hit target, action) relabeled HOP, and hides DOWN/
+	# PHASE entirely. R4 Task 2: racing mode ALSO now shows ITEM, reusing
+	# the platformer SPIN button's own position/size but as a distinct
+	# action -- SPIN itself is still hidden, exactly as before.
 	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
 	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
 	if router == null or touch == null:
@@ -722,6 +760,10 @@ func test_racing_layout_shows_only_hop_button_and_hides_platformer_buttons() -> 
 	if not touch.has_method("set_racing_layout"):
 		return
 	assert_true(touch.call("has_action", InputIntent.ACTION_SPIN))
+	assert_false(
+		touch.call("has_action", InputIntent.ACTION_ITEM),
+		"ITEM must not exist in the platformer layout"
+	)
 
 	touch.call("set_racing_layout", true)
 
@@ -740,6 +782,10 @@ func test_racing_layout_shows_only_hop_button_and_hides_platformer_buttons() -> 
 	assert_false(
 		touch.call("has_action", InputIntent.ACTION_PHASE),
 		"racing layout must hide PHASE"
+	)
+	assert_true(
+		touch.call("has_action", InputIntent.ACTION_ITEM),
+		"racing layout must show ITEM"
 	)
 
 
@@ -768,11 +814,11 @@ func test_racing_layout_hop_press_uses_the_jump_buttons_hit_target() -> void:
 
 	assert_true(router.get("buffer").call("is_action_pressed", InputIntent.ACTION_JUMP))
 
-	# [LOW-B ruling] The former SPIN spot is NOT a dead zone in racing
-	# layout: jump_catchall_region (see touch_control_layout.gd) covers the
-	# whole lower-right of the screen and was never stripped, so it still
-	# resolves to ACTION_JUMP there -- a big, deliberately generous HOP
-	# target, not an accident of leftover geometry.
+	# R4 Task 2: the former SPIN spot is NOT a dead zone in racing layout,
+	# but it is no longer a jump-catchall hit either -- it is now the ITEM
+	# button (see touch_controls.gd's _recalculate_layout()), which sits in
+	# front of the catchall in _action_at()'s own candidate-then-catchall
+	# order.
 	var ex_spin_press := InputEventScreenTouch.new()
 	ex_spin_press.index = 4
 	ex_spin_press.position = former_spin_center
@@ -784,9 +830,49 @@ func test_racing_layout_hop_press_uses_the_jump_buttons_hit_target() -> void:
 		"the former SPIN position must never register the platformer SPIN action"
 	)
 	assert_true(
-		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_JUMP),
-		"the former SPIN spot falls inside the jump catchall -- the whole "
-		+ "lower-right is deliberately one big HOP zone in racing layout"
+		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_ITEM),
+		"the former SPIN spot is now the ITEM button in racing layout"
+	)
+
+
+## R4 Task 2: the ITEM button's screen geometry must be exactly the
+## platformer SPIN button's own authored metrics (spin_button_diameter_mm/
+## spin_button_edge_x_mm, same button_y as jump/spin) -- the brief's "reuse
+## spin-button metrics fields for size/position" -- not a new, independently
+## computed position.
+func test_racing_layout_item_button_reuses_the_spin_buttons_metrics() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	if not touch.has_method("set_racing_layout"):
+		return
+	var platformer_layout: Dictionary = touch.call("current_layout")
+	var spin_center: Vector2 = platformer_layout["spin_center"]
+	var spin_radius: float = platformer_layout["spin_radius"]
+
+	touch.call("set_racing_layout", true)
+	var racing_layout: Dictionary = touch.call("current_layout")
+
+	assert_true(racing_layout.has("item_center"))
+	assert_true(racing_layout.has("item_radius"))
+	if not racing_layout.has("item_center") or not racing_layout.has("item_radius"):
+		return
+	assert_eq(
+		racing_layout["item_center"],
+		spin_center,
+		"ITEM must sit at exactly the platformer SPIN button's position"
+	)
+	assert_almost_eq(
+		float(racing_layout["item_radius"]),
+		spin_radius,
+		0.0001,
+		"ITEM must be sized exactly like the platformer SPIN button"
 	)
 
 
@@ -809,6 +895,10 @@ func test_racing_layout_off_restores_platformer_buttons() -> void:
 	assert_true(touch.call("has_action", InputIntent.ACTION_SPIN))
 	assert_true(touch.call("has_action", InputIntent.ACTION_DOWN))
 	assert_true(touch.call("has_action", InputIntent.ACTION_PHASE))
+	assert_false(
+		touch.call("has_action", InputIntent.ACTION_ITEM),
+		"turning racing layout back off must remove ITEM again"
+	)
 
 
 func test_gamepad_dpad_emits_discrete_movement_intents() -> void:

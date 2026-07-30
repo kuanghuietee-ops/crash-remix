@@ -71,6 +71,7 @@ var _drift: DriftStateMachineType = DriftStateMachineType.new()
 var _steer_input: float
 var _brake_input: bool
 var _run_active: bool = true
+var _item_use_count: int = 0
 
 
 func configure(kart_tuning: KartTuning) -> void:
@@ -150,6 +151,24 @@ func boost_tap() -> StringName:
 
 func apply_boost(seconds: float) -> void:
 	_motor.add_boost(seconds)
+
+
+## Task-3 landing pad (R4 Task 2): the real ItemSlot (item_slot.gd,
+## &"missile"/&"shield"/&"turbo"/&"beaker"/&"none") lands in Task 3 and will
+## make this actually consume and apply the kart's held item. Until then
+## this is a no-op stub -- it has no gameplay effect and always returns
+## &"none" -- so R4 Task 2's ITEM routing (touch/gamepad press ->
+## RaceSession._route_input -> RacingInputAdapter.apply_item_pressed ->
+## here) is provable end-to-end without waiting for Task 3.
+## item_use_count() mirrors AiKartAgent's own respawn_count() -- a plain
+## call counter exposed for test observability, nothing more.
+func use_item() -> StringName:
+	_item_use_count += 1
+	return &"none"
+
+
+func item_use_count() -> int:
+	return _item_use_count
 
 
 ## R4 Task 1 (striking the design spec's Recorded debts #1 -- see the class

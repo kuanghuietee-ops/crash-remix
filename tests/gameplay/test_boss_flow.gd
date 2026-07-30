@@ -185,6 +185,10 @@ func test_the_fight_adds_no_new_player_verb() -> void:
 	# §8.2: the gauntlet uses standard verbs only, and §5.2 caps the right
 	# thumb at four buttons. If Papu needed a fifth action, it would show up
 	# here.
+	# R4 Task 2 (CTR item loop): "item" joined the inventory below -- a
+	# racing-only verb (InputIntent.ACTION_ITEM), not one the boss fight
+	# added; the platformer gauntlet itself still uses only its original
+	# five.
 	# Collected as String: StringName comparison is by hash, not alphabetical.
 	var actions: Array[String] = []
 	var input_intent_script := load(INPUT_INTENT_SCRIPT_PATH) as GDScript
@@ -202,7 +206,7 @@ func test_the_fight_adds_no_new_player_verb() -> void:
 
 	assert_eq(
 		actions,
-		(["down", "jump", "move", "phase", "spin"] as Array[String]),
+		(["down", "item", "jump", "move", "phase", "spin"] as Array[String]),
 		"the boss fight must not add a player action"
 	)
 

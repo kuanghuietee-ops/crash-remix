@@ -20,6 +20,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"kart",
 	&"race",
 	&"ai",
+	&"items",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -601,6 +602,31 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or ai.respawn_stuck_speed_mps <= 0.0
 		or ai.respawn_stuck_after_s <= 0.0
 		or ai.respawn_drop_gap_m <= 0.0
+	):
+		return false
+
+	var items := checked.items
+	# R4 Task 2 (CTR item loop): items is a brand-new whole section, the
+	# same shape as kart/race/ai above -- every field is a duration, speed,
+	# or radius with no ratio-typed exception, so every field is simply
+	# strictly positive per the design brief.
+	if (
+		items.roulette_duration_s <= 0.0
+		or items.roulette_tick_s <= 0.0
+		or items.box_respawn_s <= 0.0
+		or items.box_pickup_radius_m <= 0.0
+		or items.missile_speed_mps <= 0.0
+		or items.missile_turn_rate_degrees_per_s <= 0.0
+		or items.missile_lifetime_s <= 0.0
+		or items.missile_arm_delay_s <= 0.0
+		or items.missile_hit_radius_m <= 0.0
+		or items.shield_duration_s <= 0.0
+		or items.turbo_boost_s <= 0.0
+		or items.beaker_arm_delay_s <= 0.0
+		or items.beaker_lifetime_s <= 0.0
+		or items.beaker_hit_radius_m <= 0.0
+		or items.ai_item_use_cooldown_s <= 0.0
+		or items.ai_missile_max_target_gap_m <= 0.0
 	):
 		return false
 

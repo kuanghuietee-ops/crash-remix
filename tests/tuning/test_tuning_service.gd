@@ -301,19 +301,42 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"respawn_stuck_after_s",
 		&"respawn_drop_gap_m",
 	],
+	# R4 Task 2 (CTR item loop): items is a whole new section, the same
+	# shape as kart/race/ai above -- _backfill_missing_sections migrates a
+	# missing section atomically, so every field authored at introduction
+	# joins this baseline (see the comment below).
+	&"items": [
+		&"roulette_duration_s",
+		&"roulette_tick_s",
+		&"box_respawn_s",
+		&"box_pickup_radius_m",
+		&"missile_speed_mps",
+		&"missile_turn_rate_degrees_per_s",
+		&"missile_lifetime_s",
+		&"missile_arm_delay_s",
+		&"missile_hit_radius_m",
+		&"shield_duration_s",
+		&"turbo_boost_s",
+		&"beaker_arm_delay_s",
+		&"beaker_lifetime_s",
+		&"beaker_hit_radius_m",
+		&"ai_item_use_cooldown_s",
+		&"ai_missile_max_target_gap_m",
+	],
 }
 # Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections,
-# Task 1 (CTR racing mode) adds whole kart and race sections, and Task 1 (CTR
-# R3, AI opponents) adds a whole ai section; _backfill_missing_sections
-# migrates each atomically for every older override. Their initial fields
-# therefore join this baseline; later fields inside those sections still
-# belong in a legacy cohort. Computed as the sha256 of the sorted
-# "section.field" lines for every entry in that dictionary — recompute
-# deliberately (see test_phase_zero_baseline_field_set_is_frozen) if this
-# dictionary itself ever legitimately needs to change, never to make a
-# wrongly-placed new field pass unnoticed.
+# Task 1 (CTR racing mode) adds whole kart and race sections, Task 1 (CTR R3,
+# AI opponents) adds a whole ai section, and R4 Task 2 (CTR item loop) adds a
+# whole items section; _backfill_missing_sections migrates each atomically
+# for every older override. Their initial fields therefore join this
+# baseline; later fields inside those sections still belong in a legacy
+# cohort. Computed as the sha256 of the sorted "section.field" lines for
+# every entry in that dictionary — recompute deliberately (see
+# test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
+# ever legitimately needs to change, never to make a wrongly-placed new
+# field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"fcf3c4d237a4e9c8beb7acba882d58f973c21f2239a44d286cb6cc1e5c4d7d3d"
+	"f2a3f6817b69bfa7cd3390ecaf64c6d507b22a8bb494c485b90f2226cb055bab"
 )
 
 
@@ -3021,6 +3044,7 @@ func test_loaded_paths_include_the_racing_resources() -> void:
 	assert_true(joined.contains("kart.tres"), "debug HUD will not list kart.tres")
 	assert_true(joined.contains("race.tres"), "debug HUD will not list race.tres")
 	assert_true(joined.contains("ai.tres"), "debug HUD will not list ai.tres")
+	assert_true(joined.contains("items.tres"), "debug HUD will not list items.tres")
 
 
 # Task 1 (CTR R3, AI opponents): ai is a brand-new whole section, the same
@@ -3276,6 +3300,151 @@ func test_catalog_is_unusable_without_ai() -> void:
 	if catalog.get("ai") == null:
 		return
 	catalog.set("ai", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+# R4 Task 2 (CTR item loop): items is a brand-new whole section, the same
+# shape as kart/race/ai when each was introduced -- a missing section
+# backfills wholesale via _backfill_missing_sections rather than needing a
+# LEGACY_FIELD_GROUPS_BY_SECTION cohort (that mechanism is for a new field
+# on an EXISTING section, not a whole new section). Every field is a
+# duration, speed, or radius with no ratio-typed exception, so every field
+# simply rejects zero -- unlike ai, there is no separate flag/ratio-bounds
+# test needed here.
+const ITEMS_STRICTLY_POSITIVE_FIELDS: Array[StringName] = [
+	&"roulette_duration_s",
+	&"roulette_tick_s",
+	&"box_respawn_s",
+	&"box_pickup_radius_m",
+	&"missile_speed_mps",
+	&"missile_turn_rate_degrees_per_s",
+	&"missile_lifetime_s",
+	&"missile_arm_delay_s",
+	&"missile_hit_radius_m",
+	&"shield_duration_s",
+	&"turbo_boost_s",
+	&"beaker_arm_delay_s",
+	&"beaker_lifetime_s",
+	&"beaker_hit_radius_m",
+	&"ai_item_use_cooldown_s",
+	&"ai_missile_max_target_gap_m",
+]
+
+
+func test_service_catalog_exposes_items_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+
+	assert_not_null(items, "clone dropped items — item tuning is dead-wired")
+	if items == null:
+		return
+	assert_eq(_global_class_name(items), "ItemTuning")
+	assert_eq(items.get("roulette_duration_s"), 1.2)
+	assert_eq(items.get("box_respawn_s"), 4.0)
+	assert_eq(items.get("missile_speed_mps"), 26.0)
+	assert_eq(items.get("ai_missile_max_target_gap_m"), 45.0)
+
+
+func test_fingerprint_moves_when_an_items_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	items.set("shield_duration_s", float(items.get("shield_duration_s")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"items values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_items_override_backfills_items() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	assert_not_null(authored.get("items"))
+	if authored.get("items") == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("items", null)
+	stale.hog.ride_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a pre-items phone override must migrate, not reset"
+	)
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("items"))
+	assert_eq(
+		migrated.get("items").get("roulette_duration_s"),
+		authored.items.roulette_duration_s
+	)
+	assert_almost_eq(
+		migrated.hog.ride_speed_mps,
+		float(authored.hog.ride_speed_mps) + 0.1,
+		0.0001,
+		"migration must not discard the edit the phone already had"
+	)
+
+
+func test_items_tuning_rejects_nonpositive_fields() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	for property_name: StringName in ITEMS_STRICTLY_POSITIVE_FIELDS:
+		var authored_value: Variant = items.get(property_name)
+		items.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"items.%s must reject zero" % property_name
+		)
+		items.set(property_name, -1.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"items.%s must reject a negative value" % property_name
+		)
+		items.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_catalog_is_unusable_without_items() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("items"))
+	if catalog.get("items") == null:
+		return
+	catalog.set("items", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
 

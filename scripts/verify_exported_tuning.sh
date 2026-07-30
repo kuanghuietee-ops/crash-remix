@@ -59,7 +59,7 @@ fi
 
 grep -qE '^TUNING FINGERPRINT$' "$runtime_log"
 grep -qE '^[0-9a-f]{64}$' "$runtime_log"
-for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase hog boss_papu kart race ai; do
+for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase hog boss_papu kart race ai items; do
     # Task 1 (CTR racing mode): kart/race/ai live under data/tuning/racing/,
     # not flat in data/tuning/ like every other section. The optional
     # "(racing/)?" group covers all three without a branch, so the loop's own

@@ -52,9 +52,17 @@ func set_layout_override(safe_rect: Rect2, dpi: float) -> void:
 
 ## Task 4 (CTR racing input mode): reuses the same JUMP button infra
 ## (position, hit target, action) relabeled HOP, and hides the platformer
-## SPIN/DOWN/PHASE buttons entirely -- no new InputTuning fields needed
-## since the racing layout borrows the jump button's authored metrics
-## outright. ITEM is a later task (R4).
+## DOWN/PHASE buttons entirely -- no new InputTuning fields needed since the
+## racing layout borrows the jump button's authored metrics outright. R4
+## Task 2 adds ITEM: the platformer SPIN button's position and size
+## (spin_button_diameter_mm/spin_button_edge_x_mm) are reused for it too,
+## the same "reuse the authored metrics, relabel the action" shape as HOP/
+## JUMP -- see _recalculate_layout(), which copies the already-computed
+## spin_center/spin_radius into item_center/item_radius (a distinct
+## InputIntent.ACTION_ITEM, not a relabeling of ACTION_SPIN) before erasing
+## the SPIN key entirely, so has_action()/_action_at()/_draw() need no
+## racing-mode branching of their own -- they just key off which dict
+## entries are present, exactly like every other button here.
 func set_racing_layout(enabled: bool) -> void:
 	if enabled == _racing_layout_enabled:
 		return
@@ -87,6 +95,8 @@ func has_action(action: StringName) -> bool:
 			return _layout.has("down_center")
 		InputIntent.ACTION_PHASE:
 			return _layout.has("phase_center")
+		InputIntent.ACTION_ITEM:
+			return _layout.has("item_center")
 	return false
 
 
@@ -271,6 +281,12 @@ func _action_at(position: Vector2) -> StringName:
 			"center": _layout["phase_center"],
 			"radius": _layout["phase_radius"],
 		})
+	if _layout.has("item_center"):
+		candidates.append({
+			"action": InputIntent.ACTION_ITEM,
+			"center": _layout["item_center"],
+			"radius": _layout["item_radius"],
+		})
 	var nearest_action := &""
 	var nearest_distance := 0.0
 	var nearest_radius := 0.0
@@ -310,6 +326,12 @@ func _recalculate_layout() -> void:
 		_phase_available
 	)
 	if _racing_layout_enabled:
+		# R4 Task 2: ITEM reuses SPIN's own already-computed position/size
+		# (see the class doc on set_racing_layout() above) before SPIN's own
+		# keys are erased below -- the platformer SPIN action must still
+		# never be reachable in racing layout.
+		_layout["item_center"] = _layout["spin_center"]
+		_layout["item_radius"] = _layout["spin_radius"]
 		_layout.erase("spin_center")
 		_layout.erase("spin_radius")
 		_layout.erase("down_center")
@@ -390,6 +412,13 @@ func _draw() -> void:
 			_layout["phase_radius"],
 			"PHASE",
 			_button_color(InputIntent.ACTION_PHASE, button_color)
+		)
+	if _layout.has("item_center"):
+		_draw_button(
+			_layout["item_center"],
+			_layout["item_radius"],
+			"ITEM",
+			_button_color(InputIntent.ACTION_ITEM, button_color)
 		)
 	if _stick_touch >= 0:
 		var outline_width: float = (

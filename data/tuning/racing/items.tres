@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/item_tuning.gd" id="1_items"]
+
+[resource]
+script = ExtResource("1_items")
+roulette_duration_s = 1.2
+roulette_tick_s = 0.12
+box_respawn_s = 4.0
+box_pickup_radius_m = 1.6
+missile_speed_mps = 26.0
+missile_turn_rate_degrees_per_s = 140.0
+missile_lifetime_s = 6.0
+missile_arm_delay_s = 0.25
+missile_hit_radius_m = 1.2
+shield_duration_s = 6.0
+turbo_boost_s = 1.6
+beaker_arm_delay_s = 0.7
+beaker_lifetime_s = 25.0
+beaker_hit_radius_m = 1.1
+ai_item_use_cooldown_s = 1.5
+ai_missile_max_target_gap_m = 45.0

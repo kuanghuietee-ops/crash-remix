@@ -157,6 +157,7 @@ var _placement: int = 0
 var _configured: bool = false
 var _finished: bool = false
 var _hop_was_pressed: bool = false
+var _item_was_pressed: bool = false
 var _elapsed_s: float
 var _final_elapsed_s: float
 var _last_lap_boundary_s: float
@@ -446,6 +447,15 @@ func _route_input() -> void:
 		else:
 			_input_adapter.apply_hop_released(_kart)
 		_hop_was_pressed = hop_held
+	# R4 Task 2: ITEM is a fire-once action (see racing_input_adapter.gd's
+	# apply_item_pressed() doc) -- only the false -> true edge routes to the
+	# kart, mirroring HOP's own edge-sampling above but with no release
+	# counterpart, so holding the button down never re-fires use_item()
+	# every tick.
+	var item_held := _router.buffer.is_action_pressed(InputIntent.ACTION_ITEM)
+	if item_held and not _item_was_pressed:
+		_input_adapter.apply_item_pressed(_kart)
+	_item_was_pressed = item_held
 
 
 func _update_wrong_way(delta_s: float, progress: float) -> void:

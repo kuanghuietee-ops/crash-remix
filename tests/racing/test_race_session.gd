@@ -448,6 +448,80 @@ func test_finishing_mid_slide_ends_the_slide_with_no_further_rotation() -> void:
 
 
 # ---------------------------------------------------------------------------
+# R4 Task 2 (CTR item loop): RaceSession routes a real ITEM press through the
+# real InputRouter -> InputIntentBuffer -> _route_input()'s own edge-sampling
+# -- the same "push a real intent through the real router, then let the
+# session's own physics tick consume it" shape proves HOP's routing works
+# end-to-end elsewhere in this repo (touch_controls/gamepad tests push
+# through the router directly; this proves RaceSession's OWN _route_input()
+# reaches the real kart). use_item() is Task 3's landing pad (kart_
+# controller.gd) -- a no-op stub that always returns &"none" -- so
+# item_use_count() (mirroring AiKartAgent's own respawn_count()) is the only
+# way to observe the routing fired.
+# ---------------------------------------------------------------------------
+
+
+func test_synthetic_item_press_edge_reaches_the_kart_stub_once_per_press() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var router := race.get_node("Input/InputRouter")
+	assert_eq(
+		int(kart.call("item_use_count")),
+		0,
+		"fixture sanity: no ITEM press has happened yet"
+	)
+
+	router.call(
+		"push_button",
+		InputIntent.ACTION_ITEM,
+		true,
+		0.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(kart.call("item_use_count")),
+		1,
+		"a single ITEM press edge must reach the kart's use_item() stub exactly once"
+	)
+
+	# Holding the button (no release yet) must not re-fire on later ticks --
+	# same edge-sampling contract _route_input() already uses for HOP.
+	await wait_physics_frames(5)
+	assert_eq(
+		int(kart.call("item_use_count")),
+		1,
+		"holding ITEM must not repeatedly re-trigger use_item()"
+	)
+
+	router.call(
+		"push_button",
+		InputIntent.ACTION_ITEM,
+		false,
+		0.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	await wait_physics_frames(2)
+	router.call(
+		"push_button",
+		InputIntent.ACTION_ITEM,
+		true,
+		0.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(kart.call("item_use_count")),
+		2,
+		"a second press edge after a release must fire use_item() again"
+	)
+
+
+# ---------------------------------------------------------------------------
 # M2 (final fix wave): on-device tuning edits must reach a race already in
 # progress, not just the next one configure() boots -- the racing
 # counterpart to LevelSession.refresh_tuning()/phase0_game.gd's
