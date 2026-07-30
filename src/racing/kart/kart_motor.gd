@@ -79,6 +79,18 @@ func configure(kart_tuning: KartTuning) -> void:
 	_tuning = kart_tuning
 
 
+## Seeds the accumulating yaw heading (see class doc) to an authored value.
+## One-time correction for a kart placed onto a spawn transform after
+## configure() already ran: _yaw_degrees otherwise always starts at 0.0 with
+## no way to tell it a fresh transform's facing should be trusted instead,
+## so the very next tick's rotation.y write (see kart_controller.gd) would
+## silently snap the kart back to that default heading regardless of where
+## it was actually placed. Does not touch forward_speed_mps() or any other
+## state -- purely the heading.
+func set_yaw_degrees(degrees: float) -> void:
+	_yaw_degrees = degrees
+
+
 func tick(
 	delta_s: float,
 	steer: float,

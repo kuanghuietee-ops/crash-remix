@@ -127,6 +127,24 @@ func configure(catalog: GameplayTuning) -> void:
 	var spawn := _track.get_node_or_null("KartSpawn") as Marker3D
 	if spawn != null:
 		_kart.global_transform = spawn.global_transform
+		# HIGH-1 fix-wave bug: KartMotor's own yaw always starts at 0.0 and
+		# _physics_process's first tick unconditionally overwrites this
+		# body's rotation.y from it (see kart_controller.gd), silently
+		# discarding whatever facing the transform copy above just set --
+		# on both authored tracks that snapped the kart to face -Z instead
+		# of the spawn's actual -90 degree authored yaw, straight across
+		# the road into scenery, and zero checkpoint gates could ever
+		# validate from a real drive. Seeding the motor's yaw AFTER placing
+		# the transform (never before -- see set_yaw_degrees's own doc)
+		# keeps the two in agreement from the very first tick. Derived from
+		# the spawn's actual world-space forward rather than trusting its
+		# local rotation_degrees.y directly, so this stays correct even if
+		# a future track's spawn marker sits under a rotated parent.
+		var spawn_forward := -spawn.global_transform.basis.z
+		_kart.call(
+			"set_yaw_degrees",
+			rad_to_deg(Vector3.FORWARD.signed_angle_to(spawn_forward, Vector3.UP))
+		)
 
 	_camera.call(
 		"configure",

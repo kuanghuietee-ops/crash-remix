@@ -62,6 +62,22 @@ func set_brake(braking: bool) -> void:
 	_brake_input = braking
 
 
+## Seeds the motor's yaw so a kart placed on an authored spawn transform
+## (see race_session.gd's configure(), which calls this AFTER copying the
+## spawn's global_transform onto this body) actually keeps facing the way
+## it was authored, instead of _physics_process's own unconditional
+## rotation.y write below snapping it back to KartMotor's default 0.0
+## heading on the very first tick -- the HIGH-1 fix-wave bug: a kart placed
+## on a spawn authored facing anything other than -Z (yaw 0) would wedge
+## into scenery before a single real gate could validate. Also writes
+## rotation.y immediately so the body's own facing basis is correct even
+## before the next physics tick runs (matches the invariant
+## _physics_process already maintains every tick thereafter).
+func set_yaw_degrees(degrees: float) -> void:
+	_motor.set_yaw_degrees(degrees)
+	rotation.y = deg_to_rad(degrees)
+
+
 func hop_pressed() -> void:
 	_drift.hop_pressed()
 	if is_on_floor() and not _drift.is_sliding():
