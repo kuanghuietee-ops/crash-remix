@@ -385,6 +385,45 @@ func test_speed_scale_defaults_to_one_and_does_not_change_unscaled_behavior() ->
 	)
 
 
+## Fix-wave LOW-7: configure() must reset _speed_scale back to 1.0. A live
+## tuning refresh mid-race (KartController.refresh_tuning() -> KartMotor.
+## configure(), see kart_controller.gd's own doc) reuses the SAME KartMotor
+## instance -- without this, an AI kart caught mid-rubber-band (set_speed_
+## scale() left at some non-1.0 ratio from the tick before the refresh)
+## would keep chasing a stale scaled target for one extra tick after a
+## configure() call that a caller would reasonably expect to return every
+## knob to its authored baseline, exactly like _forward_speed_mps/_yaw_
+## degrees/every timer already implicitly does by simply never being
+## touched by anything but tick()/the discrete setters.
+func test_configure_resets_speed_scale_back_to_one() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	# A scale comfortably far from 1.0 so a leftover value is unmistakable in
+	# the asymptote below (same "climb past top_speed_mps" idiom test_speed_
+	# scale_multiplies_the_auto_throttle_target already uses).
+	var stale_ratio := 1.0 + _kart.boost_speed_bonus_mps / _kart.top_speed_mps
+	motor.call("set_speed_scale", stale_ratio)
+
+	motor.call("configure", _kart)
+
+	var elapsed_s := 0.0
+	var step_s := 0.05
+	while elapsed_s < 5.0:
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+		elapsed_s += step_s
+
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		_kart.top_speed_mps,
+		0.0001,
+		(
+			"configure() must reset a stale speed_scale back to 1.0 -- got a "
+			+ "forward speed consistent with the old, un-reset scale instead"
+		)
+	)
+
+
 # ---------------------------------------------------------------------------
 # Boost: raises target speed, decays, stacks with a cap.
 # ---------------------------------------------------------------------------

@@ -79,6 +79,15 @@ var _speed_scale := 1.0
 
 func configure(kart_tuning: KartTuning) -> void:
 	_tuning = kart_tuning
+	# Fix-wave LOW-7: a live tuning refresh mid-race (KartController.
+	# refresh_tuning() -> this same configure() call, see its own doc) reuses
+	# the SAME KartMotor instance -- without resetting this back to its
+	# documented 1.0 default (see set_speed_scale()'s own doc), a kart caught
+	# mid-rubber-band the instant a tuning edit lands would keep chasing a
+	# stale scaled target until its next set_speed_scale() call, instead of
+	# configure() actually returning every knob to its authored baseline the
+	# way a caller would reasonably expect.
+	_speed_scale = 1.0
 
 
 ## Seeds the accumulating yaw heading (see class doc) to an authored value.
