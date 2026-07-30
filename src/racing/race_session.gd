@@ -84,6 +84,25 @@ signal retry_requested
 ## which GameRoot treats as "nothing to save" rather than guessing.
 @export var track_id: StringName = &""
 
+## Fix-wave MEDIUM-5: solo time trial restored (spec: "time trial ships as
+## race-minus-AI"). true (the default -- every pre-existing race scene/test
+## keeps its ordinary AI-populated shape unmodified) spawns AiTuning.
+## opponent_count AI karts as always; false spawns NONE, regardless of what
+## opponent_count itself is tuned to -- this flag, not opponent_count, owns
+## "is this race solo" (opponent_count keeps validating strictly positive;
+## see tuning_service.gd, unchanged by this fix). Two thin scene variants
+## (race_time_trial_solo.tscn/race_sanity_shores_solo.tscn -- see game_root.
+## gd's own wiring) instance the ordinary race scenes and override only
+## this one exported value; the RACE scenes themselves (race_time_trial.
+## tscn/race_sanity_shores.tscn) are untouched and keep spawning AI by
+## default, same as every task before this one shipped them. HUD placement
+## display needs no extra gating here -- placement_out_of() already reads
+## _ai_karts.size() + 1 (see its own doc), which naturally collapses to 1
+## when spawn_opponents leaves _ai_karts empty, and race_hud.gd's own
+## "m > 1" gate already hides the panel for exactly that case (see its
+## _on_race_finished doc, unchanged by this fix).
+@export var spawn_opponents: bool = true
+
 var _kart: CharacterBody3D
 var _camera: KartCamera
 var _track: Node3D
@@ -408,8 +427,14 @@ func _physics_process(delta_s: float) -> void:
 	# excludes paused time -- see elapsed_s()'s own class-doc TIMER section.
 	_elapsed_s += delta_s
 	_route_input()
-	_update_wrong_way(delta_s)
-	_update_player_follower(delta_s)
+	# Fix-wave LOW-6: _update_wrong_way() and _update_player_follower() each
+	# used to call _spine.progress_for_position(_kart.global_position)
+	# independently -- the same projection, computed twice a tick for no
+	# reason (TrackSpine._ensure_curve() then Curve3D.get_closest_offset()
+	# both re-run). Sampled once here and threaded through to both.
+	var progress := _spine.progress_for_position(_kart.global_position)
+	_update_wrong_way(delta_s, progress)
+	_update_player_follower(progress, delta_s)
 
 
 func _route_input() -> void:
@@ -423,8 +448,7 @@ func _route_input() -> void:
 		_hop_was_pressed = hop_held
 
 
-func _update_wrong_way(delta_s: float) -> void:
-	var progress := _spine.progress_for_position(_kart.global_position)
+func _update_wrong_way(delta_s: float, progress: float) -> void:
 	var wrong_now := _spine.is_wrong_way(_kart.velocity, progress)
 	if wrong_now:
 		_wrong_way_elapsed_s += delta_s
@@ -441,9 +465,12 @@ func _update_wrong_way(delta_s: float) -> void:
 ## rubber_band_boost_max_ratio factor, since the player is never rubber-
 ## banded (that is an AI-catch-up mechanic; see ai_driver.gd's RUBBER BAND
 ## section). Using only tuning fields, no new literal, per this file's own
-## no-bare-literal rule.
-func _update_player_follower(delta_s: float) -> void:
-	var raw_progress := _spine.progress_for_position(_kart.global_position)
+## no-bare-literal rule. Fix-wave LOW-6: raw_progress is sampled ONCE per
+## tick by the caller (_physics_process) and threaded through here and into
+## _update_wrong_way() rather than each calling _spine.progress_for_position()
+## independently -- same projection, same result, computed once instead of
+## twice a tick.
+func _update_player_follower(raw_progress: float, delta_s: float) -> void:
 	var max_step_m := (
 		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps) * delta_s
 	)
@@ -553,24 +580,46 @@ func _make_lap_validator() -> LapValidatorType:
 	return validator
 
 
+## Fix-wave MEDIUM-4: every OTHER kart's current global_position -- the
+## Callable each AiKartAgent receives (bound to ITS OWN kart, see
+## _spawn_ai_karts()) as other_kart_positions_getter, so a stuck-respawn
+## teleport never drops a kart on top of the player or another AI kart. This
+## session is the one place that already knows every kart in the race (the
+## same reason it already owns player_total_progress_m() for binding
+## contract 3), so the avoidance check is handed the same shape of Callable
+## rather than reaching past this session into physics overlap queries.
+func _other_kart_positions(requesting_kart: CharacterBody3D) -> Array:
+	var positions: Array = []
+	if _kart != null and _kart != requesting_kart:
+		positions.append(_kart.global_position)
+	for other_kart: CharacterBody3D in _ai_karts:
+		if other_kart != requesting_kart:
+			positions.append(other_kart.global_position)
+	return positions
+
+
 ## Spawns AiTuning.opponent_count AI karts (a real kart.tscn instance + a
 ## real, configured AiKartAgent each) on GridSlot1..N under Track -- slot 0
 ## is the player's own KartSpawn, untouched (see configure()'s own doc).
 ##
-## GRID SLOTS. Both track scenes now author 6 Marker3D GridSlot0..GridSlot5
+## GRID SLOTS. Both track scenes author 5 Marker3D GridSlot1..GridSlot5
 ## behind the start line (see scenes/racing/track_graybox_loop.tscn and
-## track_sanity_shores.tscn, and the racing-track lint's new
-## track_grid_slots rule) -- a fixed count matching ai.tres's own
-## opponent_count=5.0 default (5 AI + the player), same "the lint has no
-## runtime access to a tuning resource" rationale TRACK_ROAD_WIDTH_M already
-## documents for the gate-width rule. GridSlot0 is authored at the exact
-## same transform as the existing KartSpawn marker (visibly "this is where
-## slot 0 sits") but is NOT what the player actually spawns from -- KartSpawn
-## remains the single source of truth for that (see configure()'s own doc on
-## why it is not renamed), so GridSlot0 is never read here. A missing
-## GridSlotN marker for a configured slot fails closed (push_error + skip
-## that one slot, never a crash) rather than assuming every track always
-## has enough slots for whatever opponent_count happens to be tuned to.
+## track_sanity_shores.tscn, and the racing-track lint's track_grid_slots
+## rule) -- a fixed count matching ai.tres's own opponent_count=5.0 default,
+## same "the lint has no runtime access to a tuning resource" rationale
+## TRACK_ROAD_WIDTH_M already documents for the gate-width rule. Fix-wave
+## LOW-8: an earlier revision also authored a GridSlot0 at the exact same
+## transform as the existing KartSpawn marker -- a pure duplicate that was
+## never read here (the player always spawns from KartSpawn itself, see
+## configure()'s own doc on why THAT marker is not renamed) and existed only
+## to visually mark "this is where slot 0 sits". Deleted from both tracks
+## (and every lint fixture that authored one) as a redundant second source
+## of truth for the exact same transform; KartSpawn alone remains authoritative
+## for the player's own spawn, and this function still only ever reads
+## GridSlot1..N. A missing GridSlotN marker for a configured slot fails
+## closed (push_error + skip that one slot, never a crash) rather than
+## assuming every track always has enough slots for whatever opponent_count
+## happens to be tuned to.
 ##
 ## RETRY / RE-CONFIGURE SAFETY. The real retry path (RaceHUD -> request_retry
 ## -> GameRoot re-selecting the level, see retry_requested's own doc) frees
@@ -593,7 +642,9 @@ func _spawn_ai_karts() -> void:
 	_ai_karts.clear()
 	_ai_agents.clear()
 
-	var opponent_count := int(_ai_tuning.opponent_count)
+	# Fix-wave MEDIUM-5: spawn_opponents owns solo-ness, not opponent_count
+	# itself -- see the exported field's own doc.
+	var opponent_count := int(_ai_tuning.opponent_count) if spawn_opponents else 0
 	for slot_index in range(1, opponent_count + 1):
 		var marker := _track.get_node_or_null("GridSlot%d" % slot_index) as Marker3D
 		if marker == null:
@@ -623,7 +674,11 @@ func _spawn_ai_karts() -> void:
 			_kart_tuning,
 			_race_tuning,
 			slot_index,
-			Callable(self, "player_total_progress_m")
+			Callable(self, "player_total_progress_m"),
+			# Fix-wave MEDIUM-4: see ai_kart_agent.gd's own RESPAWN-ONTO-PLAYER
+			# AVOIDANCE doc -- bound per kart so each agent's own blocking
+			# check never sees ITS OWN position in the "other karts" list.
+			Callable(self, "_other_kart_positions").bind(ai_kart)
 		)
 
 		_ai_karts.append(ai_kart)
