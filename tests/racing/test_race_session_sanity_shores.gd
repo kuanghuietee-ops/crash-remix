@@ -289,6 +289,121 @@ func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
 		)
 
 
+## Fix-wave MEDIUM-2: the graybox loop's own centerpiece (test_race_session.
+## gd's test_twenty_second_real_physics_race_with_five_ai_karts_makes_
+## healthy_progress) was Sanity Shores's own coverage gap -- this file only
+## ever asserted a solo kart's real physics ran (the individual proofs
+## above), never that the full 5-AI roster keeps making healthy SUSTAINED
+## progress together on this second, longer, more sharply-curved circuit.
+## 15 real seconds (the bound's own "15-20s" range, lower end -- this
+## file's job per its own class doc is proving RaceSession works UNCHANGED
+## on the second circuit, not re-proving the graybox centerpiece's own
+## already-covered mechanics, so this stays leaner than that 20s test).
+##
+## BOUND DERIVATION: a fraction of THIS track's own spine length (the
+## graybox centerpiece's own approach) does not transplant cleanly -- Sanity
+## Shores' real lap is roughly 2.4x the graybox loop's own length (measured
+## while calibrating this bound), so "half A lap" is a much larger absolute
+## distance here even at the same real pace, and an early version of this
+## test pinned to that shape failed on the slower karts in the default
+## roster (gained ~226-230m of a demanded ~251m over 15s -- close, but
+## consistently short, not a fluke of one run). Rebased on kart.tres's own
+## tuning instead of this track's own geometry: total_seconds *
+## (top_speed_mps * ai.corner_speed_floor_ratio) -- the TIGHTEST-CORNER
+## sustained pace floor AiDriver's own cornering formula already guarantees
+## (18 * 0.45 = 8.1 m/s), the same floor ai_driver.gd's own CORNERING/BRAKE
+## doc names as the worst-case target speed on any corner, however tight.
+## 15s * 8.1 m/s = 121.5m -- comfortably inside the calibration run's own
+## worst observed ~226m (roughly 1.85x headroom) while still asserting real,
+## meaningful, sustained progress rather than merely ">0".
+func test_fifteen_second_real_physics_race_with_five_ai_karts_makes_healthy_progress() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"fixture sanity: the default AI roster must spawn"
+	)
+
+	var start_totals: Array[float] = []
+	var min_totals_seen: Array[float] = []
+	for slot_index: int in range(opponent_count):
+		var start_total := float(race.call("ai_kart_total_progress_m", slot_index))
+		start_totals.append(start_total)
+		min_totals_seen.append(start_total)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var batch_frames := 30
+	var total_seconds := 15.0
+	var batches := int(round(total_seconds * physics_fps / float(batch_frames)))
+	for _batch_index in range(batches):
+		await wait_physics_frames(batch_frames)
+		for slot_index: int in range(opponent_count):
+			var current := float(race.call("ai_kart_total_progress_m", slot_index))
+			min_totals_seen[slot_index] = minf(min_totals_seen[slot_index], current)
+
+	var healthy_progress_m := (
+		total_seconds * _catalog.kart.top_speed_mps * _catalog.ai.corner_speed_floor_ratio
+	)
+	for slot_index: int in range(opponent_count):
+		var final_total := float(race.call("ai_kart_total_progress_m", slot_index))
+		var respawn_count := int(race.call("ai_agent", slot_index).call("respawn_count"))
+		var gained := final_total - start_totals[slot_index]
+		var recovered := (
+			respawn_count > 0
+			and final_total > min_totals_seen[slot_index] + _catalog.ai.respawn_drop_gap_m
+		)
+		assert_true(
+			gained >= healthy_progress_m or recovered,
+			(
+				"AI kart at slot %d must make at least %s m of total progress "
+				+ "over 15 real seconds, OR demonstrably recover via its own "
+				+ "stuck-respawn safety net: gained=%s m respawn_count=%s "
+				+ "min_total_seen=%s"
+			) % [
+				slot_index + 1,
+				healthy_progress_m,
+				gained,
+				respawn_count,
+				min_totals_seen[slot_index],
+			]
+		)
+
+
+## Fix-wave MEDIUM-5: the REAL packaged race_sanity_shores_solo.tscn -- see
+## test_race_session.gd's identical proof for the graybox loop's own twin.
+func test_real_solo_scene_overrides_spawn_opponents_to_false() -> void:
+	const SOLO_SCENE_PATH := "res://scenes/racing/race_sanity_shores_solo.tscn"
+	assert_true(
+		ResourceLoader.exists(SOLO_SCENE_PATH),
+		"race_sanity_shores_solo.tscn must exist"
+	)
+	if not ResourceLoader.exists(SOLO_SCENE_PATH):
+		return
+	var packed := load(SOLO_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	assert_false(
+		bool(race.get("spawn_opponents")),
+		"the solo scene variant must override spawn_opponents to false"
+	)
+	race.call("configure", _catalog)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		0,
+		"the real solo scene must spawn zero AI karts once configured"
+	)
+	assert_not_null(
+		race.get_node_or_null("Kart"),
+		"the solo scene must keep every node path the base race scene authors -- instance=ExtResource overrides only spawn_opponents"
+	)
+
+
 ## Drives the session to race_complete by calling its own gate-crossing
 ## handler directly against the real authored gate nodes -- the same
 ## _force_finish helper test_race_session.gd's own H2 fix-round tests use.

@@ -698,6 +698,100 @@ func test_solo_race_with_zero_opponents_spawns_no_ai_and_places_first_alone() ->
 	)
 
 
+## Fix-wave MEDIUM-5: solo time trial restored via the NEW exported
+## spawn_opponents flag (default true, unmodified GameplayTuning) rather
+## than the opponent_count=0 tuning override above -- the flag is the real
+## scene-level mechanism scenes/racing/race_time_trial_solo.tscn/race_
+## sanity_shores_solo.tscn now use (see game_root.gd's own wiring), and the
+## brief's own ruling ("do NOT change opponent_count validation -- the flag
+## owns solo-ness") means this must work with a perfectly ordinary,
+## opponent_count=5 catalog: the flag alone must be sufficient, with no
+## tuning override required. The pre-existing opponent_count=0 test above is
+## left completely unchanged -- both are legitimate, independent ways to
+## reach zero AI karts, not a replacement of one by the other.
+func test_spawn_opponents_false_spawns_no_ai_even_with_a_positive_opponent_count() -> void:
+	assert_true(
+		_catalog.ai.opponent_count > 0.0,
+		"fixture sanity: the shared catalog's own opponent_count must stay positive -- this test's whole point is proving the flag alone suffices"
+	)
+	assert_true(
+		ResourceLoader.exists(RACE_SCENE_PATH),
+		"race_time_trial.tscn must exist"
+	)
+	var packed := load(RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	race.set("spawn_opponents", false)
+	race.call("configure", _catalog)
+
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		0,
+		"spawn_opponents=false must spawn zero AI karts regardless of opponent_count"
+	)
+
+	_force_finish(race)
+
+	assert_eq(int(race.call("placement")), 1)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		1,
+		"a spawn_opponents=false race's placement_out_of() must read 1, same as the opponent_count=0 path"
+	)
+
+
+func test_spawn_opponents_defaults_to_true_and_does_not_change_the_ai_race_shape() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	assert_true(
+		bool(race.get("spawn_opponents")),
+		"spawn_opponents must default to true -- every existing race scene/test relies on this"
+	)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		int(_catalog.ai.opponent_count),
+		"the default flag value must not change the ordinary AI roster size"
+	)
+
+
+## Fix-wave MEDIUM-5: the REAL packaged race_time_trial_solo.tscn (not just
+## the RaceSession class field in isolation) must actually override spawn_
+## opponents to false -- the real "thin scene variant" GameRoot's own level
+## list now dispatches to for the graybox loop's TIME TRIAL entry.
+func test_real_solo_scene_overrides_spawn_opponents_to_false() -> void:
+	const SOLO_SCENE_PATH := "res://scenes/racing/race_time_trial_solo.tscn"
+	assert_true(
+		ResourceLoader.exists(SOLO_SCENE_PATH),
+		"race_time_trial_solo.tscn must exist"
+	)
+	if not ResourceLoader.exists(SOLO_SCENE_PATH):
+		return
+	var packed := load(SOLO_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	assert_false(
+		bool(race.get("spawn_opponents")),
+		"the solo scene variant must override spawn_opponents to false"
+	)
+	race.call("configure", _catalog)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		0,
+		"the real solo scene must spawn zero AI karts once configured"
+	)
+	assert_not_null(
+		race.get_node_or_null("Kart"),
+		"the solo scene must keep every node path the base race scene authors -- instance=ExtResource overrides only spawn_opponents"
+	)
+
+
 ## Item 2 (retry rebuilds AI cleanly). The REAL retry path (RaceHUD ->
 ## request_retry() -> GameRoot re-selecting the level) frees this entire
 ## scene and instantiates a fresh one, so every AI kart/agent (ordinary
@@ -744,18 +838,43 @@ func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
 		)
 
 
-## CENTERPIECE (Task 5): a real, ungated, 10-simulated-second race on the
-## real graybox loop with the full default AI roster -- every AI kart driving
-## itself for real (steer/hop/slide/rubber-band/stuck-respawn, the whole
-## Task 3/4 pipeline) alongside the player's own idle kart, proving the
-## integration holds up under real sustained physics rather than the shorter,
-## synthetic slices every other test above uses. Deliberately the only test
-## in this file run this long -- 6 real karts x 10s is already a meaningful
-## chunk of suite time (see the task brief's own "keep it lean" note) -- the
-## sanity-shores twin does not repeat it.
-func test_ten_second_real_physics_race_with_five_ai_karts_makes_progress() -> void:
+## CENTERPIECE (Task 5, strengthened fix-wave MEDIUM-2): a real, ungated,
+## 20-simulated-second race on the real graybox loop with the full default
+## AI roster -- every AI kart driving itself for real (steer/hop/slide/
+## rubber-band/stuck-respawn, the whole Task 3/4 pipeline) alongside the
+## player's own idle kart, proving the integration holds up under real
+## sustained physics rather than the shorter, synthetic slices every other
+## test above uses.
+##
+## BOUND DERIVATION (the old version of this test only asserted total
+## progress > 0, a coverage gap Task 5's own review flagged): AI karts drive
+## at a real, tuned pace between corner_speed_floor_ratio * top_speed_mps
+## (kart.tres: 18 * 0.45 = 8.1 m/s, the tightest-corner floor) and
+## top_speed_mps itself (18 m/s, open straight); real-physics runs measured
+## while building this fix landed in the ~5-14 m/s range once slide
+## slowdowns and the occasional stuck-respawn recovery cycle are folded in.
+## Half the loop's own real (measured via spine.length_m(), never a bare
+## meters literal) length in 20 simulated seconds is comfortably clearable
+## even near the low end of that range, while a full lap in 60s (the
+## brief's own looser alternative) would triple this already-long test's
+## own suite-time cost for a floor that is not meaningfully tighter -- 0.5
+## lap / 20s is the brief's own explicit "keep suite runtime sane" pick.
+##
+## RECOVERED-VIA-RESPAWN ESCAPE VALVE: reuses test_ai_kart_agent.gd's own
+## test_east_turn_never_permanently_wedges_over_twenty_real_seconds shape
+## (min-total-seen tracked per kart, healthy-OR-recovered) rather than a
+## bare floor, because the graybox loop's East turn is a KNOWN, spec-
+## recorded, already-tested acceptance (Recorded debts #7: the safety net
+## recovers it, corner geometry does not prevent it outright) -- a bare
+## floor here would make this test flaky against that already-accepted
+## behavior instead of strengthening real coverage.
+func test_twenty_second_real_physics_race_with_five_ai_karts_makes_healthy_progress() -> void:
 	var race := _boot_race()
 	if race == null:
+		return
+	var spine := race.get_node("Track/Spine") as TrackSpine
+	assert_not_null(spine, "fixture sanity: the real Track/Spine node must exist")
+	if spine == null:
 		return
 	var opponent_count := int(_catalog.ai.opponent_count)
 	assert_eq(
@@ -764,18 +883,47 @@ func test_ten_second_real_physics_race_with_five_ai_karts_makes_progress() -> vo
 		"fixture sanity: the default AI roster must spawn"
 	)
 
-	var physics_fps := float(Engine.physics_ticks_per_second)
-	var frames := int(round(10.0 * physics_fps))
-	await wait_physics_frames(frames)
-
+	var start_totals: Array[float] = []
+	var min_totals_seen: Array[float] = []
 	for slot_index: int in range(opponent_count):
-		assert_gt(
-			float(race.call("ai_kart_total_progress_m", slot_index)),
-			0.0,
+		var start_total := float(race.call("ai_kart_total_progress_m", slot_index))
+		start_totals.append(start_total)
+		min_totals_seen.append(start_total)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var batch_frames := 30
+	var total_seconds := 20.0
+	var batches := int(round(total_seconds * physics_fps / float(batch_frames)))
+	for _batch_index in range(batches):
+		await wait_physics_frames(batch_frames)
+		for slot_index: int in range(opponent_count):
+			var current := float(race.call("ai_kart_total_progress_m", slot_index))
+			min_totals_seen[slot_index] = minf(min_totals_seen[slot_index], current)
+
+	var healthy_progress_m := spine.length_m() * 0.5
+	for slot_index: int in range(opponent_count):
+		var final_total := float(race.call("ai_kart_total_progress_m", slot_index))
+		var respawn_count := int(race.call("ai_agent", slot_index).call("respawn_count"))
+		var gained := final_total - start_totals[slot_index]
+		var recovered := (
+			respawn_count > 0
+			and final_total > min_totals_seen[slot_index] + _catalog.ai.respawn_drop_gap_m
+		)
+		assert_true(
+			gained >= healthy_progress_m or recovered,
 			(
-				"AI kart at slot %d must have made real, strictly positive "
-				+ "forward progress over 10 real seconds"
-			) % (slot_index + 1)
+				"AI kart at slot %d must complete at least half a lap (%s m) "
+				+ "of total progress over 20 real seconds, OR demonstrably "
+				+ "recover via its own stuck-respawn safety net: gained=%s m "
+				+ "healthy_floor=%s m respawn_count=%s min_total_seen=%s"
+			) % [
+				slot_index + 1,
+				healthy_progress_m,
+				gained,
+				healthy_progress_m,
+				respawn_count,
+				min_totals_seen[slot_index],
+			]
 		)
 
 
