@@ -56,6 +56,9 @@ const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
 )
 const LapValidatorType := preload("res://src/racing/track/lap_validator.gd")
+const AiKartAgentType := preload("res://src/racing/ai/ai_kart_agent.gd")
+const SpineFollowerType := preload("res://src/racing/track/spine_follower.gd")
+const KartSceneType := preload("res://scenes/racing/kart.tscn")
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -94,9 +97,43 @@ var _gates: Array[CheckpointGate] = []
 var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
+var _ai_tuning: AiTuning
 
 var _input_adapter: RacingInputAdapterType = RacingInputAdapterType.new()
 var _validator: LapValidatorType = LapValidatorType.new()
+
+# Task 5 (CTR R3 integration): opponent_count AI karts (kart.tscn + a real
+# AiKartAgent each), spawned on GridSlot1..N under Track at configure() --
+# see _spawn_ai_karts(). _ai_root is a plain container Node3D created lazily
+# so a re-configure() (defensive; the real retry path replaces this whole
+# scene via GameRoot, see retry_requested's own doc) can cleanly clear and
+# rebuild it rather than leaking stale kart/agent instances.
+var _ai_root: Node3D
+var _ai_karts: Array[CharacterBody3D] = []
+var _ai_agents: Array[AiKartAgentType] = []
+
+# Cross-kart-progress "seam ruling" (Task 5 binding contract 2): the ONLY
+# thing gate crossings do per body is advance THAT body's own LapValidator,
+# looked up by identity -- never a raw index or slot assumption. Player and
+# every AI kart share this one dictionary and one connected handler
+# (_on_gate_body_entered), so a gate never needs to know how many karts
+# exist or which one just crossed it beyond "which validator does this body
+# own".
+var _gate_validators: Dictionary = {}
+
+# Task 5 binding contract 3: the player's own continuous SpineFollower total
+# lives here (not on the player's Kart node, which has no such concept of
+# its own) so finish placement can compare it against every AiKartAgent's
+# already-exposed total_progress_m() -- both sides of every comparison are
+# SpineFollower totals, never a raw seam-ambiguous spine offset. Updated
+# every tick in _update_player_follower(); player_total_progress_m() is the
+# getter Callable every AiKartAgent receives at configure() (band_gap_m's
+# own "how far behind/ahead of the player" signal, see ai_kart_agent.gd).
+var _player_follower: SpineFollowerType = SpineFollowerType.new()
+
+# 1-based finish placement, computed once at the player's own race_complete
+# instant (see _finish_race()); 0 before the race finishes.
+var _placement: int = 0
 
 var _configured: bool = false
 var _finished: bool = false
@@ -120,6 +157,7 @@ func configure(catalog: GameplayTuning) -> void:
 	_kart_tuning = catalog.kart
 	_race_tuning = catalog.race
 	_input_tuning = catalog.input
+	_ai_tuning = catalog.ai
 
 	_kart = get_node("Kart") as CharacterBody3D
 	_camera = get_node("CameraRig") as KartCamera
@@ -142,9 +180,15 @@ func configure(catalog: GameplayTuning) -> void:
 	)
 
 	_kart.call("configure", _kart_tuning)
+	# Task 5: this same "place the transform, then seed yaw as an
+	# independent step" logic (HIGH-1 fix-wave bug doc below) is now shared
+	# with every AI kart's own grid-slot placement via _seed_kart_transform()
+	# -- see _spawn_ai_karts(). KartSpawn itself is left exactly as every
+	# earlier task authored and read it (see the grid-slot doc on
+	# _spawn_ai_karts() for why it is not renamed to GridSlot0): the player
+	# still spawns from this one authored marker, unchanged.
 	var spawn := _track.get_node_or_null("KartSpawn") as Marker3D
 	if spawn != null:
-		_kart.global_transform = spawn.global_transform
 		# HIGH-1 fix-wave bug: KartMotor's own yaw always starts at 0.0 and
 		# _physics_process's first tick unconditionally overwrites this
 		# body's rotation.y from it (see kart_controller.gd), silently
@@ -158,11 +202,7 @@ func configure(catalog: GameplayTuning) -> void:
 		# the spawn's actual world-space forward rather than trusting its
 		# local rotation_degrees.y directly, so this stays correct even if
 		# a future track's spawn marker sits under a rotated parent.
-		var spawn_forward := -spawn.global_transform.basis.z
-		_kart.call(
-			"set_yaw_degrees",
-			rad_to_deg(Vector3.FORWARD.signed_angle_to(spawn_forward, Vector3.UP))
-		)
+		_seed_kart_transform(_kart, spawn)
 
 	_camera.call(
 		"configure",
@@ -187,6 +227,22 @@ func configure(catalog: GameplayTuning) -> void:
 
 	_validator.configure(_gates.size(), int(_race_tuning.lap_count))
 	_input_adapter.configure(_input_tuning)
+
+	# Task 5: player's own SpineFollower (binding contract 3) and the
+	# body->validator routing table (binding contract 2's "gates route by
+	# body identity") must both be ready before _spawn_ai_karts() below --
+	# each AI kart's own AiKartAgent.configure() call reads
+	# player_total_progress_m() indirectly is not required yet (its very
+	# first read happens on the next physics tick), but gate routing must
+	# already know about the player by the time any kart -- including one
+	# spawned this same call -- could conceivably cross a gate.
+	_gate_validators.clear()
+	_gate_validators[_kart] = _validator
+	_player_follower.configure(_spine.length_m())
+	_player_follower.reset(_spine.progress_for_position(_kart.global_position))
+	_placement = 0
+
+	_spawn_ai_karts()
 
 	_finished = false
 	_hop_was_pressed = false
@@ -242,6 +298,65 @@ func is_finished() -> bool:
 	return _finished
 
 
+## Binding contract 3's own SpineFollower total for the PLAYER -- the exact
+## Callable every AiKartAgent receives as player_progress_getter at
+## configure() (see _spawn_ai_karts()), and the "player's" side of every
+## finish-placement comparison in _finish_race(). 0.0 before configure(),
+## matching SpineFollower's own fail-closed shape one layer down.
+func player_total_progress_m() -> float:
+	return _player_follower.total_progress_m() if _configured else 0.0
+
+
+## 1-based finish placement (1 = won), computed once at the player's own
+## race_complete instant -- see _finish_race(). 0 before the race finishes;
+## HUD/callers should gate display on is_finished() the same way they
+## already gate every other finish-only stat.
+func placement() -> int:
+	return _placement
+
+
+## "m" in RaceHUD's "FINISHED n / m" -- the actual number of AI karts that
+## raced plus the player, NOT a blind read of AiTuning.opponent_count: if a
+## track is ever missing a GridSlot marker for a configured slot (see
+## _spawn_ai_karts()'s own fail-closed skip), fewer AI karts actually spawn
+## than the tuning asked for, and this must reflect the race that actually
+## ran, not the one that was configured.
+func placement_out_of() -> int:
+	return _ai_karts.size() + 1
+
+
+func ai_kart_count() -> int:
+	return _ai_karts.size()
+
+
+func ai_kart(index: int) -> CharacterBody3D:
+	return _ai_karts[index] if index >= 0 and index < _ai_karts.size() else null
+
+
+## Exposed mainly for tests that need to reach past this session into a
+## specific AiKartAgent (e.g. to seed its private SpineFollower directly for
+## a deterministic placement scenario) without having to rediscover it by
+## scene-tree path.
+func ai_agent(index: int) -> Node:
+	return _ai_agents[index] if index >= 0 and index < _ai_agents.size() else null
+
+
+func ai_kart_total_progress_m(index: int) -> float:
+	var agent := ai_agent(index)
+	return float(agent.call("total_progress_m")) if agent != null else 0.0
+
+
+## Gates validated toward the AI kart's own current lap -- the AI-kart
+## counterpart to progress_gates(), reading that kart's own LapValidator out
+## of _gate_validators rather than the player's _validator field.
+func ai_kart_progress_gates(index: int) -> int:
+	var kart := ai_kart(index)
+	if kart == null:
+		return 0
+	var validator: LapValidatorType = _gate_validators.get(kart)
+	return validator.progress_gates() if validator != null else 0
+
+
 ## The one thing RaceHUD's RETRY button does now -- see retry_requested's
 ## doc above for why it no longer reloads the scene itself.
 func request_retry() -> void:
@@ -294,6 +409,7 @@ func _physics_process(delta_s: float) -> void:
 	_elapsed_s += delta_s
 	_route_input()
 	_update_wrong_way(delta_s)
+	_update_player_follower(delta_s)
 
 
 func _route_input() -> void:
@@ -317,6 +433,23 @@ func _update_wrong_way(delta_s: float) -> void:
 	_wrong_way_flag = _wrong_way_elapsed_s >= _race_tuning.wrong_way_grace_s
 
 
+## Binding contract 3: the player's own continuous SpineFollower total,
+## updated every tick exactly like every AiKartAgent already updates its own
+## private one (see ai_kart_agent.gd's _physics_process). max_step_m mirrors
+## AiKartAgent._max_follower_step_m()'s own derivation -- the true physical
+## ceiling on how far THIS kart can travel in one tick -- minus the AI-only
+## rubber_band_boost_max_ratio factor, since the player is never rubber-
+## banded (that is an AI-catch-up mechanic; see ai_driver.gd's RUBBER BAND
+## section). Using only tuning fields, no new literal, per this file's own
+## no-bare-literal rule.
+func _update_player_follower(delta_s: float) -> void:
+	var raw_progress := _spine.progress_for_position(_kart.global_position)
+	var max_step_m := (
+		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps) * delta_s
+	)
+	_player_follower.update(raw_progress, max_step_m)
+
+
 func _discover_gates() -> Array[CheckpointGate]:
 	var result: Array[CheckpointGate] = []
 	for candidate: Node in _track.find_children("*", "Area3D", true, false):
@@ -329,23 +462,169 @@ func _discover_gates() -> Array[CheckpointGate]:
 	return result
 
 
+## Binding contract 2 (seam ruling): gates route to a validator by BODY
+## IDENTITY, looked up in _gate_validators -- never by assuming "the only
+## body that can ever enter a gate is the player's Kart", which stopped
+## being true the moment AI karts started sharing these same Area3D
+## triggers (CheckpointGate.monitoring is forced on for exactly this: see
+## checkpoint_gate.gd's own class doc). Every kart's own validator advances
+## on every crossing, unconditionally; only the PLAYER's crossing goes on to
+## drive lap-time bookkeeping and the finish sequence below -- an AI kart's
+## own validator exists so ITS gate sequence is tracked correctly (tests can
+## observe it via ai_kart_progress_gates()), not because an AI kart can ever
+## "finish" the race on its own in this task.
 func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
-	if _finished or body != _kart:
+	if _finished:
 		return
-	var outcome := _validator.gate_crossed(gate.gate_index)
+	var validator: LapValidatorType = _gate_validators.get(body)
+	if validator == null:
+		return
+	var outcome := validator.gate_crossed(gate.gate_index)
+	if body != _kart:
+		return
 	if outcome != &"lap_complete" and outcome != &"race_complete":
 		return
 	var now_elapsed := elapsed_s()
 	_lap_times.append(now_elapsed - _last_lap_boundary_s)
 	_last_lap_boundary_s = now_elapsed
 	if outcome == &"race_complete":
-		_finished = true
-		_final_elapsed_s = now_elapsed
-		# H2 review: nothing else stops the kart driving into the walls
-		# behind the finish line under its own auto-throttle, and a finish
-		# caught mid-slide would otherwise leave the slide latched forever.
-		# See KartController.set_run_active()'s doc for exactly what this
-		# does; the camera is deliberately left alone so its own easing
-		# keeps settling the finish shot.
-		_kart.call("set_run_active", false)
-		race_finished.emit(_final_elapsed_s, _lap_times.duplicate())
+		_finish_race(now_elapsed)
+
+
+## Binding contract 3: player finish placement = 1 + the number of AI karts
+## whose own SpineFollower total_progress_m() exceeds the player's, sampled
+## at this exact finish instant -- seam-safe by construction since both
+## sides of every comparison are continuous SpineFollower totals (see the
+## class doc's own "seam ruling" note on _player_follower/_gate_validators),
+## never a raw, seam-ambiguous spine offset.
+##
+## Freezes EVERY kart (set_run_active(false), player included -- H2 review's
+## original "stop it driving into the walls / force-end a mid-finish slide"
+## fix, now reused for every AI kart too) BEFORE reading any AI kart's
+## progress, so no kart can keep accruing distance between the placement
+## read and the freeze actually taking effect. AiKartAgent's own
+## is_run_active() gate (Task 5 binding contract 1) is what makes freezing
+## an AI kart here safe -- a frozen AI kart's stuck-detector never fires and
+## never silently reactivates it; set_physics_process(false) on top of that
+## is belt-and-braces, an explicit "stop ticking at all" rather than relying
+## solely on the gate reading false every tick forever.
+func _finish_race(now_elapsed: float) -> void:
+	_finished = true
+	_final_elapsed_s = now_elapsed
+	# H2 review: nothing else stops the kart driving into the walls behind
+	# the finish line under its own auto-throttle, and a finish caught
+	# mid-slide would otherwise leave the slide latched forever. See
+	# KartController.set_run_active()'s doc for exactly what this does; the
+	# camera is deliberately left alone so its own easing keeps settling the
+	# finish shot.
+	_kart.call("set_run_active", false)
+	for ai_kart: CharacterBody3D in _ai_karts:
+		ai_kart.call("set_run_active", false)
+
+	var player_total := _player_follower.total_progress_m()
+	_placement = 1
+	for agent: AiKartAgentType in _ai_agents:
+		if float(agent.call("total_progress_m")) > player_total:
+			_placement += 1
+
+	for agent: AiKartAgentType in _ai_agents:
+		agent.set_physics_process(false)
+
+	race_finished.emit(_final_elapsed_s, _lap_times.duplicate())
+
+
+## Shared "place the transform, then seed yaw as an independent step"
+## sequence -- see configure()'s own HIGH-1 fix-wave doc for the original
+## player-only bug this fixed, and _spawn_ai_karts() for the AI reuse
+## the Task 5 brief calls for ("the spawn-yaw seeding path must keep
+## working -- reuse it per kart").
+func _seed_kart_transform(kart: CharacterBody3D, marker: Marker3D) -> void:
+	kart.global_transform = marker.global_transform
+	var spawn_forward := -marker.global_transform.basis.z
+	kart.call(
+		"set_yaw_degrees",
+		rad_to_deg(Vector3.FORWARD.signed_angle_to(spawn_forward, Vector3.UP))
+	)
+
+
+func _make_lap_validator() -> LapValidatorType:
+	var validator := LapValidatorType.new()
+	validator.configure(_gates.size(), int(_race_tuning.lap_count))
+	return validator
+
+
+## Spawns AiTuning.opponent_count AI karts (a real kart.tscn instance + a
+## real, configured AiKartAgent each) on GridSlot1..N under Track -- slot 0
+## is the player's own KartSpawn, untouched (see configure()'s own doc).
+##
+## GRID SLOTS. Both track scenes now author 6 Marker3D GridSlot0..GridSlot5
+## behind the start line (see scenes/racing/track_graybox_loop.tscn and
+## track_sanity_shores.tscn, and the racing-track lint's new
+## track_grid_slots rule) -- a fixed count matching ai.tres's own
+## opponent_count=5.0 default (5 AI + the player), same "the lint has no
+## runtime access to a tuning resource" rationale TRACK_ROAD_WIDTH_M already
+## documents for the gate-width rule. GridSlot0 is authored at the exact
+## same transform as the existing KartSpawn marker (visibly "this is where
+## slot 0 sits") but is NOT what the player actually spawns from -- KartSpawn
+## remains the single source of truth for that (see configure()'s own doc on
+## why it is not renamed), so GridSlot0 is never read here. A missing
+## GridSlotN marker for a configured slot fails closed (push_error + skip
+## that one slot, never a crash) rather than assuming every track always
+## has enough slots for whatever opponent_count happens to be tuned to.
+##
+## RETRY / RE-CONFIGURE SAFETY. The real retry path (RaceHUD -> request_retry
+## -> GameRoot re-selecting the level, see retry_requested's own doc) frees
+## this entire scene and instantiates a fresh one, so every AI kart/agent
+## (ordinary scene children) dies with it automatically -- no special
+## cleanup needed for that path. This function is defensively idempotent
+## anyway (clears and rebuilds _ai_root's children first) so a hypothetical
+## second configure() call on the SAME instance never leaks or duplicates
+## karts either.
+func _spawn_ai_karts() -> void:
+	if _ai_root == null:
+		_ai_root = Node3D.new()
+		_ai_root.name = "AiKarts"
+		add_child(_ai_root)
+	else:
+		for child in _ai_root.get_children():
+			_gate_validators.erase(child)
+			child.queue_free()
+
+	_ai_karts.clear()
+	_ai_agents.clear()
+
+	var opponent_count := int(_ai_tuning.opponent_count)
+	for slot_index in range(1, opponent_count + 1):
+		var marker := _track.get_node_or_null("GridSlot%d" % slot_index) as Marker3D
+		if marker == null:
+			push_error(
+				(
+					"RaceSession._spawn_ai_karts: no GridSlot%d marker found "
+					+ "under Track -- skipping this AI slot (fail closed: "
+					+ "fewer AI karts than opponent_count, never a crash)."
+				) % slot_index
+			)
+			continue
+
+		var ai_kart := KartSceneType.instantiate() as CharacterBody3D
+		_ai_root.add_child(ai_kart)
+		ai_kart.call("configure", _kart_tuning)
+		_seed_kart_transform(ai_kart, marker)
+
+		_gate_validators[ai_kart] = _make_lap_validator()
+
+		var agent := AiKartAgentType.new()
+		ai_kart.add_child(agent)
+		agent.call(
+			"configure",
+			ai_kart,
+			_spine,
+			_ai_tuning,
+			_kart_tuning,
+			_race_tuning,
+			slot_index,
+			Callable(self, "player_total_progress_m")
+		)
+
+		_ai_karts.append(ai_kart)
+		_ai_agents.append(agent)

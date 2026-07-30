@@ -202,8 +202,37 @@ var _stuck_window_elapsed_s: float
 var _respawn_count: int
 var _hop_release_pending: bool
 var _configured: bool
+# See the class doc's RUN-ACTIVE GATE section. Starts true so a kart that is
+# active from its very first tick (the normal case) never misreads tick 1 as
+# a "reactivation".
+var _was_run_active: bool = true
 
 
+## RUN-ACTIVE GATE (Task 5, CTR R3 integration, BINDING CONTRACT 1). Every
+## _physics_process tick first checks kart.is_run_active() -- when false
+## (RaceSession freezes every kart at the finish line via set_run_active(
+## false), see race_session.gd's own finish handling) this entire method is a
+## no-op: no steer/hop/speed_scale calls, and critically, NO stuck-window
+## accumulation either. Without the second half of that, a frozen kart whose
+## position legitimately stops changing (it is deliberately parked) would
+## read EXACTLY like a wedged one once _stuck_window_elapsed_s crosses
+## respawn_stuck_after_s, and _respawn()'s own set_run_active(false) ->
+## set_run_active(true) bounce (see FORCE-CLEARING AN ACTIVE SLIDE below)
+## would silently reactivate it seconds after the race was supposed to have
+## frozen it solid -- a real, reviewer-probe-confirmed resurrection bug.
+##
+## _was_run_active tracks the PREVIOUS tick's active state so a
+## false -> true transition (reactivation) can be caught as an edge: the
+## stuck window is re-anchored fresh right then (anchor = current position,
+## elapsed = 0.0) rather than either (a) carrying forward however much time
+## accumulated while frozen (which would immediately misread the frozen gap
+## itself as "hasn't moved in ages" and fire a false-positive respawn on the
+## very next qualifying tick) or (b) comparing against a stale pre-freeze
+## anchor position. This mirrors _check_stuck_and_respawn's own "genuinely
+## progressing kart always gets a fair, un-poisoned window" rationale one
+## level up: a kart coming OFF a freeze deserves the same fresh start a kart
+## that just cleared its own stuck threshold gets.
+##
 ## Fix round 1 (reviewer [MEDIUM]): configure() now verifies the SpineFollower
 ## it just built is actually usable (spine.length_m() > 0, mirrored by
 ## SpineFollower.is_valid() -- see spine_follower.gd's own configure() doc)
@@ -256,6 +285,7 @@ func configure(
 	_stuck_window_elapsed_s = 0.0
 	_respawn_count = 0
 	_hop_release_pending = false
+	_was_run_active = true
 	_configured = true
 
 
@@ -280,6 +310,15 @@ func respawn_count() -> int:
 func _physics_process(delta_s: float) -> void:
 	if not _configured:
 		return
+
+	# See the class doc's RUN-ACTIVE GATE section (Task 5 binding contract).
+	if not bool(_kart.call("is_run_active")):
+		_was_run_active = false
+		return
+	if not _was_run_active:
+		_stuck_window_anchor_pos = _kart.global_position
+		_stuck_window_elapsed_s = 0.0
+		_was_run_active = true
 
 	if _hop_release_pending:
 		_kart.call("hop_released")

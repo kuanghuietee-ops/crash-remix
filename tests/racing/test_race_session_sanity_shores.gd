@@ -113,6 +113,203 @@ func test_out_of_order_gate_is_rejected_and_does_not_corrupt_later_progress() ->
 	)
 
 
+# ---------------------------------------------------------------------------
+# Task 5 (CTR R3 integration): the same AI-integration proofs
+# tests/racing/test_race_session.gd runs against the graybox loop, pointed
+# at this real Sanity Shores scene instead -- see that file's own doc for
+# why nothing above this point needed touching. The expensive 10-second
+# real-physics centerpiece is deliberately NOT duplicated here (see the task
+# brief's own "keep it lean" note); the graybox loop already proves the
+# sustained-drive integration holds, and this file's job (per its own class
+# doc) is proving RaceSession works UNCHANGED on the second circuit, not
+# re-proving mechanics already covered once.
+# ---------------------------------------------------------------------------
+
+
+func test_ai_karts_spawn_at_their_grid_slots_with_seeded_position_and_yaw() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"opponent_count AI karts must spawn by default"
+	)
+
+	for slot_index: int in range(1, opponent_count + 1):
+		var marker := race.get_node(
+			"Track/GridSlot%d" % slot_index
+		) as Marker3D
+		assert_not_null(marker, "GridSlot%d must exist under Track" % slot_index)
+		var ai_kart := race.call("ai_kart", slot_index - 1) as CharacterBody3D
+		assert_not_null(ai_kart, "an AI kart must exist for slot %d" % slot_index)
+		if marker == null or ai_kart == null:
+			continue
+		assert_true(
+			ai_kart.global_position.is_equal_approx(marker.global_position),
+			(
+				"AI kart at slot %d must spawn at its GridSlot marker's "
+				+ "position -- got %s, expected %s"
+			) % [slot_index, ai_kart.global_position, marker.global_position]
+		)
+		var expected_forward := -marker.global_transform.basis.z
+		var actual_forward := -ai_kart.global_transform.basis.z
+		assert_true(
+			actual_forward.is_equal_approx(expected_forward),
+			(
+				"AI kart at slot %d must spawn facing its GridSlot marker's "
+				+ "own authored yaw -- got %s, expected %s"
+			) % [slot_index, actual_forward, expected_forward]
+		)
+
+
+func test_ai_kart_gate_crossing_routes_to_its_own_validator_not_the_players() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart)
+	if ai_kart == null:
+		return
+	ai_kart.set_physics_process(false)
+	var gate := race.get_node("Track/Gates/Gate0") as Area3D
+	ai_kart.global_position = gate.global_position
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(race.call("ai_kart_progress_gates", 0)),
+		1,
+		"the AI kart's own validator must advance when IT crosses a gate"
+	)
+	assert_eq(
+		int(race.call("progress_gates")),
+		0,
+		"the player's own validator must be untouched by an AI kart's crossing"
+	)
+
+
+func test_player_finish_freezes_every_ai_kart() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	_force_finish(race)
+	assert_true(bool(race.call("is_finished")))
+
+	var opponent_count := int(_catalog.ai.opponent_count)
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		assert_not_null(ai_kart)
+		if ai_kart == null:
+			continue
+		assert_false(
+			bool(ai_kart.call("is_run_active")),
+			(
+				"AI kart at slot %d must be frozen once the player finishes"
+			) % (slot_index + 1)
+		)
+
+
+func test_placement_is_first_when_every_ai_kart_is_behind_the_player() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	_force_finish(race)
+
+	assert_eq(
+		int(race.call("placement")),
+		1,
+		"with every AI kart behind the player at the finish, placement must be 1st"
+	)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		int(_catalog.ai.opponent_count) + 1,
+		"placement_out_of must be opponent_count + 1 (every AI kart plus the player)"
+	)
+
+
+func test_placement_reflects_an_ai_kart_seeded_strictly_ahead_of_the_player() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var agent: Object = race.call("ai_agent", 0)
+	assert_not_null(agent, "fixture setup: slot 1's AiKartAgent must exist")
+	if agent == null:
+		return
+	var follower: RefCounted = agent.get("_follower")
+	assert_not_null(follower, "fixture introspection: the agent must still own its private follower")
+	if follower == null:
+		return
+	var ahead_progress: float = float(race.call("player_total_progress_m")) + 1000.0
+	follower.reset(ahead_progress)
+
+	_force_finish(race)
+
+	assert_eq(
+		int(race.call("placement")),
+		2,
+		"one AI kart strictly ahead of the player at the finish must push placement to 2nd"
+	)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		int(_catalog.ai.opponent_count) + 1
+	)
+
+
+func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	var first_instance_ids: Array[int] = []
+	for slot_index: int in range(opponent_count):
+		first_instance_ids.append(race.call("ai_kart", slot_index).get_instance_id())
+
+	race.call("configure", _catalog)
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"a rebuild must still spawn the full AI roster"
+	)
+	var ai_root := race.get_node_or_null("AiKarts")
+	assert_not_null(ai_root, "the AI container node must exist after a rebuild")
+	if ai_root != null:
+		assert_eq(
+			ai_root.get_child_count(),
+			opponent_count,
+			"no orphaned AI kart nodes may remain under AiKarts after a rebuild"
+		)
+	for slot_index: int in range(opponent_count):
+		assert_ne(
+			race.call("ai_kart", slot_index).get_instance_id(),
+			first_instance_ids[slot_index],
+			"a rebuild must spawn FRESH AI kart instances, not reuse stale ones"
+		)
+
+
+## Drives the session to race_complete by calling its own gate-crossing
+## handler directly against the real authored gate nodes -- the same
+## _force_finish helper test_race_session.gd's own H2 fix-round tests use.
+func _force_finish(race: Node) -> void:
+	var kart := race.get_node("Kart")
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	for _lap: int in range(lap_count):
+		for gate_index: int in range(gate_count):
+			race.call(
+				"_on_gate_body_entered",
+				kart,
+				race.get_node("Track/Gates/Gate%d" % gate_index)
+			)
+	race.call(
+		"_on_gate_body_entered",
+		kart,
+		race.get_node("Track/Gates/Gate0")
+	)
+
+
 func _cross_gate(race: Node, kart: CharacterBody3D, gate_index: int) -> void:
 	var gate := race.get_node(
 		"Track/Gates/Gate%d" % gate_index

@@ -72,6 +72,9 @@ TRACK_GATE_SEQUENCE_RULE = "track_gate_sequence"
 TRACK_GATE_ORDER_RULE = "track_gate_order"
 TRACK_GATE_WIDTH_RULE = "track_gate_width"
 TRACK_SPAWN_RULE = "track_spawn_before_start"
+# Task 5 (CTR R3 integration): the AI starting grid needs markers to spawn
+# opponents on -- see race_session.gd's _spawn_ai_karts().
+TRACK_GRID_SLOTS_RULE = "track_grid_slots"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -147,6 +150,17 @@ TRACK_SPINE_MIN_MARKER_COUNT = 3
 # Keep this in sync by hand if a future track ever authors a different road
 # width -- acceptable for a lint-side constant per the task brief.
 TRACK_ROAD_WIDTH_M = 14.0
+# Task 5 (CTR R3 integration): race_session.gd spawns one AI kart per
+# GridSlot1..N marker (see its own _spawn_ai_karts() doc) plus the player on
+# KartSpawn/slot 0. The lint has no runtime access to AiTuning.
+# opponent_count (there IS a tuning resource here, unlike TRACK_ROAD_WIDTH_M
+# above, but reading it would mean this static-parsing lint importing and
+# trusting a live Resource load, a much bigger dependency than one constant
+# kept in sync by hand) -- this is fixed at ai.tres's own current default
+# (opponent_count=5.0, i.e. 5 AI + the player = 6 total slots) for the same
+# "keep in sync by hand if it ever changes" reason.
+TRACK_GRID_SLOT_MIN_COUNT = 6
+TRACK_GRID_SLOT_NAME_PATTERN = re.compile(r"^GridSlot\d+$")
 # Imported glTF scenes can only contribute visual hierarchy/material data to
 # these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
 # groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
@@ -412,6 +426,9 @@ def _track_findings(
     )
     findings.extend(
         _track_spawn_findings(scene_name, nodes, gates, points, cumulative)
+    )
+    findings.extend(
+        _track_grid_slot_findings(scene_name, nodes, gates, points, cumulative)
     )
     return findings
 
@@ -723,6 +740,89 @@ def _track_spawn_findings(
             ),
         )
     ]
+
+
+def _track_grid_slot_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    gates: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (f): the AI starting grid exists, sits behind gate 0, on the road.
+
+    Task 5 (CTR R3 integration): race_session.gd's _spawn_ai_karts() spawns
+    one AI kart per root Marker3D named GridSlotN (N >= 1) it finds under the
+    track; the player spawns from the separate, pre-existing KartSpawn marker
+    (TRACK_SPAWN_RULE above), so a GridSlot0 -- if a scene authors one at all,
+    matching KartSpawn's own transform -- is included in the count here but
+    never itself checked against KartSpawn.
+    """
+    slots = [
+        node
+        for node in nodes
+        if node.parent == "."
+        and node.node_type == "Marker3D"
+        and TRACK_GRID_SLOT_NAME_PATTERN.match(node.name)
+    ]
+    findings: list[AuthoringViolation] = []
+    if len(slots) < TRACK_GRID_SLOT_MIN_COUNT:
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                TRACK_GRID_SLOTS_RULE,
+                (
+                    f"found {len(slots)} GridSlot* marker(s) behind gate 0; "
+                    f"need at least {TRACK_GRID_SLOT_MIN_COUNT} (matching "
+                    "ai.tres's own opponent_count default plus the player)"
+                ),
+            )
+        )
+    by_index, _invalid = _track_gate_indices(gates)
+    gate0 = by_index.get(0)
+    if gate0 is None:
+        # TRACK_SPAWN_RULE (or TRACK_GATE_SEQUENCE_RULE, if gate_index itself
+        # is unreadable) already reports a missing/unreadable gate 0; there
+        # is nothing here to measure a grid slot's position against.
+        return findings
+    progress = _project_onto_polyline(gate0.world_position, points, cumulative)
+    tangent = _polyline_direction_at_distance(points, cumulative, progress)
+    if _is_zero(tangent):
+        return findings
+    across = (-tangent[2], 0.0, tangent[0])
+    half_width_m = TRACK_ROAD_WIDTH_M / 2.0
+    for slot in slots:
+        relative = _subtract(slot.world_position, gate0.world_position)
+        offset_along = _dot(relative, tangent)
+        if offset_along > 0.0 and not math.isclose(offset_along, 0.0):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GRID_SLOTS_RULE,
+                    (
+                        f"{slot.path} is {offset_along:.3f}m ahead of gate 0 "
+                        "along the direction of travel; every grid slot must "
+                        "sit behind the start/finish gate"
+                    ),
+                )
+            )
+        offset_across = _dot(relative, across)
+        if abs(offset_across) > half_width_m and not math.isclose(
+            abs(offset_across),
+            half_width_m,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GRID_SLOTS_RULE,
+                    (
+                        f"{slot.path} is {offset_across:.3f}m off the spine "
+                        f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
+                        f"wide (max {half_width_m:.3f}m each side)"
+                    ),
+                )
+            )
+    return findings
 
 
 def _enemy_floor_contact_findings(

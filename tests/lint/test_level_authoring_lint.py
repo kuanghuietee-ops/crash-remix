@@ -20,6 +20,7 @@ from scripts.lint_level_authoring import (
     TRACK_GATE_ORDER_RULE,
     TRACK_GATE_SEQUENCE_RULE,
     TRACK_GATE_WIDTH_RULE,
+    TRACK_GRID_SLOTS_RULE,
     TRACK_SPAWN_RULE,
     TRACK_SPINE_RING_RULE,
     WUMPA_TOTAL_RULE,
@@ -921,6 +922,33 @@ class RacingTrackAuthoringLintTests(unittest.TestCase):
             [TRACK_SPAWN_RULE],
         )
         self.assertIn("ahead of gate 0", findings[0].detail)
+
+    def test_too_few_grid_slots_fires_the_grid_slots_rule(self) -> None:
+        # Task 5 (CTR R3 integration): this fixture is the good fixture's
+        # geometry BEFORE this task's GridSlot markers existed at all --
+        # isolates exactly "no GridSlot markers authored" the same way every
+        # other _bad fixture isolates its own single mutation.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_grid_slots_missing_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GRID_SLOTS_RULE],
+        )
+        self.assertIn("found 0 GridSlot", findings[0].detail)
+
+    def test_grid_slot_off_the_road_fires_the_grid_slots_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_grid_slots_off_road_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GRID_SLOTS_RULE],
+        )
+        self.assertIn("GridSlot5", findings[0].detail)
+        self.assertIn("off the spine centerline", findings[0].detail)
 
     def test_real_track_graybox_loop_passes_the_track_lint(self) -> None:
         # Task 7's working reference must already satisfy every Task 8 rule

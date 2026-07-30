@@ -64,3 +64,26 @@ gate_index = 3
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate3"]
 shape = SubResource("Shape_gate")
 
+[node name="GridSlot0" type="Marker3D" parent="."]
+position = Vector3(-10, 0.2, 0)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="GridSlot1" type="Marker3D" parent="."]
+position = Vector3(-10, 0.2, -3)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="GridSlot2" type="Marker3D" parent="."]
+position = Vector3(-13, 0.2, 3)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="GridSlot3" type="Marker3D" parent="."]
+position = Vector3(-13, 0.2, -3)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="GridSlot4" type="Marker3D" parent="."]
+position = Vector3(-16, 0.2, 3)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="GridSlot5" type="Marker3D" parent="."]
+position = Vector3(-16, 0.2, -3)
+rotation_degrees = Vector3(0, -90, 0)

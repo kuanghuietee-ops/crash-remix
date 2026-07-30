@@ -535,6 +535,152 @@ func test_respawn_forcibly_clears_an_active_slide() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Task 5 (CTR R3 integration) BINDING CONTRACT 1: AiKartAgent must gate its
+# entire _physics_process on kart.is_run_active() -- INCLUDING the stuck
+# detector, whose anchor must re-anchor on reactivation rather than
+# accumulate frozen time. Without this, a finished/frozen AI kart sitting for
+# respawn_stuck_after_s reads as "stuck" (its own position hasn't moved
+# because it is deliberately frozen, not wedged) and _respawn()'s own
+# set_run_active(false) -> set_run_active(true) slide-clear bounce (see the
+# STUCK RESPAWN doc below) silently un-freezes it again -- a real kart
+# resurrecting itself seconds after the race supposedly froze it solid.
+# ---------------------------------------------------------------------------
+
+
+func test_frozen_kart_stays_frozen_and_never_respawns() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	# Freeze the kart the same way RaceSession does at the finish line
+	# (set_run_active(false)) -- BEFORE any tick has a chance to move it, so
+	# the only way total_progress_m() could ever change from here is if the
+	# agent kept driving it anyway.
+	kart.call("set_run_active", false)
+	var progress_at_freeze: float = agent.call("total_progress_m")
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	# Comfortably longer than respawn_stuck_after_s -- the exact window the
+	# pre-fix bug needed to fire its false resurrection.
+	var frames_needed := int(ceil(5.0 * physics_fps))
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a frozen kart's own stuck-window must never accumulate while "
+			+ "inactive -- no respawn must ever fire against a deliberately "
+			+ "frozen kart"
+		)
+	)
+	assert_almost_eq(
+		float(agent.call("total_progress_m")),
+		progress_at_freeze,
+		0.001,
+		(
+			"the agent must be a total no-op while the kart is frozen -- its "
+			+ "own follower must not advance at all"
+		)
+	)
+	assert_false(
+		bool(kart.call("is_run_active")),
+		(
+			"the agent must never silently reactivate a kart that was "
+			+ "frozen -- this is the exact resurrection bug the "
+			+ "is_run_active() gate exists to prevent"
+		)
+	)
+
+
+func test_agent_stays_quiet_on_refreeze_after_a_mid_race_respawn_and_reanchors_on_reactivation() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	# Pins the kart motionless via the same technique
+	# test_stuck_kart_teleports_onto_the_centerline_facing_the_tangent uses,
+	# so the FIRST stuck window below is a real, legitimate mid-race
+	# respawn -- this test's own point starts only after that.
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	await wait_physics_frames(frames_needed)
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		"fixture setup: a legitimate mid-race stuck-respawn must fire first"
+	)
+
+	# Now simulate a freeze (e.g. the race finishing) -- kart.set_physics_
+	# process is STILL false from the fixture setup, so the kart's own
+	# position stays pinned exactly like the pre-freeze stuck window did;
+	# the only thing that must be different now is is_run_active().
+	kart.call("set_run_active", false)
+	var progress_at_freeze: float = agent.call("total_progress_m")
+	var respawns_at_freeze: int = agent.call("respawn_count")
+
+	var refreeze_frames := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	await wait_physics_frames(refreeze_frames)
+
+	assert_eq(
+		int(agent.call("respawn_count")),
+		respawns_at_freeze,
+		(
+			"a refreeze after a legitimate mid-race respawn must not trigger "
+			+ "ANOTHER respawn -- the agent must stay quiet the whole time"
+		)
+	)
+	assert_almost_eq(
+		float(agent.call("total_progress_m")),
+		progress_at_freeze,
+		0.001,
+		"the agent's own follower must not advance while frozen"
+	)
+
+	# Reactivating must re-anchor the stuck window fresh, not immediately
+	# misread the (potentially long) frozen gap as zero-displacement stuck
+	# time and fire a bogus respawn on the very next qualifying tick.
+	kart.call("set_run_active", true)
+	await wait_physics_frames(5)
+	assert_eq(
+		int(agent.call("respawn_count")),
+		respawns_at_freeze,
+		(
+			"reactivation must re-anchor the stuck window fresh -- it must "
+			+ "not immediately fire a false-positive respawn off the frozen "
+			+ "gap's own elapsed time"
+		)
+	)
+
+
+# ---------------------------------------------------------------------------
 # INVARIANT (fix round 1, reviewer -- the regression lock for the whole East-
 # turn trap): real physics, 20 simulated seconds on the graybox loop's own
 # East turn. No permanent-wedge outcome may pass: EITHER the kart makes

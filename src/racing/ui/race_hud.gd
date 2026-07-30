@@ -35,6 +35,9 @@ var _session: Object
 @onready var _finish_total_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/Total
 )
+@onready var _placement_label: Label = (
+	$SafeArea/FinishPanel/Margin/Rows/Placement
+)
 @onready var _new_best_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/NewBest
 )
@@ -54,6 +57,7 @@ func _ready() -> void:
 	_wrong_way_label.visible = false
 	_finish_panel.visible = false
 	_new_best_label.visible = false
+	_placement_label.visible = false
 	_retry_button.pressed.connect(_on_retry_pressed)
 
 
@@ -61,6 +65,7 @@ func configure(session: Object) -> void:
 	_session = session
 	_finish_panel.visible = false
 	_new_best_label.visible = false
+	_placement_label.visible = false
 	_best_label.text = ""
 	_connect_once(_session, &"race_finished", _on_race_finished)
 	_refresh()
@@ -93,6 +98,21 @@ func _on_race_finished(total_s: float, lap_times: Array) -> void:
 	_new_best_label.visible = false
 	_best_label.text = ""
 	_finish_total_label.text = "TOTAL  " + TimeFormatType.mm_ss_mmm(total_s)
+
+	# Task 5 (CTR R3 integration): "FINISHED n / m" only makes sense once
+	# there is a field to place against -- a solo time trial (m == 1, no AI
+	# opponents; see race_session.gd's placement_out_of()) shows the old
+	# panel completely unchanged, gated here rather than by track/scene so a
+	# test that pins opponent_count to 0 (the established in-test override
+	# pattern) gets the exact same solo behavior as before this task without
+	# RaceSession needing to know or care that HUD exists.
+	var placement_out_of := int(_session.call("placement_out_of"))
+	_placement_label.visible = placement_out_of > 1
+	if placement_out_of > 1:
+		_placement_label.text = "FINISHED  %d / %d" % [
+			int(_session.call("placement")),
+			placement_out_of,
+		]
 	var lines: Array[String] = []
 	for lap_index: int in range(lap_times.size()):
 		lines.append(

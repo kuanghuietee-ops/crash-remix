@@ -499,6 +499,286 @@ func test_refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_motor() -> vo
 	)
 
 
+# ---------------------------------------------------------------------------
+# Task 5 (CTR R3 integration): opponent_count AI karts now spawn alongside
+# the player by default (ai.tres's own opponent_count=5.0 -- this IS the R3
+# product, see the task brief's own "the two race scenes get AI by default"
+# ruling). Every test above this point boots the exact same real scene
+# through the exact same real configure() path and stays green UNMODIFIED
+# with those 5 extra karts now also driving themselves in the background --
+# none of it asserts a kart count, so nothing above needed touching.
+# ---------------------------------------------------------------------------
+
+
+func test_ai_karts_spawn_at_their_grid_slots_with_seeded_position_and_yaw() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"opponent_count AI karts must spawn by default"
+	)
+
+	for slot_index: int in range(1, opponent_count + 1):
+		var marker := race.get_node(
+			"Track/GridSlot%d" % slot_index
+		) as Marker3D
+		assert_not_null(marker, "GridSlot%d must exist under Track" % slot_index)
+		var ai_kart := race.call("ai_kart", slot_index - 1) as CharacterBody3D
+		assert_not_null(ai_kart, "an AI kart must exist for slot %d" % slot_index)
+		if marker == null or ai_kart == null:
+			continue
+		assert_true(
+			ai_kart.global_position.is_equal_approx(marker.global_position),
+			(
+				"AI kart at slot %d must spawn at its GridSlot marker's "
+				+ "position -- got %s, expected %s"
+			) % [slot_index, ai_kart.global_position, marker.global_position]
+		)
+		var expected_forward := -marker.global_transform.basis.z
+		var actual_forward := -ai_kart.global_transform.basis.z
+		assert_true(
+			actual_forward.is_equal_approx(expected_forward),
+			(
+				"AI kart at slot %d must spawn facing its GridSlot marker's "
+				+ "own authored yaw -- got %s, expected %s"
+			) % [slot_index, actual_forward, expected_forward]
+		)
+
+
+## Binding contract 2 (seam ruling): a gate crossing routes to the CORRECT
+## kart's own validator by body identity -- an AI kart driving through gate 0
+## must advance only ITS OWN LapValidator, never the player's, and the
+## player's own progress_gates() must stay untouched. set_physics_process(
+## false) on the AI kart mirrors _cross_gate's own "teleport, then let the
+## real Area3D overlap detect it" technique below; the AI kart's own
+## AiKartAgent keeps ticking (a separate Node, unaffected by that call) but
+## only ever WRITES steer/brake/speed_scale onto a KartController whose own
+## _physics_process never runs to consume them, so the teleported position
+## holds for the few frames this test needs.
+func test_ai_kart_gate_crossing_routes_to_its_own_validator_not_the_players() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart)
+	if ai_kart == null:
+		return
+	ai_kart.set_physics_process(false)
+	var gate := race.get_node("Track/Gates/Gate0") as Area3D
+	ai_kart.global_position = gate.global_position
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(race.call("ai_kart_progress_gates", 0)),
+		1,
+		"the AI kart's own validator must advance when IT crosses a gate"
+	)
+	assert_eq(
+		int(race.call("progress_gates")),
+		0,
+		"the player's own validator must be untouched by an AI kart's crossing"
+	)
+
+
+func test_player_finish_freezes_every_ai_kart() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	_force_finish(race)
+	assert_true(bool(race.call("is_finished")))
+
+	var opponent_count := int(_catalog.ai.opponent_count)
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		assert_not_null(ai_kart)
+		if ai_kart == null:
+			continue
+		assert_false(
+			bool(ai_kart.call("is_run_active")),
+			(
+				"AI kart at slot %d must be frozen once the player finishes "
+				+ "-- set_run_active(false), the same freeze the player's "
+				+ "own kart gets"
+			) % (slot_index + 1)
+		)
+
+
+## Binding contract 3: with every AI kart still sitting at (or behind) its
+## own spawn -- every GridSlot sits physically behind the player's own
+## KartSpawn, see track_graybox_loop.tscn -- an immediate finish with zero
+## driving is already the "everyone is behind the player" case.
+func test_placement_is_first_when_every_ai_kart_is_behind_the_player() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	_force_finish(race)
+
+	assert_eq(
+		int(race.call("placement")),
+		1,
+		"with every AI kart behind the player at the finish, placement must be 1st"
+	)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		int(_catalog.ai.opponent_count) + 1,
+		"placement_out_of must be opponent_count + 1 (every AI kart plus the player)"
+	)
+
+
+## Reaches into one AI kart's own private SpineFollower (agent.get(
+## "_follower"), the same white-box technique this suite already uses for
+## KartController's private _motor/_drift below) to deterministically seed
+## its total_progress_m() past the player's own, rather than relying on
+## real, possibly-flaky AI driving physics to get there -- this test's job
+## is proving the PLACEMENT MATH, not grading the AI's racing line.
+func test_placement_reflects_an_ai_kart_seeded_strictly_ahead_of_the_player() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var agent: Object = race.call("ai_agent", 0)
+	assert_not_null(agent, "fixture setup: slot 1's AiKartAgent must exist")
+	if agent == null:
+		return
+	var follower: RefCounted = agent.get("_follower")
+	assert_not_null(follower, "fixture introspection: the agent must still own its private follower")
+	if follower == null:
+		return
+	var ahead_progress: float = float(race.call("player_total_progress_m")) + 1000.0
+	follower.reset(ahead_progress)
+	assert_gt(
+		float(race.call("ai_kart_total_progress_m", 0)),
+		float(race.call("player_total_progress_m")),
+		"fixture setup: the seeded AI kart must actually read ahead of the player"
+	)
+
+	_force_finish(race)
+
+	assert_eq(
+		int(race.call("placement")),
+		2,
+		"one AI kart strictly ahead of the player at the finish must push placement to 2nd"
+	)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		int(_catalog.ai.opponent_count) + 1
+	)
+
+
+## Item 3 (solo time-trial compatibility): a test that needs a solo race
+## overrides the tuning catalog in-test rather than RaceSession weakening any
+## assertion -- the established pattern this whole file's own H2/M2 fix-round
+## tests already use for a detached, mutation-safe tuning copy (see
+## test_refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_motor's own
+## duplicate_deep() comment). Proves placement_out_of() reads 1 (no AI karts
+## to place against) with opponent_count pinned to 0, which is exactly what
+## RaceHUD's own "m > 1" gate (see race_hud.gd's _on_race_finished) keys off
+## of to leave the old solo finish panel completely unchanged.
+func test_solo_race_with_zero_opponents_spawns_no_ai_and_places_first_alone() -> void:
+	var solo_catalog: GameplayTuning = _catalog.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	solo_catalog.ai.opponent_count = 0.0
+
+	var race := _boot_race_with_catalog(solo_catalog)
+	if race == null:
+		return
+
+	assert_eq(int(race.call("ai_kart_count")), 0, "opponent_count=0 must spawn zero AI karts")
+
+	_force_finish(race)
+
+	assert_eq(int(race.call("placement")), 1)
+	assert_eq(
+		int(race.call("placement_out_of")),
+		1,
+		"a solo race's placement_out_of() must read 1 -- RaceHUD's own m > 1 gate keys off exactly this"
+	)
+
+
+## Item 2 (retry rebuilds AI cleanly). The REAL retry path (RaceHUD ->
+## request_retry() -> GameRoot re-selecting the level) frees this entire
+## scene and instantiates a fresh one, so every AI kart/agent (ordinary
+## scene children) already dies with it -- nothing scene-level to prove
+## beyond what Godot's own node-tree ownership already guarantees. What IS
+## this session's own responsibility is _spawn_ai_karts()'s defensive
+## idempotency: calling configure() again on the SAME instance (a stand-in
+## for "rebuild", exercised directly since this suite has no GameRoot to
+## drive a real retry through) must not leak the previous batch of AI karts
+## or hand back stale instances.
+func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	var first_instance_ids: Array[int] = []
+	for slot_index: int in range(opponent_count):
+		first_instance_ids.append(race.call("ai_kart", slot_index).get_instance_id())
+
+	race.call("configure", _catalog)
+	# queue_free() on the old batch is deferred to end-of-frame -- give it a
+	# couple of physics frames to actually process before checking for
+	# leftovers.
+	await wait_physics_frames(2)
+
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"a rebuild must still spawn the full AI roster"
+	)
+	var ai_root := race.get_node_or_null("AiKarts")
+	assert_not_null(ai_root, "the AI container node must exist after a rebuild")
+	if ai_root != null:
+		assert_eq(
+			ai_root.get_child_count(),
+			opponent_count,
+			"no orphaned AI kart nodes may remain under AiKarts after a rebuild"
+		)
+	for slot_index: int in range(opponent_count):
+		assert_ne(
+			race.call("ai_kart", slot_index).get_instance_id(),
+			first_instance_ids[slot_index],
+			"a rebuild must spawn FRESH AI kart instances, not reuse stale ones"
+		)
+
+
+## CENTERPIECE (Task 5): a real, ungated, 10-simulated-second race on the
+## real graybox loop with the full default AI roster -- every AI kart driving
+## itself for real (steer/hop/slide/rubber-band/stuck-respawn, the whole
+## Task 3/4 pipeline) alongside the player's own idle kart, proving the
+## integration holds up under real sustained physics rather than the shorter,
+## synthetic slices every other test above uses. Deliberately the only test
+## in this file run this long -- 6 real karts x 10s is already a meaningful
+## chunk of suite time (see the task brief's own "keep it lean" note) -- the
+## sanity-shores twin does not repeat it.
+func test_ten_second_real_physics_race_with_five_ai_karts_makes_progress() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		opponent_count,
+		"fixture sanity: the default AI roster must spawn"
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames := int(round(10.0 * physics_fps))
+	await wait_physics_frames(frames)
+
+	for slot_index: int in range(opponent_count):
+		assert_gt(
+			float(race.call("ai_kart_total_progress_m", slot_index)),
+			0.0,
+			(
+				"AI kart at slot %d must have made real, strictly positive "
+				+ "forward progress over 10 real seconds"
+			) % (slot_index + 1)
+		)
+
+
 ## Drives the session to race_complete by calling its own gate-crossing
 ## handler directly against the real authored gate nodes, instead of
 ## teleporting the kart through them under a real Area3D overlap. The
@@ -540,6 +820,13 @@ func _cross_gate(race: Node, kart: CharacterBody3D, gate_index: int) -> void:
 
 
 func _boot_race() -> Node:
+	return _boot_race_with_catalog(_catalog)
+
+
+## Item 3 (solo time-trial compatibility): lets a test override the tuning
+## catalog (e.g. AiTuning.opponent_count) without touching the shared
+## fixture _catalog every other test in this file relies on.
+func _boot_race_with_catalog(catalog: GameplayTuning) -> Node:
 	assert_true(
 		ResourceLoader.exists(RACE_SCENE_PATH),
 		"race_time_trial.tscn must exist"
@@ -552,5 +839,5 @@ func _boot_race() -> Node:
 		return null
 	var race := packed.instantiate()
 	add_child_autofree(race)
-	race.call("configure", _catalog)
+	race.call("configure", catalog)
 	return race
