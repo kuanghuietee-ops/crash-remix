@@ -770,6 +770,15 @@ func _render_state(previous_state: int = flow.state) -> void:
 		race.call("configure", tuning_service.catalog)
 		if race.has_signal(&"retry_requested"):
 			race.connect(&"retry_requested", _on_racing_retry_requested)
+		# Task 9 (CTR racing mode, R2): see _on_racing_finished's own doc for
+		# why GameRoot (not RaceSession) owns the save comparison/write, the
+		# same division of responsibility _on_level_session_completed already
+		# has with LevelSession.
+		if race.has_signal(&"race_finished"):
+			race.connect(
+				&"race_finished",
+				_on_racing_finished.bind(race)
+			)
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -1478,6 +1487,80 @@ func _on_pause_retry_requested() -> void:
 ## new race scene while GameRoot itself stays alive throughout.
 func _on_racing_retry_requested() -> void:
 	_retry_current_level()
+
+
+## Task 9 (CTR racing mode, R2): racing's counterpart to
+## _on_level_session_completed above -- the only place a race's result is
+## compared against the saved best and (if better) written to disk.
+## RaceSession never touches SaveModel/SaveService itself (see its own
+## track_id/present_best_times docs); this is the one place that does,
+## mirroring how LevelSession never writes its own save either. Bound with
+## the race node itself (see the race_finished.connect() call above) so this
+## can read its exported track_id and hand the outcome back down to its HUD
+## without GameRoot needing to know RaceHUD's own node path.
+func _on_racing_finished(
+	total_s: float,
+	lap_times: Array,
+	race: Node
+) -> void:
+	var track_id := StringName(race.get("track_id"))
+	if track_id.is_empty():
+		return
+	var previous_record := SaveModel.racing_record(profile, track_id)
+	var updated_record := SaveModel.improved_racing_record(
+		previous_record,
+		total_s,
+		lap_times
+	)
+	if updated_record.is_empty():
+		return
+	var new_best_total := (
+		int(updated_record.get("best_total_time_ms", 0))
+		!= int(previous_record.get("best_total_time_ms", 0))
+	)
+	var new_best_lap := (
+		int(updated_record.get("best_lap_time_ms", 0))
+		!= int(previous_record.get("best_lap_time_ms", 0))
+	)
+	# "persist if better" (task brief): an unimproved run is shown against
+	# the existing best (below) but must not touch the save file at all.
+	if new_best_total or new_best_lap:
+		var updated_profile := profile.duplicate(true)
+		var racing_value: Variant = updated_profile.get("racing")
+		var racing: Dictionary = (
+			(racing_value as Dictionary).duplicate(true)
+			if racing_value is Dictionary
+			else {}
+		)
+		racing[String(track_id)] = updated_record
+		updated_profile["racing"] = racing
+		if not SaveModel.validate(updated_profile):
+			push_error("Racing profile update failed validation.")
+			return
+		var save_error := save_service.store_profile(
+			save_dir,
+			updated_profile
+		)
+		if save_error != OK:
+			last_save_error = save_error
+			push_error(
+				"Racing best time was not saved: "
+				+ error_string(save_error)
+			)
+			return
+		last_save_error = OK
+		profile = updated_profile
+	if race.has_method("present_best_times"):
+		race.call("present_best_times", {
+			"best_total_ms": int(
+				updated_record.get("best_total_time_ms", 0)
+			),
+			"best_lap_ms": int(
+				updated_record.get("best_lap_time_ms", 0)
+			),
+			"new_best_total": new_best_total,
+			"new_best_lap": new_best_lap,
+		})
 
 
 ## Shared by both retry paths above -- see each caller's doc for why they

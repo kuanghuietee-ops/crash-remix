@@ -60,6 +60,16 @@ signal race_finished(total_s: float, lap_times: Array)
 ## GameRoot itself stays alive the whole time.
 signal retry_requested
 
+## Task 9 (CTR racing mode, R2): identifies which track this session's best
+## times are saved under (SaveModel.racing_record()/improved_racing_record()
+## are keyed by this, not by the debug level id GameRoot dispatches on --
+## see game_root.gd's own DEBUG_RACING_LEVEL_ID doc for why those two ids
+## are kept separate). Set per scene: race_time_trial.tscn authors
+## &"graybox_loop", race_sanity_shores.tscn authors &"sanity_shores". Left
+## empty ("") on any instance that never sets it (e.g. a bare test fixture),
+## which GameRoot treats as "nothing to save" rather than guessing.
+@export var track_id: StringName = &""
+
 var _kart: CharacterBody3D
 var _camera: KartCamera
 var _track: Node3D
@@ -200,6 +210,18 @@ func is_finished() -> bool:
 ## doc above for why it no longer reloads the scene itself.
 func request_retry() -> void:
 	retry_requested.emit()
+
+
+## Task 9 (CTR racing mode, R2): GameRoot is the only thing that ever
+## touches SaveService/SaveModel (see game_root.gd's _on_racing_finished
+## doc) -- this session never reads or writes the profile itself. Once
+## GameRoot has compared this race's result against the saved best and
+## decided whether to persist it, it calls this to hand the outcome down to
+## the HUD, the same "session forwards to _hud" shape configure() already
+## uses one line below its own _hud.call("configure", self).
+func present_best_times(payload: Dictionary) -> void:
+	if _hud != null and is_instance_valid(_hud):
+		_hud.call("present_best_times", payload)
 
 
 func _physics_process(delta_s: float) -> void:

@@ -9,6 +9,7 @@ func test_fresh_profile_is_valid_schema_one() -> void:
 	assert_eq(profile.get("levels"), {})
 	assert_eq(profile.get("lifetime_wumpa"), 0)
 	assert_eq(profile.get("boss_defeated"), {"papu_papu": false})
+	assert_eq(profile.get("racing"), {})
 
 
 func test_migration_identity_preserves_unknown_fields() -> void:
@@ -67,4 +68,89 @@ func test_task4_v1_without_last_missed_crate_ids_defaults_to_empty() -> void:
 			&"wr1_n_sanity_beach"
 		).get("last_missed_crate_ids"),
 		[]
+	)
+
+
+# Task 9 (CTR racing mode, R2): the racing section mirrors "levels" --
+# SCHEMA_VERSION bumped 1 -> 2, racing_record() supplies the same
+# fresh-defaults-without-mutating-profile contract level_record() already
+# proves above, keyed by a track id (StringName) instead of a level id.
+func test_racing_record_supplies_defaults_without_mutating_profile() -> void:
+	var profile := SaveModel.fresh()
+
+	var record := SaveModel.racing_record(profile, &"graybox_loop")
+
+	assert_eq(
+		record,
+		{
+			"best_total_time_ms": 0,
+			"best_lap_time_ms": 0,
+		}
+	)
+	assert_eq(profile.get("racing"), {})
+
+
+func test_improved_racing_record_stores_first_total_and_lap_time() -> void:
+	var record := SaveModel.racing_record(SaveModel.fresh(), &"graybox_loop")
+
+	var updated := SaveModel.improved_racing_record(
+		record,
+		61.234,
+		[31.0, 30.234]
+	)
+
+	assert_eq(updated.get("best_total_time_ms"), 61234)
+	assert_eq(updated.get("best_lap_time_ms"), 30234)
+
+
+func test_improved_racing_record_keeps_the_faster_total_and_lap_independently() -> void:
+	var record := {
+		"best_total_time_ms": 60000,
+		"best_lap_time_ms": 29000,
+	}
+
+	var slower := SaveModel.improved_racing_record(record, 65.0, [32.5, 32.5])
+	assert_eq(
+		slower,
+		record,
+		"a slower total and slower laps must not touch either best"
+	)
+
+	var faster_total := SaveModel.improved_racing_record(
+		record,
+		58.0,
+		[29.0, 29.0]
+	)
+	assert_eq(faster_total.get("best_total_time_ms"), 58000)
+	assert_eq(
+		faster_total.get("best_lap_time_ms"),
+		29000,
+		"a lap time that merely ties the existing best must not overwrite it"
+	)
+
+	var faster_lap_only := SaveModel.improved_racing_record(
+		record,
+		61.0,
+		[28.5, 32.5]
+	)
+	assert_eq(
+		faster_lap_only.get("best_total_time_ms"),
+		60000,
+		"a slower total must not be overwritten by an unrelated faster lap"
+	)
+	assert_eq(faster_lap_only.get("best_lap_time_ms"), 28500)
+
+
+func test_improved_racing_record_rejects_invalid_input() -> void:
+	var record := SaveModel.racing_record(SaveModel.fresh(), &"graybox_loop")
+
+	assert_eq(
+		SaveModel.improved_racing_record(record, -1.0, [10.0]),
+		{},
+		"a negative elapsed time must be rejected"
+	)
+	assert_eq(
+		SaveModel.improved_racing_record({}, 10.0, [10.0]),
+		{},
+		"a malformed existing record must be rejected"
 	)

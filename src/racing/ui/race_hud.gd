@@ -35,6 +35,12 @@ var _session: Object
 @onready var _finish_total_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/Total
 )
+@onready var _new_best_label: Label = (
+	$SafeArea/FinishPanel/Margin/Rows/NewBest
+)
+@onready var _best_label: Label = (
+	$SafeArea/FinishPanel/Margin/Rows/Best
+)
 @onready var _finish_splits_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/Splits
 )
@@ -47,12 +53,15 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_wrong_way_label.visible = false
 	_finish_panel.visible = false
+	_new_best_label.visible = false
 	_retry_button.pressed.connect(_on_retry_pressed)
 
 
 func configure(session: Object) -> void:
 	_session = session
 	_finish_panel.visible = false
+	_new_best_label.visible = false
+	_best_label.text = ""
 	_connect_once(_session, &"race_finished", _on_race_finished)
 	_refresh()
 
@@ -75,6 +84,14 @@ func _refresh() -> void:
 
 func _on_race_finished(total_s: float, lap_times: Array) -> void:
 	_finish_panel.visible = true
+	# Best-time labels are populated by present_best_times() below, called
+	# by GameRoot in response to this same race_finished signal once it has
+	# compared this run against the saved best (see race_session.gd's
+	# present_best_times doc for why that comparison doesn't happen here) --
+	# reset to the not-yet-known state so a stale marker from a previous
+	# finish on a retried session can never bleed into this one.
+	_new_best_label.visible = false
+	_best_label.text = ""
 	_finish_total_label.text = "TOTAL  " + TimeFormatType.mm_ss_mmm(total_s)
 	var lines: Array[String] = []
 	for lap_index: int in range(lap_times.size()):
@@ -85,6 +102,33 @@ func _on_race_finished(total_s: float, lap_times: Array) -> void:
 			]
 		)
 	_finish_splits_label.text = "\n".join(lines)
+
+
+## Called by RaceSession (see its own doc) once GameRoot has compared this
+## run's total/lap against the saved best and decided whether to persist it.
+## Renders unconditionally -- even a run that did NOT beat the record still
+## shows what the best times still are, only the NEW BEST marker is
+## conditional. Payload times arrive as milliseconds (matching
+## SaveModel's racing record shape) so this stays a pure display step with
+## no independent comparison logic of its own to drift out of sync with
+## GameRoot's.
+func present_best_times(payload: Dictionary) -> void:
+	var best_total_s := (
+		float(payload.get("best_total_ms", 0))
+		/ TimeFormatType.MILLISECONDS_PER_SECOND
+	)
+	var best_lap_s := (
+		float(payload.get("best_lap_ms", 0))
+		/ TimeFormatType.MILLISECONDS_PER_SECOND
+	)
+	_best_label.text = "BEST  %s   BEST LAP  %s" % [
+		TimeFormatType.mm_ss_mmm(best_total_s),
+		TimeFormatType.mm_ss_mmm(best_lap_s),
+	]
+	_new_best_label.visible = (
+		bool(payload.get("new_best_total", false))
+		or bool(payload.get("new_best_lap", false))
+	)
 
 
 func _on_retry_pressed() -> void:

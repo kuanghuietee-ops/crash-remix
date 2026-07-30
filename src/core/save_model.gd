@@ -1,7 +1,7 @@
 class_name SaveModel
 extends RefCounted
 
-const SCHEMA_VERSION: int = 1
+const SCHEMA_VERSION: int = 2
 const _RELIC_TIERS: Array[String] = [
 	"none",
 	"sapphire",
@@ -19,6 +19,7 @@ static func fresh() -> Dictionary:
 		"boss_defeated": {
 			"papu_papu": false,
 		},
+		"racing": {},
 	}
 
 
@@ -48,6 +49,25 @@ static func validate(data: Dictionary) -> bool:
 	var boss_defeated: Dictionary = boss_value
 	if typeof(boss_defeated.get("papu_papu")) != TYPE_BOOL:
 		return false
+
+	# Task 9 (CTR racing mode, R2): "racing" is a required top-level section,
+	# the same strictness "levels" and "boss_defeated" already carry above --
+	# not left optional-if-missing, so a legacy profile can only ever pass
+	# this check after actually migrating through _migrate_v1_to_v2 (see
+	# below), which is what proves old saves keep loading rather than merely
+	# happening to.
+	var racing_value: Variant = data.get("racing")
+	if not racing_value is Dictionary:
+		return false
+	var racing: Dictionary = racing_value
+	for track_id: Variant in racing:
+		if typeof(track_id) != TYPE_STRING and typeof(track_id) != TYPE_STRING_NAME:
+			return false
+		var racing_record_value: Variant = racing[track_id]
+		if not racing_record_value is Dictionary:
+			return false
+		if not _validate_racing_record(racing_record_value):
+			return false
 
 	return true
 
@@ -133,6 +153,69 @@ static func improved_relic_record(
 	return updated if _validate_level_record(updated) else {}
 
 
+## Task 9 (CTR racing mode, R2): racing's counterpart to level_record() above
+## -- same "supply fresh defaults, never mutate the caller's profile" shape,
+## keyed by track id (a StringName, e.g. &"graybox_loop") instead of level
+## id.
+static func racing_record(data: Dictionary, track_id: StringName) -> Dictionary:
+	var record := _fresh_racing_record()
+	var racing_value: Variant = data.get("racing")
+	if not racing_value is Dictionary:
+		return record
+
+	var racing: Dictionary = racing_value
+	var existing_value: Variant = racing.get(String(track_id))
+	if existing_value == null:
+		existing_value = racing.get(track_id)
+	if existing_value is Dictionary:
+		var existing: Dictionary = (
+			existing_value as Dictionary
+		).duplicate(true)
+		for key: Variant in existing:
+			record[key] = existing[key]
+	return record
+
+
+## racing's counterpart to improved_relic_record() above -- same ms-rounded,
+## "0 means never set" comparison shape, but tracks TWO independent bests
+## (best total time and best single lap) instead of relic's one time plus a
+## derived tier, since a race has no equivalent par-tier concept. Either
+## best can improve without the other: a slower total with one blazing lap
+## still raises best_lap_time_ms, and a personal-best total set with only
+## average laps still raises best_total_time_ms.
+static func improved_racing_record(
+	record: Dictionary,
+	total_elapsed_s: float,
+	lap_times_s: Array
+) -> Dictionary:
+	if (
+		not _validate_racing_record(record)
+		or not is_finite(total_elapsed_s)
+		or total_elapsed_s < 0.0
+	):
+		return {}
+	var updated := record.duplicate(true)
+	var candidate_total_ms := maxi(
+		roundi(total_elapsed_s * _MILLISECONDS_PER_SECOND),
+		1
+	)
+	var existing_total_ms := int(updated.get("best_total_time_ms", 0))
+	if existing_total_ms == 0 or candidate_total_ms < existing_total_ms:
+		updated["best_total_time_ms"] = candidate_total_ms
+
+	var best_lap_s := _fastest_finite_non_negative(lap_times_s)
+	if best_lap_s >= 0.0:
+		var candidate_lap_ms := maxi(
+			roundi(best_lap_s * _MILLISECONDS_PER_SECOND),
+			1
+		)
+		var existing_lap_ms := int(updated.get("best_lap_time_ms", 0))
+		if existing_lap_ms == 0 or candidate_lap_ms < existing_lap_ms:
+			updated["best_lap_time_ms"] = candidate_lap_ms
+
+	return updated if _validate_racing_record(updated) else {}
+
+
 static func _fresh_level_record() -> Dictionary:
 	return {
 		"completed": false,
@@ -144,6 +227,13 @@ static func _fresh_level_record() -> Dictionary:
 	}
 
 
+static func _fresh_racing_record() -> Dictionary:
+	return {
+		"best_total_time_ms": 0,
+		"best_lap_time_ms": 0,
+	}
+
+
 static func _migration_step(
 	version: int,
 	data: Dictionary
@@ -152,7 +242,7 @@ static func _migration_step(
 		0:
 			return _migrate_v0_to_v1(data)
 		1:
-			return _migrate_v1_to_v2_identity(data)
+			return _migrate_v1_to_v2(data)
 		_:
 			return {}
 
@@ -163,8 +253,19 @@ static func _migrate_v0_to_v1(data: Dictionary) -> Dictionary:
 	return migrated
 
 
-static func _migrate_v1_to_v2_identity(data: Dictionary) -> Dictionary:
+## Task 9 (CTR racing mode, R2): the one real structural change this
+## version bump makes -- every save through v1 predates racing entirely and
+## has no "racing" key at all, so a v1 profile is backfilled with the same
+## empty section fresh() now authors, before the version number itself
+## moves. This is what lets validate()'s "racing" check stay strictly
+## required (matching "levels" and "boss_defeated") instead of quietly
+## tolerating a missing top-level section -- see test_pre_racing_v1_
+## profile_migrates_with_empty_racing_section in test_save_service.gd for
+## the round-trip proof.
+static func _migrate_v1_to_v2(data: Dictionary) -> Dictionary:
 	var migrated := data.duplicate(true)
+	if not migrated.get("racing") is Dictionary:
+		migrated["racing"] = {}
 	migrated["schema_version"] = 2
 	return migrated
 
@@ -184,6 +285,15 @@ static func _normalize_known_integer_fields(data: Dictionary) -> void:
 					normalized_ids.append(normalized_id)
 			normalized_ids.sort()
 			record["last_missed_crate_ids"] = normalized_ids
+	var racing: Dictionary = data["racing"]
+	for track_id: Variant in racing:
+		var racing_entry: Dictionary = racing[track_id]
+		racing_entry["best_total_time_ms"] = int(
+			racing_entry["best_total_time_ms"]
+		)
+		racing_entry["best_lap_time_ms"] = int(
+			racing_entry["best_lap_time_ms"]
+		)
 
 
 static func _validate_level_record(record: Dictionary) -> bool:
@@ -218,6 +328,31 @@ static func _validate_level_record(record: Dictionary) -> bool:
 				return false
 			seen_ids.append(normalized_id)
 	return true
+
+
+static func _validate_racing_record(record: Dictionary) -> bool:
+	if not _is_non_negative_integer(record.get("best_total_time_ms")):
+		return false
+	if not _is_non_negative_integer(record.get("best_lap_time_ms")):
+		return false
+	return true
+
+
+## The smallest finite, non-negative value in lap_times_s, or -1.0 if none
+## qualifies (an empty array, or every entry non-finite/negative) --
+## improved_racing_record() treats a negative return as "no lap to compare",
+## the same way it treats best_*_time_ms == 0 as "no time recorded yet".
+static func _fastest_finite_non_negative(values: Array) -> float:
+	var fastest := -1.0
+	for value: Variant in values:
+		if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+			continue
+		var candidate: float = value
+		if not is_finite(candidate) or candidate < 0.0:
+			continue
+		if fastest < 0.0 or candidate < fastest:
+			fastest = candidate
+	return fastest
 
 
 static func _schema_version(data: Dictionary) -> int:

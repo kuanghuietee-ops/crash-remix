@@ -11,6 +11,7 @@
 
 [node name="RaceSanityShores" type="Node3D"]
 script = ExtResource("1_session")
+track_id = &"sanity_shores"
 
 [node name="Track" parent="." instance=ExtResource("2_track")]
 

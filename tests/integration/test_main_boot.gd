@@ -778,6 +778,179 @@ func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> v
 	assert_false(bool(race_after.call("is_finished")))
 
 
+# Task 9 (CTR racing mode, R2): the save-round-trip proof for racing best
+# times, driven through the real GameRoot end to end (not RaceSession in
+# isolation -- that half is test_race_session.gd's job). Forces the finish
+# via the session's own private gate-crossing handler, the same
+# "_force_finish" technique test_race_session.gd's H2 fix-round tests
+# already use, applied here through main.tscn's real racing entry so the
+# whole chain -- RaceSession -> GameRoot's save write -> RaceHUD's best-time
+# labels -- is proven together. A brand-new profile has no prior racing
+# record (best_total_time_ms/best_lap_time_ms both 0, SaveModel's "never set"
+# sentinel), so any real finish here is unconditionally a new best.
+func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+	assert_eq(
+		race.get("track_id"),
+		&"graybox_loop",
+		"the graybox loop race scene must export its own track id"
+	)
+
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+
+	var profile: Dictionary = root.get("profile")
+	var record := SaveModel.racing_record(profile, &"graybox_loop")
+	assert_gt(
+		int(record.get("best_total_time_ms")),
+		0,
+		"a first-ever finish must persist as the new best total"
+	)
+	assert_gt(
+		int(record.get("best_lap_time_ms")),
+		0,
+		"a first-ever finish must persist as the new best lap"
+	)
+
+	var stored := SaveService.new().load_profile(TEST_SAVE_DIR)
+	assert_eq(
+		SaveModel.racing_record(stored, &"graybox_loop"),
+		record,
+		"the improved best time must actually reach disk, not just memory"
+	)
+
+	var hud := race.get_node("UI/RaceHUD")
+	var new_best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/NewBest"
+	) as Label
+	assert_true(
+		new_best_label.visible,
+		"a first-ever finish must show the NEW BEST marker"
+	)
+	var best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/Best"
+	) as Label
+	assert_true(
+		best_label.text.length() > 0,
+		"the HUD must render the persisted best time"
+	)
+
+
+# The counterpart proof: a seeded existing best faster than any real finish
+# can beat must survive the run untouched -- both in the in-memory profile
+# and on disk -- and the HUD must not falsely claim a new best.
+func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
+	var seeded_service := SaveService.new()
+	var seeded_profile := SaveModel.fresh()
+	var seeded_racing: Dictionary = seeded_profile["racing"]
+	seeded_racing[String(&"graybox_loop")] = {
+		"best_total_time_ms": 1,
+		"best_lap_time_ms": 1,
+	}
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, seeded_profile),
+		OK
+	)
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+
+	var profile: Dictionary = root.get("profile")
+	assert_eq(
+		SaveModel.racing_record(profile, &"graybox_loop"),
+		{
+			"best_total_time_ms": 1,
+			"best_lap_time_ms": 1,
+		},
+		"a slower real finish must not overwrite an unbeatable seeded best"
+	)
+	var stored := SaveService.new().load_profile(TEST_SAVE_DIR)
+	assert_eq(
+		int(
+			SaveModel.racing_record(
+				stored,
+				&"graybox_loop"
+			).get("best_total_time_ms")
+		),
+		1,
+		"an unimproved best must not be rewritten to disk"
+	)
+
+	var hud := race.get_node("UI/RaceHUD")
+	var new_best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/NewBest"
+	) as Label
+	assert_false(
+		new_best_label.visible,
+		"a run slower than the seeded best must not show NEW BEST"
+	)
+
+
+## Drives a race scene straight to race_complete by calling its own
+## gate-crossing handler with the real authored gate nodes -- the same
+## technique test_race_session.gd's _force_finish uses, duplicated here
+## (rather than shared) because that file's helper is private to its own
+## GutTest script.
+func _force_finish_race(race: Node) -> void:
+	var kart := race.get_node("Kart")
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	for _lap: int in range(lap_count):
+		for gate_index: int in range(gate_count):
+			race.call(
+				"_on_gate_body_entered",
+				kart,
+				race.get_node("Track/Gates/Gate%d" % gate_index)
+			)
+	race.call(
+		"_on_gate_body_entered",
+		kart,
+		race.get_node("Track/Gates/Gate0")
+	)
+
+
 func test_hub_level_list_actually_pauses_warp_room_gameplay() -> void:
 	var root := _instantiate_main()
 	if root == null:

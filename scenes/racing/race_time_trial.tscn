@@ -11,6 +11,7 @@
 
 [node name="RaceTimeTrial" type="Node3D"]
 script = ExtResource("1_session")
+track_id = &"graybox_loop"
 
 [node name="Track" parent="." instance=ExtResource("2_track")]
 

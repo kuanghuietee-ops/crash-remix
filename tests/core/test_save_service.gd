@@ -74,6 +74,31 @@ func test_round_trip_equality() -> void:
 	assert_false(service.refused_future_version)
 
 
+# Task 9 (CTR racing mode, R2): the same round-trip-equality proof as above,
+# through the real atomic store/load path, but exercising the new racing
+# section (best_total_time_ms/best_lap_time_ms keyed by track id) instead of
+# the platformer's own fields.
+func test_round_trip_equality_preserves_racing_best_times() -> void:
+	var service := SaveService.new()
+	var profile := SaveModel.fresh()
+	var record := SaveModel.racing_record(profile, &"graybox_loop")
+	record = SaveModel.improved_racing_record(record, 61.234, [31.0, 30.234])
+	var racing: Dictionary = profile["racing"]
+	racing[String(&"graybox_loop")] = record
+
+	assert_eq(service.store_profile(TEST_SAVE_DIR, profile), OK)
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_eq(loaded, profile)
+	assert_eq(
+		SaveModel.racing_record(loaded, &"graybox_loop"),
+		{
+			"best_total_time_ms": 61234,
+			"best_lap_time_ms": 30234,
+		}
+	)
+
+
 func test_first_store_without_existing_primary_succeeds() -> void:
 	var service := SaveService.new()
 	var profile := SaveModel.fresh()
@@ -332,6 +357,31 @@ func test_legacy_profile_migrates_through_the_real_load_path() -> void:
 	assert_eq(
 		record.get("legacy_level_note"),
 		"preserve this too"
+	)
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
+
+
+# Task 9 (CTR racing mode, R2): the exact "a pre-racing save file must load"
+# proof CLAUDE.md's compatibility rule demands. VALID_FIXTURE predates the
+# racing section entirely (schema_version 1, no "racing" key at all) --
+# loading it through the real service must migrate it to the current schema
+# and hand back an empty-but-valid racing section, not fail closed.
+func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
+	var service := SaveService.new()
+	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(loaded.get("schema_version"), SaveModel.SCHEMA_VERSION)
+	assert_eq(loaded.get("racing"), {})
+	assert_eq(
+		SaveModel.racing_record(loaded, &"graybox_loop"),
+		{
+			"best_total_time_ms": 0,
+			"best_lap_time_ms": 0,
+		}
 	)
 	assert_false(service.recovered_from_backup)
 	assert_false(service.refused_future_version)

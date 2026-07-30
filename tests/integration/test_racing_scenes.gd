@@ -75,6 +75,11 @@ func test_race_time_trial_scene_boots_end_to_end_without_engine_errors() -> void
 		assert_true(camera.current, "the kart camera must be the active viewport camera")
 	assert_false(bool(race.call("is_finished")))
 	assert_eq(int(race.call("gate_count")), 6)
+	assert_eq(
+		race.get("track_id"),
+		&"graybox_loop",
+		"Task 9: the save layer keys best times off this exported id"
+	)
 
 
 func test_track_sanity_shores_scene_opens_with_spine_gates_and_spawn() -> void:
@@ -131,3 +136,8 @@ func test_race_sanity_shores_scene_boots_end_to_end_without_engine_errors() -> v
 	assert_false(bool(race.call("is_finished")))
 	assert_eq(int(race.call("gate_count")), 12)
 	assert_eq(int(race.call("lap_count")), int(catalog.race.lap_count))
+	assert_eq(
+		race.get("track_id"),
+		&"sanity_shores",
+		"Task 9: the save layer keys best times off this exported id"
+	)

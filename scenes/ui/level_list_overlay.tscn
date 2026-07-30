@@ -103,13 +103,13 @@ text = "LOOK DEV  [DEBUG]"
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
-text = "RACING (PROTOTYPE)  [DEBUG]"
+text = "TIME TRIAL — GRAYBOX LOOP  [DEBUG]"
 
 [node name="RacingSanityShores" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
-text = "RACING: SANITY SHORES  [DEBUG]"
+text = "TIME TRIAL — SANITY SHORES  [DEBUG]"
 
 [node name="Close" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 68)
