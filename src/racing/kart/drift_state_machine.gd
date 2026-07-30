@@ -2,10 +2,11 @@ class_name DriftStateMachine
 extends RefCounted
 
 ## Pure-logic CTR-style drift + slide-boost state machine (Task 2, revised
-## for Task 4's fix round 1). Poll model, no signals: the caller pushes
-## input edges (hop_pressed/hop_released/steer), calls tick(delta_s,
-## grounded) once per physics frame, and reads state back through getters --
-## mirrors src/gameplay/player/player_state_machine.gd's idiom.
+## for Task 4's fix rounds 1 and 2). Poll model, no signals: the caller
+## pushes input edges (hop_pressed/hop_released/steer), calls
+## tick(delta_s, grounded) once per physics frame, and reads state back
+## through getters -- mirrors src/gameplay/player/player_state_machine.gd's
+## idiom.
 ##
 ## STEER-SUSTAINED SLIDES (one-thumb mobile). Original CTR holds a shoulder
 ## button (sustain) while tapping a face button (boost) -- two independent
@@ -17,19 +18,31 @@ extends RefCounted
 ## STEER instead -- an analog axis the thumb can hold at a deflection
 ## indefinitely without conflicting with a second thumb tapping HOP. A slide
 ## still STARTS the same way (grounded + a hop press while |steer| has
-## crossed slide_min_steer; slide_direction locks to sign(steer) at that
+## crossed slide_min_steer; slide_direction LOCKS to sign(steer) at that
 ## instant and never changes for the life of the slide), but once started,
-## it SUSTAINS for as long as steer stays past slide_min_steer in the locked
-## direction (sign(steer) == slide_direction and |steer| >= slide_min_steer)
-## -- hop_released() no longer touches slide state at all, it only clears
-## the "hop held" latch that gates a fresh slide START. Every hop press
-## while already sliding is therefore free to mean "boost tap" instead of
-## "hop" with no ambiguity (see RacingInputAdapter, which is what actually
-## makes that routing decision -- this class only exposes boost_tap() as a
-## caller-invoked action, same as before).
+## it SUSTAINS for as long as |steer| stays at or past slide_min_steer --
+## by MAGNITUDE ALONE, regardless of sign -- and hop_released() no longer
+## touches slide state at all, it only clears the "hop held" latch that
+## gates a fresh slide START. Every hop press while already sliding is
+## therefore free to mean "boost tap" instead of "hop" with no ambiguity
+## (see RacingInputAdapter, which is what actually makes that routing
+## decision -- this class only exposes boost_tap() as a caller-invoked
+## action, same as before).
 ##
-## The slide ENDS when the sustain condition fails (steer drops below
-## slide_min_steer, or crosses to the opposite sign):
+## COUNTER-STEERING (fix round 2). Steering fully into the direction
+## OPPOSITE the locked slide_direction still sustains the slide (magnitude
+## is all that's checked) -- this is deliberate, not a gap: CTR lets you
+## counter-steer mid-drift to widen the arc, and KartMotor's yaw math reads
+## slide_direction() (unchanged, still locked) against the CURRENT steer
+## sign every tick to pick between the ordinary full-authority rate
+## (steering with the drift) and the smaller slide_counter_yaw_degrees_per_s
+## rate (steering against it, i.e. counter-steering) -- see kart_motor.gd.
+## Locking direction but sustaining on magnitude alone is exactly what keeps
+## that counter-steer branch reachable through the real input pipeline
+## instead of only from a unit test driving the motor directly.
+##
+## The slide ENDS only when the stick STRAIGHTENS -- |steer| drops below
+## slide_min_steer, direction no longer matters:
 ##   (a) VALID end, at or after slide_min_duration_s has elapsed -- ends the
 ##       slide but leaves any accrued boost consumable, same as before.
 ##   (b) CANCEL, before slide_min_duration_s has elapsed -- forfeits
@@ -98,12 +111,15 @@ func tick(delta_s: float, grounded: bool) -> void:
 		_start_slide()
 
 
-## Whether the currently-held steer keeps the active slide alive: past
-## slide_min_steer in magnitude, in the direction locked at slide start.
+## Whether the currently-held steer keeps the active slide alive: at or
+## past slide_min_steer in MAGNITUDE ALONE -- direction does not matter.
+## Counter-steering (full deflection against the locked slide_direction)
+## sustains the slide exactly the same as steering with it; only the stick
+## coming back below slide_min_steer (straightening) ends it. This is what
+## keeps KartMotor's counter-yaw branch (slide_counter_yaw_degrees_per_s)
+## reachable through real input -- see the class doc's fix-round-2 note.
 func _steer_sustains_slide() -> bool:
-	if absf(_steer) < _tuning.slide_min_steer:
-		return false
-	return (_steer > 0.0) == (_slide_direction > 0)
+	return absf(_steer) >= _tuning.slide_min_steer
 
 
 func is_sliding() -> bool:

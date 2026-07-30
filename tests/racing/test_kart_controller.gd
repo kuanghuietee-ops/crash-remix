@@ -95,6 +95,88 @@ func test_hop_press_while_sliding_adds_no_vertical_impulse() -> void:
 	)
 
 
+func test_counter_steering_while_sliding_reaches_the_counter_yaw_rate() -> void:
+	# Fix round 2 (orchestrator ruling): counter-steering (full deflection
+	# AGAINST the locked slide direction) must now SUSTAIN the slide
+	# (drift_state_machine.gd's magnitude-only sustain check) and drive
+	# KartMotor's counter-yaw branch (slide_counter_yaw_degrees_per_s) --
+	# previously unreachable end to end, because round 1's sign-based
+	# sustain ended the slide the instant you counter-steered, so this
+	# branch was only ever exercised by a unit test feeding KartMotor
+	# sliding/slide_direction by hand, never through real input.
+	#
+	# Proof, through the REAL DriftStateMachine + REAL KartMotor wired
+	# together by KartController (not a motor-level test supplying
+	# sliding/slide_direction manually): two karts start an identical
+	# slide steering the SAME way, then diverge -- one keeps steering with
+	# the locked direction (full authority, steer_rate_degrees_per_s), the
+	# other counter-steers (the smaller slide_counter_yaw_degrees_per_s).
+	# Steer never affects forward speed (only brake/boost do), so both
+	# karts share an IDENTICAL speed -- and therefore falloff -- trajectory
+	# throughout; the only possible source of a heading-change difference
+	# is which yaw-rate branch the real pipeline actually reached.
+	var same_direction_kart := _spawn_kart_on_floor(Vector3.ZERO)
+	var counter_steer_kart := _spawn_kart_on_floor(Vector3(100.0, 0.0, 0.0))
+	if same_direction_kart == null or counter_steer_kart == null:
+		return
+
+	await wait_physics_frames(10)
+	assert_true(same_direction_kart.is_on_floor())
+	assert_true(counter_steer_kart.is_on_floor())
+
+	# Start both slides steering positive (locks slide_direction to 1 on both).
+	same_direction_kart.call("steer", _kart_tuning.slide_min_steer)
+	same_direction_kart.call("hop_pressed")
+	counter_steer_kart.call("steer", _kart_tuning.slide_min_steer)
+	counter_steer_kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(same_direction_kart.call("is_sliding"), "fixture setup must land inside a slide")
+	assert_true(counter_steer_kart.call("is_sliding"), "fixture setup must land inside a slide")
+
+	# Diverge: one keeps steering the SAME way, the other flips to full
+	# opposite deflection (a counter-steer).
+	same_direction_kart.call("steer", 1.0)
+	counter_steer_kart.call("steer", -1.0)
+	assert_true(
+		counter_steer_kart.call("is_sliding"),
+		"counter-steering must sustain the slide, not end it"
+	)
+	var same_direction_velocity_before: Vector3 = same_direction_kart.velocity
+	var counter_steer_velocity_before: Vector3 = counter_steer_kart.velocity
+
+	await wait_physics_frames(20)
+
+	assert_true(
+		counter_steer_kart.call("is_sliding"),
+		"the counter-steered slide must still be active after ticking"
+	)
+	var same_direction_turn_degrees := _horizontal_heading_change_degrees(
+		same_direction_velocity_before,
+		same_direction_kart.velocity
+	)
+	var counter_steer_turn_degrees := _horizontal_heading_change_degrees(
+		counter_steer_velocity_before,
+		counter_steer_kart.velocity
+	)
+
+	assert_gt(
+		counter_steer_turn_degrees,
+		0.0,
+		"counter-steering must still turn the kart (via the tuned counter "
+		+ "rate) -- zero here would mean the branch never fired at all"
+	)
+	assert_gt(
+		same_direction_turn_degrees,
+		counter_steer_turn_degrees,
+		(
+			"steering WITH the locked slide direction (steer_rate_degrees_per_s = %s) "
+			+ "must turn faster than counter-steering AGAINST it "
+			+ "(slide_counter_yaw_degrees_per_s = %s) -- the counter-yaw branch must "
+			+ "be reachable through the real FSM+motor pipeline, not just in isolation"
+		) % [_kart_tuning.steer_rate_degrees_per_s, _kart_tuning.slide_counter_yaw_degrees_per_s]
+	)
+
+
 func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
 	if not ResourceLoader.exists(KART_SCENE_PATH):
@@ -115,13 +197,17 @@ func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	)
 
 
-func _spawn_kart_on_floor() -> CharacterBody3D:
+## origin offsets the whole floor+kart fixture so multiple fixtures spawned
+## in the same test (e.g. a same-direction-vs-counter-steer A/B comparison)
+## don't share a global position and collide with each other.
+func _spawn_kart_on_floor(origin: Vector3 = Vector3.ZERO) -> CharacterBody3D:
 	var packed := load(KART_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	if packed == null:
 		return null
 
 	var root := Node3D.new()
+	root.position = origin
 	add_child_autofree(root)
 	var floor := StaticBody3D.new()
 	var floor_shape := CollisionShape3D.new()
@@ -140,3 +226,14 @@ func _spawn_kart_on_floor() -> CharacterBody3D:
 	root.add_child(kart)
 	kart.call("configure", _kart_tuning)
 	return kart
+
+
+## Unsigned heading change in degrees between two horizontal velocity
+## vectors -- robust to which way either one points, so it works as a pure
+## "how much did this kart turn" magnitude regardless of sign convention.
+func _horizontal_heading_change_degrees(before: Vector3, after: Vector3) -> float:
+	var before_direction := Vector3(before.x, 0.0, before.z)
+	var after_direction := Vector3(after.x, 0.0, after.z)
+	if before_direction.is_zero_approx() or after_direction.is_zero_approx():
+		return 0.0
+	return rad_to_deg(before_direction.angle_to(after_direction))

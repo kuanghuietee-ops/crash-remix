@@ -150,13 +150,12 @@ func test_slide_direction_locks_negative() -> void:
 	assert_eq(fsm.call("slide_direction"), -1)
 
 
-func test_slide_direction_does_not_retroactively_change_when_a_reversal_ends_it() -> void:
-	# Fix round 1: reversing steer this early (well before slide_min_duration_s)
-	# now CANCELS the slide via the sustain check in tick() -- it no longer
-	# continues sliding with a stale locked direction. The direction lock
-	# itself still matters: slide_direction() must keep reporting the value
-	# recorded at slide start, even once the reversal that ended the slide
-	# has happened.
+func test_slide_direction_does_not_change_while_counter_steering_mid_slide() -> void:
+	# Fix round 2: sustain is MAGNITUDE-only now -- counter-steering full
+	# deflection against the locked direction keeps the slide alive (CTR's
+	# arc-widening counter-steer), it does not cancel or flip anything.
+	# slide_direction() must keep reporting the value recorded at slide
+	# start even while the CURRENT steer sign is the opposite of it.
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
@@ -164,14 +163,15 @@ func test_slide_direction_does_not_retroactively_change_when_a_reversal_ends_it(
 	fsm.call("steer", -_kart.slide_min_steer)
 	fsm.call("tick", _EPSILON_S, true)
 
-	assert_false(
+	assert_true(
 		fsm.call("is_sliding"),
-		"reversing steer before slide_min_duration_s must cancel the slide"
+		"counter-steering must sustain the slide, not cancel it"
 	)
 	assert_eq(
 		fsm.call("slide_direction"),
 		1,
-		"the recorded direction must not retroactively change once the slide has ended"
+		"the recorded direction must stay locked to the steer sign at slide start, "
+		+ "even while counter-steering the opposite way"
 	)
 
 
@@ -343,7 +343,12 @@ func test_steer_below_threshold_at_exactly_min_duration_is_a_valid_end() -> void
 	assert_false(fsm.call("is_sliding"))
 
 
-func test_steer_reversal_ends_the_slide() -> void:
+func test_steer_reversal_sustains_the_slide() -> void:
+	# Fix round 2 (orchestrator ruling): sustain is |steer| >= slide_min_steer
+	# REGARDLESS of sign. CTR lets you counter-steer mid-drift to widen the
+	# arc, and KartMotor only reads that counter-steer as a different yaw
+	# RATE (slide_counter_yaw_degrees_per_s), never as a reason to end the
+	# slide -- ending only ever comes from the stick straightening out.
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
@@ -352,9 +357,32 @@ func test_steer_reversal_ends_the_slide() -> void:
 	fsm.call("steer", -_kart.slide_min_steer)
 	fsm.call("tick", 0.0, true)
 
+	assert_true(
+		fsm.call("is_sliding"),
+		"steering full deflection against the locked direction (counter-steer) "
+		+ "must sustain the slide, not end it"
+	)
+
+
+func test_counter_steer_past_min_duration_then_straighten_is_a_valid_end() -> void:
+	# Counter-steering can carry a slide all the way past slide_min_duration_s
+	# on its own; once the stick THEN straightens out (magnitude drops below
+	# slide_min_steer), that is still a valid end -- accrued boost, if any,
+	# is preserved -- exactly like straightening after steering the same way
+	# the whole time.
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("steer", -_kart.slide_min_steer)
+	fsm.call("tick", _kart.slide_min_duration_s, true)
+	assert_true(fsm.call("is_sliding"), "counter-steer must have kept the slide alive this whole time")
+
+	fsm.call("steer", 0.0)
+	fsm.call("tick", 0.0, true)
+
 	assert_false(
 		fsm.call("is_sliding"),
-		"steering past the threshold in the opposite direction must end the slide, not sustain it"
+		"straightening out after a counter-steer-sustained slide must still be a valid end"
 	)
 
 

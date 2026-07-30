@@ -24,20 +24,25 @@ Authored arcade physics on CharacterBody3D — no rigid-body simulation. Verbs:
 - **Steer** — left floating stick, direct lateral mapping (NO corridor
   magnet; racing input mode bypasses it).
 - **Hop** (one right-thumb button); **power-slide** = press hop while
-  steering past a threshold to start, then **steer alone sustains it** —
-  drift direction locks at slide start, and the slide keeps going for as
-  long as steer stays past the threshold in that locked direction. One-thumb
+  steering past a threshold to start, then **steer magnitude alone sustains
+  it** — drift direction locks at slide start, and the slide keeps going for
+  as long as steer stays past the threshold **in either direction**;
+  straightening the stick back below the threshold is what ends it. One-thumb
   mobile rationale: original CTR holds a shoulder button (sustain) while
   tapping a face button (boost), which needs two inputs held/tapped at once;
   this game puts hop and boost on the *same* single touch button (CTR
   muscle memory), so that button can no longer be what sustains the slide —
   sustain moves to the steer stick instead, freeing the button for pure taps.
+  Because direction stays locked but sustain doesn't care which way the
+  stick is pointing, full deflection *against* the locked direction —
+  **counter-steering** — keeps the slide alive too, at a smaller yaw rate,
+  letting a player widen the drift arc mid-slide (CTR's signature move).
 - **Slide-boost** — the CTR signature: while sliding, a boost window meter
   charges; a well-timed BOOST tap (the SAME hop button, re-pressed) fires a
   speed burst instead of a hop; up to **three stacking taps** per slide,
   each window tighter, a mistimed tap ends the slide with no boost, and
-  straightening or reversing steer ends the slide (with any earned boost
-  kept if that happens at or after the minimum slide duration, forfeited if
+  straightening the stick ends the slide (with any earned boost kept if
+  that happens at or after the minimum slide duration, forfeited if
   earlier).
 - **Start boost** — countdown "3-2-1": throttle timed into the green window
   at "GO" fires a launch boost, early = bog.
