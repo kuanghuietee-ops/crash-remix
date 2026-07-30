@@ -527,7 +527,13 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or kart.boost_window_shrink_factor > 1.0
 		or kart.boost_speed_bonus_mps <= 0.0
 		or kart.boost_duration_s <= 0.0
-		or kart.boost_stack_max <= 0.0
+		# L2 (final fix wave): boost_stack_max is a float field with
+		# INTEGER semantics -- DriftStateMachine reads it via
+		# roundi(_tuning.boost_stack_max) to cap boost stages. A value
+		# below 1.0 rounds to a dead 0-stage boost (boost_stack_max=0.4
+		# passed the old <= 0.0 check but silently killed boost for the
+		# whole session).
+		or kart.boost_stack_max < 1.0
 		or kart.spin_out_duration_s <= 0.0
 		or kart.spin_out_speed_keep_ratio <= 0.0
 		or kart.spin_out_speed_keep_ratio > 1.0
@@ -537,7 +543,12 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 
 	var race := checked.race
 	if (
-		race.lap_count <= 0.0
+		# L2 (final fix wave): lap_count is a float field with INTEGER
+		# semantics -- race_session.gd reads it via
+		# int(_race_tuning.lap_count) for both the HUD's lap display and
+		# LapValidator.configure(). A value below 1.0 truncates to a dead
+		# LAP 0/0 (lap_count=0.5 passed the old <= 0.0 check).
+		race.lap_count < 1.0
 		or race.countdown_step_s <= 0.0
 		or race.start_boost_window_s <= 0.0
 		or race.start_bog_penalty_s <= 0.0

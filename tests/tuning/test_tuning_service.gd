@@ -2821,6 +2821,39 @@ func test_kart_boost_window_close_must_exceed_open() -> void:
 	)
 
 
+# L2 (final fix wave): boost_stack_max is a float field with INTEGER
+# semantics -- DriftStateMachine reads it via roundi(_tuning.boost_stack_max)
+# to cap how many boost stages a slide can accrue (see drift_state_machine.gd
+# line ~163). test_kart_tuning_rejects_nonpositive_fields above only rejects
+# <= 0.0, so a panel-authored 0.4 (a real value a slider or on-device edit
+# can produce) sails through validation, roundi()s to 0, and boost is
+# silently dead for the whole session with no error anywhere.
+func test_kart_boost_stack_max_rejects_values_below_one() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	var authored: float = kart.get("boost_stack_max")
+
+	kart.set("boost_stack_max", 0.4)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"boost_stack_max below 1.0 must be rejected -- it rounds to a dead 0-stage boost"
+	)
+
+	kart.set("boost_stack_max", 1.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"boost_stack_max of exactly 1.0 must remain valid"
+	)
+
+	kart.set("boost_stack_max", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
 # Task 5 (CTR kart chase camera): camera_look_height_m was added to the
 # already-shipped race section after Task 1's initial fields, so an
 # override authored before this field existed must be migrated the same
@@ -2888,6 +2921,38 @@ func test_race_tuning_rejects_nonpositive_fields() -> void:
 			"race.%s must reject zero" % property_name
 		)
 		race.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+# L2 (final fix wave): lap_count is a float field with INTEGER semantics --
+# race_session.gd reads it via int(_race_tuning.lap_count) for both
+# lap_count() (the HUD's "LAP n/N" display) and the LapValidator's own
+# configure() call. test_race_tuning_rejects_nonpositive_fields above only
+# rejects <= 0.0, so a panel-authored 0.5 sails through validation, truncates
+# to 0, and the HUD reads "LAP 0/0" with no error anywhere.
+func test_race_lap_count_rejects_values_below_one() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+	assert_not_null(race)
+	if race == null:
+		return
+	var authored: float = race.get("lap_count")
+
+	race.set("lap_count", 0.5)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"lap_count below 1.0 must be rejected -- it truncates to a dead LAP 0/0"
+	)
+
+	race.set("lap_count", 1.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"lap_count of exactly 1.0 must remain valid"
+	)
+
+	race.set("lap_count", authored)
 	assert_true(service.call("catalog_is_usable"))
 
 
