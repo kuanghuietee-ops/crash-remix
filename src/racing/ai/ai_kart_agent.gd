@@ -111,21 +111,43 @@ extends Node
 ##   own default of 1.0 covers "no scaling" for the ticks before the first
 ##   decide() call ever runs, so there is no missing-call gap to guard).
 ##
-## STUCK DETECTION reads the KART'S OWN REAL, physics-resolved horizontal
-## velocity (CharacterBody3D.velocity, flattened to XZ) against
-## ai_tuning.respawn_stuck_speed_mps -- deliberately NOT
-## KartController.speed_mps() (KartMotor's purely kinematic "commanded"
-## speed, used above for state.speed_mps). KartMotor's forward_speed_mps
-## has no feedback from collision resolution at all: a kart wedged against a
-## wall keeps accelerating its own internal target regardless, so
-## speed_mps() would never notice a real jam. The real CharacterBody3D
-## velocity DOES reflect move_and_slide()'s actual collision response, which
-## is the only physically meaningful signal for "is this kart actually
-## stuck". Vertical velocity is excluded (a kart mid-hop-arc with near-zero
-## horizontal speed is legitimately airborne, not stuck).
+## STUCK DETECTION (fix round 1, reviewer [HIGH] -- REPLACES an earlier,
+## broken instantaneous-velocity design). Uses a TUMBLING window of net
+## displacement, not a continuously-reset instantaneous-speed check:
+## _stuck_window_anchor_pos/_stuck_window_elapsed_s anchor the kart's
+## position once and accumulate real elapsed time; once
+## _stuck_window_elapsed_s reaches respawn_stuck_after_s, this compares the
+## NET horizontal displacement between the anchor and the kart's CURRENT
+## position against respawn_stuck_speed_mps * respawn_stuck_after_s (the
+## natural product of the two existing tuning fields -- no new literal: "a
+## bare-minimum crawl at the stuck-speed threshold would have covered at
+## least this much ground in this much time"). Below that: stuck, respawn.
+## At or above it: NOT stuck -- re-anchor to the current position and start
+## a fresh window, so a genuinely progressing kart always gets a fair,
+## un-poisoned window rather than one contaminated by an earlier slow patch.
 ##
-## STUCK RESPAWN, once _stuck_elapsed_s reaches respawn_stuck_after_s:
-## teleport to spine.point_at_progress(follower.total_progress_m() -
+## WHY NOT INSTANTANEOUS VELOCITY (the original, reviewer-caught design): a
+## kart wedged against a wall while still actively sliding does not sit at
+## a calm near-zero speed -- move_and_slide()'s own collision response
+## produces sharp REAL VELOCITY SPIKES on every bounce, each one easily
+## exceeding respawn_stuck_speed_mps for a tick or two. A per-tick "below
+## threshold -> accumulate, above -> reset to zero" accumulator gets wiped
+## by those spikes over and over and can run for the ENTIRE race without
+## ever crossing respawn_stuck_after_s, even though the kart's real NET
+## position barely moves tick to tick to tick. A reviewer repro (25
+## simulated seconds against the East turn) confirmed exactly this: the
+## timer never exceeded 1.5s of the 3.0s threshold and zero respawns ever
+## fired. Net displacement over a window is immune to this -- a kart
+## bouncing in place ends the window in roughly the same spot it started,
+## no matter how many individual velocity spikes happened along the way,
+## because only the window's START and END position are ever compared.
+## Vertical motion is excluded from the displacement (flattened to XZ) for
+## the same reason the old design excluded it: a kart mid-hop-arc making
+## real horizontal progress should never read as stuck just because a jump
+## is also underway.
+##
+## STUCK RESPAWN, once a window closes below the stuck threshold: teleport
+## to spine.point_at_progress(follower.total_progress_m() -
 ## respawn_drop_gap_m), Y raised by RaceTuning.respawn_drop_height_m (the
 ## first real consumer of this previously-unread field -- see the spec's
 ## Recorded-debts #3), facing spine.tangent_at_progress() there via
@@ -136,14 +158,28 @@ extends Node
 ## SAME target total (preserving lap count -- see SpineFollower.reset()'s
 ## own "resume mid-race" semantics) so cross-kart standings never see a
 ## fabricated near-full-lap regression, and clear AiDriver's edge memory per
-## its own class doc ("e.g. Task 4's stuck-kart respawn path"). Deliberately
-## narrow, matching only what the brief names: this does NOT force-cancel an
-## in-progress slide (DriftStateMachine.cancel_slide() has no public
-## KartController proxy, and a kart stuck long enough to trigger this is in
-## practice not mid-drift -- sliding implies cornering at speed). If a kart
-## somehow gets wedged mid-slide, the next tick's fresh (near-zero-curvature
-## in practice) state lets the real FSM's own straighten-out end path finish
-## naturally.
+## its own class doc ("e.g. Task 4's stuck-kart respawn path").
+##
+## FORCE-CLEARING AN ACTIVE SLIDE (fix round 1, reviewer follow-up on the
+## same finding): the East-turn repro that motivated the displacement fix
+## above gets stuck WHILE mid-slide (is_sliding() stays true for many
+## seconds straight, bouncing against the inner wall) -- the original
+## respawn path only reset motor speed/yaw and left the real
+## DriftStateMachine's _sliding/_hop_held state completely untouched, so a
+## freshly-teleported kart would still report is_sliding() true and keep
+## adding slide_yaw_bonus_degrees_per_s of extra yaw every tick, right after
+## being dropped onto a clean line. KartController has no direct public
+## "cancel the slide" proxy, but set_run_active(false) already calls
+## DriftStateMachine.cancel_slide() as one of its side effects (see
+## kart_controller.gd's own doc) -- bouncing false then immediately back to
+## true (both calls synchronous, no tick runs in between, so nothing ever
+## observes the kart in "race finished" mode) reuses that existing public
+## surface to force-clear the slide/hop-held latch without adding a new
+## method whose only caller would be this one teleport path.
+## respawn_count() (a plain running counter, incremented here) is exposed so
+## a caller -- notably this suite's own East-turn regression-lock test --
+## can observe "did the safety net actually fire" precisely, instead of
+## inferring it from noisy progress deltas.
 
 const AiDriverType := preload("res://src/racing/ai/ai_driver.gd")
 const SpineFollowerType := preload("res://src/racing/track/spine_follower.gd")
@@ -161,11 +197,25 @@ var _driver: RefCounted
 var _follower: RefCounted
 var _lateral_target_m: float
 
-var _stuck_elapsed_s: float
+var _stuck_window_anchor_pos: Vector3
+var _stuck_window_elapsed_s: float
+var _respawn_count: int
 var _hop_release_pending: bool
 var _configured: bool
 
 
+## Fix round 1 (reviewer [MEDIUM]): configure() now verifies the SpineFollower
+## it just built is actually usable (spine.length_m() > 0, mirrored by
+## SpineFollower.is_valid() -- see spine_follower.gd's own configure() doc)
+## before committing to _configured = true. A TrackSpine with no markers (or
+## any other zero/negative-length degenerate) previously left this agent
+## "configured" but silently driving off of a follower that fails closed to
+## 0.0 forever -- steer/lookahead/curvature would all be computed from a
+## permanently-wrong progress=0.0 instead of anything real. Failing closed
+## here instead (push_error, _configured stays false, every _physics_process
+## tick after is a no-op) matches AiDriver's/SpineFollower's own fail-closed
+## shape one layer up, and is loud about it immediately at configure() time
+## rather than silently misbehaving forever.
 func configure(
 	kart: CharacterBody3D,
 	spine: TrackSpine,
@@ -189,10 +239,22 @@ func configure(
 
 	_follower = SpineFollowerType.new()
 	_follower.configure(spine.length_m())
+	if not _follower.is_valid():
+		push_error(
+			(
+				"AiKartAgent.configure: TrackSpine.length_m() was not "
+				+ "positive (got %s) -- failing closed: this agent will not "
+				+ "process until reconfigured with a valid spine."
+			) % spine.length_m()
+		)
+		_configured = false
+		return
 	_follower.reset(spine.progress_for_position(kart.global_position))
 
 	_lateral_target_m = _compute_lateral_target_m()
-	_stuck_elapsed_s = 0.0
+	_stuck_window_anchor_pos = kart.global_position
+	_stuck_window_elapsed_s = 0.0
+	_respawn_count = 0
 	_hop_release_pending = false
 	_configured = true
 
@@ -205,6 +267,16 @@ func total_progress_m() -> float:
 	return _follower.total_progress_m() if _configured else 0.0
 
 
+## How many times the stuck-detector has force-teleported this kart --
+## exposed for the same "observe the safety net precisely, don't infer it
+## from noisy progress deltas" reason total_progress_m() is. 0 before a
+## successful configure() (nothing has run yet) and 0 after one that never
+## needed to respawn -- both indistinguishable from "never got stuck",
+## which is the correct reading either way.
+func respawn_count() -> int:
+	return _respawn_count
+
+
 func _physics_process(delta_s: float) -> void:
 	if not _configured:
 		return
@@ -214,15 +286,12 @@ func _physics_process(delta_s: float) -> void:
 		_hop_release_pending = false
 
 	var kart_pos: Vector3 = _kart.global_position
+	if _check_stuck_and_respawn(kart_pos, delta_s):
+		return
+
 	var raw_progress := _spine.progress_for_position(kart_pos)
 	_follower.update(raw_progress, _max_follower_step_m(delta_s))
 	var progress: float = _follower.lap_progress_m()
-
-	var horizontal_velocity := Vector3(_kart.velocity.x, 0.0, _kart.velocity.z)
-	_track_stuck(horizontal_velocity.length(), delta_s)
-	if _stuck_elapsed_s >= _ai_tuning.respawn_stuck_after_s:
-		_respawn()
-		return
 
 	var decision: Dictionary = _driver.decide(_assemble_state(kart_pos, progress))
 	_route_decision(decision)
@@ -293,11 +362,32 @@ func _max_follower_step_m(delta_s: float) -> float:
 	return max_target_speed_mps * delta_s
 
 
-func _track_stuck(horizontal_speed_mps: float, delta_s: float) -> void:
-	if horizontal_speed_mps < _ai_tuning.respawn_stuck_speed_mps:
-		_stuck_elapsed_s += delta_s
-	else:
-		_stuck_elapsed_s = 0.0
+## See the class doc's STUCK DETECTION section for why this is a tumbling
+## net-displacement window rather than an instantaneous-velocity check.
+## Returns true (and has already respawned) exactly on the tick a closing
+## window reads as stuck; the caller must skip the rest of that tick's
+## normal drive logic, since _respawn() has just invalidated kart_pos/
+## progress out from under it.
+func _check_stuck_and_respawn(kart_pos: Vector3, delta_s: float) -> bool:
+	_stuck_window_elapsed_s += delta_s
+	if _stuck_window_elapsed_s < _ai_tuning.respawn_stuck_after_s:
+		return false
+
+	var horizontal_displacement := Vector3(
+		kart_pos.x - _stuck_window_anchor_pos.x,
+		0.0,
+		kart_pos.z - _stuck_window_anchor_pos.z
+	).length()
+	var stuck_threshold_m := (
+		_ai_tuning.respawn_stuck_speed_mps * _ai_tuning.respawn_stuck_after_s
+	)
+	if horizontal_displacement < stuck_threshold_m:
+		_respawn()
+		return true
+
+	_stuck_window_anchor_pos = kart_pos
+	_stuck_window_elapsed_s = 0.0
+	return false
 
 
 ## See the class doc's LATERAL SLOT CENTERING section.
@@ -307,8 +397,11 @@ func _compute_lateral_target_m() -> float:
 	return centered_slot * _ai_tuning.lateral_slot_spacing_m
 
 
-## See the class doc's STUCK RESPAWN section.
+## See the class doc's STUCK RESPAWN and FORCE-CLEARING AN ACTIVE SLIDE
+## sections.
 func _respawn() -> void:
+	_respawn_count += 1
+
 	var target_total: float = _follower.total_progress_m() - _ai_tuning.respawn_drop_gap_m
 	var length := _spine.length_m()
 	var wrapped_target := fposmod(target_total, length) if length > 0.0 else 0.0
@@ -321,8 +414,16 @@ func _respawn() -> void:
 		var facing_degrees := rad_to_deg(Vector3.FORWARD.signed_angle_to(tangent, Vector3.UP))
 		_kart.call("set_yaw_degrees", facing_degrees)
 	_kart.call("reset_speed")
+	# Fix round 1 (reviewer follow-up): force-clears DriftStateMachine's own
+	# _sliding/_hop_held state through the only public surface that reaches
+	# it (see the class doc's FORCE-CLEARING AN ACTIVE SLIDE section) -- a
+	# kart teleported off a wedge it was still actively sliding against must
+	# not keep adding slide yaw on its fresh, clean line.
+	_kart.call("set_run_active", false)
+	_kart.call("set_run_active", true)
 
 	_follower.reset(target_total)
 	_driver.reset()
-	_stuck_elapsed_s = 0.0
+	_stuck_window_anchor_pos = _kart.global_position
+	_stuck_window_elapsed_s = 0.0
 	_hop_release_pending = false

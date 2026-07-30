@@ -87,11 +87,22 @@ func test_agent_drives_a_real_kart_around_the_graybox_loops_first_corner() -> vo
 	# correctly recovers from it a few seconds later. This test's job is
 	# proving the agent drives itself for real, not grading the racing line.
 	var samples: Array[float] = [float(agent.call("total_progress_m"))]
+	var observed_sliding := false
 	var batch_frames := 30
 	var batches := 10
 	for _batch_index in range(batches):
 		await wait_physics_frames(batch_frames)
 		samples.append(float(agent.call("total_progress_m")))
+		observed_sliding = observed_sliding or bool(kart.call("is_sliding"))
+
+	assert_true(
+		observed_sliding,
+		(
+			"fix round 1, reviewer LOW-b: the agent must have actually hopped "
+			+ "into a real slide at some point while rounding this corner, not "
+			+ "just cruised through it in a straight line"
+		)
+	)
 
 	for sample_index in range(1, samples.size()):
 		assert_gt(
@@ -349,6 +360,247 @@ func test_physics_process_is_a_no_op_before_configure() -> void:
 		0.0,
 		0.0001,
 		"an unconfigured agent must report zero progress and never error"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (reviewer [MEDIUM]): configure() with a degenerate (zero-
+# length) TrackSpine must fail closed -- push_error, stay unconfigured, and
+# every following physics tick must remain a safe no-op, not silently drive
+# off a SpineFollower that's permanently stuck reporting 0.0.
+# ---------------------------------------------------------------------------
+
+
+func test_configure_with_a_zero_length_spine_fails_closed() -> void:
+	# A marker-less TrackSpine builds no curve at all (see track_spine.gd's
+	# own _ensure_curve() doc: "there is nothing here for the builder to
+	# rebuild from"), so length_m() reads 0.0 -- the same degenerate input
+	# SpineFollower.configure() itself already fails closed on.
+	var empty_spine: Node = load(SPINE_SCRIPT_PATH).new()
+	add_child_autofree(empty_spine)
+	assert_almost_eq(
+		float(empty_spine.call("length_m")),
+		0.0,
+		0.0001,
+		"fixture sanity: a marker-less spine must report zero length"
+	)
+	var kart := CharacterBody3D.new()
+	add_child_autofree(kart)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		empty_spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	# Two distinct push_errors fire in sequence: SpineFollower.configure()'s
+	# own internal one first (the underlying cause), then this agent's own
+	# (the layer that actually decides to fail closed) -- both must be
+	# explicitly acknowledged or GUT counts the unclaimed one as an
+	# unexpected error and fails the test anyway.
+	assert_push_error("spine_length_m")
+	assert_push_error("TrackSpine.length_m()")
+	assert_almost_eq(
+		float(agent.call("total_progress_m")),
+		0.0,
+		0.0001,
+		"an agent that failed to configure must report zero progress, never a fabricated value"
+	)
+
+	var kart_start_position := kart.global_position
+	await wait_physics_frames(5)
+
+	assert_true(
+		kart.global_position.is_equal_approx(kart_start_position),
+		"a failed-to-configure agent must never move the kart -- _physics_process must stay a no-op"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (reviewer [LOW-a]): lateral_error_m's sign must reflect the
+# kart's ACTUAL position relative to its own slot target -- positive when
+# the target sits to the kart's world-space right (per ai_driver.gd's own
+# documented sign contract), negative when it sits to the left. Reflects
+# directly into the private _assemble_state() Dictionary rather than
+# inferring the sign from downstream steering, since that is the exact
+# value this fix is pinning.
+# ---------------------------------------------------------------------------
+
+
+func test_lateral_error_m_sign_reflects_actual_position_relative_to_the_slot_target() -> void:
+	var spine := _new_l_shaped_spine()
+	# A real kart.tscn instance, not a bare CharacterBody3D: _assemble_state()
+	# calls speed_mps()/is_sliding()/boost_window_open() on it, which only a
+	# real, configure()d KartController exposes.
+	var progress := 30.0
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -progress))
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure", kart, spine, _ai_tuning, _kart_tuning, _race_tuning, 3, func() -> float: return 0.0
+	)
+	var lateral_target: float = agent.get("_lateral_target_m")
+
+	# Exactly at the slot target -> zero error.
+	kart.global_position = Vector3(lateral_target, 0.0, -progress)
+	var state_on_target: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+	assert_almost_eq(
+		float(state_on_target["lateral_error_m"]),
+		0.0,
+		0.001,
+		"a kart exactly at its own slot target must read zero lateral_error_m"
+	)
+
+	# Further RIGHT (world +X) than the target -> the target is now to the
+	# kart's LEFT -> negative error.
+	kart.global_position = Vector3(lateral_target + 2.0, 0.0, -progress)
+	var state_right_of_target: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+	assert_lt(
+		float(state_right_of_target["lateral_error_m"]),
+		0.0,
+		"a kart to the right of its slot target must read a NEGATIVE lateral_error_m (correct back left)"
+	)
+
+	# Further LEFT (world -X) than the target -> the target is now to the
+	# kart's RIGHT -> positive error.
+	kart.global_position = Vector3(lateral_target - 2.0, 0.0, -progress)
+	var state_left_of_target: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+	assert_gt(
+		float(state_left_of_target["lateral_error_m"]),
+		0.0,
+		"a kart to the left of its slot target must read a POSITIVE lateral_error_m (correct back right)"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (reviewer follow-up on the East-turn finding): a stuck-respawn
+# teleport must forcibly clear an ACTIVE slide, not carry DriftStateMachine's
+# own _sliding/_hop_held state through onto the fresh position.
+# ---------------------------------------------------------------------------
+
+
+func test_respawn_forcibly_clears_an_active_slide() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -90.0))
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		3,
+		func() -> float: return 0.0
+	)
+
+	var became_sliding := false
+	for _attempt in range(30):
+		await wait_physics_frames(1)
+		if bool(kart.call("is_sliding")):
+			became_sliding = true
+			break
+	assert_true(became_sliding, "fixture setup: the agent must be sliding before this test can prove anything")
+
+	# Freeze the kart's own physics NOW, mid-slide -- position/velocity (and
+	# therefore net displacement) stay pinned from here on, but is_sliding()
+	# (real DriftStateMachine state) stays whatever it was at freeze time
+	# until something explicitly clears it.
+	kart.set_physics_process(false)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	await wait_physics_frames(frames_needed)
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		"fixture setup: the stuck-respawn must actually have fired by now"
+	)
+	assert_false(
+		bool(kart.call("is_sliding")),
+		"a stuck-respawn teleport must forcibly clear an active slide -- it must not carry through onto the fresh position"
+	)
+
+
+# ---------------------------------------------------------------------------
+# INVARIANT (fix round 1, reviewer -- the regression lock for the whole East-
+# turn trap): real physics, 20 simulated seconds on the graybox loop's own
+# East turn. No permanent-wedge outcome may pass: EITHER the kart makes
+# clean, healthy lap progress the whole time, OR the stuck-detector actually
+# fires at least once AND the kart provably ends up further along than the
+# lowest point it was ever wedged at. Pinned against the pre-fix commit
+# (282f9f832cb2683d1831f1c88889f8f943b54819) via a temporary reverted-source
+# probe before this fix round -- see task-4-report.md's fix-round-1 section
+# for the recorded failing evidence: over 20s, respawn_count() stayed 0 the
+# entire run (the old instantaneous-velocity detector never tripped) and
+# total_progress_m() never climbed meaningfully past its own early wedge
+# point, i.e. neither branch below was ever satisfied.
+# ---------------------------------------------------------------------------
+
+
+func test_east_turn_never_permanently_wedges_over_twenty_real_seconds() -> void:
+	var boot := _boot_real_race()
+	if boot.is_empty():
+		return
+	var kart: CharacterBody3D = boot["kart"]
+	var spine: TrackSpine = boot["spine"]
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		3,
+		func() -> float: return 0.0
+	)
+
+	var start_total: float = agent.call("total_progress_m")
+	var min_total_seen := start_total
+	var batch_frames := 30
+	var total_seconds := 20.0
+	var batches := int(round(total_seconds * float(Engine.physics_ticks_per_second) / float(batch_frames)))
+	for _batch_index in range(batches):
+		await wait_physics_frames(batch_frames)
+		var current: float = agent.call("total_progress_m")
+		min_total_seen = minf(min_total_seen, current)
+
+	var final_total: float = agent.call("total_progress_m")
+	var respawn_count := int(agent.call("respawn_count"))
+
+	# "Clean lap progress" -- never needed the safety net at all, and made
+	# real, sustained forward progress: at least half the real (shaped)
+	# loop's own length, derived from the spine itself rather than a bare
+	# meters literal.
+	var healthy_threshold := start_total + spine.length_m() * 0.5
+
+	# "The safety net demonstrably recovers" -- it DID get wedged badly
+	# enough to trip the detector (respawn_count > 0), and the kart is
+	# provably past its own worst point afterward, not still parked there.
+	var recovered := respawn_count > 0 and final_total > min_total_seen + _ai_tuning.respawn_drop_gap_m
+
+	assert_true(
+		final_total >= healthy_threshold or recovered,
+		(
+			"no permanent-wedge outcome is acceptable: final_total=%s "
+			+ "healthy_threshold=%s respawn_count=%s min_total_seen=%s "
+			+ "(need final_total >= healthy_threshold, OR respawn_count > 0 "
+			+ "AND final_total meaningfully past min_total_seen)"
+		) % [final_total, healthy_threshold, respawn_count, min_total_seen]
 	)
 
 
