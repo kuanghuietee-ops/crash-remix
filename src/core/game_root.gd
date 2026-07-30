@@ -36,6 +36,9 @@ const BOOT_ERROR_OVERLAY_SCENE := preload(
 )
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
 const LOOK_DEV_SCENE := preload("res://scenes/debug/look_dev.tscn")
+const RACE_TIME_TRIAL_SCENE := preload(
+	"res://scenes/racing/race_time_trial.tscn"
+)
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -59,6 +62,7 @@ const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const DEBUG_LOOK_DEV_LEVEL_ID := &"debug_look_dev"
+const DEBUG_RACING_LEVEL_ID := &"debug_racing_time_trial"
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
@@ -661,6 +665,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		_on_look_dev_requested
 	)
 	_level_list_overlay.connect(
+		&"racing_time_trial_requested",
+		_on_racing_time_trial_requested
+	)
+	_level_list_overlay.connect(
 		&"closed",
 		_on_level_list_closed
 	)
@@ -734,6 +742,14 @@ func _render_state(previous_state: int = flow.state) -> void:
 		)
 		look_dev.closed.connect(_on_level_session_exited)
 		_content.add_child(look_dev)
+		return
+	if (
+		flow.state == GameFlow.State.LEVEL
+		and flow.active_level_id == DEBUG_RACING_LEVEL_ID
+	):
+		var race := RACE_TIME_TRIAL_SCENE.instantiate()
+		_content.add_child(race)
+		race.call("configure", tuning_service.catalog)
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
@@ -1366,6 +1382,7 @@ func _sync_ui_visibility() -> void:
 		flow.active_level_id not in [
 			DEBUG_TOYBOX_LEVEL_ID,
 			DEBUG_LOOK_DEV_LEVEL_ID,
+			DEBUG_RACING_LEVEL_ID,
 		]
 	)
 	_pause_overlay.visible = (
@@ -1461,6 +1478,11 @@ func _on_toybox_requested() -> void:
 func _on_look_dev_requested() -> void:
 	if OS.is_debug_build():
 		_select_level(DEBUG_LOOK_DEV_LEVEL_ID)
+
+
+func _on_racing_time_trial_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_RACING_LEVEL_ID)
 
 
 func _on_level_list_closed() -> void:

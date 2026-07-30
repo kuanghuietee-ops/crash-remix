@@ -603,6 +603,55 @@ func test_real_level_list_opens_toybox_with_one_tuning_owner() -> void:
 	)
 
 
+func test_real_level_list_opens_racing_time_trial_prototype() -> void:
+	# Task 7 (CTR racing mode, R1): the "Racing (prototype)" entry mirrors
+	# the toybox/look-dev debug-entry pattern above end to end -- same
+	# real-button click, same real GameRoot dispatch, same escape-route
+	# expectation via the retained platformer Pause button (see the toybox
+	# test's own "must retain its touch-reachable escape route" assertion).
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	assert_true(
+		racing_button.visible,
+		"debug builds must expose the racing prototype through the real list"
+	)
+
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"level")
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(
+		race,
+		"the real racing request must instantiate the real race scene"
+	)
+	if race == null:
+		return
+	assert_false(bool(race.call("is_finished")))
+	assert_eq(int(race.call("gate_count")), 6)
+
+	var hud := root.get_node("UI/HUD")
+	assert_true(hud.visible)
+	assert_false(
+		hud.get_node("SafeArea/Stats").visible,
+		"racing entry must not show false platformer CRATES/WUMPA run stats"
+	)
+	assert_true(
+		hud.get_node("SafeArea/Pause").visible,
+		"the racing prototype must retain its touch-reachable escape route"
+	)
+
+
 func test_hub_level_list_actually_pauses_warp_room_gameplay() -> void:
 	var root := _instantiate_main()
 	if root == null:
