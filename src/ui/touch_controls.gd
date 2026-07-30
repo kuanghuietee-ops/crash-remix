@@ -21,6 +21,7 @@ var _last_safe_rect := Rect2()
 var _last_dpi: float
 var _layout_metrics_poll_elapsed_s := 0.0
 var _layout_metrics_poll_count := 0
+var _racing_layout_enabled := false
 
 
 func _ready() -> void:
@@ -46,6 +47,18 @@ func set_layout_override(safe_rect: Rect2, dpi: float) -> void:
 	_layout_override_rect = safe_rect
 	_layout_override_dpi = dpi
 	_has_layout_override = true
+	_recalculate_layout()
+
+
+## Task 4 (CTR racing input mode): reuses the same JUMP button infra
+## (position, hit target, action) relabeled HOP, and hides the platformer
+## SPIN/DOWN/PHASE buttons entirely -- no new InputTuning fields needed
+## since the racing layout borrows the jump button's authored metrics
+## outright. ITEM is a later task (R4).
+func set_racing_layout(enabled: bool) -> void:
+	if enabled == _racing_layout_enabled:
+		return
+	_racing_layout_enabled = enabled
 	_recalculate_layout()
 
 
@@ -233,23 +246,25 @@ func _stick_value(deflection_px: Vector2) -> Vector2:
 
 func _action_at(position: Vector2) -> StringName:
 	var hit_scale: float = _layout["button_hit_radius_scale"]
-	var candidates: Array[Dictionary] = [
-		{
+	var candidates: Array[Dictionary] = []
+	if _layout.has("jump_center"):
+		candidates.append({
 			"action": InputIntent.ACTION_JUMP,
 			"center": _layout["jump_center"],
 			"radius": _layout["jump_radius"],
-		},
-		{
+		})
+	if _layout.has("spin_center"):
+		candidates.append({
 			"action": InputIntent.ACTION_SPIN,
 			"center": _layout["spin_center"],
 			"radius": _layout["spin_radius"],
-		},
-		{
+		})
+	if _layout.has("down_center"):
+		candidates.append({
 			"action": InputIntent.ACTION_DOWN,
 			"center": _layout["down_center"],
 			"radius": _layout["down_radius"],
-		},
-	]
+		})
 	if _layout.has("phase_center"):
 		candidates.append({
 			"action": InputIntent.ACTION_PHASE,
@@ -294,6 +309,13 @@ func _recalculate_layout() -> void:
 		_input_tuning,
 		_phase_available
 	)
+	if _racing_layout_enabled:
+		_layout.erase("spin_center")
+		_layout.erase("spin_radius")
+		_layout.erase("down_center")
+		_layout.erase("down_radius")
+		_layout.erase("phase_center")
+		_layout.erase("phase_radius")
 	_last_safe_rect = safe_rect
 	_last_dpi = dpi
 	queue_redraw()
@@ -341,24 +363,27 @@ func _draw() -> void:
 	button_color.a *= _input_tuning.button_opacity
 	var stick_color := _input_tuning.control_color
 	stick_color.a *= _input_tuning.stick_opacity
-	_draw_button(
-		_layout["jump_center"],
-		_layout["jump_radius"],
-		"JUMP",
-		_button_color(InputIntent.ACTION_JUMP, button_color)
-	)
-	_draw_button(
-		_layout["spin_center"],
-		_layout["spin_radius"],
-		"SPIN",
-		_button_color(InputIntent.ACTION_SPIN, button_color)
-	)
-	_draw_button(
-		_layout["down_center"],
-		_layout["down_radius"],
-		"DOWN",
-		_button_color(InputIntent.ACTION_DOWN, button_color)
-	)
+	if _layout.has("jump_center"):
+		_draw_button(
+			_layout["jump_center"],
+			_layout["jump_radius"],
+			"HOP" if _racing_layout_enabled else "JUMP",
+			_button_color(InputIntent.ACTION_JUMP, button_color)
+		)
+	if _layout.has("spin_center"):
+		_draw_button(
+			_layout["spin_center"],
+			_layout["spin_radius"],
+			"SPIN",
+			_button_color(InputIntent.ACTION_SPIN, button_color)
+		)
+	if _layout.has("down_center"):
+		_draw_button(
+			_layout["down_center"],
+			_layout["down_radius"],
+			"DOWN",
+			_button_color(InputIntent.ACTION_DOWN, button_color)
+		)
 	if _layout.has("phase_center"):
 		_draw_button(
 			_layout["phase_center"],

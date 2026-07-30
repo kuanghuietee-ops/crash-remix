@@ -1806,6 +1806,78 @@ func test_old_input_override_backfills_gesture_axis_slew_degrees_per_s() -> void
 	)
 
 
+func test_old_input_override_backfills_racing_brake_pull_threshold() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var field := &"racing_brake_pull_threshold"
+	assert_true(
+		_exported_property_names(authored.input).has(field),
+		"the racing brake pull threshold must exist before migration can be proved"
+	)
+	if not _exported_property_names(authored.input).has(field):
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.input.set(field, InputTuning.new().get(field))
+	stale.input.fallback_dpi = 179.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_eq(
+		migrated.input.get(field),
+		authored.input.get(field),
+		"an older phone override must receive the authored racing brake pull threshold"
+	)
+	assert_almost_eq(
+		migrated.input.fallback_dpi,
+		179.0,
+		0.001,
+		"migration must preserve existing input edits"
+	)
+
+
+func test_racing_brake_pull_threshold_is_bounded_to_open_unit_interval() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var input := service.get("catalog").get("input") as Resource
+	assert_not_null(input)
+	if input == null:
+		return
+	var authored_value: float = input.get("racing_brake_pull_threshold")
+
+	input.set("racing_brake_pull_threshold", 0.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a zero brake pull threshold must be rejected"
+	)
+
+	input.set("racing_brake_pull_threshold", 1.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a brake pull threshold of 1.0 (unreachable) must be rejected"
+	)
+
+	input.set("racing_brake_pull_threshold", authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
 func test_every_exported_field_has_override_migration_coverage() -> void:
 	var catalog: GameplayTuning = load(BASE_CATALOG_PATH)
 	var service_script := load(SERVICE_SCRIPT_PATH) as Script

@@ -281,6 +281,118 @@ func test_router_tracks_held_stick_during_screen_relative_chase() -> void:
 	)
 
 
+func test_racing_mode_routes_raw_stick_with_no_magnet_or_corridor_remap() -> void:
+	# Task 4 (CTR racing input mode): racing mode bypasses BOTH the corridor
+	# magnet and the screen-to-corridor frame remap InputVectorFilter
+	# otherwise applies -- a diagonal stick must arrive at the buffer
+	# byte-identical to what push_move was given, dead-zone filtering
+	# already having happened upstream (gamepad_input.gd / touch_controls.gd)
+	# before push_move is ever called.
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	if router == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	assert_true(
+		router.has_method("set_racing_mode"),
+		"the kart input mode needs an explicit racing-mode switch"
+	)
+	if not router.has_method("set_racing_mode"):
+		return
+	router.call("set_racing_mode", true)
+	router.call("set_corridor_axis", Vector2.UP)
+
+	var diagonal := Vector2(0.3, -0.4)
+	router.call("push_move", diagonal, 1.0, InputIntent.SOURCE_TOUCH)
+
+	assert_eq(
+		router.get("buffer").call("movement"),
+		diagonal,
+		"racing mode must route the raw filtered stick with no magnet cone "
+		+ "or corridor-frame remap applied"
+	)
+
+
+func test_racing_mode_ignores_corridor_axis_updates() -> void:
+	# The camera rig calls set_corridor_axis every physics frame regardless
+	# of mode; racing mode must make that call a harmless no-op rather than
+	# require the camera rig to know about kart mode.
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	if router == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	router.call("set_corridor_axis", Vector2.UP)
+	router.call("set_racing_mode", true)
+
+	router.call("set_corridor_axis", Vector2.RIGHT)
+
+	assert_eq(
+		router.call("corridor_axis"),
+		Vector2.UP,
+		"set_corridor_axis must be ignored while racing mode is active"
+	)
+
+	# Turning racing mode back off must resume ordinary corridor tracking
+	# from the axis it actually holds (unchanged by the ignored calls),
+	# not from whatever the camera rig was calling it with meanwhile.
+	router.call("set_racing_mode", false)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		1.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.UP,
+		"corridor mode must resume from the axis held before racing mode"
+	)
+
+
+func test_racing_mode_off_leaves_corridor_behavior_byte_identical_to_default() -> void:
+	# Regression control: reuses the exact assertions and expected values
+	# from test_corridor_magnet_aligns_inside_cone_but_not_outside /
+	# test_router_keeps_held_stick_stable_when_camera_axis_changes so that
+	# adding the racing-mode branch cannot silently perturb default
+	# (racing mode off, or never toggled at all) corridor behavior.
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	if router == null:
+		return
+	add_child_autofree(router)
+	router.call("configure", _input_tuning)
+	if router.has_method("set_racing_mode"):
+		router.call("set_racing_mode", true)
+		router.call("set_racing_mode", false)
+	router.call("set_corridor_axis", Vector2.UP)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		1.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(router.get("buffer").call("movement"), Vector2.UP)
+
+	router.call("set_corridor_axis", Vector2.RIGHT)
+
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.UP,
+		"camera motion alone must never rotate a held movement command"
+	)
+	router.call(
+		"push_move",
+		Vector2.UP,
+		2.0,
+		InputIntent.SOURCE_TOUCH
+	)
+	assert_eq(
+		router.get("buffer").call("movement"),
+		Vector2.UP,
+		"drag updates must keep the axis captured at gesture start"
+	)
+
+
 func test_gamepad_disables_magnet_above_configured_magnitude() -> void:
 	var script: Script = load(FILTER_SCRIPT_PATH)
 	assert_not_null(script, "InputVectorFilter implementation must exist")
@@ -588,6 +700,105 @@ func test_unlocked_phase_touch_emits_phase_intent() -> void:
 
 	assert_true(router.get("buffer").call("is_action_pressed", &"phase"))
 	assert_true(touch.call("is_action_flashing", &"phase"))
+
+
+func test_racing_layout_shows_only_hop_button_and_hides_platformer_buttons() -> void:
+	# Task 4 (CTR racing input mode): racing mode reuses the JUMP button's
+	# infra (position, hit target, action) relabeled HOP, and hides SPIN/
+	# DOWN/PHASE entirely -- ITEM is a later task (R4).
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	assert_true(
+		touch.has_method("set_racing_layout"),
+		"touch controls need an explicit racing-layout switch"
+	)
+	if not touch.has_method("set_racing_layout"):
+		return
+	assert_true(touch.call("has_action", InputIntent.ACTION_SPIN))
+
+	touch.call("set_racing_layout", true)
+
+	assert_true(
+		touch.call("has_action", InputIntent.ACTION_JUMP),
+		"the HOP button reuses the JUMP action's hit target"
+	)
+	assert_false(
+		touch.call("has_action", InputIntent.ACTION_SPIN),
+		"racing layout must hide SPIN"
+	)
+	assert_false(
+		touch.call("has_action", InputIntent.ACTION_DOWN),
+		"racing layout must hide DOWN"
+	)
+	assert_false(
+		touch.call("has_action", InputIntent.ACTION_PHASE),
+		"racing layout must hide PHASE"
+	)
+
+
+func test_racing_layout_hop_press_uses_the_jump_buttons_hit_target() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	if not touch.has_method("set_racing_layout"):
+		return
+	var layout_before: Dictionary = touch.call("current_layout")
+	var former_spin_center: Vector2 = layout_before["spin_center"]
+	touch.call("set_racing_layout", true)
+	var layout: Dictionary = touch.call("current_layout")
+
+	var hop_press := InputEventScreenTouch.new()
+	hop_press.index = 3
+	hop_press.position = layout["jump_center"]
+	hop_press.pressed = true
+	touch.call("handle_touch_event", hop_press)
+
+	assert_true(router.get("buffer").call("is_action_pressed", InputIntent.ACTION_JUMP))
+
+	var ex_spin_press := InputEventScreenTouch.new()
+	ex_spin_press.index = 4
+	ex_spin_press.position = former_spin_center
+	ex_spin_press.pressed = true
+	touch.call("handle_touch_event", ex_spin_press)
+
+	assert_false(
+		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_SPIN),
+		"the former SPIN position must no longer register any action in racing layout"
+	)
+
+
+func test_racing_layout_off_restores_platformer_buttons() -> void:
+	var router: Node = _new_node(ROUTER_SCRIPT_PATH)
+	var touch: Control = _new_node(TOUCH_SCRIPT_PATH)
+	if router == null or touch == null:
+		return
+	add_child_autofree(router)
+	add_child_autofree(touch)
+	router.call("configure", _input_tuning)
+	touch.call("configure", router, _input_tuning, true)
+	touch.call("set_layout_override", Rect2(0.0, 0.0, 1920.0, 1080.0), 254.0)
+	if not touch.has_method("set_racing_layout"):
+		return
+
+	touch.call("set_racing_layout", true)
+	touch.call("set_racing_layout", false)
+
+	assert_true(touch.call("has_action", InputIntent.ACTION_SPIN))
+	assert_true(touch.call("has_action", InputIntent.ACTION_DOWN))
+	assert_true(touch.call("has_action", InputIntent.ACTION_PHASE))
 
 
 func test_gamepad_dpad_emits_discrete_movement_intents() -> void:

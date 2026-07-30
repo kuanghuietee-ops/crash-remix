@@ -16,6 +16,7 @@ var _screen_movement := Vector2.ZERO
 var _movement_timestamp_s: float
 var _movement_source := &""
 var _screen_relative_tracking_enabled: bool
+var _racing_mode: bool
 
 
 func configure(input_tuning: InputTuning) -> void:
@@ -56,7 +57,23 @@ func push_button(
 	push_intent(InputIntent.button(action, pressed, timestamp_s, source))
 
 
+## Task 4 (CTR racing input mode): in racing mode, push_move routes the raw
+## filtered stick straight to the buffer with no corridor magnet and no
+## corridor-frame remap, and set_corridor_axis becomes a no-op -- the kart
+## camera rig can keep calling it every frame exactly as the platformer
+## camera does, harmlessly. Mode off (the default) is exactly today's
+## corridor behavior; toggling reroutes the currently-held stick immediately
+## instead of waiting for the next push_move/set_corridor_axis call.
+func set_racing_mode(enabled: bool) -> void:
+	if enabled == _racing_mode:
+		return
+	_racing_mode = enabled
+	_route_screen_movement()
+
+
 func set_corridor_axis(axis: Vector2, delta_s: float = 0.0) -> void:
+	if _racing_mode:
+		return
 	if axis.is_zero_approx():
 		return
 	var next_axis := axis.normalized()
@@ -116,6 +133,13 @@ func tuning() -> InputTuning:
 
 func _route_screen_movement() -> void:
 	if _movement_source.is_empty():
+		return
+	if _racing_mode:
+		push_intent(InputIntent.move(
+			_screen_movement,
+			_movement_timestamp_s,
+			_movement_source
+		))
 		return
 	var filtered := _screen_movement
 	if _input_tuning != null:

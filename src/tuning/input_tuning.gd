@@ -73,3 +73,11 @@ extends Resource
 # occluded. A test ties this value to the real, authored hud.tscn geometry
 # so the two cannot silently drift apart again.
 @export var hud_reserved_top_px: float
+
+@export_category("Racing")
+# Task 4 (CTR racing input mode): in racing mode, InputRouter routes the raw
+# stick straight through with no corridor remap, so the y axis carries the
+# thumb's actual up/down pull. Pulled DOWN (positive y -- see
+# InputVectorFilter's screen-space convention) past this fraction of full
+# deflection is read as a brake/reverse hold by the racing input adapter.
+@export var racing_brake_pull_threshold: float

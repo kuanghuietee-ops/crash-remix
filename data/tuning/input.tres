@@ -51,3 +51,4 @@ phase_button_arc_offset_mm = 20.0
 phase_button_unlocked = true
 layout_metrics_poll_interval_s = 0.5
 hud_reserved_top_px = 230.0
+racing_brake_pull_threshold = 0.5

@@ -46,6 +46,9 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"gesture_axis_slew_degrees_per_s",
 		],
+		[
+			&"racing_brake_pull_threshold",
+		],
 	],
 	&"swing": [
 		[
@@ -280,6 +283,12 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# never reach the corridor axis, silently reproducing the
 		# pre-corner-heading latch bug this field exists to fix.
 		or input.gesture_axis_slew_degrees_per_s <= 0.0
+		# Task 4 (CTR racing input mode): the racing stick's y axis is a
+		# filtered magnitude in [0, 1] -- a threshold at or below 0.0 would
+		# read every neutral stick as braking, and one at or above 1.0
+		# would make the brake pull physically unreachable.
+		or input.racing_brake_pull_threshold <= 0.0
+		or input.racing_brake_pull_threshold >= 1.0
 	):
 		return false
 
