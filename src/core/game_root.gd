@@ -1130,6 +1130,25 @@ func _refresh_active_level_tuning() -> void:
 			toybox.call("refresh_tuning")
 		return
 	if (
+		flow.state == GameFlow.State.LEVEL
+		and _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
+	):
+		# M2 (final fix wave): a race is never stored on active_level_session
+		# (see set_active_level_session()'s own doc -- only LevelSession
+		# instances go through that path), so unlike the toybox branch above
+		# there is no single fixed child name to look up either: the two
+		# race scenes' own root nodes are named differently
+		# (RaceTimeTrial/RaceSanityShores). _content holds exactly one
+		# child while a race is the active content (see _render_state()'s
+		# own racing branch, which _clear_content()s before adding it), so
+		# the first (only) child IS the live race session.
+		var race := (
+			_content.get_child(0) if _content.get_child_count() > 0 else null
+		)
+		if race != null and race.has_method("refresh_tuning"):
+			race.call("refresh_tuning", tuning_service.catalog)
+		return
+	if (
 		active_level_session == null
 		or not is_instance_valid(active_level_session)
 		or not active_level_session is LevelSession

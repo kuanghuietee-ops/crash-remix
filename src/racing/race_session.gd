@@ -260,6 +260,31 @@ func present_best_times(payload: Dictionary) -> void:
 		_hud.call("present_best_times", payload)
 
 
+## Live tuning refresh (M2 fix-wave): the racing counterpart to
+## LevelSession.refresh_tuning() / phase0_game.gd's refresh_tuning() -- see
+## game_root.gd's _refresh_active_level_tuning(), which now has a racing
+## branch calling this. Deliberately narrow, matching the platformer's own
+## split between "values every live tick already reads fresh off a stored
+## tuning reference" (just reassign it here) and "state a stateful sub-
+## system captured once at configure() time" (leave it alone): re-running
+## LapValidator.configure() here would reset _expected_gate/_laps_completed/
+## _started and silently corrupt a gate sequence already in progress mid-
+## race, so the validator, gate discovery, and input routing are untouched
+## -- only the kart's motor+drift tuning, the camera's tuning, and this
+## session's own stored tuning references (which lap_count(), the wrong-way
+## grace check, etc. already read fresh off every call/tick) refresh live.
+func refresh_tuning(catalog: GameplayTuning) -> void:
+	if not _configured:
+		return
+	_kart_tuning = catalog.kart
+	_race_tuning = catalog.race
+	_input_tuning = catalog.input
+	if _kart != null and is_instance_valid(_kart):
+		_kart.call("refresh_tuning", _kart_tuning)
+	if _camera != null and is_instance_valid(_camera):
+		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
+
+
 func _physics_process(delta_s: float) -> void:
 	if not _configured or _finished:
 		return

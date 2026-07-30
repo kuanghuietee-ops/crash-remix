@@ -447,6 +447,58 @@ func test_finishing_mid_slide_ends_the_slide_with_no_further_rotation() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# M2 (final fix wave): on-device tuning edits must reach a race already in
+# progress, not just the next one configure() boots -- the racing
+# counterpart to LevelSession.refresh_tuning()/phase0_game.gd's
+# refresh_tuning(), see game_root.gd's _refresh_active_level_tuning().
+# ---------------------------------------------------------------------------
+
+
+func test_refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_motor() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+
+	# duplicate(true) only deep-copies embedded sub-resources, not
+	# externally-referenced ones like data/tuning/racing/kart.tres (an
+	# ExtResource from gameplay.tres's own point of view) -- it would leave
+	# tuning_variant.kart pointing at the SAME KartTuning object _catalog.kart
+	# does, so mutating it below would silently pollute every other test's
+	# shared fixture too. duplicate_deep(DEEP_DUPLICATE_ALL) is the idiom
+	# test_tuning_service.gd's own migration tests already establish for
+	# genuinely detaching the whole racing catalog.
+	var tuning_variant: GameplayTuning = _catalog.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	tuning_variant.kart.top_speed_mps = _catalog.kart.top_speed_mps * 2.0
+
+	race.call("refresh_tuning", tuning_variant)
+
+	# Parked exactly at the OLD top speed: with the stale tuning still in
+	# effect, auto-throttle's target would already equal this and the motor
+	# would not move at all. Only a motor now actually reading the doubled
+	# top_speed_mps has anywhere further to accelerate toward.
+	motor.set("_forward_speed_mps", _catalog.kart.top_speed_mps)
+	await wait_physics_frames(30)
+
+	assert_gt(
+		float(motor.call("forward_speed_mps")),
+		_catalog.kart.top_speed_mps,
+		(
+			"refresh_tuning() must reach the real motor this controller "
+			+ "owns -- the next tick after a live tuning edit must "
+			+ "already accelerate toward the NEW top_speed_mps, not stay "
+			+ "parked at the stale one"
+		)
+	)
+
+
 ## Drives the session to race_complete by calling its own gate-crossing
 ## handler directly against the real authored gate nodes, instead of
 ## teleporting the kart through them under a real Area3D overlap. The

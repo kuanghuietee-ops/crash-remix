@@ -76,6 +76,17 @@ func configure(
 	_apply(0.0)
 
 
+## Live tuning refresh (M2 fix-wave): re-applies fresh RaceTuning/KartTuning
+## without touching _camera_forward -- unlike configure(), which deliberately
+## seeds that state to the kart's current facing so the very first frame
+## doesn't pop in from a default, re-seeding it here mid-race would itself
+## cause a visible camera snap. The next tick()/_apply() just picks up the
+## new tuning values for its own math.
+func refresh_tuning(race_tuning: RaceTuning, kart_tuning: KartTuning) -> void:
+	_race_tuning = race_tuning
+	_kart_tuning = kart_tuning
+
+
 func tick(delta_s: float) -> void:
 	if (
 		_kart == null

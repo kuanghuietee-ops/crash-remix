@@ -53,6 +53,23 @@ func configure(kart_tuning: KartTuning) -> void:
 	set_run_active(true)
 
 
+## Live tuning refresh (M2 fix-wave): re-applies a new KartTuning to the
+## motor and drift FSM this controller already owns, the same "the tuning
+## loop must be provably live" contract every other live tuning consumer in
+## this repo honors (see camera_rail_controller.gd's own refresh_tuning()).
+## Unlike configure(), this deliberately does NOT call set_run_active(true)
+## -- a mid-race tuning edit must never reactivate a kart a race has
+## already frozen at the finish line (see set_run_active()'s own doc); it
+## also never touches any live motor/drift STATE (speed, yaw, boost, slide
+## progress), only which tuning values that state is computed against next
+## tick, exactly like KartMotor.configure()/DriftStateMachine.configure()
+## already do on their own.
+func refresh_tuning(kart_tuning: KartTuning) -> void:
+	_tuning = kart_tuning
+	_motor.configure(kart_tuning)
+	_drift.configure(kart_tuning)
+
+
 func steer(value: float) -> void:
 	_steer_input = value
 	_drift.steer(value)

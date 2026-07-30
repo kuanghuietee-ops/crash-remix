@@ -701,6 +701,81 @@ func test_real_level_list_opens_racing_sanity_shores_circuit() -> void:
 	)
 
 
+## M2 (final fix wave): game_root.gd's _refresh_active_level_tuning() used
+## to only handle the toybox/LevelSession branches -- a race in progress had
+## no wiring at all, so an on-device tuning edit never reached it. A plain
+## set_live_value() edit alone can't tell wired from unwired here: it
+## mutates the SAME shared KartTuning object the race's motor already
+## reads fresh every tick (see kart_motor.gd's tick(), no caching), so that
+## would already show up with zero refresh plumbing. reset_to_authored()
+## is the differentiating case -- it REPLACES tuning_service.catalog with
+## brand-new section resources (see tuning_service.gd's _clone_catalog()),
+## so an already-running race that never gets told about the new objects
+## keeps reading the stale, orphaned ones forever. This drives that exact
+## sequence through the real UI end to end.
+func test_racing_session_receives_live_tuning_refresh_after_a_reset_to_authored() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race, "the real racing request must instantiate the real race scene")
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+
+	var authored_top_speed: float = load(BASE_TUNING_PATH).kart.top_speed_mps
+	var root_debug := root.get_node("UI/TuningDebug") as TuningDebugUI
+
+	assert_eq(
+		root_debug.call(
+			"set_live_value",
+			&"kart",
+			&"top_speed_mps",
+			authored_top_speed * 2.0
+		),
+		OK
+	)
+	await wait_process_frames(1)
+
+	assert_eq(
+		root_debug.call("reset_to_authored"),
+		OK
+	)
+	await wait_process_frames(1)
+
+	var tuning: RefCounted = motor.get("_tuning")
+	assert_not_null(tuning)
+	if tuning == null:
+		return
+	assert_almost_eq(
+		float(tuning.get("top_speed_mps")),
+		authored_top_speed,
+		0.0001,
+		(
+			"a live race's kart motor must be re-pointed at the fresh "
+			+ "post-reset tuning object, not keep reading the orphaned "
+			+ "pre-reset one -- see game_root.gd's racing branch in "
+			+ "_refresh_active_level_tuning()"
+		)
+	)
+
+
 func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> void:
 	# H1 fix round (Task 7 review): RaceHUD's RETRY button used to call
 	# get_tree().change_scene_to_file() directly, which freed GameRoot (this
