@@ -1,0 +1,48 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/racing/race_session.gd" id="1_session"]
+[ext_resource type="PackedScene" path="res://scenes/racing/track_sanity_shores.tscn" id="2_track"]
+[ext_resource type="PackedScene" path="res://scenes/racing/kart.tscn" id="3_kart"]
+[ext_resource type="Script" path="res://src/racing/camera/kart_camera.gd" id="4_camera"]
+[ext_resource type="Script" path="res://src/gameplay/input/input_router.gd" id="5_router"]
+[ext_resource type="Script" path="res://src/gameplay/input/gamepad_input.gd" id="6_gamepad"]
+[ext_resource type="Script" path="res://src/ui/touch_controls.gd" id="7_touch"]
+[ext_resource type="PackedScene" path="res://scenes/racing/race_hud.tscn" id="8_hud"]
+
+[node name="RaceSanityShores" type="Node3D"]
+script = ExtResource("1_session")
+
+[node name="Track" parent="." instance=ExtResource("2_track")]
+
+[node name="Kart" parent="." instance=ExtResource("3_kart")]
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+current = true
+fov = 60.0
+near = 0.3
+far = 500.0
+
+[node name="Input" type="Node" parent="."]
+
+[node name="InputRouter" type="Node" parent="Input"]
+script = ExtResource("5_router")
+
+[node name="GamepadInput" type="Node" parent="Input"]
+script = ExtResource("6_gamepad")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TouchControls" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_touch")
+
+[node name="RaceHUD" parent="UI" instance=ExtResource("8_hud")]

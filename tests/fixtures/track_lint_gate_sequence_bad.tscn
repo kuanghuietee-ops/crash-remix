@@ -1,0 +1,69 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_spine"]
+[ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_gate"]
+
+[sub_resource type="BoxShape3D" id="Shape_gate"]
+size = Vector3(16, 4, 2)
+
+[node name="TrackLintGateSequenceBad" type="Node3D"]
+
+[node name="Spine" type="Path3D" parent="."]
+script = ExtResource("1_spine")
+
+[node name="A" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, 0)
+
+[node name="B" type="Marker3D" parent="Spine"]
+position = Vector3(20, 0, 0)
+
+[node name="C" type="Marker3D" parent="Spine"]
+position = Vector3(20, 0, 20)
+
+[node name="D" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, 20)
+
+[node name="E" type="Marker3D" parent="Spine"]
+position = Vector3(0, 0, 5)
+
+[node name="Gates" type="Node3D" parent="."]
+
+[node name="Gate0" type="Area3D" parent="Gates"]
+position = Vector3(0, 2, 0)
+rotation_degrees = Vector3(0, -90, 0)
+script = ExtResource("2_gate")
+gate_index = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate0"]
+shape = SubResource("Shape_gate")
+
+[node name="Gate1" type="Area3D" parent="Gates"]
+position = Vector3(20, 2, 10)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("2_gate")
+gate_index = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate1"]
+shape = SubResource("Shape_gate")
+
+[node name="Gate2" type="Area3D" parent="Gates"]
+position = Vector3(10, 2, 20)
+rotation_degrees = Vector3(0, 90, 0)
+script = ExtResource("2_gate")
+gate_index = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate2"]
+shape = SubResource("Shape_gate")
+
+[node name="Gate3" type="Area3D" parent="Gates"]
+position = Vector3(0, 2, 10)
+rotation_degrees = Vector3(0, 0, 0)
+script = ExtResource("2_gate")
+gate_index = 3
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate3"]
+shape = SubResource("Shape_gate")
+
+[node name="KartSpawn" type="Marker3D" parent="."]
+position = Vector3(-10, 0.2, 0)
+rotation_degrees = Vector3(0, -90, 0)

@@ -61,6 +61,17 @@ TIME_CRATE_RULE = "time_crate_relic_only"
 SPAWN_FLOOR_RULE = "player_spawn_has_reachable_floor"
 CHASE_START_GAP_RULE = "chase_start_gap"
 ENEMY_FLOOR_CONTACT_RULE = "enemy_floor_contact"
+# Task 8 (CTR racing mode, R2): rules for racing-track scenes (scenes under
+# scenes/racing/ that author a TrackSpine directly -- see
+# _scene_declares_script/_track_findings). These are a separate rule family
+# from the platformer LevelMeta rules above: a track scene has no LevelMeta
+# at all, so it takes the "meta_path is None" branch in
+# find_authoring_violations that platformer scenes only hit as a bug.
+TRACK_SPINE_RING_RULE = "track_spine_ring"
+TRACK_GATE_SEQUENCE_RULE = "track_gate_sequence"
+TRACK_GATE_ORDER_RULE = "track_gate_order"
+TRACK_GATE_WIDTH_RULE = "track_gate_width"
+TRACK_SPAWN_RULE = "track_spawn_before_start"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -112,6 +123,30 @@ CHECKPOINT_CRATE_TYPE = "checkpoint"
 RELIC_ONLY_GROUP = "relic_only"
 WUMPA_PICKUP_GROUP = "wumpa_pickup"
 SEGMENT_CONTAINER_SLUGS = {"segments"}
+TRACK_SPINE_SCRIPT = "res://src/racing/track/track_spine.gd"
+CHECKPOINT_GATE_SCRIPT = "res://src/racing/track/checkpoint_gate.gd"
+TRACK_SPAWN_NODE_NAME = "KartSpawn"
+# Spine markers closer together than this (including the wrap segment from
+# the last authored marker back to the first, which closes the ring) read as
+# an authoring accident -- a duplicated or near-duplicated point -- rather
+# than a legitimately tight corner. RailCurveBuilder's Catmull-Rom shaping
+# can produce a degenerate (near-zero-length) tangent segment at a true
+# duplicate, which is the failure this guards against, not tight-radius
+# corners: track_sanity_shores.tscn's tightest hairpin still spaces markers
+# several meters apart (see task-8-report.md's gate table).
+TRACK_SPINE_MIN_MARKER_SPACING_M = 0.5
+# A closed ring needs at least a triangle's worth of points to mean anything
+# as a "ring" rather than a line or a single dangling point.
+TRACK_SPINE_MIN_MARKER_COUNT = 3
+# The lint has no runtime access to a racing road-width tuning resource --
+# there isn't one; a track's road width is authored directly into its
+# floor/wall geometry, not read from a Resource at authoring time the way
+# LevelMeta/EconomyTuning/CameraTuning are above. This mirrors the width
+# every current circuit authors (track_graybox_loop.tscn's
+# Shape_floor_straight z=14, track_sanity_shores.tscn's own floor pieces).
+# Keep this in sync by hand if a future track ever authors a different road
+# width -- acceptable for a lint-side constant per the task brief.
+TRACK_ROAD_WIDTH_M = 14.0
 # Imported glTF scenes can only contribute visual hierarchy/material data to
 # these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
 # groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
@@ -227,6 +262,15 @@ def find_authoring_violations(root: Path) -> list[AuthoringViolation]:
         parsed = _parse_scene(scene_path)
         meta_path = _level_meta_path(parsed, repo_root)
         if meta_path is None:
+            if _scene_declares_script(parsed, TRACK_SPINE_SCRIPT):
+                flat_nodes = _flatten_scene(scene_path, repo_root)
+                findings.extend(
+                    _track_findings(
+                        _display_path(scene_path, repo_root),
+                        flat_nodes,
+                    )
+                )
+                continue
             if (
                 scene_path.parent.name == "levels"
                 and scene_path.name not in LEVEL_META_EXEMPT_SCENES
@@ -288,6 +332,397 @@ def _level_findings(
     )
     findings.extend(_enemy_floor_contact_findings(scene_name, nodes))
     return findings
+
+
+def _scene_declares_script(parsed: ParsedScene, script_path: str) -> bool:
+    """True when one of the scene's OWN (unflattened) nodes carries script_path.
+
+    Deliberately checks ``parsed.nodes`` (the raw, file-local node list from
+    ``_parse_scene``), not a flattened tree: a race scene like
+    ``race_time_trial.tscn`` instances a track scene as a child
+    (``instance=ExtResource(...)``) rather than authoring a TrackSpine node
+    itself, so it must read as NOT a racing-track scene here even though a
+    TrackSpine exists somewhere in its flattened descendants. Only a scene
+    that authors the TrackSpine node directly -- a track_*.tscn -- takes the
+    track-rule branch in find_authoring_violations.
+    """
+    for node in parsed.nodes:
+        resource_id = _resource_id(node.properties.get("script", ""))
+        reference = parsed.ext_resources.get(resource_id)
+        if reference is not None and reference.path == script_path:
+            return True
+    return False
+
+
+def _track_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Task 8 rule family for a racing-track scene (see class doc above).
+
+    Mirrors _level_findings' shape: gather the scene's own spine markers and
+    checkpoint gates once, then hand them to each rule in turn. Rules (c)-(e)
+    need a real polyline to project onto, so -- like _checkpoint_findings'
+    own "fewer than two spine markers" early return above -- a ring too
+    short to mean anything short-circuits those three and leaves only the
+    ring-count finding itself, rather than cascading into confusing
+    zero-progress findings from every gate.
+    """
+    spine_node = next(
+        (node for node in nodes if node.script_path == TRACK_SPINE_SCRIPT),
+        None,
+    )
+    if spine_node is None:
+        return []
+    markers = sorted(
+        (
+            node
+            for node in nodes
+            if node.parent == spine_node.path
+            and node.node_type == "Marker3D"
+        ),
+        key=lambda node: node.order,
+    )
+    gates = sorted(
+        (
+            node
+            for node in nodes
+            if node.script_path == CHECKPOINT_GATE_SCRIPT
+        ),
+        key=lambda node: node.order,
+    )
+    findings: list[AuthoringViolation] = []
+    findings.extend(_track_spine_ring_findings(scene_name, markers))
+    findings.extend(_track_gate_sequence_findings(scene_name, gates))
+    if len(markers) < TRACK_SPINE_MIN_MARKER_COUNT:
+        return findings
+    points = [marker.world_position for marker in markers]
+    cumulative = _polyline_cumulative_lengths(points)
+    findings.extend(
+        _track_gate_order_findings(scene_name, gates, points, cumulative)
+    )
+    findings.extend(
+        _track_gate_width_findings(
+            scene_name,
+            gates,
+            nodes,
+            points,
+            cumulative,
+        )
+    )
+    findings.extend(
+        _track_spawn_findings(scene_name, nodes, gates, points, cumulative)
+    )
+    return findings
+
+
+def _track_spine_ring_findings(
+    scene_name: str,
+    markers: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Rule (a): the spine markers form a closed ring, no near-duplicates.
+
+    "Closed ring" here means: enough points to be a ring at all (at least
+    TRACK_SPINE_MIN_MARKER_COUNT), and no two markers ADJACENT IN THE RING --
+    including the wrap segment from the last authored marker back to the
+    first, which is exactly what actually closes the loop, since TrackSpine
+    always bakes with closed=true (see track_spine.gd) -- sitting close
+    enough together to read as a duplicated point rather than a genuinely
+    tight corner.
+    """
+    if len(markers) < TRACK_SPINE_MIN_MARKER_COUNT:
+        return [
+            AuthoringViolation(
+                scene_name,
+                TRACK_SPINE_RING_RULE,
+                (
+                    f"TrackSpine has {len(markers)} marker(s); a closed "
+                    f"ring needs at least {TRACK_SPINE_MIN_MARKER_COUNT}"
+                ),
+            )
+        ]
+    findings: list[AuthoringViolation] = []
+    ring = markers + [markers[0]]
+    for previous, current in zip(ring, ring[1:]):
+        distance = _length(
+            _subtract(current.world_position, previous.world_position)
+        )
+        if distance < TRACK_SPINE_MIN_MARKER_SPACING_M:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_SPINE_RING_RULE,
+                    (
+                        f"{previous.path} and {current.path} are "
+                        f"{distance:.3f}m apart -- near-duplicate "
+                        "consecutive spine markers (minimum "
+                        f"{TRACK_SPINE_MIN_MARKER_SPACING_M:.3f}m)"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_gate_indices(
+    gates: list[FlatNode],
+) -> tuple[dict[int, FlatNode], list[str]]:
+    by_index: dict[int, FlatNode] = {}
+    invalid: list[str] = []
+    for gate in gates:
+        value = _integer_value(gate.properties.get("gate_index", ""))
+        if value is None:
+            invalid.append(gate.path)
+        else:
+            by_index[value] = gate
+    return by_index, invalid
+
+
+def _track_gate_sequence_findings(
+    scene_name: str,
+    gates: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Rule (b): CheckpointGate.gate_index values are exactly 0..N-1.
+
+    Walks the RAW list of authored index values, not a dict keyed by index --
+    a dict silently collapses two gates sharing the same gate_index down to
+    one entry (last-wins), which would hide the exact "gaps/dupes" shape
+    this rule exists to catch. ``values.count(value) > 1`` below is what
+    actually detects a duplicate; the missing/unexpected sets alone cannot
+    (a duplicate that still falls inside the valid 0..N-1 range is invisible
+    to a plain set comparison).
+    """
+    values: list[int] = []
+    invalid: list[str] = []
+    for gate in gates:
+        value = _integer_value(gate.properties.get("gate_index", ""))
+        if value is None:
+            invalid.append(gate.path)
+        else:
+            values.append(value)
+    findings: list[AuthoringViolation] = []
+    if invalid:
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                TRACK_GATE_SEQUENCE_RULE,
+                "missing/invalid gate_index: " + ", ".join(sorted(invalid)),
+            )
+        )
+        return findings
+    expected = set(range(len(gates)))
+    actual = set(values)
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    duplicated = sorted(
+        {value for value in values if values.count(value) > 1}
+    )
+    if missing or unexpected or duplicated:
+        detail_parts = []
+        if missing:
+            detail_parts.append(f"missing {missing}")
+        if duplicated:
+            detail_parts.append(f"duplicated {duplicated}")
+        if unexpected:
+            detail_parts.append(f"out of range {unexpected}")
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                TRACK_GATE_SEQUENCE_RULE,
+                (
+                    f"{len(gates)} CheckpointGate(s) must have gate_index "
+                    f"0..{len(gates) - 1} with no gaps or duplicates; "
+                    + "; ".join(detail_parts)
+                ),
+            )
+        )
+    return findings
+
+
+def _track_gate_order_findings(
+    scene_name: str,
+    gates: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (c): gates are ordered monotonically along the spine.
+
+    Gate 0 is excluded from the chain entirely -- it is both the start AND
+    the finish line, sitting at the spine's own seam (see track_spine.gd's
+    "SEAM AMBIGUITY" doc: the closed polyline's two ends are the same
+    physical point, so a point authored right there can project to either
+    ~0 or ~the full spine length almost arbitrarily). Gate 0's own position
+    is checked by TRACK_SPAWN_RULE instead (the spawn must sit behind it);
+    this rule only walks gates 1..N-1, which is what "allow the wrap at
+    gate 0" means in the task brief.
+    """
+    by_index, invalid = _track_gate_indices(gates)
+    if invalid:
+        # TRACK_GATE_SEQUENCE_RULE already reports this; a gate with no
+        # readable index has no position in the chain to check here.
+        return []
+    ordered_indices = sorted(index for index in by_index if index >= 1)
+    findings: list[AuthoringViolation] = []
+    previous_index: int | None = None
+    previous_distance: float | None = None
+    previous_gate: FlatNode | None = None
+    for index in ordered_indices:
+        gate = by_index[index]
+        distance = _project_onto_polyline(
+            gate.world_position,
+            points,
+            cumulative,
+        )
+        if (
+            previous_distance is not None
+            and distance < previous_distance
+            and not math.isclose(distance, previous_distance)
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GATE_ORDER_RULE,
+                    (
+                        f"{gate.path} (gate_index {index}) projects to "
+                        f"{distance:.3f}m along the spine, before "
+                        f"{previous_gate.path} (gate_index {previous_index}) "
+                        f"at {previous_distance:.3f}m"
+                    ),
+                )
+            )
+        previous_index = index
+        previous_distance = distance
+        previous_gate = gate
+    return findings
+
+
+def _track_gate_width_findings(
+    scene_name: str,
+    gates: list[FlatNode],
+    nodes: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (d): every gate's box spans at least the road width.
+
+    "Spans" is measured perpendicular to the spine's own tangent at the
+    gate's projected position -- not the gate's raw authored box size --
+    so a gate authored with the right box but rotated to face the wrong way
+    still fails honestly instead of passing on unrelated geometry. Reuses
+    _bounds_half_extent_along, the same OBB-onto-arbitrary-direction
+    projection _chase_start_gap_findings already uses for a trigger's
+    leading face.
+    """
+    findings: list[AuthoringViolation] = []
+    for gate in gates:
+        bounds = _collision_bounds(gate, nodes)
+        if bounds is None:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GATE_WIDTH_RULE,
+                    (
+                        f"{gate.path} has no BoxShape3D CollisionShape3D "
+                        "child to measure its width"
+                    ),
+                )
+            )
+            continue
+        progress = _project_onto_polyline(
+            gate.world_position,
+            points,
+            cumulative,
+        )
+        tangent = _polyline_direction_at_distance(points, cumulative, progress)
+        if _is_zero(tangent):
+            continue
+        across = (-tangent[2], 0.0, tangent[0])
+        span_m = 2.0 * _bounds_half_extent_along(bounds, across)
+        if span_m < TRACK_ROAD_WIDTH_M and not math.isclose(
+            span_m,
+            TRACK_ROAD_WIDTH_M,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GATE_WIDTH_RULE,
+                    (
+                        f"{gate.path} spans {span_m:.3f}m across the road; "
+                        f"the road is {TRACK_ROAD_WIDTH_M:.3f}m wide"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_spawn_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    gates: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (e): a spawn marker exists, positioned before gate 0.
+
+    "Before" is measured as a signed distance along gate 0's own spine
+    tangent (spawn_position - gate0_position, dotted with the tangent),
+    not a spine-progress comparison -- gate 0 sits at the spine's seam
+    (see TRACK_GATE_ORDER_RULE's doc), so a KartSpawn authored just
+    upstream of it can project to a spine progress near the FULL length,
+    not near 0, and a naive progress compare would read that as "after"
+    instead of "before".
+    """
+    spawn = next(
+        (
+            node
+            for node in nodes
+            if node.parent == "."
+            and node.name == TRACK_SPAWN_NODE_NAME
+            and node.node_type == "Marker3D"
+        ),
+        None,
+    )
+    if spawn is None:
+        return [
+            AuthoringViolation(
+                scene_name,
+                TRACK_SPAWN_RULE,
+                f"no root {TRACK_SPAWN_NODE_NAME} Marker3D found",
+            )
+        ]
+    by_index, _invalid = _track_gate_indices(gates)
+    gate0 = by_index.get(0)
+    if gate0 is None:
+        return [
+            AuthoringViolation(
+                scene_name,
+                TRACK_SPAWN_RULE,
+                (
+                    "no gate_index 0 CheckpointGate found to measure the "
+                    f"{TRACK_SPAWN_NODE_NAME} against"
+                ),
+            )
+        ]
+    progress = _project_onto_polyline(gate0.world_position, points, cumulative)
+    tangent = _polyline_direction_at_distance(points, cumulative, progress)
+    if _is_zero(tangent):
+        return []
+    offset = _dot(
+        _subtract(spawn.world_position, gate0.world_position),
+        tangent,
+    )
+    if offset < 0.0 and not math.isclose(offset, 0.0):
+        return []
+    return [
+        AuthoringViolation(
+            scene_name,
+            TRACK_SPAWN_RULE,
+            (
+                f"{TRACK_SPAWN_NODE_NAME} is {offset:.3f}m ahead of gate 0 "
+                "along the direction of travel; it must sit behind the "
+                "start/finish gate"
+            ),
+        )
+    ]
 
 
 def _enemy_floor_contact_findings(
@@ -1926,6 +2361,14 @@ def _scene_files(root: Path) -> Iterable[Path]:
                 "violations"
             )
         yield from scene_files
+        # Task 8 (CTR racing mode, R2): racing tracks live outside
+        # scenes/levels/ entirely (they have no LevelMeta, so they were
+        # never part of the platformer's level set) and are scanned as an
+        # addendum, not a replacement -- a repo with scenes/levels/ but no
+        # scenes/racing/ (e.g. a fixture sandbox) is unaffected.
+        racing_root = root / "scenes" / "racing"
+        if racing_root.is_dir():
+            yield from sorted(racing_root.rglob("*.tscn"))
         return
     if (root / "scenes").is_dir():
         # R11: P1-10's scan-root fix only ever proved the recursion half

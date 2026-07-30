@@ -652,6 +652,55 @@ func test_real_level_list_opens_racing_time_trial_prototype() -> void:
 	)
 
 
+func test_real_level_list_opens_racing_sanity_shores_circuit() -> void:
+	# Task 8 (CTR racing mode, R2): the level list's single racing entry is
+	# now two -- this proves the SECOND button end to end, the same real
+	# click -> real GameRoot dispatch shape as the RacingTimeTrial test
+	# above, just landing on the new 12-gate kit-dressed circuit instead of
+	# the graybox loop.
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingSanityShores"
+	) as Button
+	assert_true(
+		racing_button.visible,
+		"debug builds must expose the Sanity Shores entry through the real list"
+	)
+
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"level")
+	var race := root.get_node_or_null("Content/RaceSanityShores")
+	assert_not_null(
+		race,
+		"the real racing request must instantiate the real race scene"
+	)
+	if race == null:
+		return
+	assert_false(bool(race.call("is_finished")))
+	assert_eq(int(race.call("gate_count")), 12)
+
+	var hud := root.get_node("UI/HUD")
+	assert_true(hud.visible)
+	assert_false(
+		hud.get_node("SafeArea/Stats").visible,
+		"racing entry must not show false platformer CRATES/WUMPA run stats"
+	)
+	assert_true(
+		hud.get_node("SafeArea/Pause").visible,
+		"the racing circuit must retain its touch-reachable escape route"
+	)
+
+
 func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> void:
 	# H1 fix round (Task 7 review): RaceHUD's RETRY button used to call
 	# get_tree().change_scene_to_file() directly, which freed GameRoot (this

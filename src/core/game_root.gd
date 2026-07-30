@@ -39,6 +39,9 @@ const LOOK_DEV_SCENE := preload("res://scenes/debug/look_dev.tscn")
 const RACE_TIME_TRIAL_SCENE := preload(
 	"res://scenes/racing/race_time_trial.tscn"
 )
+const RACE_SANITY_SHORES_SCENE := preload(
+	"res://scenes/racing/race_sanity_shores.tscn"
+)
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -63,6 +66,7 @@ const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const DEBUG_LOOK_DEV_LEVEL_ID := &"debug_look_dev"
 const DEBUG_RACING_LEVEL_ID := &"debug_racing_time_trial"
+const DEBUG_RACING_SANITY_SHORES_LEVEL_ID := &"debug_racing_sanity_shores"
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
@@ -84,6 +88,13 @@ const _LEVEL_SCENE_PATHS: Dictionary = {
 	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
 	HOG_WILD_LEVEL_ID: HOG_WILD_SCENE_PATH,
 	PAPU_PAPU_LEVEL_ID: PAPU_PAPU_SCENE_PATH,
+}
+# Task 8 (CTR racing mode, R2): the level list's single racing entry becomes
+# two, one per track -- both take the exact same debug-only render branch
+# (see _render_state() below), keyed by which debug level id was selected.
+const _RACE_SCENES_BY_LEVEL_ID: Dictionary = {
+	DEBUG_RACING_LEVEL_ID: RACE_TIME_TRIAL_SCENE,
+	DEBUG_RACING_SANITY_SHORES_LEVEL_ID: RACE_SANITY_SHORES_SCENE,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -669,6 +680,10 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		_on_racing_time_trial_requested
 	)
 	_level_list_overlay.connect(
+		&"racing_sanity_shores_requested",
+		_on_racing_sanity_shores_requested
+	)
+	_level_list_overlay.connect(
 		&"closed",
 		_on_level_list_closed
 	)
@@ -745,9 +760,12 @@ func _render_state(previous_state: int = flow.state) -> void:
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
-		and flow.active_level_id == DEBUG_RACING_LEVEL_ID
+		and _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
 	):
-		var race := RACE_TIME_TRIAL_SCENE.instantiate()
+		var race_scene: PackedScene = _RACE_SCENES_BY_LEVEL_ID[
+			flow.active_level_id
+		]
+		var race := race_scene.instantiate()
 		_content.add_child(race)
 		race.call("configure", tuning_service.catalog)
 		if race.has_signal(&"retry_requested"):
@@ -1385,6 +1403,7 @@ func _sync_ui_visibility() -> void:
 			DEBUG_TOYBOX_LEVEL_ID,
 			DEBUG_LOOK_DEV_LEVEL_ID,
 			DEBUG_RACING_LEVEL_ID,
+			DEBUG_RACING_SANITY_SHORES_LEVEL_ID,
 		]
 	)
 	_pause_overlay.visible = (
@@ -1506,6 +1525,11 @@ func _on_look_dev_requested() -> void:
 func _on_racing_time_trial_requested() -> void:
 	if OS.is_debug_build():
 		_select_level(DEBUG_RACING_LEVEL_ID)
+
+
+func _on_racing_sanity_shores_requested() -> void:
+	if OS.is_debug_build():
+		_select_level(DEBUG_RACING_SANITY_SHORES_LEVEL_ID)
 
 
 func _on_level_list_closed() -> void:

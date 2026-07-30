@@ -17,6 +17,11 @@ from scripts.lint_level_authoring import (
     SPAWN_FLOOR_RULE,
     SPINE_ORDER_RULE,
     TIME_CRATE_RULE,
+    TRACK_GATE_ORDER_RULE,
+    TRACK_GATE_SEQUENCE_RULE,
+    TRACK_GATE_WIDTH_RULE,
+    TRACK_SPAWN_RULE,
+    TRACK_SPINE_RING_RULE,
     WUMPA_TOTAL_RULE,
     _flatten_scene,
     find_authoring_violations,
@@ -803,6 +808,150 @@ class LevelAuthoringLintTests(unittest.TestCase):
             FIXTURE_ROOT / fixture_name
         )
         return [finding.rule for finding in findings]
+
+
+class RacingTrackAuthoringLintTests(unittest.TestCase):
+    """Task 8 (CTR racing mode, R2): rules (a)-(e) for scenes/racing/ scenes
+    that author a TrackSpine directly. track_lint_good.tscn is a minimal
+    5-marker/4-gate closed loop, hand-verified clean against every rule
+    below; each _bad fixture is a single-property mutation of it, isolating
+    exactly one rule the way the platformer fixtures above do.
+    """
+
+    def test_good_track_fixture_has_no_findings(self) -> None:
+        self.assertEqual(
+            find_authoring_violations(
+                FIXTURE_ROOT / "track_lint_good.tscn"
+            ),
+            [],
+        )
+
+    def test_too_few_spine_markers_fires_the_ring_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_ring_too_few_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_SPINE_RING_RULE],
+        )
+        self.assertIn("at least 3", findings[0].detail)
+
+    def test_near_duplicate_consecutive_markers_fires_the_ring_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_ring_duplicate_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_SPINE_RING_RULE],
+        )
+        self.assertIn("near-duplicate", findings[0].detail)
+
+    def test_gate_index_gap_and_duplicate_fires_the_sequence_rule(
+        self,
+    ) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_gate_sequence_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GATE_SEQUENCE_RULE],
+        )
+        self.assertIn("missing [2]", findings[0].detail)
+        self.assertIn("duplicated [1]", findings[0].detail)
+
+    def test_gate_out_of_spine_order_fires_the_order_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_gate_order_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GATE_ORDER_RULE],
+        )
+        self.assertIn("gate_index 3", findings[0].detail)
+        self.assertIn("gate_index 2", findings[0].detail)
+
+    def test_gate0_is_exempt_from_the_order_rule(self) -> None:
+        # "allow the wrap at gate 0" from the task brief: gate 0 sits at
+        # the spine's own closed-loop seam (see track_spine.gd's SEAM
+        # AMBIGUITY doc) and is never compared against its neighbors --
+        # the good fixture already proves this doesn't itself fire, this
+        # test documents WHY via the rule's exemption rather than relying
+        # on the good-fixture test alone to carry that intent.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_good.tscn"
+        )
+        self.assertNotIn(TRACK_GATE_ORDER_RULE, [f.rule for f in findings])
+
+    def test_narrow_gate_box_fires_the_width_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_gate_width_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GATE_WIDTH_RULE],
+        )
+        self.assertIn("10.000m", findings[0].detail)
+        self.assertIn("14.000m", findings[0].detail)
+
+    def test_missing_spawn_marker_fires_the_spawn_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_spawn_missing_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_SPAWN_RULE],
+        )
+        self.assertIn("no root KartSpawn", findings[0].detail)
+
+    def test_spawn_ahead_of_start_fires_the_spawn_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_spawn_ahead_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_SPAWN_RULE],
+        )
+        self.assertIn("ahead of gate 0", findings[0].detail)
+
+    def test_real_track_graybox_loop_passes_the_track_lint(self) -> None:
+        # Task 7's working reference must already satisfy every Task 8 rule
+        # without modification -- the strongest possible sanity check that
+        # these rules describe real, already-correct authoring rather than
+        # constraints invented to fit a single new fixture.
+        track_path = (
+            REPO_ROOT / "scenes" / "racing" / "track_graybox_loop.tscn"
+        )
+        self.assertTrue(track_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(track_path),
+            [],
+        )
+
+    def test_real_track_sanity_shores_passes_the_track_lint(self) -> None:
+        track_path = (
+            REPO_ROOT / "scenes" / "racing" / "track_sanity_shores.tscn"
+        )
+        self.assertTrue(track_path.is_file())
+        self.assertEqual(
+            find_authoring_violations(track_path),
+            [],
+        )
+
+    def test_full_repo_scan_covers_scenes_racing(self) -> None:
+        # The default (no-args) scan root now also walks scenes/racing/
+        # (see _scene_files) -- confirm the real repo-wide lint (the one
+        # pre-commit actually runs) reaches the new circuit at all, not
+        # just the two path-scoped tests above.
+        self.assertEqual(find_authoring_violations(REPO_ROOT), [])
 
 
 if __name__ == "__main__":
