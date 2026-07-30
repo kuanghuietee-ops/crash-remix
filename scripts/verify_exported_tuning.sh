@@ -59,10 +59,10 @@ fi
 
 grep -qE '^TUNING FINGERPRINT$' "$runtime_log"
 grep -qE '^[0-9a-f]{64}$' "$runtime_log"
-for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase hog boss_papu kart race; do
-    # Task 1 (CTR racing mode): kart/race live under data/tuning/racing/,
+for tuning_path in gameplay move input camera depth wall_run grind swing phase economy enemy_crab enemy_skink enemy_plant chase hog boss_papu kart race ai; do
+    # Task 1 (CTR racing mode): kart/race/ai live under data/tuning/racing/,
     # not flat in data/tuning/ like every other section. The optional
-    # "(racing/)?" group covers both without a branch, so the loop's own
+    # "(racing/)?" group covers all three without a branch, so the loop's own
     # tuning_path list stays the exact ["gameplay", *SECTION_NAMES] the
     # export contract test (tests/deploy/test_exported_tuning_contract.py)
     # parses out of it, and no new line-leading token needs allow-listing in

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="AiTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/ai_tuning.gd" id="1_ai"]
+
+[resource]
+script = ExtResource("1_ai")
+opponent_count = 5.0
+lateral_slot_spacing_m = 1.7
+lookahead_min_m = 6.0
+lookahead_speed_gain_s = 0.55
+steer_gain = 2.2
+corner_speed_curvature_gain = 34.0
+corner_speed_floor_ratio = 0.45
+brake_margin_ratio = 1.12
+slide_trigger_curvature = 0.035
+slide_exit_curvature = 0.018
+boost_tap_enabled = 1.0
+rubber_band_full_gap_m = 60.0
+rubber_band_boost_max_ratio = 0.18
+rubber_band_drag_max_ratio = 0.12
+respawn_stuck_speed_mps = 1.5
+respawn_stuck_after_s = 3.0
+respawn_drop_gap_m = 4.0

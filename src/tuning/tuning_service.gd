@@ -19,6 +19,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"boss_papu",
 	&"kart",
 	&"race",
+	&"ai",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -565,6 +566,41 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# would aim the camera at or below the kart's own origin instead
 		# of a point above it.
 		or race.camera_look_height_m <= 0.0
+	):
+		return false
+
+	var ai := checked.ai
+	# Task 1 (CTR R3, AI opponents): every field is strictly positive except
+	# the three ratio-typed fields, which are additionally bounded per the
+	# design brief -- corner_speed_floor_ratio clamps the low end of a
+	# multiplier whose high end is fixed at 1.0, so it is tightened to
+	# (0.0, 1.0] rather than left merely positive; the two rubber-band caps
+	# are bounded to (0.0, 1.0) exclusive; and boost_tap_enabled is a
+	# 0/1 flag stored as a float, not merely positive.
+	if (
+		ai.opponent_count <= 0.0
+		or ai.lateral_slot_spacing_m <= 0.0
+		or ai.lookahead_min_m <= 0.0
+		or ai.lookahead_speed_gain_s <= 0.0
+		or ai.steer_gain <= 0.0
+		or ai.corner_speed_curvature_gain <= 0.0
+		or ai.corner_speed_floor_ratio <= 0.0
+		or ai.corner_speed_floor_ratio > 1.0
+		or ai.brake_margin_ratio <= 0.0
+		or ai.slide_trigger_curvature <= 0.0
+		or ai.slide_exit_curvature <= 0.0
+		or not (
+			is_equal_approx(ai.boost_tap_enabled, 0.0)
+			or is_equal_approx(ai.boost_tap_enabled, 1.0)
+		)
+		or ai.rubber_band_full_gap_m <= 0.0
+		or ai.rubber_band_boost_max_ratio <= 0.0
+		or ai.rubber_band_boost_max_ratio >= 1.0
+		or ai.rubber_band_drag_max_ratio <= 0.0
+		or ai.rubber_band_drag_max_ratio >= 1.0
+		or ai.respawn_stuck_speed_mps <= 0.0
+		or ai.respawn_stuck_after_s <= 0.0
+		or ai.respawn_drop_gap_m <= 0.0
 	):
 		return false
 

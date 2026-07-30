@@ -278,18 +278,42 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"camera_yaw_lag_s",
 		&"camera_drift_yaw_degrees",
 	],
+	# Task 1 (CTR R3, AI opponents): ai is a whole new section, the same
+	# shape as kart/race/enemy/chase/hog/boss_papu above -- _backfill_
+	# missing_sections migrates a missing section atomically, so every field
+	# authored at introduction joins this baseline (see the comment below).
+	&"ai": [
+		&"opponent_count",
+		&"lateral_slot_spacing_m",
+		&"lookahead_min_m",
+		&"lookahead_speed_gain_s",
+		&"steer_gain",
+		&"corner_speed_curvature_gain",
+		&"corner_speed_floor_ratio",
+		&"brake_margin_ratio",
+		&"slide_trigger_curvature",
+		&"slide_exit_curvature",
+		&"boost_tap_enabled",
+		&"rubber_band_full_gap_m",
+		&"rubber_band_boost_max_ratio",
+		&"rubber_band_drag_max_ratio",
+		&"respawn_stuck_speed_mps",
+		&"respawn_stuck_after_s",
+		&"respawn_drop_gap_m",
+	],
 }
-# Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections, and
-# Task 1 (CTR racing mode) adds whole kart and race sections; _backfill_missing_
-# sections migrates each atomically for every older override. Their initial
-# fields therefore join this baseline; later fields inside those sections
-# still belong in a legacy cohort. Computed as the sha256 of the sorted
+# Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections,
+# Task 1 (CTR racing mode) adds whole kart and race sections, and Task 1 (CTR
+# R3, AI opponents) adds a whole ai section; _backfill_missing_sections
+# migrates each atomically for every older override. Their initial fields
+# therefore join this baseline; later fields inside those sections still
+# belong in a legacy cohort. Computed as the sha256 of the sorted
 # "section.field" lines for every entry in that dictionary — recompute
 # deliberately (see test_phase_zero_baseline_field_set_is_frozen) if this
 # dictionary itself ever legitimately needs to change, never to make a
 # wrongly-placed new field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"1a0adb19d5fdf357167e2dc0a5fe8c83cda89f280c30ebb3ffa2e76c7ec79b86"
+	"fcf3c4d237a4e9c8beb7acba882d58f973c21f2239a44d286cb6cc1e5c4d7d3d"
 )
 
 
@@ -2996,6 +3020,264 @@ func test_loaded_paths_include_the_racing_resources() -> void:
 
 	assert_true(joined.contains("kart.tres"), "debug HUD will not list kart.tres")
 	assert_true(joined.contains("race.tres"), "debug HUD will not list race.tres")
+	assert_true(joined.contains("ai.tres"), "debug HUD will not list ai.tres")
+
+
+# Task 1 (CTR R3, AI opponents): ai is a brand-new whole section, the same
+# shape as kart/race/enemy/chase/hog/boss_papu when each was introduced -- a
+# missing section backfills wholesale via _backfill_missing_sections rather
+# than needing a LEGACY_FIELD_GROUPS_BY_SECTION cohort (that mechanism is for
+# a new field on an EXISTING section, not a whole new section).
+# boost_tap_enabled is a 0/1 flag stored as a float, so 0.0 is a legal value
+# for it and it is excluded from the generic "every field rejects zero" loop
+# below, getting its own dedicated flag-bounds test instead.
+const AI_STRICTLY_POSITIVE_FIELDS_EXCLUDING_FLAGS: Array[StringName] = [
+	&"opponent_count",
+	&"lateral_slot_spacing_m",
+	&"lookahead_min_m",
+	&"lookahead_speed_gain_s",
+	&"steer_gain",
+	&"corner_speed_curvature_gain",
+	&"corner_speed_floor_ratio",
+	&"brake_margin_ratio",
+	&"slide_trigger_curvature",
+	&"slide_exit_curvature",
+	&"rubber_band_full_gap_m",
+	&"rubber_band_boost_max_ratio",
+	&"rubber_band_drag_max_ratio",
+	&"respawn_stuck_speed_mps",
+	&"respawn_stuck_after_s",
+	&"respawn_drop_gap_m",
+]
+# Bounded to (0.0, 1.0] -- see AiTuning.corner_speed_floor_ratio's doc
+# comment: it clamps the low end of a multiplier whose high end is fixed at
+# 1.0, so exactly 1.0 must remain valid.
+const AI_INCLUSIVE_UNIT_RATIO_FIELDS: Array[StringName] = [
+	&"corner_speed_floor_ratio",
+]
+# Bounded to (0.0, 1.0) exclusive per the design brief -- unlike the kart/
+# race ratio fields (which accept exactly 1.0), these two must reject 1.0.
+const AI_EXCLUSIVE_UNIT_RATIO_FIELDS: Array[StringName] = [
+	&"rubber_band_boost_max_ratio",
+	&"rubber_band_drag_max_ratio",
+]
+
+
+func test_service_catalog_exposes_ai_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+
+	assert_not_null(ai, "clone dropped ai — AI tuning is dead-wired")
+	if ai == null:
+		return
+	assert_eq(_global_class_name(ai), "AiTuning")
+	assert_eq(ai.get("opponent_count"), 5.0)
+	assert_eq(ai.get("boost_tap_enabled"), 1.0)
+	assert_eq(ai.get("rubber_band_full_gap_m"), 60.0)
+
+
+func test_fingerprint_moves_when_an_ai_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	ai.set("steer_gain", float(ai.get("steer_gain")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"ai values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_ai_override_backfills_ai() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	assert_not_null(authored.get("ai"))
+	if authored.get("ai") == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("ai", null)
+	stale.hog.ride_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a pre-AI phone override must migrate, not reset"
+	)
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("ai"))
+	assert_eq(
+		migrated.get("ai").get("opponent_count"),
+		authored.ai.opponent_count
+	)
+	assert_almost_eq(
+		migrated.hog.ride_speed_mps,
+		float(authored.hog.ride_speed_mps) + 0.1,
+		0.0001,
+		"migration must not discard the edit the phone already had"
+	)
+
+
+func test_ai_tuning_rejects_nonpositive_fields() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	for property_name: StringName in AI_STRICTLY_POSITIVE_FIELDS_EXCLUDING_FLAGS:
+		var authored_value: Variant = ai.get(property_name)
+		ai.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"ai.%s must reject zero" % property_name
+		)
+		ai.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_ai_lookahead_min_m_rejects_nonpositive() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var authored: float = ai.get("lookahead_min_m")
+
+	ai.set("lookahead_min_m", 0.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a nonpositive lookahead_min_m must be rejected"
+	)
+	ai.set("lookahead_min_m", -1.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a negative lookahead_min_m must be rejected"
+	)
+
+	ai.set("lookahead_min_m", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_ai_corner_speed_floor_ratio_is_bounded_to_unit_interval_inclusive() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	for property_name: StringName in AI_INCLUSIVE_UNIT_RATIO_FIELDS:
+		var authored_value: Variant = ai.get(property_name)
+		ai.set(property_name, 1.01)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"ai.%s must reject values above 1.0" % property_name
+		)
+		ai.set(property_name, 1.0)
+		assert_true(
+			service.call("catalog_is_usable"),
+			"ai.%s must accept exactly 1.0" % property_name
+		)
+		ai.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_ai_rubber_band_ratio_fields_are_bounded_to_unit_interval_exclusive() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	for property_name: StringName in AI_EXCLUSIVE_UNIT_RATIO_FIELDS:
+		var authored_value: Variant = ai.get(property_name)
+		ai.set(property_name, 1.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"ai.%s must reject exactly 1.0 -- the brief bounds it (0,1) exclusive"
+			% property_name
+		)
+		ai.set(property_name, 0.99)
+		assert_true(
+			service.call("catalog_is_usable"),
+			"ai.%s must accept a value below 1.0" % property_name
+		)
+		ai.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_ai_boost_tap_enabled_is_bounded_to_flag_values() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var authored: float = ai.get("boost_tap_enabled")
+
+	ai.set("boost_tap_enabled", 0.5)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"boost_tap_enabled=0.5 must be rejected -- it is a 0/1 flag, not a ratio"
+	)
+
+	ai.set("boost_tap_enabled", 0.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"boost_tap_enabled=0.0 (disabled) must remain valid"
+	)
+
+	ai.set("boost_tap_enabled", 1.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"boost_tap_enabled=1.0 (enabled) must remain valid"
+	)
+
+	ai.set("boost_tap_enabled", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_catalog_is_unusable_without_ai() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("ai"))
+	if catalog.get("ai") == null:
+		return
+	catalog.set("ai", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
 
 
 func _loaded_service() -> RefCounted:
