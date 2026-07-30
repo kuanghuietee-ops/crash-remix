@@ -779,6 +779,156 @@ func test_ten_second_real_physics_race_with_five_ai_karts_makes_progress() -> vo
 		)
 
 
+## Task 6 (CTR R3 verification): reviewer-mandated coverage gap folded in
+## from Task 5's own review (see the SDD progress ledger's Task 5 entry --
+## "MEDIUM coverage gap folded into Task 6: end-to-end freeze-chain test
+## (AI mid-drive -> real finish -> 5s+ -> all frozen, no respawns)"). Every
+## AI-freeze assertion above either force-finishes via the private
+## _on_gate_body_entered handler (test_player_finish_freezes_every_ai_kart)
+## or only checks the tick right after the finish -- neither proves the
+## freeze SURVIVES several more real seconds of physics once the player
+## finishes through the REAL gate-crossing chain while AI karts are
+## genuinely mid-drive, not still sitting at spawn. This test closes that
+## gap in four real-physics stages:
+##   1. ~4 real seconds of every AI kart genuinely driving itself (steer/
+##      hop/slide/rubber-band/stuck-respawn, the full Task 3/4 pipeline) --
+##      so the freeze below has to actually STOP something in motion.
+##   2. The REAL finish path: teleport the player's kart onto every
+##      authored gate for all lap_count laps (the exact technique
+##      test_crossing_every_gate_in_order_for_all_laps_completes_the_race
+##      uses above -- a real Area3D overlap fires _on_gate_body_entered ->
+##      _finish_race), NOT the private _force_finish() shortcut every other
+##      finish test in this file takes.
+##   3. Enough more real ticks for every AI kart to actually finish
+##      decelerating under set_run_active(false)'s own decelerate_to_stop()
+##      branch (kart_controller.gd) -- the same bounded-settle-time idiom
+##      test_finishing_the_race_decelerates_the_kart_to_a_stop_and_it_stays_
+##      stopped already establishes for the player, worst-cased here for an
+##      AI kart's own possible rubber-band-boosted top speed (see
+##      ai_kart_agent.gd's _max_follower_step_m() doc for why plain
+##      top_speed_mps alone would underestimate it).
+##   4. 5+ MORE real seconds, asserting every AI kart stayed frozen
+##      (is_run_active() false), never respawned (respawn_count()
+##      unchanged), and never moved (position unchanged within physics
+##      epsilon) across that entire window -- proving AiKartAgent's own
+##      RUN-ACTIVE GATE (Task 5 binding contract 1, see ai_kart_agent.gd's
+##      class doc) holds under sustained real ticks, not a one-shot check.
+func test_a_real_player_finish_freezes_every_ai_kart_for_several_more_real_seconds() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	kart.set_physics_process(false)
+	var opponent_count := int(_catalog.ai.opponent_count)
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	var physics_fps := float(Engine.physics_ticks_per_second)
+
+	# Stage 1: ~4 real seconds of every AI kart genuinely driving itself,
+	# before the player ever finishes.
+	var warm_up_frames := int(round(4.0 * physics_fps))
+	await wait_physics_frames(warm_up_frames)
+
+	var any_ai_progress := false
+	for slot_index: int in range(opponent_count):
+		if float(race.call("ai_kart_total_progress_m", slot_index)) > 0.0:
+			any_ai_progress = true
+			break
+	assert_true(
+		any_ai_progress,
+		(
+			"fixture sanity: at least one AI kart must have made real "
+			+ "forward progress before the finish"
+		)
+	)
+
+	# Stage 2: the REAL finish path.
+	for _lap: int in range(lap_count):
+		for gate_index: int in range(gate_count):
+			await _cross_gate(race, kart, gate_index)
+	# One more gate-0 crossing closes the final lap -- see _cross_gate's own
+	# comment above / test_crossing_every_gate_in_order_for_all_laps_
+	# completes_the_race's identical final call.
+	await _cross_gate(race, kart, 0)
+
+	assert_true(
+		bool(race.call("is_finished")),
+		"the real gate-crossing chain must finish the race"
+	)
+
+	# Stage 3: let every AI kart actually finish decelerating.
+	var worst_case_speed_mps := (
+		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps)
+		* (1.0 + _catalog.ai.rubber_band_boost_max_ratio)
+	)
+	var settle_time_s: float = worst_case_speed_mps / _kart_tuning.brake_mps2
+	var settle_margin_frames := 10
+	var settle_frames := (
+		int(ceil(settle_time_s * physics_fps)) + settle_margin_frames
+	)
+	await wait_physics_frames(settle_frames)
+
+	var baseline_positions: Array[Vector3] = []
+	var baseline_respawn_counts: Array[int] = []
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		var agent: Node = race.call("ai_agent", slot_index)
+		assert_not_null(
+			ai_kart, "fixture setup: AI kart at slot %d must exist" % (slot_index + 1)
+		)
+		assert_not_null(
+			agent, "fixture setup: AI agent at slot %d must exist" % (slot_index + 1)
+		)
+		if ai_kart == null or agent == null:
+			baseline_positions.append(Vector3.ZERO)
+			baseline_respawn_counts.append(0)
+			continue
+		assert_false(
+			bool(ai_kart.call("is_run_active")),
+			(
+				"AI kart at slot %d must already be frozen once settled "
+				+ "after the finish"
+			) % (slot_index + 1)
+		)
+		baseline_positions.append(ai_kart.global_position)
+		baseline_respawn_counts.append(int(agent.call("respawn_count")))
+
+	# Stage 4: the centerpiece -- 5+ MORE real seconds of physics after every
+	# AI kart has settled. This is the reviewer-mandated coverage gap this
+	# test exists to close: the freeze must survive sustained real ticks,
+	# not just the instant of the finish.
+	var post_settle_frames := int(round(5.5 * physics_fps))
+	await wait_physics_frames(post_settle_frames)
+
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		var agent: Node = race.call("ai_agent", slot_index)
+		if ai_kart == null or agent == null:
+			continue
+		assert_false(
+			bool(ai_kart.call("is_run_active")),
+			(
+				"AI kart at slot %d must stay frozen for 5+ more real "
+				+ "seconds after the finish"
+			) % (slot_index + 1)
+		)
+		assert_eq(
+			int(agent.call("respawn_count")),
+			baseline_respawn_counts[slot_index],
+			"AI kart at slot %d must not respawn once frozen" % (slot_index + 1)
+		)
+		var drift_m := ai_kart.global_position.distance_to(
+			baseline_positions[slot_index]
+		)
+		assert_lt(
+			drift_m,
+			0.05,
+			(
+				"AI kart at slot %d must not move at all once frozen and settled"
+			) % (slot_index + 1)
+		)
+
+
 ## Drives the session to race_complete by calling its own gate-crossing
 ## handler directly against the real authored gate nodes, instead of
 ## teleporting the kart through them under a real Area3D overlap. The

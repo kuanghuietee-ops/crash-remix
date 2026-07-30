@@ -147,6 +147,46 @@ start.
    is silently swallowed. If a human tester reports dropped boost taps or
    missed hops on device, this poll-vs-edge gap is the mechanism to check
    first, not the drift FSM's own timing.
+5. **R3 ships AI opponents WITHOUT item use, by design.** The "AI (phase R3)"
+   line above ("...item use with cooldowns. 5 karts.") reads as if item use
+   ships in this phase, but items themselves do not exist anywhere in the
+   codebase until R4 (see "Items (phase R4)" above and Recorded-debt #2 on
+   boost pads) — there is nothing for an AI driver to use yet.
+   `AiDriver`/`AiKartAgent` (R3, Tasks 3-4) only ever call
+   `steer()`/`set_brake()`/`hop_pressed()`/`hop_released()`/`boost_tap()`/
+   `set_speed_scale()`, the same kart-only verbs a human racer has in R1-R3.
+   This is an intentional scope split, not a missed line item — the R4 plan
+   must add AI item-use once item boxes/roulette actually exist.
+6. **Stuck detector fires on any 3s net-stationary AI kart — fine in R3,
+   binding on R5.** `AiKartAgent._check_stuck_and_respawn()`
+   (ai_kart_agent.gd) respawns any AI kart whose net horizontal displacement
+   stays below `respawn_stuck_speed_mps * respawn_stuck_after_s` (ai.tres:
+   1.5 m/s × 3.0s) over a rolling window — correct in R3, where every AI kart
+   drives itself from tick 1 of `configure()` onward, so "stationary" always
+   means "actually stuck." R5's countdown/grid-hold (race flow, not yet
+   built) will legitimately hold every kart still at the start line for
+   several seconds before GO fires; without an explicit gate, that hold alone
+   would cross the stuck threshold and force-respawn the entire AI grid
+   before the race even starts. The R5 plan MUST gate `AiKartAgent`
+   (equivalent to Task 5's own `is_run_active()` binding contract 1 freeze
+   gate, see race_session.gd's `_finish_race()` and ai_kart_agent.gd's RUN-
+   ACTIVE GATE doc) so agents do not accumulate stuck-window time — or drive
+   at all — until the countdown reaches GO.
+7. **Graybox loop East-turn wedge recovers via respawn, not by never
+   happening.** The graybox loop's East turn can trap an AI kart oscillating
+   against the inner wall for several real seconds (Task 4's own reviewer
+   repro) before `_check_stuck_and_respawn()`'s tumbling window closes and
+   teleports it clear — worst case up to roughly 2× `respawn_stuck_after_s`
+   (≈6s at ai.tres's current 3.0s) if the kart's own bounce pattern keeps
+   re-anchoring the window just short of firing. This is accepted, tested
+   (`test_east_turn_never_permanently_wedges_over_twenty_real_seconds`), and
+   working as designed — the safety net is respawn, not corner geometry that
+   prevents the wedge outright. AI line tuning (`lateral_slot_spacing_m`,
+   `steer_gain`, `corner_speed_curvature_gain`/`corner_speed_floor_ratio`,
+   `slide_trigger_curvature`/`slide_exit_curvature` — all in ai.tres) could
+   in principle be retuned to avoid the wedge entirely rather than recover
+   from it; this is an operator-tunable, on-device follow-up, not a code
+   change.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
