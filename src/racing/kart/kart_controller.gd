@@ -90,6 +90,14 @@ func is_sliding() -> bool:
 	return _drift.is_sliding()
 
 
+## Fix round 1 (KartCamera review): -1/1, locked for the life of a slide --
+## see drift_state_machine.gd. Exposed alongside is_sliding()/speed_mps() so
+## a camera rig can bias its look yaw into the slide without reaching past
+## this controller into the private drift FSM it owns.
+func slide_direction() -> int:
+	return _drift.slide_direction()
+
+
 func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
 
@@ -110,4 +118,13 @@ func _physics_process(delta_s: float) -> void:
 	)
 	velocity = _motor.velocity()
 	velocity.y = _motor.vertical_speed_mps()
+	# Fix round 1 (KartCamera review): the body's own basis never turned --
+	# KartMotor already computes velocity FROM its internal yaw (see
+	# kart_motor.gd's velocity()), but nothing wrote that yaw back onto this
+	# CharacterBody3D's transform, so -global_transform.basis.z (the
+	# "facing" a chase camera or any other Node3D-level reader needs) stayed
+	# stuck at whatever it spawned with regardless of steering. Writing
+	# rotation.y from the same yaw_degrees() the motor already used for
+	# velocity() this tick keeps the two consistent by construction.
+	rotation.y = deg_to_rad(_motor.yaw_degrees())
 	move_and_slide()

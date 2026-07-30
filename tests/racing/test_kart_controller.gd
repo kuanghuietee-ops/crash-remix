@@ -177,6 +177,70 @@ func test_counter_steering_while_sliding_reaches_the_counter_yaw_rate() -> void:
 	)
 
 
+## Fix round 1 (KartCamera review): slide_direction() must proxy straight
+## through to the real DriftStateMachine the controller already owns and
+## wires every tick, the same way is_sliding()/speed_mps() do.
+func test_slide_direction_proxies_the_locked_drift_direction() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before starting a slide")
+
+	kart.call("steer", -_kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(kart.call("is_sliding"), "fixture setup must land inside a slide")
+
+	assert_eq(
+		int(kart.call("slide_direction")),
+		-1,
+		"steering negative past the threshold must lock slide_direction to -1"
+	)
+
+
+## Fix round 1 (KartCamera review): the Task 3 gap the review caught -- the
+## controller computed yaw inside KartMotor (used for velocity()) but never
+## wrote it back onto its own CharacterBody3D transform, so a chase camera
+## reading the body's facing basis (rather than velocity, which a slide's
+## counter-steer or a spin-out can point somewhere else -- see
+## kart_camera.gd) would never see the kart actually turn. Proves both that
+## the body visibly yaws over ticks AND that its basis stays numerically
+## consistent with the motor's own yaw state, not just "some" rotation.
+func test_body_rotation_tracks_motor_yaw_while_steering() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before steering")
+
+	kart.call("steer", 1.0)
+	await wait_physics_frames(30)
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	var motor_yaw_degrees: float = motor.call("yaw_degrees")
+	assert_gt(
+		absf(motor_yaw_degrees),
+		1.0,
+		"steering for 30 ticks must have visibly turned the motor's own yaw"
+	)
+
+	var expected_forward: Vector3 = Vector3.FORWARD.rotated(
+		Vector3.UP,
+		deg_to_rad(motor_yaw_degrees)
+	)
+	var actual_forward: Vector3 = -kart.global_transform.basis.z
+	assert_almost_eq(
+		actual_forward.angle_to(expected_forward),
+		0.0,
+		0.01,
+		"the body's facing basis must match the motor's yaw state, not stay parked"
+	)
+
+
 func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
 	if not ResourceLoader.exists(KART_SCENE_PATH):

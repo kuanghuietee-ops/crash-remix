@@ -4,10 +4,10 @@ extends GutTest
 # Camera3D child every tick from a kart's own facing basis (never its
 # velocity -- see kart_camera.gd's class doc for why) plus RaceTuning/
 # KartTuning. It has no Node deps on the real KartController beyond the
-# duck-typed API surface (speed_mps(), is_sliding()) it already exposes
-# (see kart_controller.gd), so FakeKart below stands in for it the same
-# way test_camera_archetypes.gd's FakeTraversalPlayer and test_hog_mount.gd's
-# HogPlayerStub stand in for the real player.
+# duck-typed API surface (speed_mps(), is_sliding(), slide_direction()) it
+# already exposes (see kart_controller.gd), so FakeKart below stands in for
+# it the same way test_camera_archetypes.gd's FakeTraversalPlayer and
+# test_hog_mount.gd's HogPlayerStub stand in for the real player.
 
 const KART_CAMERA_SCRIPT_PATH := "res://src/racing/camera/kart_camera.gd"
 const RACE_TUNING_PATH := "res://data/tuning/racing/race.tres"
@@ -22,12 +22,19 @@ class FakeKart:
 
 	var sliding := false
 	var speed := 0.0
+	# Fix round 1 (review): KartCamera now reads this directly (matching
+	# KartController's real slide_direction() proxy) instead of inferring a
+	# sign from the fixture's own rotation between ticks.
+	var slide_dir := 1
 
 	func is_sliding() -> bool:
 		return sliding
 
 	func speed_mps() -> float:
 		return speed
+
+	func slide_direction() -> int:
+		return slide_dir
 
 
 func before_all() -> void:
@@ -150,6 +157,31 @@ func test_fov_exceeds_base_plus_gain_while_boosted_above_top_speed() -> void:
 	)
 
 
+## Low (review): a real boost only ever reaches a ratio of roughly 1.28
+## (top_speed_mps + boost_speed_bonus_mps, per kart.tres), which would not
+## by itself catch a clamp with a ceiling somewhere between 1 and that. A
+## synthetic ratio of 2.0 -- far past anything the tuned kart can actually
+## produce -- proves the fov formula itself carries no hidden clamp at all,
+## not just that today's boost happens to stay under one.
+func test_fov_matches_unclamped_formula_at_synthetic_double_top_speed() -> void:
+	var rig := _new_rig()
+	if rig == null:
+		return
+	var kart: FakeKart = rig["kart"]
+	var kart_camera: Node3D = rig["kart_camera"]
+	var camera: Camera3D = rig["camera"]
+
+	kart.speed = _kart_tuning.top_speed_mps * 2.0
+	kart_camera.call("configure", kart, camera, _race, _kart_tuning)
+
+	assert_almost_eq(
+		camera.fov,
+		_race.camera_fov_base + _race.camera_fov_speed_gain * 2.0,
+		0.001,
+		"the fov formula must stay exactly unclamped even at a 2x speed ratio"
+	)
+
+
 # ---------------------------------------------------------------------------
 # Yaw lag: exponential convergence toward the kart's facing.
 # ---------------------------------------------------------------------------
@@ -239,24 +271,24 @@ func test_zero_or_negative_yaw_lag_snaps_instantly() -> void:
 
 
 func test_drift_yaw_offset_flips_sign_with_slide_direction() -> void:
-	var left_angle := _drift_offset_signed_angle(true)
-	var right_angle := _drift_offset_signed_angle(false)
+	var positive_angle := _drift_offset_signed_angle(1)
+	var negative_angle := _drift_offset_signed_angle(-1)
 
 	assert_almost_eq(
-		absf(left_angle),
+		absf(positive_angle),
 		deg_to_rad(_race.camera_drift_yaw_degrees),
 		0.01,
 		"a converged drift offset must reach the full tuned angle"
 	)
 	assert_almost_eq(
-		absf(right_angle),
+		absf(negative_angle),
 		deg_to_rad(_race.camera_drift_yaw_degrees),
 		0.01,
 		"a converged drift offset must reach the full tuned angle"
 	)
 	assert_true(
-		signf(left_angle) != signf(right_angle),
-		"turning left vs right while sliding must bias the look yaw to opposite sides"
+		signf(positive_angle) != signf(negative_angle),
+		"slide_direction() = 1 vs -1 must bias the look yaw to opposite sides"
 	)
 
 
@@ -287,13 +319,17 @@ func test_no_drift_offset_while_not_sliding() -> void:
 	)
 
 
-## Builds a sliding kart that turns either LEFT (turn_left=true) or RIGHT
-## (turn_left=false) by an identical magnitude, using an instant (tau<=0)
-## rig so a single tick fully converges -- isolating the sign question from
-## the separately-tested lag convergence. Returns the SIGNED angle from the
-## kart's own (post-turn) facing to the camera's resulting look_forward(),
-## measured around world UP, so opposite turns must produce opposite signs.
-func _drift_offset_signed_angle(turn_left: bool) -> float:
+## Builds a sliding kart reporting the given slide_direction() (1 or -1),
+## using an instant (tau<=0) rig so configure() alone fully converges --
+## isolating the sign question from the separately-tested lag convergence.
+## The kart's own facing never turns here (identity rotation throughout):
+## fix round 1 replaced the earlier "infer the sign from a simulated turn"
+## approach with a direct slide_direction() read, so this only needs to
+## prove KartCamera relays whatever sign it's told, not reproduce a turn.
+## Returns the SIGNED angle from the kart's facing to the camera's
+## resulting look_forward(), measured around world UP, so slide_direction()
+## = 1 vs -1 must produce opposite signs.
+func _drift_offset_signed_angle(slide_dir: int) -> float:
 	var rig := _new_rig()
 	var kart: FakeKart = rig["kart"]
 	var kart_camera: Node3D = rig["kart_camera"]
@@ -302,11 +338,9 @@ func _drift_offset_signed_angle(turn_left: bool) -> float:
 	var race := _race.duplicate() as RaceTuning
 	race.camera_yaw_lag_s = 0.0
 	kart.sliding = true
+	kart.slide_dir = slide_dir
 	kart.rotation = Vector3.ZERO
 	kart_camera.call("configure", kart, camera, race, _kart_tuning)
-
-	kart.rotation.y = 0.3 if turn_left else -0.3
-	kart_camera.call("tick", 0.016)
 
 	var kart_forward: Vector3 = -kart.global_transform.basis.z
 	var look_forward: Vector3 = kart_camera.call("look_forward")

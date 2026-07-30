@@ -11,9 +11,10 @@ extends Node3D
 ##
 ## kart is duck-typed to the same "Node3D-with-KartController-API" surface
 ## RacingInputAdapter and DriftStateMachine already assume (speed_mps(),
-## is_sliding() -- see kart_controller.gd): a plain Node3D type hint plus
-## .call() so any fixture exposing those two methods works, real
-## KartController or test double alike (see test_kart_camera.gd's FakeKart).
+## is_sliding(), slide_direction() -- see kart_controller.gd): a plain Node3D
+## type hint plus .call() so any fixture exposing those three methods works,
+## real KartController or test double alike (see test_kart_camera.gd's
+## FakeKart).
 ##
 ## EASED LOOK YAW. camera_yaw_lag_s drives a persistent _camera_forward
 ## state toward the kart's current facing (plus a drift bias -- see below)
@@ -26,16 +27,14 @@ extends Node3D
 ## frame starts already aligned, never as a snap-from-zero pop.
 ##
 ## DRIFT BIAS. While is_sliding() is true, the eased state's TARGET gets an
-## additional camera_drift_yaw_degrees rotated into the slide direction
+## additional camera_drift_yaw_degrees rotated into slide_direction()'s sign
 ## (CTR's "the camera looks into the turn" flourish) before easing -- so
-## enter/exit blends through the same lag instead of snapping. Slide
-## direction itself is read off the kart's own recent facing change (the
-## sign of the turn between this tick and last), not a dedicated
-## DriftStateMachine.slide_direction() call: that method lives on the
-## private drift FSM KartController owns internally and is not part of its
-## public API (only is_sliding()/speed_mps() are), and deriving the sign
-## from the facing basis keeps this class talking to the exact same
-## generic surface it already reads kart_forward from.
+## enter/exit blends through the same lag instead of snapping. Fix round 1
+## (review): slide_direction() reads straight through KartController's proxy
+## to the real DriftStateMachine it owns -- an earlier draft inferred the
+## sign from the kart's own recent facing-basis turn instead, but that read
+## the same value one tick late (undefined the very first tick a slide
+## starts) and duplicated logic the drift FSM already owns outright.
 ##
 ## LOOK TARGET. The camera looks directly at the kart's position raised by
 ## RaceTuning.camera_look_height_m (added by this task -- see
@@ -57,10 +56,6 @@ var _race_tuning: RaceTuning
 var _kart_tuning: KartTuning
 
 var _camera_forward := Vector3.FORWARD
-var _previous_kart_forward := Vector3.FORWARD
-# Mirrors DriftStateMachine's own _slide_direction default (see
-# drift_state_machine.gd) so an untouched sign reads the same way.
-var _slide_sign := 1
 
 
 func configure(
@@ -74,10 +69,7 @@ func configure(
 	_race_tuning = race_tuning
 	_kart_tuning = kart_tuning
 
-	var initial_forward := _kart_forward()
-	_camera_forward = initial_forward
-	_previous_kart_forward = initial_forward
-	_slide_sign = 1
+	_camera_forward = _kart_forward()
 	# Snap fully configured on the very first frame -- _camera_forward is
 	# already seeded to the kart's current facing above, so this "tick"
 	# produces the at-rest pose, not an eased crawl from a default.
@@ -108,13 +100,13 @@ func _physics_process(delta_s: float) -> void:
 
 func _apply(delta_s: float) -> void:
 	var kart_forward := _kart_forward()
-	_update_slide_sign(kart_forward)
 
 	var target_forward := kart_forward
 	if bool(_kart.call("is_sliding")):
+		var slide_sign := int(_kart.call("slide_direction"))
 		target_forward = kart_forward.rotated(
 			Vector3.UP,
-			float(_slide_sign) * deg_to_rad(_race_tuning.camera_drift_yaw_degrees)
+			float(slide_sign) * deg_to_rad(_race_tuning.camera_drift_yaw_degrees)
 		)
 
 	var alpha := _ease_alpha(delta_s, _race_tuning.camera_yaw_lag_s)
@@ -148,18 +140,6 @@ func _apply(delta_s: float) -> void:
 func _kart_forward() -> Vector3:
 	var basis := _kart.global_transform.basis
 	return (-basis.z).normalized()
-
-
-## Slide direction, inferred from which way the kart's own facing basis
-## just turned (see class doc) rather than a dedicated FSM getter. Holding
-## the previous sign on a tick with no measurable turn (cross_y ~ 0, e.g.
-## the very first tick after a slide starts) avoids an artificial flicker
-## to a meaningless zero.
-func _update_slide_sign(kart_forward: Vector3) -> void:
-	var cross_y := _previous_kart_forward.cross(kart_forward).y
-	if not is_zero_approx(cross_y):
-		_slide_sign = 1 if cross_y > 0.0 else -1
-	_previous_kart_forward = kart_forward
 
 
 ## The standard exponential-smoothing blend factor: 1 - exp(-delta/tau).
