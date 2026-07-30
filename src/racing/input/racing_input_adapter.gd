@@ -11,12 +11,20 @@ extends RefCounted
 ## (see InputRouter's racing mode: the raw filtered stick arrives with no
 ## corridor remap, so y keeps its screen-space "down is positive" sense).
 ##
-## A HOP press always forwards to hop_pressed(). If the kart is already
-## sliding, the SAME press is also routed to boost_tap() -- CTR muscle
-## memory keeps hop and boost on one button on a single mobile thumb.
-## DriftStateMachine.boost_tap() ignores taps while not sliding (returns
-## &"ignored"), so this stays safe even if the sliding read here is stale by
-## a frame relative to the controller's own tick().
+## Fix round 1: a HOP press routes to EITHER hop_pressed() OR boost_tap(),
+## never both -- while the kart is already sliding, every press is a boost
+## tap instead of a hop (no hop impulse mid-slide, no re-arm). This
+## replaces an earlier "always hop_pressed(), plus boost_tap() when
+## sliding" design that a reviewer found unreachable: DriftStateMachine
+## used to sustain a slide on the hop button being held, so a second press
+## is always preceded by a release, and that release ended the slide
+## synchronously -- is_sliding() was already false by the time the boost
+## branch ran, and no touch/gamepad sequence could ever fire boost_tap().
+## DriftStateMachine now sustains slides on steer instead (see its class
+## doc), so hop_released() mid-slide is a no-op and is_sliding() correctly
+## reads true at a second press. See tests/racing/test_racing_input_adapter.gd
+## for an integration-style test driving the real FSM through this exact
+## press-release-press sequence.
 ##
 ## The controller parameter is duck-typed (steer/set_brake/hop_pressed/
 ## hop_released/boost_tap/is_sliding) rather than typed against
@@ -36,9 +44,10 @@ func apply_move(value: Vector2, controller: Object) -> void:
 
 
 func apply_hop_pressed(controller: Object) -> void:
-	controller.hop_pressed()
 	if controller.is_sliding():
 		controller.boost_tap()
+	else:
+		controller.hop_pressed()
 
 
 func apply_hop_released(controller: Object) -> void:

@@ -150,7 +150,13 @@ func test_slide_direction_locks_negative() -> void:
 	assert_eq(fsm.call("slide_direction"), -1)
 
 
-func test_slide_direction_does_not_change_when_steer_flips_mid_slide() -> void:
+func test_slide_direction_does_not_retroactively_change_when_a_reversal_ends_it() -> void:
+	# Fix round 1: reversing steer this early (well before slide_min_duration_s)
+	# now CANCELS the slide via the sustain check in tick() -- it no longer
+	# continues sliding with a stale locked direction. The direction lock
+	# itself still matters: slide_direction() must keep reporting the value
+	# recorded at slide start, even once the reversal that ended the slide
+	# has happened.
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
@@ -158,10 +164,14 @@ func test_slide_direction_does_not_change_when_steer_flips_mid_slide() -> void:
 	fsm.call("steer", -_kart.slide_min_steer)
 	fsm.call("tick", _EPSILON_S, true)
 
+	assert_false(
+		fsm.call("is_sliding"),
+		"reversing steer before slide_min_duration_s must cancel the slide"
+	)
 	assert_eq(
 		fsm.call("slide_direction"),
 		1,
-		"direction must stay locked to the steer sign recorded at slide start"
+		"the recorded direction must not retroactively change once the slide has ended"
 	)
 
 
@@ -300,52 +310,118 @@ func test_mistimed_tap_forfeits_previously_accrued_boost() -> void:
 
 
 # ---------------------------------------------------------------------------
-# hop_released: min duration cancel vs. valid end.
+# Steer-sustained end: min duration cancel vs. valid end (fix round 1 —
+# hop_released() no longer ends or cancels a slide; steer does).
 # ---------------------------------------------------------------------------
 
 
-func test_hop_released_before_min_duration_cancels_with_no_boost() -> void:
+func test_steer_below_threshold_before_min_duration_cancels_with_no_boost() -> void:
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
 	fsm.call("tick", _kart.slide_min_duration_s / 2.0, true)
 
-	fsm.call("hop_released")
+	fsm.call("steer", 0.0)
+	fsm.call("tick", 0.0, true)
 
 	assert_false(
 		fsm.call("is_sliding"),
-		"releasing hop before slide_min_duration_s must cancel the slide"
+		"steer dropping below slide_min_steer before slide_min_duration_s must cancel the slide"
 	)
 	assert_eq(float(fsm.call("consume_boost")), 0.0)
 
 
-func test_hop_released_at_exactly_min_duration_is_a_valid_end() -> void:
+func test_steer_below_threshold_at_exactly_min_duration_is_a_valid_end() -> void:
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
 	fsm.call("tick", _kart.slide_min_duration_s, true)
 
-	fsm.call("hop_released")
+	fsm.call("steer", 0.0)
+	fsm.call("tick", 0.0, true)
 
 	assert_false(fsm.call("is_sliding"))
 
 
-func test_hop_released_after_valid_slide_keeps_accrued_boost_consumable() -> void:
+func test_steer_reversal_ends_the_slide() -> void:
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("tick", _kart.slide_min_duration_s, true)
+
+	fsm.call("steer", -_kart.slide_min_steer)
+	fsm.call("tick", 0.0, true)
+
+	assert_false(
+		fsm.call("is_sliding"),
+		"steering past the threshold in the opposite direction must end the slide, not sustain it"
+	)
+
+
+func test_steer_valid_end_keeps_accrued_boost_consumable() -> void:
 	var fsm := _start_sliding(_kart.slide_min_steer)
 	if fsm == null:
 		return
 	fsm.call("tick", _window_midpoint(_kart.boost_window_open_s, _kart.boost_window_close_s), true)
 	assert_eq(fsm.call("boost_tap"), RESULT_FIRED)
 
-	fsm.call("hop_released")
+	fsm.call("steer", 0.0)
+	fsm.call("tick", 0.0, true)
 
-	assert_false(fsm.call("is_sliding"), "a valid release must end the slide")
+	assert_false(fsm.call("is_sliding"), "a valid steer-based end must end the slide")
 	assert_almost_eq(
 		float(fsm.call("consume_boost")),
 		_kart.boost_duration_s,
 		0.0001,
-		"boost earned before a valid release must remain consumable afterward"
+		"boost earned before a valid end must remain consumable afterward"
 	)
+
+
+func test_hop_released_mid_slide_does_not_end_the_slide() -> void:
+	# The reviewer's finding: a second hop press is always preceded by a
+	# release. Under the old hop-sustained model that release ended the
+	# slide synchronously, so is_sliding() was already false by the time a
+	# caller's boost branch ran -- boost_tap() could never fire from a
+	# second press. Steer now sustains the slide, so releasing hop mid-slide
+	# (steer unchanged, still past threshold) must be a complete no-op for
+	# slide state.
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+
+	fsm.call("hop_released")
+
+	assert_true(
+		fsm.call("is_sliding"),
+		"releasing hop mid-slide must not end it -- steer sustains now"
+	)
+
+
+func test_press_release_press_mid_slide_fires_boost() -> void:
+	# The reviewer's exact scenario, proven end to end: start a slide, let
+	# go of hop entirely (as the one-thumb mobile flow expects — hop is
+	# only held long enough to register the initial press), tick into the
+	# tap window, then press hop again. is_sliding() must still read true at
+	# that second press (this is what RacingInputAdapter checks to decide
+	# hop_pressed() vs boost_tap() -- see tests/racing/
+	# test_racing_input_adapter.gd for the adapter-level proof), and the
+	# fired tap must land normally.
+	var fsm := _start_sliding(_kart.slide_min_steer)
+	if fsm == null:
+		return
+	fsm.call("hop_released")
+	assert_true(fsm.call("is_sliding"), "release mid-slide must not end it")
+
+	fsm.call("tick", _window_midpoint(_kart.boost_window_open_s, _kart.boost_window_close_s), true)
+	fsm.call("hop_pressed")
+
+	assert_true(
+		fsm.call("is_sliding"),
+		"a second hop press mid-slide must not itself disturb slide state"
+	)
+	var result: StringName = fsm.call("boost_tap")
+	assert_eq(result, RESULT_FIRED, "the same press's boost tap must fire inside the window")
+	assert_eq(fsm.call("boost_stage"), 1)
 
 
 func test_consume_boost_clears_the_accrued_value() -> void:
@@ -374,7 +450,11 @@ func test_new_slide_resets_boost_stage_to_zero() -> void:
 	fsm.call("tick", _window_midpoint(_kart.boost_window_open_s, _kart.boost_window_close_s), true)
 	fsm.call("boost_tap")
 	assert_eq(fsm.call("boost_stage"), 1)
-	fsm.call("hop_released")
+	# End this slide validly via steer (elapsed is already well past
+	# slide_min_duration_s from the tick above) rather than hop_released(),
+	# which no longer touches slide state.
+	fsm.call("steer", 0.0)
+	fsm.call("tick", 0.0, true)
 	assert_false(fsm.call("is_sliding"))
 
 	fsm.call("hop_pressed")

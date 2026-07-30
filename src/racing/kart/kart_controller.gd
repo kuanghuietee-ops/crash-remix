@@ -21,9 +21,16 @@ extends CharacterBody3D
 ## racing input mode (Task 4) is expected to call steer()/set_brake() every
 ## frame and hop_pressed()/hop_released() on edges, the same way callers
 ## push into DriftStateMachine directly. hop_pressed() only produces an
-## actual vertical impulse when the kart is grounded (mirrors CTR -- mashing
-## hop mid-air does not stack extra hops); it still always forwards to the
-## drift FSM so an airborne hop-then-land can arm a slide on landing.
+## actual vertical impulse when the kart is grounded AND not already
+## sliding (mirrors CTR -- mashing hop mid-air does not stack extra hops,
+## and a hop press mid-drift is a boost tap, not a jump); it still always
+## forwards to the drift FSM so an airborne hop-then-land can arm a slide on
+## landing. Fix round 1: RacingInputAdapter now routes every hop press that
+## arrives while already sliding to boost_tap() instead of calling
+## hop_pressed() at all (see racing_input_adapter.gd and drift_state_
+## machine.gd's class docs for why), so this guard is defense in depth
+## against any other caller reaching hop_pressed() mid-slide, not something
+## the adapter's own call pattern currently exercises.
 
 const KartMotorType := preload("res://src/racing/kart/kart_motor.gd")
 const DriftStateMachineType := preload(
@@ -55,7 +62,7 @@ func set_brake(braking: bool) -> void:
 
 func hop_pressed() -> void:
 	_drift.hop_pressed()
-	if is_on_floor():
+	if is_on_floor() and not _drift.is_sliding():
 		_motor.hop()
 
 

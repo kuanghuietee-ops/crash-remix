@@ -768,6 +768,11 @@ func test_racing_layout_hop_press_uses_the_jump_buttons_hit_target() -> void:
 
 	assert_true(router.get("buffer").call("is_action_pressed", InputIntent.ACTION_JUMP))
 
+	# [LOW-B ruling] The former SPIN spot is NOT a dead zone in racing
+	# layout: jump_catchall_region (see touch_control_layout.gd) covers the
+	# whole lower-right of the screen and was never stripped, so it still
+	# resolves to ACTION_JUMP there -- a big, deliberately generous HOP
+	# target, not an accident of leftover geometry.
 	var ex_spin_press := InputEventScreenTouch.new()
 	ex_spin_press.index = 4
 	ex_spin_press.position = former_spin_center
@@ -776,7 +781,12 @@ func test_racing_layout_hop_press_uses_the_jump_buttons_hit_target() -> void:
 
 	assert_false(
 		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_SPIN),
-		"the former SPIN position must no longer register any action in racing layout"
+		"the former SPIN position must never register the platformer SPIN action"
+	)
+	assert_true(
+		router.get("buffer").call("is_action_pressed", InputIntent.ACTION_JUMP),
+		"the former SPIN spot falls inside the jump catchall -- the whole "
+		+ "lower-right is deliberately one big HOP zone in racing layout"
 	)
 
 
