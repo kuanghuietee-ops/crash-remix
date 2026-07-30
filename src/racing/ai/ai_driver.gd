@@ -41,14 +41,17 @@ extends RefCounted
 ##   floor which way to lock a drift at corner entry, when the natural
 ##   pursuit+lateral steer is too small to trust on its own -- see SLIDE
 ##   (hop) COUPLING and the SIGNED CURVATURE CONTRACT section, which is
-##   binding on Task 4's producer of this value), lateral_target_m:
-##   float (Task 4's own bookkeeping -- not read here, lateral_error_m
-##   already carries what this driver needs), lateral_error_m: float
+##   binding on Task 4's producer of this value), lateral_error_m: float
 ##   (signed, target - actual, along the SAME world-space "positive =
 ##   kart's right" axis steer uses -- see the STEERING section: this is the
 ##   sign convention Task 4 must produce it with), band_gap_m: float
 ##   (player_total_progress minus this kart's total_progress; positive =
-##   this kart is behind the player).
+##   this kart is behind the player). Fix-wave LOW-9: an earlier revision of
+##   Task 4's own producer also included a standalone lateral_target_m key
+##   (the slot's raw target, pre-error-subtraction) -- this driver never
+##   read it (lateral_error_m already carries everything the steering math
+##   below needs), so it was a dead key with no consumer and has been
+##   removed at the source rather than kept as unused bookkeeping.
 ##
 ## OUTPUT (Dictionary): steer: float (-1..1), brake: bool, hop: bool (edge),
 ## boost_tap: bool (edge), speed_scale: float.

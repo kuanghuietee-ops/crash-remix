@@ -58,11 +58,17 @@ extends Node
 ##   center the sample AROUND the lookahead point instead, which does not
 ##   match tangent_now's own definition ("the kart's current progress") and
 ##   was not used.
-## - lateral_target_m: this slot's centered offset from the pursuit line,
-##   computed once in configure() (see _compute_lateral_target_m()) since
-##   slot_index/ai_tuning never change per tick.
-## - lateral_error_m = lateral_target_m - actual_lateral_m, where
-##   actual_lateral_m is the perpendicular projection of (kart_pos -
+## - lateral_error_m = _lateral_target_m - actual_lateral_m, where
+##   _lateral_target_m is this slot's own centered offset from the pursuit
+##   line, computed once in configure() (see _compute_lateral_target_m())
+##   since slot_index/ai_tuning never change per tick -- fix-wave LOW-9: this
+##   private field is NOT itself included as a separate "lateral_target_m"
+##   key in the assembled state Dictionary below. It used to be, but ai_
+##   driver.gd's own INPUT STATE doc already says that key is "not read
+##   here, lateral_error_m already carries what this driver needs" -- a
+##   dead key with no consumer, removed rather than kept as unused
+##   bookkeeping (see ai_driver.gd's own doc, updated to match). actual_
+##   lateral_m is the perpendicular projection of (kart_pos -
 ##   centerline_point) onto the CURRENT tangent's own "right" vector
 ##   (tangent.cross(Vector3.UP) -- the same right-hand identity
 ##   kart_motor.gd's own velocity() uses: for the default facing (0,0,-1),
@@ -111,40 +117,51 @@ extends Node
 ##   own default of 1.0 covers "no scaling" for the ticks before the first
 ##   decide() call ever runs, so there is no missing-call gap to guard).
 ##
-## STUCK DETECTION (fix round 1, reviewer [HIGH] -- REPLACES an earlier,
-## broken instantaneous-velocity design). Uses a TUMBLING window of net
-## displacement, not a continuously-reset instantaneous-speed check:
-## _stuck_window_anchor_pos/_stuck_window_elapsed_s anchor the kart's
-## position once and accumulate real elapsed time; once
-## _stuck_window_elapsed_s reaches respawn_stuck_after_s, this compares the
-## NET horizontal displacement between the anchor and the kart's CURRENT
-## position against respawn_stuck_speed_mps * respawn_stuck_after_s (the
-## natural product of the two existing tuning fields -- no new literal: "a
-## bare-minimum crawl at the stuck-speed threshold would have covered at
-## least this much ground in this much time"). Below that: stuck, respawn.
-## At or above it: NOT stuck -- re-anchor to the current position and start
-## a fresh window, so a genuinely progressing kart always gets a fair,
-## un-poisoned window rather than one contaminated by an earlier slow patch.
+## STUCK DETECTION (fix-wave HIGH-1 -- REPLACES the fix-round-1 net-
+## DISPLACEMENT design below with NET SPINE PROGRESS). Still a TUMBLING
+## window, not a continuously-reset instantaneous-speed check:
+## _stuck_window_anchor_total_progress_m/_stuck_window_elapsed_s anchor the
+## kart's own follower.total_progress_m() once and accumulate real elapsed
+## time; once _stuck_window_elapsed_s reaches respawn_stuck_after_s, this
+## compares (follower.total_progress_m() - anchor) against
+## respawn_stuck_speed_mps * respawn_stuck_after_s (the same natural product
+## of the two existing tuning fields the fix-round-1 design already used --
+## no new literal). Below that: stuck, respawn. At or above it: NOT stuck --
+## re-anchor to the current total and start a fresh window, so a genuinely
+## progressing kart always gets a fair, un-poisoned window rather than one
+## contaminated by an earlier slow patch. total_progress_m() can decrease
+## (SpineFollower.update()'s own "reverse driving decreases" semantics), so
+## a kart making real net BACKWARD progress reads as stuck too, correctly --
+## a comparison against 0.0 alone would not, but this compares against the
+## tuned crawl-speed threshold instead, which a negative delta always fails.
 ##
-## WHY NOT INSTANTANEOUS VELOCITY (the original, reviewer-caught design): a
-## kart wedged against a wall while still actively sliding does not sit at
-## a calm near-zero speed -- move_and_slide()'s own collision response
-## produces sharp REAL VELOCITY SPIKES on every bounce, each one easily
-## exceeding respawn_stuck_speed_mps for a tick or two. A per-tick "below
-## threshold -> accumulate, above -> reset to zero" accumulator gets wiped
-## by those spikes over and over and can run for the ENTIRE race without
-## ever crossing respawn_stuck_after_s, even though the kart's real NET
-## position barely moves tick to tick to tick. A reviewer repro (25
-## simulated seconds against the East turn) confirmed exactly this: the
-## timer never exceeded 1.5s of the 3.0s threshold and zero respawns ever
-## fired. Net displacement over a window is immune to this -- a kart
-## bouncing in place ends the window in roughly the same spot it started,
-## no matter how many individual velocity spikes happened along the way,
-## because only the window's START and END position are ever compared.
-## Vertical motion is excluded from the displacement (flattened to XZ) for
-## the same reason the old design excluded it: a kart mid-hop-arc making
-## real horizontal progress should never read as stuck just because a jump
-## is also underway.
+## WHY NOT NET DISPLACEMENT (the fix-round-1 design this replaces): a kart
+## can rack up real straight-line displacement every tick -- oscillating
+## across the road width, spinning against a wall, ricocheting between two
+## obstacles -- without ever advancing a single meter along the actual
+## racing line. Net displacement compares the window's start/end WORLD
+## positions, so it reads that oscillation as "moved N meters, not stuck"
+## purely because the two sampled instants happened to land on different
+## sides of it, even though the kart's own progress around the lap never
+## went anywhere (measured: a kart oscillating at 8.7 m/s stayed confined to
+## a 14m spine span for a full 30 real seconds with zero respawns -- moving
+## without progressing). Net spine progress does not have this blind spot:
+## it compares the SAME continuous, seam-safe SpineFollower total every
+## other cross-kart comparison in this codebase already trusts (see the
+## class doc's own STATE ASSEMBLY section), so a kart that is genuinely
+## moving but never actually advancing reads as exactly what it is.
+## Decided to REPLACE rather than keep both checks: an AND of the two would
+## suppress the fix (a moving-without-progressing kart usually still clears
+## the old displacement threshold, which is the whole bug), and an OR would
+## make the displacement check purely redundant -- fix-round-1's own
+## motivating case (a kart bouncing in place against a wall, sharp velocity
+## spikes and all) already reads as flat net progress too, since none of
+## that bouncing is net forward motion along the spine either. Vertical
+## motion has no bearing on spine progress at all (a 2D projection onto the
+## track's own polyline), so the fix-round-1 design's separate "flatten to
+## XZ" step has no equivalent need here -- a kart mid-hop-arc making real
+## forward progress advances its own total_progress_m() exactly as it
+## should, hop or no hop.
 ##
 ## STUCK RESPAWN, once a window closes below the stuck threshold: teleport
 ## to spine.point_at_progress(follower.total_progress_m() -
@@ -180,6 +197,44 @@ extends Node
 ## a caller -- notably this suite's own East-turn regression-lock test --
 ## can observe "did the safety net actually fire" precisely, instead of
 ## inferring it from noisy progress deltas.
+##
+## RESPAWN-ONTO-PLAYER AVOIDANCE (fix-wave MEDIUM-4). Before committing to
+## the centerline drop point above, _clear_of_other_karts() checks it
+## against every OTHER kart's CURRENT position (horizontal-only, same
+## flatten-to-XZ shape the stuck detector's own fix-round-1 displacement
+## check used) -- a stuck-respawn must never teleport this kart on top of
+## the player or another AI kart that happens to be sitting right there.
+## ACCESS: this agent has no reach into RaceSession's own kart roster, so
+## the session hands it a Callable at configure() (other_kart_positions_
+## getter, optional, defaults to an invalid Callable -- every existing
+## caller that never passes one keeps the exact pre-fix behavior, no
+## avoidance step at all) returning every OTHER kart's global_position; see
+## race_session.gd's own _spawn_ai_karts() for how it is built and bound per
+## kart. This mirrors player_progress_getter's own established shape
+## (binding contract 3) rather than reaching past the agent into physics
+## overlap queries or a new controller-level proxy -- the session already
+## owns the one place that knows about every kart, the same reason it
+## already owns player_progress_getter.
+## BLOCKING RADIUS / STEP SIZE: "within about one kart-length" (the brief's
+## own phrasing) reads as this kart's own collision box's Z extent (see
+## _read_kart_extents(), kart.tscn's BoxShape3D size = (width, height,
+## length)); the lateral nudge steps in increments of that SAME box's X
+## extent (kart-WIDTH steps) -- both read from the real scene once at
+## configure() time rather than a literal, per this file's own no-bare-
+## literal rule. A kart with no readable CollisionShape3D (bare test
+## fixtures that construct a plain CharacterBody3D.new()) reads both as
+## 0.0, which safely disables this whole step rather than guessing.
+## SEARCH: tries the centerline point first (the common case: nothing is
+## there), then steps outward in kart-width increments alternating right/
+## left, capped at the widest lateral offset any already-authored AI slot
+## legitimately sits at (opponent_count/2 slots * lateral_slot_spacing_m --
+## see MEDIUM-3's grid-slot fix, which proved that whole range fits both
+## real tracks' own road width) so this can never push a kart somewhere
+## MEDIUM-3 didn't already verify is on the road. If every step in that
+## bounded range is still blocked (pathological -- would need the full AI
+## grid plus the player all crowded onto the exact same short stretch), it
+## falls back to the plain centerline point rather than searching forever
+## or picking something outside the proven-safe range.
 
 const AiDriverType := preload("res://src/racing/ai/ai_driver.gd")
 const SpineFollowerType := preload("res://src/racing/track/spine_follower.gd")
@@ -192,12 +247,21 @@ var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _slot_index: int
 var _player_progress_getter: Callable
+# Fix-wave MEDIUM-4: optional -- see configure()'s own doc and the class
+# doc's RESPAWN-ONTO-PLAYER AVOIDANCE section below.
+var _other_kart_positions_getter: Callable
 
 var _driver: RefCounted
 var _follower: RefCounted
 var _lateral_target_m: float
+# Fix-wave MEDIUM-4: this kart's own collision extents, read once at
+# configure() (see _read_kart_extents()) -- 0.0 when unreadable (a test
+# fixture with no CollisionShape3D child), which safely disables the
+# respawn-onto-player avoidance below rather than guessing a literal.
+var _kart_length_m: float
+var _kart_width_m: float
 
-var _stuck_window_anchor_pos: Vector3
+var _stuck_window_anchor_total_progress_m: float
 var _stuck_window_elapsed_s: float
 var _respawn_count: int
 var _hop_release_pending: bool
@@ -223,13 +287,14 @@ var _was_run_active: bool = true
 ##
 ## _was_run_active tracks the PREVIOUS tick's active state so a
 ## false -> true transition (reactivation) can be caught as an edge: the
-## stuck window is re-anchored fresh right then (anchor = current position,
-## elapsed = 0.0) rather than either (a) carrying forward however much time
-## accumulated while frozen (which would immediately misread the frozen gap
-## itself as "hasn't moved in ages" and fire a false-positive respawn on the
-## very next qualifying tick) or (b) comparing against a stale pre-freeze
-## anchor position. This mirrors _check_stuck_and_respawn's own "genuinely
-## progressing kart always gets a fair, un-poisoned window" rationale one
+## stuck window is re-anchored fresh right then (anchor = current follower.
+## total_progress_m(), elapsed = 0.0) rather than either (a) carrying
+## forward however much time accumulated while frozen (which would
+## immediately misread the frozen gap itself as "hasn't moved in ages" and
+## fire a false-positive respawn on the very next qualifying tick) or (b)
+## comparing against a stale pre-freeze anchor total. This mirrors _check_
+## stuck_and_respawn's own "genuinely progressing kart always gets a fair,
+## un-poisoned window" rationale one
 ## level up: a kart coming OFF a freeze deserves the same fresh start a kart
 ## that just cleared its own stuck threshold gets.
 ##
@@ -252,7 +317,8 @@ func configure(
 	kart_tuning: KartTuning,
 	race_tuning: RaceTuning,
 	slot_index: int,
-	player_progress_getter: Callable
+	player_progress_getter: Callable,
+	other_kart_positions_getter: Callable = Callable()
 ) -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_kart = kart
@@ -262,6 +328,11 @@ func configure(
 	_race_tuning = race_tuning
 	_slot_index = slot_index
 	_player_progress_getter = player_progress_getter
+	_other_kart_positions_getter = other_kart_positions_getter
+
+	var extents := _read_kart_extents()
+	_kart_width_m = extents.x
+	_kart_length_m = extents.z
 
 	_driver = AiDriverType.new()
 	_driver.configure(ai_tuning, kart_tuning)
@@ -281,7 +352,7 @@ func configure(
 	_follower.reset(spine.progress_for_position(kart.global_position))
 
 	_lateral_target_m = _compute_lateral_target_m()
-	_stuck_window_anchor_pos = kart.global_position
+	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
 	_respawn_count = 0
 	_hop_release_pending = false
@@ -316,7 +387,7 @@ func _physics_process(delta_s: float) -> void:
 		_was_run_active = false
 		return
 	if not _was_run_active:
-		_stuck_window_anchor_pos = _kart.global_position
+		_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 		_stuck_window_elapsed_s = 0.0
 		_was_run_active = true
 
@@ -324,10 +395,10 @@ func _physics_process(delta_s: float) -> void:
 		_kart.call("hop_released")
 		_hop_release_pending = false
 
-	var kart_pos: Vector3 = _kart.global_position
-	if _check_stuck_and_respawn(kart_pos, delta_s):
+	if _check_stuck_and_respawn(delta_s):
 		return
 
+	var kart_pos: Vector3 = _kart.global_position
 	var raw_progress := _spine.progress_for_position(kart_pos)
 	_follower.update(raw_progress, _max_follower_step_m(delta_s))
 	var progress: float = _follower.lap_progress_m()
@@ -363,7 +434,6 @@ func _assemble_state(kart_pos: Vector3, progress: float) -> Dictionary:
 		"boost_window_open": bool(_kart.call("boost_window_open")),
 		"lookahead_point": lookahead_point,
 		"curvature_ahead": curvature_ahead,
-		"lateral_target_m": _lateral_target_m,
 		"lateral_error_m": lateral_error_m,
 		"band_gap_m": band_gap_m,
 	}
@@ -402,29 +472,31 @@ func _max_follower_step_m(delta_s: float) -> float:
 
 
 ## See the class doc's STUCK DETECTION section for why this is a tumbling
-## net-displacement window rather than an instantaneous-velocity check.
-## Returns true (and has already respawned) exactly on the tick a closing
-## window reads as stuck; the caller must skip the rest of that tick's
-## normal drive logic, since _respawn() has just invalidated kart_pos/
-## progress out from under it.
-func _check_stuck_and_respawn(kart_pos: Vector3, delta_s: float) -> bool:
+## NET SPINE PROGRESS window rather than a net-displacement or instantaneous-
+## velocity check. Reads follower.total_progress_m() as it stood at the END
+## of the PREVIOUS tick's update (this tick's own follower.update() has not
+## run yet -- see _physics_process's own ordering) -- a one-tick staleness
+## that is immaterial against a multi-second window. Returns true (and has
+## already respawned) exactly on the tick a closing window reads as stuck;
+## the caller must skip the rest of that tick's normal drive logic, since
+## _respawn() has just invalidated the kart's position/the follower's own
+## total out from under it.
+func _check_stuck_and_respawn(delta_s: float) -> bool:
 	_stuck_window_elapsed_s += delta_s
 	if _stuck_window_elapsed_s < _ai_tuning.respawn_stuck_after_s:
 		return false
 
-	var horizontal_displacement := Vector3(
-		kart_pos.x - _stuck_window_anchor_pos.x,
-		0.0,
-		kart_pos.z - _stuck_window_anchor_pos.z
-	).length()
+	var net_progress_m: float = (
+		float(_follower.total_progress_m()) - _stuck_window_anchor_total_progress_m
+	)
 	var stuck_threshold_m := (
 		_ai_tuning.respawn_stuck_speed_mps * _ai_tuning.respawn_stuck_after_s
 	)
-	if horizontal_displacement < stuck_threshold_m:
+	if net_progress_m < stuck_threshold_m:
 		_respawn()
 		return true
 
-	_stuck_window_anchor_pos = kart_pos
+	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
 	return false
 
@@ -447,6 +519,8 @@ func _respawn() -> void:
 
 	var point := _spine.point_at_progress(wrapped_target)
 	var tangent := _spine.tangent_at_progress(wrapped_target)
+	# See the class doc's RESPAWN-ONTO-PLAYER AVOIDANCE section.
+	point = _clear_of_other_karts(point, tangent)
 
 	_kart.global_position = point + Vector3.UP * _race_tuning.respawn_drop_height_m
 	if not tangent.is_zero_approx():
@@ -463,6 +537,79 @@ func _respawn() -> void:
 
 	_follower.reset(target_total)
 	_driver.reset()
-	_stuck_window_anchor_pos = _kart.global_position
+	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
 	_hop_release_pending = false
+
+
+## See the class doc's RESPAWN-ONTO-PLAYER AVOIDANCE section. Returns the
+## centerline point unchanged when there is nothing to check against (no
+## getter wired -- the default for every caller that never passes one, see
+## configure()'s own doc -- or no readable kart extents, or a degenerate
+## zero tangent with no sensible lateral direction to offset along).
+func _clear_of_other_karts(point: Vector3, tangent: Vector3) -> Vector3:
+	if not _other_kart_positions_getter.is_valid():
+		return point
+	if tangent.is_zero_approx() or _kart_length_m <= 0.0 or _kart_width_m <= 0.0:
+		return point
+	var other_positions: Array = _other_kart_positions_getter.call()
+	if _point_is_clear_of(point, other_positions):
+		return point
+
+	var right := tangent.cross(Vector3.UP)
+	# The widest lateral offset any legitimately-placed AI kart already sits
+	# at (slot_index = opponent_count, the far end of _compute_lateral_
+	# target_m()'s own centered range) -- a tuning-derived bound on how far
+	# this nudge may push the drop point, so it can only ever land somewhere
+	# already proven to fit the road (see MEDIUM-3's grid-slot fix), never
+	# off it. No new literal: HALF via ScalarMathType, same as _compute_
+	# lateral_target_m()'s own derivation one function up.
+	var max_offset_m := _ai_tuning.opponent_count * ScalarMathType.HALF * _ai_tuning.lateral_slot_spacing_m
+	var step_index := 1
+	while float(step_index) * _kart_width_m <= max_offset_m:
+		var offset_m := float(step_index) * _kart_width_m
+		var candidate_right := point + right * offset_m
+		if _point_is_clear_of(candidate_right, other_positions):
+			return candidate_right
+		var candidate_left := point - right * offset_m
+		if _point_is_clear_of(candidate_left, other_positions):
+			return candidate_left
+		step_index += 1
+	# No clear step found within the tuning-derived bound -- best effort:
+	# drop at the original centerline point rather than searching forever or
+	# picking something outside the proven-safe range.
+	return point
+
+
+## Horizontal-only (flattened to XZ, same rationale as the stuck-detector's
+## own fix-round-1 displacement check) proximity test against every OTHER
+## kart's current position -- "within about one kart-length" per this fix's
+## own brief, using the real collision extents read at configure() rather
+## than a literal.
+func _point_is_clear_of(point: Vector3, other_positions: Array) -> bool:
+	for other_position: Variant in other_positions:
+		var other: Vector3 = other_position
+		var horizontal := Vector3(
+			point.x - other.x,
+			0.0,
+			point.z - other.z
+		).length()
+		if horizontal < _kart_length_m:
+			return false
+	return true
+
+
+## Reads this kart's own collision extents once at configure() time -- see
+## the class doc's RESPAWN-ONTO-PLAYER AVOIDANCE section. Vector3.ZERO (x/z
+## both 0.0) when the kart has no BoxShape3D CollisionShape3D child to read
+## (a bare test fixture, e.g. a plain CharacterBody3D.new()) -- the caller
+## treats a non-positive extent as "cannot compute a meaningful kart-length/
+## kart-width, skip the avoidance step entirely" rather than guessing.
+func _read_kart_extents() -> Vector3:
+	var collision := _kart.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null:
+		return Vector3.ZERO
+	var box := collision.shape as BoxShape3D
+	if box == null:
+		return Vector3.ZERO
+	return box.size

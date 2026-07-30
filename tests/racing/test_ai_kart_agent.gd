@@ -535,6 +535,88 @@ func test_respawn_forcibly_clears_an_active_slide() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Fix-wave MEDIUM-4: a stuck-respawn must never drop a kart on top of
+# another one. Seeds a blocking kart's position exactly at the raw
+# centerline drop point via other_kart_positions_getter and proves the
+# agent steps laterally clear of it instead.
+# ---------------------------------------------------------------------------
+
+
+func test_respawn_offsets_laterally_clear_of_a_seeded_blocking_kart() -> void:
+	var spine := _new_l_shaped_spine()
+	var start_progress := 30.0
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -start_progress))
+	if kart == null:
+		return
+	# Freezes the kart's own physics so it goes stuck deterministically --
+	# same technique test_stuck_kart_teleports_onto_the_centerline_facing_
+	# the_tangent uses.
+	kart.set_physics_process(false)
+
+	# The raw centerline drop point _respawn() would otherwise use, worked
+	# out the exact same way it does: progress - respawn_drop_gap_m, on leg
+	# A->B's own centerline (x=0).
+	var expected_drop_progress := start_progress - _ai_tuning.respawn_drop_gap_m
+	var blocker_position := Vector3(0.0, 0.2, -expected_drop_progress)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0,
+		func() -> Array: return [blocker_position]
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	await wait_physics_frames(frames_needed)
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		"fixture setup: the stuck-respawn must actually have fired by now"
+	)
+
+	var kart_length_m: float = agent.get("_kart_length_m")
+	assert_gt(
+		kart_length_m,
+		0.0,
+		"fixture sanity: a real kart.tscn instance must expose readable collision extents"
+	)
+
+	var final_pos: Vector3 = kart.global_position
+	var horizontal_from_blocker := Vector3(
+		final_pos.x - blocker_position.x,
+		0.0,
+		final_pos.z - blocker_position.z
+	).length()
+	assert_gte(
+		horizontal_from_blocker,
+		kart_length_m,
+		(
+			"a respawn onto a blocked drop point must offset laterally clear "
+			+ "of the blocking kart by at least one kart-length -- got %s m, "
+			+ "kart_length_m=%s"
+		) % [horizontal_from_blocker, kart_length_m]
+	)
+	assert_almost_eq(
+		final_pos.z,
+		-expected_drop_progress,
+		0.5,
+		"the offset must stay at the same along-spine drop point, only shifted laterally"
+	)
+	assert_false(
+		is_equal_approx(final_pos.x, blocker_position.x),
+		"the kart must not still be teleported exactly onto the blocker's own lateral position"
+	)
+
+
+# ---------------------------------------------------------------------------
 # Task 5 (CTR R3 integration) BINDING CONTRACT 1: AiKartAgent must gate its
 # entire _physics_process on kart.is_run_active() -- INCLUDING the stuck
 # detector, whose anchor must re-anchor on reactivation rather than
@@ -677,6 +759,92 @@ func test_agent_stays_quiet_on_refreeze_after_a_mid_race_respawn_and_reanchors_o
 			+ "not immediately fire a false-positive respawn off the frozen "
 			+ "gap's own elapsed time"
 		)
+	)
+
+
+# ---------------------------------------------------------------------------
+# Fix-wave HIGH-1: the stuck detector must catch a kart that is MOVING
+# without PROGRESSING, not just one that is motionless. A kart can rack up
+# real straight-line displacement every tick -- oscillating across the road,
+# bouncing between walls -- without ever advancing along the actual racing
+# line; the fix-round-1 net-DISPLACEMENT window read that as "not stuck"
+# whenever the window's start/end samples happened to land on different
+# sides of the oscillation (measured: a kart oscillating at 8.7 m/s stayed
+# confined to a 14m spine span for a full 30 real seconds with zero
+# respawns). See ai_kart_agent.gd's class doc for the NET SPINE PROGRESS fix
+# this test pins.
+# ---------------------------------------------------------------------------
+
+
+func test_lateral_oscillation_with_flat_spine_progress_triggers_respawn_within_two_windows() -> void:
+	var spine := _new_l_shaped_spine()
+	# Along leg A->B (straight, tangent (0,0,-1)); z stays fixed at along_z
+	# for the whole test -- oscillating x alone therefore moves the kart's
+	# raw position every tick while progress_for_position (which projects
+	# onto the SAME closest point on this straight leg regardless of x) never
+	# moves at all: exactly the "position moves +/-3m but spine progress
+	# stays flat" scripted repro. Configured while already sitting at the
+	# FIRST extreme (x=+lateral_offset_m, not the centerline) so the window's
+	# own anchor starts there deliberately, not at some third, unrelated
+	# reference point.
+	var along_z := -30.0
+	var lateral_offset_m := 3.0
+	var kart := _spawn_kart_on_floor(Vector3(lateral_offset_m, 0.2, along_z))
+	if kart == null:
+		return
+	# Freezes the kart's own physics entirely so this test's own position
+	# writes are the only thing that ever moves it -- same technique
+	# test_stuck_kart_teleports_onto_the_centerline_facing_the_tangent uses.
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var progress_before: float = agent.call("total_progress_m")
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var window_frames := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps))
+	# Two-phase, not an every-tick flip: holds the FIRST half of each window
+	# at +lateral_offset_m (matching the anchor the window opened with) and
+	# the SECOND half at -lateral_offset_m, so the window's own close-tick
+	# always lands on the OPPOSITE side from wherever it was anchored --
+	# deterministic regardless of exact tick-count parity/rounding, unlike
+	# an every-tick flip whose phase-at-close depends on whether the window
+	# length happens to be an even or odd number of ticks.
+	var half_window_frames := int(window_frames / 2.0)
+	# 2x the tumbling window, per this fix's own acceptance bound.
+	var frames_needed := 2 * window_frames
+	for frame_index in range(frames_needed):
+		var phase := frame_index % window_frames
+		var x := lateral_offset_m if phase < half_window_frames else -lateral_offset_m
+		kart.global_position = Vector3(x, 0.2, along_z)
+		await wait_physics_frames(1)
+		if int(agent.call("respawn_count")) > 0:
+			break
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a kart moving +/-3m every tick with perfectly flat spine progress "
+			+ "must trigger the stuck-respawn safety net within 2x the tumbling "
+			+ "window -- got 0 respawns over %s simulated seconds"
+		) % (frames_needed / physics_fps)
+	)
+	assert_almost_eq(
+		float(agent.call("total_progress_m")),
+		progress_before - _ai_tuning.respawn_drop_gap_m,
+		0.5,
+		"the respawn must reset the follower's own total the same way every other stuck-respawn does"
 	)
 
 
