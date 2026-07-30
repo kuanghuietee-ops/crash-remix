@@ -151,16 +151,30 @@ TRACK_SPINE_MIN_MARKER_COUNT = 3
 # width -- acceptable for a lint-side constant per the task brief.
 TRACK_ROAD_WIDTH_M = 14.0
 # Task 5 (CTR R3 integration): race_session.gd spawns one AI kart per
-# GridSlot1..N marker (see its own _spawn_ai_karts() doc) plus the player on
-# KartSpawn/slot 0. The lint has no runtime access to AiTuning.
-# opponent_count (there IS a tuning resource here, unlike TRACK_ROAD_WIDTH_M
-# above, but reading it would mean this static-parsing lint importing and
-# trusting a live Resource load, a much bigger dependency than one constant
-# kept in sync by hand) -- this is fixed at ai.tres's own current default
-# (opponent_count=5.0, i.e. 5 AI + the player = 6 total slots) for the same
-# "keep in sync by hand if it ever changes" reason.
-TRACK_GRID_SLOT_MIN_COUNT = 6
+# GridSlot1..N marker (see its own _spawn_ai_karts() doc) -- the player
+# spawns from the separate KartSpawn/slot 0 marker, which this rule never
+# counts. The lint has no runtime access to AiTuning.opponent_count (there
+# IS a tuning resource here, unlike TRACK_ROAD_WIDTH_M above, but reading it
+# would mean this static-parsing lint importing and trusting a live
+# Resource load, a much bigger dependency than one constant kept in sync by
+# hand) -- this is fixed at ai.tres's own current default (opponent_count=
+# 5.0) for the same "keep in sync by hand if it ever changes" reason.
+# Fix-wave LOW-8: a GridSlot0 duplicating KartSpawn's own transform used to
+# be authored too (and counted here) -- deleted as a redundant second
+# source of truth for the same spawn, so this floor dropped from 6 to 5.
+TRACK_GRID_SLOT_MIN_COUNT = 5
 TRACK_GRID_SLOT_NAME_PATTERN = re.compile(r"^GridSlot\d+$")
+# Fix-wave MEDIUM-3: mirrors ai_kart_agent.gd's own _compute_lateral_target_m()
+# inputs (ai.tres's current opponent_count/lateral_slot_spacing_m) -- same
+# "the lint has no runtime access to a tuning resource, keep in sync by
+# hand" rationale as TRACK_GRID_SLOT_MIN_COUNT/TRACK_ROAD_WIDTH_M above.
+TRACK_GRID_SLOT_INDEX_PATTERN = re.compile(r"^GridSlot(\d+)$")
+AI_OPPONENT_COUNT_FOR_GRID = 5.0
+AI_LATERAL_SLOT_SPACING_M = 1.7
+# Authoring/measurement slack around the formula's own exact value -- not a
+# feel tolerance, just enough to absorb the track scene's own decimal
+# rounding (see the two real tracks' own GridSlot positions).
+TRACK_GRID_SLOT_OFFSET_TOLERANCE_M = 0.01
 # Imported glTF scenes can only contribute visual hierarchy/material data to
 # these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
 # groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
@@ -742,6 +756,19 @@ def _track_spawn_findings(
     ]
 
 
+def _expected_grid_slot_lateral_offset_m(slot_index: int) -> float:
+    """Reproduces ai_kart_agent.gd's own _compute_lateral_target_m() exactly.
+
+    total_karts = opponent_count + 1; centered_slot = slot_index - HALF of
+    (total_karts - 1); lateral_target_m = centered_slot * spacing -- see
+    that function's own doc (fix-wave MEDIUM-3's producer of the value this
+    checks the authored scene against).
+    """
+    total_karts = AI_OPPONENT_COUNT_FOR_GRID + 1.0
+    centered_slot = float(slot_index) - (total_karts - 1.0) / 2.0
+    return centered_slot * AI_LATERAL_SLOT_SPACING_M
+
+
 def _track_grid_slot_findings(
     scene_name: str,
     nodes: list[FlatNode],
@@ -754,9 +781,12 @@ def _track_grid_slot_findings(
     Task 5 (CTR R3 integration): race_session.gd's _spawn_ai_karts() spawns
     one AI kart per root Marker3D named GridSlotN (N >= 1) it finds under the
     track; the player spawns from the separate, pre-existing KartSpawn marker
-    (TRACK_SPAWN_RULE above), so a GridSlot0 -- if a scene authors one at all,
-    matching KartSpawn's own transform -- is included in the count here but
-    never itself checked against KartSpawn.
+    (TRACK_SPAWN_RULE above). Fix-wave LOW-8: a GridSlot0 duplicating
+    KartSpawn's own transform used to also be authored (included in the
+    count here but never itself checked against KartSpawn) -- deleted as a
+    redundant second source of truth for the same spawn; this rule's own
+    TRACK_GRID_SLOT_NAME_PATTERN still matches "GridSlot0" if a scene ever
+    authors one again, so nothing here silently ignores a stray one.
     """
     slots = [
         node
@@ -774,7 +804,7 @@ def _track_grid_slot_findings(
                 (
                     f"found {len(slots)} GridSlot* marker(s) behind gate 0; "
                     f"need at least {TRACK_GRID_SLOT_MIN_COUNT} (matching "
-                    "ai.tres's own opponent_count default plus the player)"
+                    "ai.tres's own opponent_count default)"
                 ),
             )
         )
@@ -807,10 +837,11 @@ def _track_grid_slot_findings(
                 )
             )
         offset_across = _dot(relative, across)
-        if abs(offset_across) > half_width_m and not math.isclose(
+        off_road = abs(offset_across) > half_width_m and not math.isclose(
             abs(offset_across),
             half_width_m,
-        ):
+        )
+        if off_road:
             findings.append(
                 AuthoringViolation(
                     scene_name,
@@ -819,6 +850,50 @@ def _track_grid_slot_findings(
                         f"{slot.path} is {offset_across:.3f}m off the spine "
                         f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
                         f"wide (max {half_width_m:.3f}m each side)"
+                    ),
+                )
+            )
+        # Fix-wave MEDIUM-3: an authored slot's lateral offset must match
+        # ai_kart_agent.gd's own _compute_lateral_target_m() centering
+        # formula for its slot_index, or the AI kart that spawns on it steers
+        # hard for its real target the instant the race starts instead of
+        # holding the grid line it was placed on (measured before this fix:
+        # t=0 lateral errors up to 7.25m, adjacent slots steering AT each
+        # other). Skipped when off_road already fired above -- an off-road
+        # slot obviously will not match the on-road formula target either,
+        # and reporting both would just duplicate the same underlying
+        # authoring mistake as two findings instead of one. GridSlot0 is
+        # exempt -- see this function's own doc: it is never read by
+        # _spawn_ai_karts() at all (the player spawns from KartSpawn), and
+        # the formula's own slot_index=0 value is not "center" (the player
+        # conventionally sits there instead; see ai_kart_agent.gd's LATERAL
+        # SLOT CENTERING doc).
+        index_match = TRACK_GRID_SLOT_INDEX_PATTERN.match(slot.name)
+        if off_road or index_match is None:
+            continue
+        slot_index = int(index_match.group(1))
+        if slot_index == 0:
+            continue
+        expected_offset_m = _expected_grid_slot_lateral_offset_m(slot_index)
+        if not math.isclose(
+            offset_across,
+            expected_offset_m,
+            abs_tol=TRACK_GRID_SLOT_OFFSET_TOLERANCE_M,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GRID_SLOTS_RULE,
+                    (
+                        f"{slot.path} has a lateral offset of "
+                        f"{offset_across:.3f}m; ai_kart_agent.gd's own "
+                        "centering formula for this slot_index expects "
+                        f"{expected_offset_m:.3f}m (opponent_count="
+                        f"{AI_OPPONENT_COUNT_FOR_GRID:.1f}, "
+                        f"lateral_slot_spacing_m={AI_LATERAL_SLOT_SPACING_M}) "
+                        "-- an AI kart spawned here steers hard for its real "
+                        "target the instant the race starts instead of "
+                        "holding the grid line"
                     ),
                 )
             )

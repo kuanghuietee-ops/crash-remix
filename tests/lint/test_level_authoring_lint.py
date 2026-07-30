@@ -950,6 +950,25 @@ class RacingTrackAuthoringLintTests(unittest.TestCase):
         self.assertIn("GridSlot5", findings[0].detail)
         self.assertIn("off the spine centerline", findings[0].detail)
 
+    def test_grid_slot_offset_mismatch_fires_the_grid_slots_rule(self) -> None:
+        # Fix-wave MEDIUM-3: GridSlot3 sits on-road (well within the road's
+        # half-width, so TRACK_ROAD_WIDTH_M's own check is silent) but at the
+        # OLD, pre-fix z=3 offset rather than ai_kart_agent.gd's own
+        # _compute_lateral_target_m() target for slot_index 3 (+0.85m) --
+        # isolates exactly the authoring bug the real tracks shipped with
+        # before this fix (t=0 lateral errors up to 7.25m, adjacent slots
+        # steering AT each other) from the separate off-road case above.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_grid_slot_offset_mismatch_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GRID_SLOTS_RULE],
+        )
+        self.assertIn("GridSlot3", findings[0].detail)
+        self.assertIn("lateral offset", findings[0].detail)
+
     def test_real_track_graybox_loop_passes_the_track_lint(self) -> None:
         # Task 7's working reference must already satisfy every Task 8 rule
         # without modification -- the strongest possible sanity check that

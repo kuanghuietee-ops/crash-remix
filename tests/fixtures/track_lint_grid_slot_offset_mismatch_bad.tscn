@@ -6,10 +6,7 @@
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
 
-[sub_resource type="BoxShape3D" id="Shape_gate_narrow"]
-size = Vector3(10, 4, 2)
-
-[node name="TrackLintGateWidthBad" type="Node3D"]
+[node name="TrackLintGridSlotOffsetMismatchBad" type="Node3D"]
 
 [node name="Spine" type="Path3D" parent="."]
 script = ExtResource("1_spine")
@@ -47,7 +44,7 @@ script = ExtResource("2_gate")
 gate_index = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate1"]
-shape = SubResource("Shape_gate_narrow")
+shape = SubResource("Shape_gate")
 
 [node name="Gate2" type="Area3D" parent="Gates"]
 position = Vector3(10, 2, 20)
@@ -80,7 +77,7 @@ position = Vector3(-13, 0.2, -0.85)
 rotation_degrees = Vector3(0, -90, 0)
 
 [node name="GridSlot3" type="Marker3D" parent="."]
-position = Vector3(-13, 0.2, 0.85)
+position = Vector3(-13, 0.2, 3)
 rotation_degrees = Vector3(0, -90, 0)
 
 [node name="GridSlot4" type="Marker3D" parent="."]
