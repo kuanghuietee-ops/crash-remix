@@ -28,6 +28,7 @@ extends GutTest
 const RACE_SCENE_PATH := "res://scenes/racing/race_time_trial.tscn"
 const CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const KART_TUNING_PATH := "res://data/tuning/racing/kart.tres"
+const ITEM_BOX_SCENE_PATH := "res://scenes/racing/item_box.tscn"
 
 var _catalog: GameplayTuning
 var _kart_tuning: KartTuning
@@ -1175,6 +1176,317 @@ func test_a_real_player_finish_freezes_every_ai_kart_for_several_more_real_secon
 				"AI kart at slot %d must not move at all once frozen and settled"
 			) % (slot_index + 1)
 		)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 3 (CTR item loop): RaceSession discovers ItemBox instances under
+# Track (the "gate pattern" -- see the class doc's own ITEM BOX WIRING
+# section) and routes a pickup to the entering kart's own ItemSlot via a
+# seeded RandomNumberGenerator. Neither current real track authors a box
+# yet (Task 5's job) -- these tests add a SYNTHETIC one under Track before
+# configure() runs, exactly like the class doc's own "exercised only by
+# tests that add a synthetic ItemBox" note describes.
+# ---------------------------------------------------------------------------
+
+
+func test_neither_real_race_scene_authors_any_item_boxes_yet() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	assert_eq(
+		int(race.call("item_box_count")),
+		0,
+		(
+			"Task 5 (not yet landed) authors real boxes into tracks -- until "
+			+ "then discovery on the real graybox loop must stay a clean no-op"
+		)
+	)
+
+
+func test_a_synthetic_item_box_under_track_is_discovered_and_configured() -> void:
+	var setup := _boot_race_with_synthetic_box()
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	assert_eq(int(race.call("item_box_count")), 1)
+
+
+func test_player_kart_entering_a_synthetic_box_rolls_and_lands_its_item_slot() -> void:
+	var setup := _boot_race_with_synthetic_box()
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot, "the player's real KartController must expose a real item slot")
+	if slot == null:
+		return
+	assert_eq(slot.call("state"), &"empty", "fixture sanity: no roll yet")
+
+	# Brief teleport-detection window with the kart's own physics disabled
+	# (the same technique _cross_gate() below uses for gates) so the real
+	# Area3D overlap fires cleanly.
+	kart.set_physics_process(false)
+	kart.global_position = box.global_position
+	await wait_physics_frames(2)
+
+	assert_eq(
+		slot.call("state"),
+		&"rolling",
+		"entering an active box must start the player's own real roll"
+	)
+
+	# Re-enable the kart's own physics so its _physics_process (and
+	# therefore ItemSlot.tick(), see kart_controller.gd) resumes advancing
+	# the real roll toward held.
+	kart.set_physics_process(true)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(slot.call("state"), &"held")
+	assert_ne(
+		slot.call("held_item"),
+		&"none",
+		"a held slot must report a real item, not none"
+	)
+
+
+## Binding-contract-2-style identity routing (the same "route by WHICH BODY
+## entered, never a hardcoded player assumption" shape gate crossings
+## already use): an AI kart's own pickup must roll ITS OWN slot, never the
+## player's, and vice versa.
+func test_ai_kart_entering_a_synthetic_box_rolls_its_own_item_slot_not_the_players() -> void:
+	# A position well clear of the player's own KartSpawn (see _boot_race_
+	# with_synthetic_box()'s own doc for why this test specifically cannot
+	# reuse the default KartSpawn-anchored box every other test here does):
+	# the player's kart keeps ticking normally throughout this test, so a
+	# box anywhere near its actual spawn would be picked up by the player
+	# too, for real -- defeating the isolation this test exists to prove.
+	var setup := _boot_race_with_synthetic_box(0, Vector3(200.0, 0.0, 200.0))
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart, "fixture setup: slot 1's AI kart must exist")
+	if ai_kart == null:
+		return
+	var ai_slot: Object = ai_kart.call("item_slot")
+	var player_slot: Object = (race.get_node("Kart") as CharacterBody3D).call("item_slot")
+	assert_not_null(ai_slot)
+	assert_not_null(player_slot)
+	if ai_slot == null or player_slot == null:
+		return
+
+	# The AI kart's own AiKartAgent keeps ticking (a separate Node,
+	# unaffected by this call) but only ever writes steer/brake/speed_scale
+	# onto a KartController whose own _physics_process never runs to consume
+	# them, so the teleported position holds for the few frames this test
+	# needs -- the exact same technique test_ai_kart_gate_crossing_routes_
+	# to_its_own_validator_not_the_players above already establishes.
+	ai_kart.set_physics_process(false)
+	ai_kart.global_position = box.global_position
+	await wait_physics_frames(2)
+
+	assert_eq(
+		ai_slot.call("state"),
+		&"rolling",
+		"an AI kart entering an active box must start ITS OWN real roll"
+	)
+	assert_eq(
+		player_slot.call("state"),
+		&"empty",
+		"the player's own slot must be completely untouched by an AI kart's pickup"
+	)
+
+
+## See the class doc's SOLO TIME TRIAL DOES NOT ROLL section: spawn_
+## opponents = false must suppress item rolls entirely, even off a real box
+## pickup.
+func test_solo_session_never_rolls_even_after_a_real_synthetic_box_pickup() -> void:
+	assert_true(ResourceLoader.exists(RACE_SCENE_PATH))
+	if not ResourceLoader.exists(RACE_SCENE_PATH):
+		return
+	var packed := load(RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	race.set("spawn_opponents", false)
+	var track := race.get_node("Track") as Node3D
+	var spawn := track.get_node("KartSpawn") as Marker3D
+	var box_packed := load(ITEM_BOX_SCENE_PATH) as PackedScene
+	assert_not_null(box_packed)
+	if box_packed == null:
+		return
+	var box := box_packed.instantiate() as Area3D
+	# LOCAL position (spawn.position, relative to their shared parent
+	# `track`), set BEFORE track.add_child(box) -- see _boot_race_with_
+	# synthetic_box()'s identical fix below for why: a body/area added to
+	# the tree at its (0,0,0) default and repositioned only AFTER can still
+	# register a transient, permanently-sticky overlap against anything
+	# already sitting at that origin, discovered empirically while chasing
+	# a flaky false pickup in test_item_box.gd.
+	box.position = spawn.position
+	track.add_child(box)
+	race.call("configure", _catalog)
+
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+
+	kart.set_physics_process(false)
+	kart.global_position = box.global_position
+	await wait_physics_frames(2)
+	kart.set_physics_process(true)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(
+		slot.call("state"),
+		&"empty",
+		(
+			"a solo (spawn_opponents=false) session must never start an item "
+			+ "roll, even after a real box pickup"
+		)
+	)
+
+
+func test_refresh_tuning_reaches_the_player_kart_item_slot() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.0)
+	assert_eq(slot.call("state"), &"rolling", "fixture setup: the roll must have started")
+
+	var tuning_variant: GameplayTuning = _catalog.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	# Far smaller than even a single real physics tick's own delta_s, unlike
+	# the stale (1.2s) duration the fixture's own roll started under -- see
+	# test_kart_controller.gd's identical test for the item slot in
+	# isolation for the same reasoning.
+	tuning_variant.items.roulette_duration_s = 0.001
+
+	race.call("refresh_tuning", tuning_variant)
+	await wait_physics_frames(2)
+
+	assert_eq(
+		slot.call("state"),
+		&"held",
+		"refresh_tuning() must reach the real player kart's own item slot"
+	)
+
+
+## See the class doc's ITEM RNG section: a non-zero item_rng_seed must
+## reproduce the EXACT same first roll across two entirely independent
+## sessions -- the only way this can hold is if the exported seed genuinely
+## reaches a real RandomNumberGenerator.seed and both sessions' first
+## randf() call after configure() lines up deterministically.
+func test_item_rng_seed_nonzero_reproduces_the_same_first_roll_across_two_sessions() -> void:
+	var seed_value := 918273
+	var first := _boot_race_with_synthetic_box(seed_value)
+	var second := _boot_race_with_synthetic_box(seed_value)
+	var race_a: Node = first.get("race")
+	var box_a: Area3D = first.get("box")
+	var race_b: Node = second.get("race")
+	var box_b: Area3D = second.get("box")
+	if race_a == null or box_a == null or race_b == null or box_b == null:
+		return
+
+	var kart_a := race_a.get_node("Kart") as CharacterBody3D
+	var kart_b := race_b.get_node("Kart") as CharacterBody3D
+	var slot_a: Object = kart_a.call("item_slot")
+	var slot_b: Object = kart_b.call("item_slot")
+	assert_not_null(slot_a)
+	assert_not_null(slot_b)
+	if slot_a == null or slot_b == null:
+		return
+
+	kart_a.set_physics_process(false)
+	kart_a.global_position = box_a.global_position
+	kart_b.set_physics_process(false)
+	kart_b.global_position = box_b.global_position
+	await wait_physics_frames(2)
+
+	assert_eq(slot_a.call("state"), &"rolling", "fixture setup: session A's pickup must have registered")
+	assert_eq(slot_b.call("state"), &"rolling", "fixture setup: session B's pickup must have registered")
+
+	kart_a.set_physics_process(true)
+	kart_b.set_physics_process(true)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(slot_a.call("state"), &"held")
+	assert_eq(slot_b.call("state"), &"held")
+	assert_eq(
+		slot_a.call("held_item"),
+		slot_b.call("held_item"),
+		"the same item_rng_seed must reproduce the exact same FIRST roll across two independent sessions"
+	)
+
+
+## Instantiates the real race_time_trial.tscn, adds a synthetic ItemBox
+## under Track (a location already proven grounded, see the fixture
+## rationale on every other test in this file), then configures it -- the
+## "add a synthetic ItemBox under Track before configure() runs" fixture the
+## class doc's own ITEM BOX WIRING section describes as the only way to
+## exercise this wiring on the current (box-less) real tracks.
+## local_position (relative to Track, same frame KartSpawn/GridSlotN already
+## use) defaults to null, meaning "use the player's own KartSpawn marker
+## position" -- the common case every test but one in this file wants. The
+## AI-kart isolation test passes an explicit position well clear of
+## KartSpawn instead: since the player spawns AT KartSpawn and keeps ticking
+## normally throughout that test (nothing disables the player's own physics
+## there), a box placed AT KartSpawn would be a fixture bug, not a
+## production one -- the player's real kart would legitimately pick it up
+## too, defeating the very isolation the test is trying to prove.
+func _boot_race_with_synthetic_box(
+	item_rng_seed: int = 0, local_position: Variant = null
+) -> Dictionary:
+	assert_true(ResourceLoader.exists(RACE_SCENE_PATH))
+	if not ResourceLoader.exists(RACE_SCENE_PATH):
+		return {}
+	var packed := load(RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return {}
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	if item_rng_seed != 0:
+		race.set("item_rng_seed", item_rng_seed)
+	var track := race.get_node("Track") as Node3D
+	var spawn := track.get_node("KartSpawn") as Marker3D
+	var box_packed := load(ITEM_BOX_SCENE_PATH) as PackedScene
+	assert_not_null(box_packed)
+	if box_packed == null:
+		return {}
+	var box := box_packed.instantiate() as Area3D
+	# LOCAL position (relative to their shared parent `track`), set BEFORE
+	# track.add_child(box) -- a node added to the tree at its (0,0,0)
+	# default and repositioned only AFTER can still register a transient,
+	# permanently-sticky body_entered against anything already sitting at
+	# that origin (discovered empirically while chasing a flaky false
+	# pickup in test_item_box.gd -- see that suite's own _new_kart_body()
+	# doc for the full mechanism).
+	box.position = local_position if local_position != null else spawn.position
+	track.add_child(box)
+	race.call("configure", _catalog)
+	return {"race": race, "box": box}
 
 
 ## Drives the session to race_complete by calling its own gate-crossing

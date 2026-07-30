@@ -63,10 +63,12 @@ const KartMotorType := preload("res://src/racing/kart/kart_motor.gd")
 const DriftStateMachineType := preload(
 	"res://src/racing/kart/drift_state_machine.gd"
 )
+const ItemSlotType := preload("res://src/racing/items/item_slot.gd")
 
 var _tuning: KartTuning
 var _motor: KartMotorType = KartMotorType.new()
 var _drift: DriftStateMachineType = DriftStateMachineType.new()
+var _item_slot: ItemSlotType = ItemSlotType.new()
 
 var _steer_input: float
 var _brake_input: bool
@@ -74,10 +76,21 @@ var _run_active: bool = true
 var _item_use_count: int = 0
 
 
-func configure(kart_tuning: KartTuning) -> void:
+## item_tuning (R4 Task 3) is OPTIONAL and defaults to null so every
+## pre-existing caller that only ever passed kart_tuning (test fixtures,
+## chiefly) keeps compiling and behaving exactly as before -- a kart
+## configured with no item_tuning simply never reconfigures its ItemSlot,
+## which stays in its default &"empty" state and fails closed to &"none"
+## from held_item()/use() (see item_slot.gd's own class doc). RaceSession
+## (race_session.gd) is the one real caller that passes it, for both the
+## player's kart and every AI kart, mirroring how kart_tuning itself is
+## threaded through.
+func configure(kart_tuning: KartTuning, item_tuning: ItemTuning = null) -> void:
 	_tuning = kart_tuning
 	_motor.configure(kart_tuning)
 	_drift.configure(kart_tuning)
+	if item_tuning != null:
+		_item_slot.configure(item_tuning)
 	set_run_active(true)
 
 
@@ -92,10 +105,17 @@ func configure(kart_tuning: KartTuning) -> void:
 ## progress), only which tuning values that state is computed against next
 ## tick, exactly like KartMotor.configure()/DriftStateMachine.configure()
 ## already do on their own.
-func refresh_tuning(kart_tuning: KartTuning) -> void:
+## item_tuning is likewise OPTIONAL (defaults to null, see configure()'s own
+## doc) -- when supplied it reapplies live to the same ItemSlot instance
+## this controller has owned since construction, WITHOUT resetting its
+## current state/elapsed roll progress, mirroring exactly how this method
+## already refreshes _motor/_drift in place rather than replacing them.
+func refresh_tuning(kart_tuning: KartTuning, item_tuning: ItemTuning = null) -> void:
 	_tuning = kart_tuning
 	_motor.configure(kart_tuning)
 	_drift.configure(kart_tuning)
+	if item_tuning != null:
+		_item_slot.configure(item_tuning)
 
 
 func steer(value: float) -> void:
@@ -153,22 +173,33 @@ func apply_boost(seconds: float) -> void:
 	_motor.add_boost(seconds)
 
 
-## Task-3 landing pad (R4 Task 2): the real ItemSlot (item_slot.gd,
-## &"missile"/&"shield"/&"turbo"/&"beaker"/&"none") lands in Task 3 and will
-## make this actually consume and apply the kart's held item. Until then
-## this is a no-op stub -- it has no gameplay effect and always returns
-## &"none" -- so R4 Task 2's ITEM routing (touch/gamepad press ->
-## RaceSession._route_input -> RacingInputAdapter.apply_item_pressed ->
-## here) is provable end-to-end without waiting for Task 3.
+## R4 Task 3: replaces the Task-2 no-op stub (which always returned
+## &"none") with the real hand-off onto this controller's own ItemSlot --
+## delegates straight to ItemSlot.use() (returns-and-clears: &"none" unless
+## an item is actually &"held"). Spawning/applying whatever comes back
+## (missile projectile, shield, turbo, beaker) is Task 4's job; this task's
+## whole contract is that the correct item name comes back out.
 ## item_use_count() mirrors AiKartAgent's own respawn_count() -- a plain
-## call counter exposed for test observability, nothing more.
+## call counter exposed for test observability, incremented on every
+## use_item() call regardless of what it returns (mirrors the Task-2 stub's
+## own counting behavior, unchanged here).
 func use_item() -> StringName:
 	_item_use_count += 1
-	return &"none"
+	return _item_slot.use()
 
 
 func item_use_count() -> int:
 	return _item_use_count
+
+
+## Exposes the real, already-configured-and-ticked ItemSlot this controller
+## owns -- for the HUD (roulette flicker/held-item display) and Task 4's
+## AiKartAgent (deciding whether/when to use an item), neither of which
+## should have to reach past this controller into a private field the way
+## a handful of this suite's own white-box tests already do for _motor/
+## _drift.
+func item_slot() -> ItemSlotType:
+	return _item_slot
 
 
 ## R4 Task 1 (striking the design spec's Recorded debts #1 -- see the class
@@ -287,6 +318,12 @@ func _physics_process(delta_s: float) -> void:
 			_drift.is_sliding(),
 			_drift.slide_direction()
 		)
+		# R4 Task 3: the item roulette only advances while this kart is
+		# actually racing -- gated on _run_active the same way the drift/
+		# motor tick above already is, so a kart frozen at the finish line
+		# (set_run_active(false)) can never have a roll silently land while
+		# nobody can act on it.
+		_item_slot.tick(delta_s)
 	else:
 		_motor.decelerate_to_stop(delta_s, grounded)
 	velocity = _motor.velocity()

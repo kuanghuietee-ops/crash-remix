@@ -10,13 +10,17 @@ extends GutTest
 
 const KART_SCENE_PATH := "res://scenes/racing/kart.tscn"
 const TUNING_PATH := "res://data/tuning/racing/kart.tres"
+const ITEM_TUNING_PATH := "res://data/tuning/racing/items.tres"
 
 var _kart_tuning: KartTuning
+var _item_tuning: ItemTuning
 
 
 func before_all() -> void:
 	_kart_tuning = load(TUNING_PATH)
 	assert_not_null(_kart_tuning, "kart.tres must load — Task 1 registers it")
+	_item_tuning = load(ITEM_TUNING_PATH)
+	assert_not_null(_item_tuning, "items.tres must load — Task 2 registers it")
 
 
 func test_kart_scene_settles_grounded_and_drives_forward_with_zero_steer() -> void:
@@ -641,10 +645,166 @@ func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# R4 Task 3 (CTR item loop): the real per-kart ItemSlot -- configure()/
+# refresh_tuning() thread item_tuning through (optionally, see
+# _spawn_kart_on_floor()'s own doc), use_item() now delegates to the real
+# slot instead of the Task-2 stub's hardcoded &"none", item_slot() exposes
+# it, and _physics_process ticks it every frame the kart is run_active.
+# ---------------------------------------------------------------------------
+
+
+func test_configure_without_item_tuning_still_compiles_and_use_item_stays_none() -> void:
+	# Backward compatibility: every OTHER test in this file spawns a kart
+	# with no item_tuning at all (the optional param's default null) --
+	# this pins that use_item() degrades to a harmless permanent &"none"
+	# rather than erroring, since the ItemSlot never gets configure()d.
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	assert_eq(kart.call("use_item"), &"none")
+	assert_eq(int(kart.call("item_use_count")), 1, "the call counter must still increment")
+
+
+func test_item_slot_accessor_exposes_the_real_configured_slot() -> void:
+	var kart := _spawn_kart_on_floor(Vector3.ZERO, _item_tuning)
+	if kart == null:
+		return
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot, "item_slot() must expose the controller's own real ItemSlot")
+	if slot == null:
+		return
+	assert_eq(slot.call("state"), &"empty", "a freshly configured slot must start empty")
+
+
+func test_use_item_returns_none_when_nothing_is_held() -> void:
+	var kart := _spawn_kart_on_floor(Vector3.ZERO, _item_tuning)
+	if kart == null:
+		return
+	assert_eq(
+		kart.call("use_item"),
+		&"none",
+		"use_item() must return none before any roll has landed"
+	)
+
+
+## Drives a real roll through the real slot (start_roll() directly on the
+## slot this controller owns, exactly the way race_session.gd's own box
+## pickup routing will call it in this same task) and real physics ticks
+## (proving _physics_process actually calls ItemSlot.tick(), not just that
+## the slot works in isolation -- that is test_item_slot.gd's job) to prove
+## use_item() hands back the real rolled item and clears it.
+func test_use_item_returns_the_rolled_item_once_the_roll_lands_and_then_clears_it() -> void:
+	var kart := _spawn_kart_on_floor(Vector3.ZERO, _item_tuning)
+	if kart == null:
+		return
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.0)
+	assert_eq(slot.call("state"), &"rolling", "fixture setup: the roll must have started")
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_item_tuning.roulette_duration_s * physics_fps)) + 2
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(
+		slot.call("state"),
+		&"held",
+		"real _physics_process ticks must have advanced the real slot to held"
+	)
+
+	var used: StringName = kart.call("use_item")
+
+	assert_eq(used, &"missile", "rng_value=0.0 must roll the first item, missile")
+	assert_eq(
+		int(kart.call("item_use_count")),
+		1,
+		"the call counter must still increment on a real, successful use"
+	)
+	assert_eq(
+		kart.call("use_item"),
+		&"none",
+		"a second use_item() call must not hand out the same item again"
+	)
+
+
+## Run-active gating: the item roulette must not advance while a kart is
+## frozen (RaceSession freezes every kart at the finish line via set_run_
+## active(false), see race_session.gd's own _finish_race()) -- mirrors how
+## the drift FSM/motor tick above it in _physics_process are already gated
+## the same way.
+func test_item_slot_does_not_advance_while_the_kart_is_not_run_active() -> void:
+	var kart := _spawn_kart_on_floor(Vector3.ZERO, _item_tuning)
+	if kart == null:
+		return
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.0)
+	kart.call("set_run_active", false)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_item_tuning.roulette_duration_s * physics_fps)) + 2
+	await wait_physics_frames(frames_needed)
+
+	assert_eq(
+		slot.call("state"),
+		&"rolling",
+		"a frozen kart's own item roll must not advance, even past roulette_duration_s worth of real ticks"
+	)
+
+
+## Live tuning refresh (M2 fix-wave counterpart for items): mirrors test_
+## refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_motor's own
+## "shrink/change a tuning value, prove the NEXT tick already reads the new
+## one" shape, applied to the item slot instead of the motor.
+func test_refresh_tuning_reaches_the_real_item_slot() -> void:
+	var kart := _spawn_kart_on_floor(Vector3.ZERO, _item_tuning)
+	if kart == null:
+		return
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.0)
+	assert_eq(slot.call("state"), &"rolling", "fixture setup: the roll must have started")
+
+	# Far smaller than even a single real physics tick's own delta_s (at a
+	# default 60 physics ticks/second, ~0.0167s) -- so ANY tick at all after
+	# the refresh lands the roll, unlike the STALE (1.2s) duration this
+	# fixture's own start_roll() began under, which two ticks could never
+	# reach on its own (proving the refresh, not just that time passed).
+	var shrunk_tuning: ItemTuning = _item_tuning.duplicate(true)
+	shrunk_tuning.roulette_duration_s = 0.001
+
+	kart.call("refresh_tuning", _kart_tuning, shrunk_tuning)
+	await wait_physics_frames(2)
+
+	assert_eq(
+		slot.call("state"),
+		&"held",
+		(
+			"refresh_tuning() must reach the real ItemSlot this controller "
+			+ "owns -- with the stale (longer) roulette_duration_s still in "
+			+ "effect, two ticks would not be enough to land the roll"
+		)
+	)
+
+
 ## origin offsets the whole floor+kart fixture so multiple fixtures spawned
 ## in the same test (e.g. a same-direction-vs-counter-steer A/B comparison)
-## don't share a global position and collide with each other.
-func _spawn_kart_on_floor(origin: Vector3 = Vector3.ZERO) -> CharacterBody3D:
+## don't share a global position and collide with each other. item_tuning
+## (R4 Task 3) is OPTIONAL and defaults to null -- every pre-existing call
+## site in this file that only ever passed origin keeps configuring the
+## kart with no item tuning, exactly the same "an omitted item_tuning is a
+## documented no-op" contract kart_controller.gd's own configure() itself
+## establishes.
+func _spawn_kart_on_floor(
+	origin: Vector3 = Vector3.ZERO, item_tuning: ItemTuning = null
+) -> CharacterBody3D:
 	var packed := load(KART_SCENE_PATH) as PackedScene
 	assert_not_null(packed)
 	if packed == null:
@@ -668,7 +828,7 @@ func _spawn_kart_on_floor(origin: Vector3 = Vector3.ZERO) -> CharacterBody3D:
 		return null
 	kart.position = Vector3(0.0, 0.2, 0.0)
 	root.add_child(kart)
-	kart.call("configure", _kart_tuning)
+	kart.call("configure", _kart_tuning, item_tuning)
 	return kart
 
 

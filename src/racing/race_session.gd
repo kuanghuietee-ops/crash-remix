@@ -51,6 +51,50 @@ extends Node3D
 ## window, tuned by a platformer-only InputTuning field with no racing
 ## equivalent; a hop press has no such forgiveness need since
 ## DriftStateMachine already owns its own slide-arming timing).
+##
+## ITEM RNG (R4 Task 3). This session owns ONE seeded RandomNumberGenerator
+## for the whole race and is the sole caller of ItemSlot.start_roll() for
+## every kart in it (player and AI alike) -- see item_slot.gd's own RNG
+## INJECTION doc for why the slot itself never touches randomness directly.
+## item_rng_seed (exported, default 0) is the "determinism vs variety"
+## knob: 0 means "no fixed seed was authored" and configure() calls
+## RandomNumberGenerator.randomize() so ordinary play gets a genuinely
+## different item sequence every race; any non-zero value is used as an
+## explicit RandomNumberGenerator.seed, so a GUT test (or a future replay/
+## regression fixture) can pin an exact, reproducible sequence of pickups
+## by setting this exported field before configure() runs, the same
+## "override a field on the session, don't touch RaceSession's internals"
+## shape the existing spawn_opponents flag already establishes. Re-seeded
+## fresh on every configure() call (including a re-configure/retry), so a
+## fixed seed always reproduces the exact same sequence from race start.
+##
+## ITEM BOX WIRING mirrors the checkpoint-gate pattern one section up:
+## boxes are discovered by type under Track (_discover_item_boxes(), the
+## same find_children("*", "Area3D", true, false) scan _discover_gates()
+## already uses) and this session connects to each one's native
+## body_entered signal itself -- ItemBox emits nothing of its own (see
+## item_box.gd's own class doc), it only manages its own hide/respawn
+## bookkeeping through a SEPARATE listener on that same signal. A pickup
+## routes to the ENTERING BODY's own ItemSlot (kart.item_slot(), looked up
+## by calling the body directly -- no per-kart lookup table is needed the
+## way gate crossings need _gate_validators, since the body IS the kart
+## whose slot must roll), for player and AI karts identically -- there is
+## no separate "is this the player" branch anywhere in this path. No boxes
+## are authored into either real track yet (Task 5's job): on both current
+## tracks _discover_item_boxes() simply returns an empty array and every
+## piece of this wiring is a clean no-op, exercised only by tests that add
+## a synthetic ItemBox under Track before calling configure().
+##
+## SOLO TIME TRIAL DOES NOT ROLL. spawn_opponents (not a new, separate
+## exported flag) also gates item rolls: _items_allowed() reads it
+## directly, so a solo race (spawn_opponents = false, see that field's own
+## doc) never starts a roll even if a box is present and hit -- item pickups
+## are a racing-against-someone mechanic, and solo time trial's own
+## established contract is "race minus AI", nothing added in its place. A
+## dedicated allow_items flag was considered and rejected: it would be a
+## second lever controlling the exact same "is anyone actually being raced
+## against" question spawn_opponents already answers, with no scene yet
+## needing to set the two differently.
 
 const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
@@ -103,6 +147,11 @@ signal retry_requested
 ## _on_race_finished doc, unchanged by this fix).
 @export var spawn_opponents: bool = true
 
+## R4 Task 3: see the class doc's ITEM RNG section. 0 (the default -- every
+## pre-existing race scene/test) randomizes; a non-zero value pins an exact,
+## reproducible item-roll sequence.
+@export var item_rng_seed: int = 0
+
 var _kart: CharacterBody3D
 var _camera: KartCamera
 var _track: Node3D
@@ -112,11 +161,15 @@ var _gamepad: Node
 var _touch: TouchControls
 var _hud: Control
 var _gates: Array[CheckpointGate] = []
+# R4 Task 3: see the class doc's ITEM BOX WIRING section.
+var _item_boxes: Array[ItemBox] = []
+var _item_rng := RandomNumberGenerator.new()
 
 var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
 var _ai_tuning: AiTuning
+var _item_tuning: ItemTuning
 
 var _input_adapter: RacingInputAdapterType = RacingInputAdapterType.new()
 var _validator: LapValidatorType = LapValidatorType.new()
@@ -178,6 +231,16 @@ func configure(catalog: GameplayTuning) -> void:
 	_race_tuning = catalog.race
 	_input_tuning = catalog.input
 	_ai_tuning = catalog.ai
+	_item_tuning = catalog.items
+
+	# R4 Task 3: see the class doc's ITEM RNG section -- re-seeded fresh on
+	# every configure() (including a re-configure/retry) so a fixed non-zero
+	# item_rng_seed always reproduces the exact same pickup sequence from
+	# race start.
+	if item_rng_seed == 0:
+		_item_rng.randomize()
+	else:
+		_item_rng.seed = item_rng_seed
 
 	_kart = get_node("Kart") as CharacterBody3D
 	_camera = get_node("CameraRig") as KartCamera
@@ -199,7 +262,7 @@ func configure(catalog: GameplayTuning) -> void:
 		[_hud.get_node("SafeArea/FinishPanel/Margin/Rows/Retry")]
 	)
 
-	_kart.call("configure", _kart_tuning)
+	_kart.call("configure", _kart_tuning, _item_tuning)
 	# Task 5: this same "place the transform, then seed yaw as an
 	# independent step" logic (HIGH-1 fix-wave bug doc below) is now shared
 	# with every AI kart's own grid-slot placement via _seed_kart_transform()
@@ -248,6 +311,19 @@ func configure(catalog: GameplayTuning) -> void:
 	_validator.configure(_gates.size(), int(_race_tuning.lap_count))
 	_input_adapter.configure(_input_tuning)
 
+	# R4 Task 3: see the class doc's ITEM BOX WIRING section. No per-box
+	# bound handler is needed here (unlike the gate loop just above) -- the
+	# routing handler below reads the ENTERING BODY's own item_slot(), never
+	# which box fired, so a single unbound handler shared by every box is
+	# both correct and sufficient; is_connected() against that same unbound
+	# method is still what guards a re-configure() against a duplicate
+	# connection.
+	_item_boxes = _discover_item_boxes()
+	for box: ItemBox in _item_boxes:
+		box.call("configure", _item_tuning)
+		if not box.body_entered.is_connected(_on_box_body_entered):
+			box.body_entered.connect(_on_box_body_entered)
+
 	# Task 5: player's own SpineFollower (binding contract 3) and the
 	# body->validator routing table (binding contract 2's "gates route by
 	# body identity") must both be ready before _spawn_ai_karts() below --
@@ -287,6 +363,15 @@ func lap_count() -> int:
 
 func gate_count() -> int:
 	return _gates.size()
+
+
+## How many ItemBox instances were discovered under Track at configure()
+## time -- exposed mainly so a test can prove the box-less-track no-op case
+## explicitly (0 on both current real tracks, see the class doc's ITEM BOX
+## WIRING section) rather than only inferring it from the absence of a
+## crash.
+func item_box_count() -> int:
+	return _item_boxes.size()
 
 
 ## Gates validated toward the lap currently in progress -- a thin
@@ -414,8 +499,9 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	_kart_tuning = catalog.kart
 	_race_tuning = catalog.race
 	_input_tuning = catalog.input
+	_item_tuning = catalog.items
 	if _kart != null and is_instance_valid(_kart):
-		_kart.call("refresh_tuning", _kart_tuning)
+		_kart.call("refresh_tuning", _kart_tuning, _item_tuning)
 	if _camera != null and is_instance_valid(_camera):
 		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
 
@@ -526,6 +612,37 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 	_last_lap_boundary_s = now_elapsed
 	if outcome == &"race_complete":
 		_finish_race(now_elapsed)
+
+
+## See the class doc's ITEM BOX WIRING and SOLO TIME TRIAL DOES NOT ROLL
+## sections. Routes straight to the entering body's OWN ItemSlot -- no
+## per-kart lookup table, unlike gate crossings' _gate_validators, since the
+## body passed in by the native body_entered signal already IS the kart
+## whose slot must roll; player and AI karts take the exact same path here.
+## A body with no item_slot() method (a stray non-kart Area3D/body, or a
+## bare test fixture) is silently ignored rather than erroring.
+func _on_box_body_entered(body: Node) -> void:
+	if not _items_allowed():
+		return
+	if body == null or not is_instance_valid(body) or not body.has_method("item_slot"):
+		return
+	var slot: Object = body.call("item_slot")
+	if slot == null:
+		return
+	slot.call("start_roll", _item_rng.randf())
+
+
+## See the class doc's SOLO TIME TRIAL DOES NOT ROLL section.
+func _items_allowed() -> bool:
+	return spawn_opponents
+
+
+func _discover_item_boxes() -> Array[ItemBox]:
+	var result: Array[ItemBox] = []
+	for candidate: Node in _track.find_children("*", "Area3D", true, false):
+		if candidate is ItemBox:
+			result.append(candidate as ItemBox)
+	return result
 
 
 ## Binding contract 3: player finish placement = 1 + the number of AI karts
@@ -669,7 +786,7 @@ func _spawn_ai_karts() -> void:
 
 		var ai_kart := KartSceneType.instantiate() as CharacterBody3D
 		_ai_root.add_child(ai_kart)
-		ai_kart.call("configure", _kart_tuning)
+		ai_kart.call("configure", _kart_tuning, _item_tuning)
 		_seed_kart_transform(ai_kart, marker)
 
 		_gate_validators[ai_kart] = _make_lap_validator()
