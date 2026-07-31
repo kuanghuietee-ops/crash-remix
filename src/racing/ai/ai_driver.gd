@@ -330,6 +330,41 @@ extends RefCounted
 ## configure() time, see below -- it never changes tick to tick, the same
 ## "constant across this driver's life" shape ai_tuning/kart_tuning/item_
 ## tuning already have):
+##
+## DEVIATION FROM THE PLAN TEXT (fix round 1, reviewer -- documented per the
+## repo's own say-which-side-is-wrong rule, not silently substituted). The
+## plan's own Task 4 line reads "slide entry/exit thresholds modulated per
+## personality" and "boost usage on straights confidence-gated by skill
+## jitter"; what shipped is different on both counts, and the plan doc itself
+## has been amended to match (see its own Task 4 line, with the original text
+## kept inline as SUPERSEDED). Reasoning for each substitution:
+##   AGGRESSION shipped as brake_margin_ratio modulation, not slide_trigger_
+##   curvature/slide_exit_curvature modulation. Those two curvature
+##   thresholds are a hysteresis BAND (trigger > exit, see SLIDE (hop)
+##   COUPLING above) shared with the apex blend's own engagement math (see
+##   APEX LATERAL TARGETING) and with DriftStateMachine's real start/sustain
+##   logic on the other side of the wire -- modulating them per slot risks
+##   a personality-tuned slot arming intent at a DIFFERENT curvature than
+##   the one apex targeting/the floor were derived against, entangling two
+##   features this task otherwise keeps orthogonal. brake_margin_ratio has
+##   no such coupling (it only ever gates AiDriver's own brake output) and
+##   already reads exactly as "aggression" -- a higher-margin slot brakes
+##   later and carries more corner speed -- so it is the more defensible,
+##   lower-risk knob for the same "personality visibly differentiates two
+##   slots' racing" requirement the brief asks for.
+##   SKILL JITTER shipped gating the boost tap (the slide-release window
+##   this file already drives), not "boost usage on straights." The plan's
+##   own phrasing describes an ITEM-USE decision (using a held turbo/boost
+##   ITEM while on a straight) -- CTR R6 Task 5 is what adds turbo items and
+##   their own AI item-intent heuristic (see this file's own ITEM USE
+##   HEURISTICS section for the existing &"turbo" case, which already reads
+##   "straight enough" off slide_exit_curvature); "boost usage on straights"
+##   only becomes a real, reachable behavior once that heuristic exists to
+##   attach jitter to. Gating THIS driver's existing boost_tap output instead
+##   keeps skill jitter's own deterministic-confidence mechanism fully built
+##   and tested now, on the one boost-shaped output Task 4 actually owns,
+##   rather than leaving it unimplemented until Task 5 lands or duplicating
+##   it later once the turbo heuristic exists.
 ##   AGGRESSION. effective_brake_margin_ratio = ai.brake_margin_ratio +
 ##   slot_index * ai.personality_aggression_step (see CORNERING / BRAKE
 ##   above) -- a higher slot index tolerates a higher speed-over-target
