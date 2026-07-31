@@ -218,14 +218,36 @@ extends Node3D
 ## player's own finished_order/finish elapsed sit in the exact same
 ## dictionaries an AI kart's would, interleaved by whenever each actually
 ## crossed the line. Once _finished flips true, _on_gate_body_entered()'s
-## own top-of-function guard (`if _finished or not _race_started: return`,
-## unchanged) blocks every further gate crossing -- AI or player -- so no
-## MORE finishes can ever be recorded past that point, matching
+## own post-_finished branch drops the player's own crossings unconditionally
+## and every AI kart's own further crossings ONCE THAT KART has already been
+## recorded -- so, past the very same tick the player finished on (see SAME-
+## TICK PHOTO FINISH below), no MORE finishes can ever be recorded, matching
 ## _finish_race()'s own existing "freeze the whole field" contract one
 ## section down: an AI kart that has not yet finished by the time the player
-## does simply never gets a finished_order at all, which is exactly what
-## Task 3's own "unfinished ranked by progress at player-finish" ruling
-## needs to read.
+## does (and was not mid-dispatch on its own race_complete THAT SAME tick)
+## simply never gets a finished_order at all, which is exactly what Task 3's
+## own "unfinished ranked by progress at player-finish" ruling needs to read.
+##
+## SAME-TICK PHOTO FINISH (fix round 1, reviewer [MEDIUM]). Godot dispatches
+## every Area3D body_entered signal a physics step detects in sequence,
+## having already queued all of them before any one callback starts running
+## -- so if the player's own crossing happens to be dispatched FIRST in a
+## tick where an AI kart also crosses its own finish gate, the naive guard
+## "_finished is true, drop everything" would silently discard that AI's own
+## already-in-flight race_complete: finish_order_of() would read -1 for it
+## forever, even though it plainly crossed the line. _on_gate_body_entered()
+## now keeps processing a non-player kart's own crossing while _finished is
+## already true, IF AND ONLY IF that kart has not itself already been
+## recorded (finish_order_of(body) < 0) -- see _process_ai_gate_crossing()
+## and that branch's own doc. This can only ever fire for a same-tick
+## artifact like the one just described: an AI kart is frozen the instant
+## _finish_race() runs (same as every kart), so it can never PHYSICALLY
+## reach a gate again on any LATER tick, the identical "can't physically
+## reach a trigger" principle the pre-GO guard above already relies on. The
+## player's own crossings stay unconditionally dropped once _finished either
+## way -- no post-finish lap counting for the player, exactly as before this
+## fix -- and _finish_race()'s own freeze is never retroactively undone or
+## re-entered by this branch (it never calls _finish_race() again).
 ##
 ## finish_order_of()/finish_elapsed_s_of() are exposed now (not deferred to
 ## Task 3) because the RECORDING this task's own brief calls for has nowhere
@@ -1199,20 +1221,45 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 	# adds no behavior change there). Made structural rather than left
 	# implicit: a signal path this session owns should not stay silently
 	# reachable pre-GO just because nothing currently exercises it that way.
-	if _finished or not _race_started:
+	# This guard alone stays absolute -- unlike _finished below, nothing
+	# ever bypasses it.
+	if not _race_started:
+		return
+	if _finished:
+		# R5 Task 2 fix round 1 [MEDIUM]: SAME-TICK PHOTO FINISH. Godot
+		# queues every Area3D body_entered signal a physics step detects
+		# before any of them start running, so if the player's own crossing
+		# is dispatched first this same tick (setting _finished true and
+		# freezing every kart, see _finish_race() below), an AI kart's own
+		# ALREADY-QUEUED crossing this identical tick still fires afterward
+		# -- dropping it outright (the old, unconditional `if _finished:
+		# return`) silently lost that AI's own race_complete forever:
+		# finish_order_of() would read -1 permanently, misreporting a kart
+		# that genuinely crossed the line as still racing. Once _finished is
+		# true, an AI kart can never PHYSICALLY reach a gate again on any
+		# LATER tick (frozen = zero displacement, the exact same "can't
+		# physically reach a trigger" principle the pre-GO guard above
+		# already relies on) -- so the ONLY crossings that can ever arrive
+		# here while _finished is already true are these same-tick
+		# artifacts, and only for a kart that has not itself already
+		# recorded a finish (an already-finished AI's own further same-tick
+		# crossings, if any, are ordinary and ignored -- nothing new to
+		# record, and _record_finish() would no-op anyway). The player's own
+		# crossings are ALWAYS dropped here regardless of dispatch order --
+		# preserves "no post-finish lap counting for the player" exactly as
+		# before this fix; _finish_race()'s own freeze is not retroactively
+		# undone or re-entered either way, since _finished stays true and
+		# _finish_race() is never called again from this branch.
+		if body != _kart and finish_order_of(body as CharacterBody3D) < 0:
+			_process_ai_gate_crossing(body as CharacterBody3D, gate)
+		return
+	if body != _kart:
+		_process_ai_gate_crossing(body as CharacterBody3D, gate)
 		return
 	var validator: LapValidatorType = _gate_validators.get(body)
 	if validator == null:
 		return
 	var outcome := validator.gate_crossed(gate.gate_index)
-	if body != _kart:
-		# R5 Task 2: see the class doc's AI FINISH RECORDING section. AI karts
-		# keep driving after this, unchanged -- no freeze, no lap-time
-		# bookkeeping (that stays player-only, see below) -- only their own
-		# finish order/elapsed gets recorded, once.
-		if outcome == &"race_complete":
-			_record_finish(body as CharacterBody3D, elapsed_s())
-		return
 	if outcome != &"lap_complete" and outcome != &"race_complete":
 		return
 	var now_elapsed := elapsed_s()
@@ -1220,6 +1267,22 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 	_last_lap_boundary_s = now_elapsed
 	if outcome == &"race_complete":
 		_finish_race(now_elapsed)
+
+
+## Shared by the ordinary pre-finish AI path and the same-tick photo-finish
+## bypass above -- see both callers' own docs. Advances the given kart's own
+## validator and records its finish (idempotent, see _record_finish()'s own
+## doc) if-and-only-if THIS crossing is its own race_complete; an ordinary
+## &"ok"/&"out_of_order"/&"lap_complete" outcome is a harmless no-op past the
+## validator update, same as before this fix -- AI karts get no lap-time
+## bookkeeping at all, that stays player-only (see the caller below).
+func _process_ai_gate_crossing(body: CharacterBody3D, gate: CheckpointGate) -> void:
+	var validator: LapValidatorType = _gate_validators.get(body)
+	if validator == null:
+		return
+	var outcome := validator.gate_crossed(gate.gate_index)
+	if outcome == &"race_complete":
+		_record_finish(body, elapsed_s())
 
 
 ## See the class doc's ITEM BOX WIRING and SOLO TIME TRIAL DOES NOT ROLL

@@ -91,6 +91,24 @@ func _position_label(race: Node) -> Label:
 	return hud.get_node("SafeArea/Stats/Margin/Rows/Position") as Label
 
 
+## Same nested loop _cross_all_gates_for_kart() above uses, but WITHOUT the
+## trailing gate-0 closing crossing -- leaves the given kart's own validator
+## waiting on exactly one more gate-0 crossing to complete the race, so a
+## test can fire that final crossing itself (for two different karts, back
+## to back, with no await between the calls) to pin an exact same-tick
+## dispatch order.
+func _drive_kart_to_final_gate(
+	race: Node, kart: Node, lap_count: int, gate_count: int
+) -> void:
+	for _lap in range(lap_count):
+		for gate_index in range(gate_count):
+			race.call(
+				"_on_gate_body_entered",
+				kart,
+				race.get_node("Track/Gates/Gate%d" % gate_index)
+			)
+
+
 # ---------------------------------------------------------------------------
 # AI-finishes-first: its own finish order/elapsed get recorded, and its own
 # live rank freezes at 1st even though the kart keeps being driven (more
@@ -381,4 +399,111 @@ func test_hud_position_label_hides_again_once_the_race_finishes() -> void:
 	assert_false(
 		label.visible,
 		"the live position line must hide again once the race is finished -- the FINISHED panel takes over"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1, reviewer [MEDIUM]: same-tick photo finish. The player and an
+# AI kart both cross their own final gate in the SAME physics dispatch --
+# calling the private handler directly, back to back with no await between
+# the two calls, pins the exact dispatch order deterministically (this is
+# exactly what a real same-tick Area3D dispatch looks like from the
+# session's own point of view: two callbacks running one after the other,
+# no ticks in between). Before this fix, a player-first ordering silently
+# dropped the AI's own already-in-flight race_complete -- _finished flipped
+# true inside the player's own callback, and the AI's callback (dispatched
+# second, this identical tick) hit the unconditional `if _finished: return`
+# guard and never reached its own validator at all.
+# ---------------------------------------------------------------------------
+
+
+func test_same_tick_photo_finish_player_first_still_records_the_ai() -> void:
+	var race := _boot_race(_catalog_with_opponent_count(1))
+	if race == null:
+		return
+	var kart := race.get_node("Kart")
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart, "fixture setup: slot 1's AI kart must exist")
+	if ai_kart == null:
+		return
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	var gate0 := race.get_node("Track/Gates/Gate0")
+
+	await wait_physics_frames(2)
+	_drive_kart_to_final_gate(race, kart, lap_count, gate_count)
+	_drive_kart_to_final_gate(race, ai_kart, lap_count, gate_count)
+	assert_false(
+		bool(race.call("is_finished")),
+		"fixture sanity: neither kart has crossed its own FINAL gate yet"
+	)
+
+	# The player's own callback dispatches first this "tick".
+	race.call("_on_gate_body_entered", kart, gate0)
+	assert_true(
+		bool(race.call("is_finished")),
+		"fixture setup: the player's own crossing must have ended the race"
+	)
+	var player_elapsed := float(race.call("finish_elapsed_s_of", kart))
+	assert_eq(int(race.call("finish_order_of", kart)), 1)
+
+	# The AI's own already-in-flight crossing dispatches second, this SAME
+	# tick -- must still be recorded, not silently dropped by _finished now
+	# being true.
+	race.call("_on_gate_body_entered", ai_kart, gate0)
+
+	assert_eq(
+		int(race.call("finish_order_of", ai_kart)),
+		2,
+		"the AI's own same-tick crossing must still be recorded, one slot behind the player -- this is the bug this fix closes"
+	)
+	assert_eq(
+		float(race.call("finish_elapsed_s_of", ai_kart)),
+		player_elapsed,
+		"a genuine same-tick photo finish must capture the identical elapsed_s() for both karts -- no real time passed between the two calls"
+	)
+
+
+func test_same_tick_photo_finish_ai_first_still_orders_correctly() -> void:
+	var race := _boot_race(_catalog_with_opponent_count(1))
+	if race == null:
+		return
+	var kart := race.get_node("Kart")
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart, "fixture setup: slot 1's AI kart must exist")
+	if ai_kart == null:
+		return
+	var gate_count := int(race.call("gate_count"))
+	var lap_count := int(race.call("lap_count"))
+	var gate0 := race.get_node("Track/Gates/Gate0")
+
+	await wait_physics_frames(2)
+	_drive_kart_to_final_gate(race, kart, lap_count, gate_count)
+	_drive_kart_to_final_gate(race, ai_kart, lap_count, gate_count)
+
+	# Mirror ordering: the AI's own callback dispatches FIRST this "tick" --
+	# the pre-existing, unmodified-by-this-fix path (the AI finishes before
+	# _finished is ever set, same as the earlier AI-finishes-first test),
+	# pinned here to prove the fix did not disturb it.
+	race.call("_on_gate_body_entered", ai_kart, gate0)
+	assert_false(
+		bool(race.call("is_finished")),
+		"fixture sanity: an AI kart finishing on its own does not end the session"
+	)
+	assert_eq(int(race.call("finish_order_of", ai_kart)), 1)
+	var ai_elapsed := float(race.call("finish_elapsed_s_of", ai_kart))
+
+	# The player's own crossing dispatches second, this SAME tick.
+	race.call("_on_gate_body_entered", kart, gate0)
+
+	assert_true(bool(race.call("is_finished")))
+	assert_eq(
+		int(race.call("finish_order_of", kart)),
+		2,
+		"the player's own crossing arriving second this same tick must still record it as 2nd, behind the AI"
+	)
+	assert_eq(
+		float(race.call("finish_elapsed_s_of", kart)),
+		ai_elapsed,
+		"a genuine same-tick photo finish must capture the identical elapsed_s() for both karts"
 	)
