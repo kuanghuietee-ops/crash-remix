@@ -128,11 +128,20 @@ func test_sparks_stop_the_instant_the_slide_ends() -> void:
 	assert_false(sparks.emitting, "sparks must stop the instant the slide ends")
 
 
-## Drives two REAL slide-boost taps through DriftStateMachine (via the real
-## controller's boost_tap(), not a stand-in) to prove stage escalation
-## reaches KartFx's amount/color mapping at stage 2, not just stage 0/1 --
-## the "stage N -> color N" shape the Task brief calls out explicitly.
-func test_spark_amount_and_color_escalate_with_each_real_boost_tap() -> void:
+## Task 1 fix round 1 (CTR R6, circuit polish reviewer [LOW]): the original
+## version of this test only drove taps through stage 2, leaving stage 3 --
+## kart.tres's own authored boost_stack_max, the actual CAP -- completely
+## unexercised end-to-end. Drives REAL slide-boost taps through
+## DriftStateMachine (via the real controller's boost_tap(), not a stand-in)
+## all the way to the cap, asserting amount/color at every stage along the
+## way plus the cap itself: one further tap beyond boost_stack_max must be
+## ignored, not silently escalate to a phantom stage with no tuned color.
+## stage_cap is read off _kart_tuning.boost_stack_max rather than hardcoded,
+## so this stays correct if that field is ever retuned; the fixture-sanity
+## assert below still pins today's authored value at exactly 3, the "stage
+## N -> color N" shape the Task brief calls out explicitly, through every N
+## fx_tuning actually has a dedicated color for.
+func test_spark_amount_and_color_escalate_with_each_real_boost_tap_through_the_cap() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:
 		return
@@ -151,16 +160,66 @@ func test_spark_amount_and_color_escalate_with_each_real_boost_tap() -> void:
 	if process_material == null:
 		return
 
-	for expected_stage in [1, 2]:
-		await wait_physics_frames(
-			int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2
+	var stage_cap := roundi(_kart_tuning.boost_stack_max)
+	assert_eq(
+		stage_cap,
+		3,
+		"fixture sanity: kart.tres's authored boost_stack_max must still be "
+		+ "3 -- fx.tres only authors 3 stage colors, and a cap above that "
+		+ "would leave later stages with no dedicated tuned color at all"
+	)
+	var stage_colors: Array[Color] = [
+		_fx_tuning.spark_color_stage1,
+		_fx_tuning.spark_color_stage2,
+		_fx_tuning.spark_color_stage3,
+	]
+
+	# Each stacked stage's own tap window is [open_s, close_s] scaled by
+	# boost_window_shrink_factor^stage (see drift_state_machine.gd's own
+	# boost_tap() doc) -- SHRINKING with every successful tap. A single
+	# fixed wait duration (the LOW's own bug: the first draft of this test
+	# reused stage 0's un-scaled boost_window_open_s for every iteration)
+	# lands inside stage 0/1's wider windows but overshoots stage 2's
+	# narrower one, so this tracks exactly how many frames have elapsed
+	# since the window last reset (a successful tap resets it to 0, same as
+	# the real DriftStateMachine) and aims each wait at that stage's own
+	# scaled window MIDPOINT -- a comfortable safety margin against the
+	# +-1-frame rounding a physics-tick granularity wait already carries.
+	var frames_since_window_reset := 2  # the wait_physics_frames(2) above
+	var physics_fps := float(Engine.physics_ticks_per_second)
+
+	for expected_stage in range(1, stage_cap + 1):
+		var stage_index := expected_stage - 1  # _boost_stage BEFORE this tap
+		var stage_factor: float = pow(
+			_kart_tuning.boost_window_shrink_factor, float(stage_index)
 		)
+		var target_s := (
+			(_kart_tuning.boost_window_open_s + _kart_tuning.boost_window_close_s)
+			* 0.5
+			* stage_factor
+		)
+		var target_frames := int(round(target_s * physics_fps))
+		var frames_to_wait := target_frames - frames_since_window_reset
+		assert_gt(
+			frames_to_wait,
+			0,
+			(
+				"fixture sanity: stage %d's own scaled window midpoint must "
+				+ "still be ahead of the frames already elapsed"
+			) % expected_stage
+		)
+		if frames_to_wait <= 0:
+			return
+		await wait_physics_frames(frames_to_wait)
+
 		assert_eq(
 			String(kart.call("boost_tap")),
 			"fired",
-			"fixture setup: tap #%d must land inside its own window" % expected_stage
+			"fixture setup: tap #%d must land inside its own (shrunk) window" % expected_stage
 		)
+		frames_since_window_reset = 0
 		await wait_physics_frames(1)
+		frames_since_window_reset += 1
 
 		assert_eq(int(kart.call("boost_stage")), expected_stage)
 		assert_eq(
@@ -171,15 +230,42 @@ func test_spark_amount_and_color_escalate_with_each_real_boost_tap() -> void:
 			),
 			"stage %d amount must scale by spark_amount_per_stage" % expected_stage
 		)
-		var expected_color := (
-			_fx_tuning.spark_color_stage1 if expected_stage == 1
-			else _fx_tuning.spark_color_stage2
-		)
+		var color_index := clampi(expected_stage, 1, stage_colors.size()) - 1
 		assert_eq(
 			process_material.color,
-			expected_color,
-			"stage %d must use spark_color_stage%d" % [expected_stage, expected_stage]
+			stage_colors[color_index],
+			"stage %d must use spark_color_stage%d" % [expected_stage, color_index + 1]
 		)
+
+	# The cap itself (the LOW's own "through stage 3" ask, taken to its
+	# natural conclusion): boost_tap() rejects a tap at/above the cap BEFORE
+	# ever touching window arithmetic (see its own "if _boost_stage >=
+	# stack_max: return &ignored" early return) -- so unlike every tap
+	# above, this one needs no window timing at all, just any real call.
+	assert_eq(
+		String(kart.call("boost_tap")),
+		"ignored",
+		"a tap beyond boost_stack_max must be ignored by the real drift FSM"
+	)
+	await wait_physics_frames(1)
+	assert_eq(
+		int(kart.call("boost_stage")),
+		stage_cap,
+		"the stage must stay pinned at the cap after an ignored tap"
+	)
+	assert_eq(
+		sparks.amount,
+		roundi(
+			_fx_tuning.spark_amount_stage0
+			+ float(stage_cap) * _fx_tuning.spark_amount_per_stage
+		),
+		"the spark amount must stay pinned at the cap's own value too"
+	)
+	assert_eq(
+		process_material.color,
+		_fx_tuning.spark_color_stage3,
+		"the spark color must stay pinned at spark_color_stage3 at the cap"
+	)
 
 
 ## The boost flame's gate is is_boosting() specifically (KartMotor's own

@@ -1353,6 +1353,95 @@ func test_a_synthetic_item_box_under_track_is_discovered_and_configured() -> voi
 	)
 
 
+## Task 1 fix round 1 (CTR R6, circuit polish reviewer [MEDIUM]): the ORIGINAL
+## wire at this call site (race_session.gd's own item-box discovery loop
+## inside configure()) called box.call("configure", _item_tuning) with NO
+## fx_tuning argument at all -- fx_tuning is ItemBox.configure()'s own
+## OPTIONAL trailing param (defaults to null), so every real box discovered
+## through the real session silently stayed unconfigured for fx and never
+## spun/bobbed, even though test_item_box.gd's own spin/bob tests all passed
+## (they inject fx_tuning directly, bypassing this call site entirely). This
+## is the session-level test that would have caught it: boot a real race
+## with a synthetic box (discovered the same way every real authored box is),
+## and prove the box's own VISUAL Mesh child actually advances over real
+## physics ticks -- not a white-box field read, an observable behavior
+## change, the same shape kart_fx.gd's own emitting-flag tests use.
+func test_configure_wires_fx_onto_every_discovered_box_so_its_mesh_spins_and_bobs() -> void:
+	var setup := _boot_race_with_synthetic_box()
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	var mesh := box.get_node("Mesh") as MeshInstance3D
+	var base_rotation_y := mesh.rotation.y
+	var base_position_y := mesh.position.y
+
+	await wait_physics_frames(30)
+
+	assert_ne(
+		mesh.rotation.y,
+		base_rotation_y,
+		(
+			"configure() must wire fx_tuning onto every discovered box -- an "
+			+ "unconfigured box (fx_tuning == null) never spins, which is "
+			+ "exactly the dead-wire this test guards against"
+		)
+	)
+	assert_ne(
+		mesh.position.y,
+		base_position_y,
+		"configure() must wire fx_tuning onto every discovered box so it bobs too"
+	)
+
+
+## Live tuning refresh (Task 1 fix round 1, mirrors the player kart's own Fx
+## refresh_tuning() proof in test_race_session.gd's kart-refresh tests):
+## refresh_tuning() must reach every discovered box too, not just the player
+## kart's own Fx node -- ItemBox has no separate refresh_tuning() of its own,
+## so race_session.gd's own fix reuses configure() (idempotent, see item_
+## box.gd's own doc). Proven by a value actually changing: a shrunk item_box_
+## spin_degrees_per_s must visibly slow the real box's own rotation rate.
+func test_refresh_tuning_reaches_every_discovered_box_and_changes_its_spin_rate() -> void:
+	var setup := _boot_race_with_synthetic_box()
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	var mesh := box.get_node("Mesh") as MeshInstance3D
+	var initial_rotation_y := mesh.rotation.y
+
+	await wait_physics_frames(5)
+	var rotation_before_refresh := mesh.rotation.y
+	assert_ne(
+		rotation_before_refresh,
+		initial_rotation_y,
+		"fixture sanity: the box must have been spinning at all before the refresh landed"
+	)
+
+	# duplicate(true) deep-duplicates every stored Resource property,
+	# including the fx sub-resource -- mirrors tuning_service.gd's own
+	# _clone_catalog() precedent for why a deep duplicate is required here:
+	# mutating .fx in place on the SHARED _catalog fixture every other test
+	# in this file also reads would leak this test's own edit into them.
+	var slowed_catalog: GameplayTuning = _catalog.duplicate(true)
+	slowed_catalog.fx.item_box_spin_degrees_per_s = 0.0001
+	race.call("refresh_tuning", slowed_catalog)
+
+	var rotation_at_refresh := mesh.rotation.y
+	await wait_physics_frames(30)
+
+	assert_almost_eq(
+		mesh.rotation.y,
+		rotation_at_refresh,
+		0.001,
+		(
+			"refresh_tuning() must reach the real ItemBox and apply the new, "
+			+ "near-zero spin rate immediately -- a stale pre-refresh rate "
+			+ "would keep visibly turning the mesh here"
+		)
+	)
+
+
 func test_player_kart_entering_a_synthetic_box_rolls_and_lands_its_item_slot() -> void:
 	var setup := _boot_race_with_synthetic_box()
 	var race: Node = setup.get("race")

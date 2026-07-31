@@ -559,7 +559,16 @@ func configure(catalog: GameplayTuning) -> void:
 	# connection.
 	_item_boxes = _discover_item_boxes()
 	for box: ItemBox in _item_boxes:
-		box.call("configure", _item_tuning)
+		# Task 1 fix round 1 (CTR R6, circuit polish reviewer [MEDIUM]): the
+		# original wire only ever passed _item_tuning here -- fx_tuning is
+		# ItemBox.configure()'s own OPTIONAL trailing param (defaults to
+		# null, see item_box.gd's own doc), so every real box discovered by
+		# a real RaceSession silently kept _fx_tuning == null forever and
+		# never spun/bobbed, even though every unit test in test_item_box.gd
+		# passed -- they inject fx_tuning directly rather than going through
+		# this call site. _fx_tuning is already set a few lines above (the
+		# player kart's own Fx wiring reads it first).
+		box.call("configure", _item_tuning, _fx_tuning)
 		if not box.body_entered.is_connected(_on_box_body_entered):
 			box.body_entered.connect(_on_box_body_entered)
 
@@ -914,6 +923,18 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 		_kart.get_node("Fx").call("refresh_tuning", _fx_tuning)
 	if _camera != null and is_instance_valid(_camera):
 		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
+	# Task 1 fix round 1 (CTR R6, circuit polish reviewer [MEDIUM]): every
+	# discovered box needs a live fx (and item) tuning refresh too, the same
+	# "the tuning loop must be provably live" contract every other consumer
+	# above already honors -- ItemBox has no separate refresh_tuning() of its
+	# own, so this reuses configure() itself (proven idempotent, see item_
+	# box.gd's own configure() doc: it never touches _active/_respawning/
+	# _spin_bob_elapsed_s, only _tuning/_fx_tuning and the pickup shape),
+	# rather than inventing a near-duplicate method for a live-refresh case
+	# that is otherwise identical to the initial wire.
+	for box: ItemBox in _item_boxes:
+		if is_instance_valid(box):
+			box.call("configure", _item_tuning, _fx_tuning)
 
 
 ## R4 Task 4 (item 1, hit-routing foundation): the ONE place any hit source
