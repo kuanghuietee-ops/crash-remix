@@ -19,9 +19,11 @@ extends Node3D
 ## &"attached" -- FOLLOWS the victim kart's own global_position every tick
 ## (no offset: a graybox stand-in for a mounted visual, exact position
 ## match), starts a fresh fuse countdown from the attach instant (tnt_
-## fuse_s), and connects to the victim's own KartController.hop_pressed_edge
-## signal (see kart_controller.gd's own doc on that signal) to count down a
-## SHAKE-OFF budget seeded from ItemTuning.tnt_shake_hops. Two ways out,
+## fuse_s), and connects to BOTH of the victim's own KartController signals
+## -- hop_pressed_edge AND boost_tap_edge (see kart_controller.gd's own doc
+## on each, and this file's own OBSERVING HOPS section below for why BOTH
+## are required, not just one) -- to count down a SHAKE-OFF budget seeded
+## from ItemTuning.tnt_shake_hops. Two ways out,
 ## mutually exclusive and checked in this order every tick:
 ##   1. _shake_hops_remaining reaches zero (the victim mashed hop enough
 ##      times) -- despawns HARMLESSLY, no register_hit call at all. Checked
@@ -39,12 +41,28 @@ extends Node3D
 ## a re-configure(), the same shape missile.gd's/beaker.gd's own instances
 ## are swept by) that never goes through this file's own despawn path at all.
 ##
-## OBSERVING HOPS: real presses, not a polling hack. hop_pressed_edge is a
-## genuine per-press Godot signal (see kart_controller.gd's own doc) --
-## _attach_to() connects to it by NAME (Object.connect(), not a typed
-## KartController reference), so a duck-typed test double exposing the same
-## signal name works identically to a real KartController; there is no
-## per-tick comparison of a polled counter anywhere in this file.
+## OBSERVING HOPS: real presses, not a polling hack -- fix round 1 (reviewer
+## [HIGH]). hop_pressed_edge and boost_tap_edge are both genuine per-press
+## Godot signals (see kart_controller.gd's own doc on each); _attach_to()
+## connects to BOTH by NAME (Object.connect(), not a typed KartController
+## reference), so a duck-typed test double exposing the same two signal
+## names works identically to a real KartController. There is no per-tick
+## comparison of a polled counter anywhere in this file.
+##
+## WHY BOTH SIGNALS, NOT JUST ONE. racing_input_adapter.gd's own apply_hop_
+## pressed() routes a player's real hop press to EITHER KartController.
+## hop_pressed() OR boost_tap(), depending on is_sliding() at the instant of
+## the press -- NEVER both (see that file's own class doc). A victim who is
+## already sliding when TNT attaches -- exactly the state driving INTO a
+## dropped stick is likely to leave them in -- has every subsequent hop
+## press routed to boost_tap(), not hop_pressed(): connecting only to hop_
+## pressed_edge would make shake-off silently unreachable for a sliding
+## player (the ORIGINAL version of this file did exactly that -- a real
+## bug, not a hypothetical). Connecting to both signals and decrementing on
+## either (see _on_victim_hop_shake_edge()) closes that gap regardless of
+## which state the press lands in, and costs nothing extra for the
+## non-sliding case (hop_pressed_edge alone already covered it, and still
+## does).
 ##
 ## ATTACH TO THE LAUNCHER TOO. The launcher is kept in the SAME roster every
 ## other kart is drawn from (see configure()'s own doc, mirroring beaker.gd's
@@ -147,8 +165,12 @@ func _attach_to(kart: CharacterBody3D) -> void:
 	_phase = &"attached"
 	_fuse_elapsed_s = 0.0
 	_shake_hops_remaining = roundi(_tuning.tnt_shake_hops)
+	# See the class doc's own WHY BOTH SIGNALS, NOT JUST ONE section --
+	# either edge is a real hop-button press and must count.
 	if kart.has_signal(&"hop_pressed_edge"):
-		kart.connect(&"hop_pressed_edge", Callable(self, "_on_victim_hop_pressed"))
+		kart.connect(&"hop_pressed_edge", Callable(self, "_on_victim_hop_shake_edge"))
+	if kart.has_signal(&"boost_tap_edge"):
+		kart.connect(&"boost_tap_edge", Callable(self, "_on_victim_hop_shake_edge"))
 
 
 func _tick_attached(delta_s: float) -> void:
@@ -175,19 +197,29 @@ func _tick_attached(delta_s: float) -> void:
 		queue_free()
 
 
-func _on_victim_hop_pressed() -> void:
+## Shared by BOTH hop_pressed_edge and boost_tap_edge -- see the class doc's
+## own WHY BOTH SIGNALS, NOT JUST ONE section. Either one is a real hop-
+## button press regardless of which controller method it happened to route
+## through, so both count identically toward the same shake budget.
+func _on_victim_hop_shake_edge() -> void:
 	_shake_hops_remaining -= 1
 
 
 ## See the class doc's own OBSERVING HOPS section on why this is an explicit
-## step rather than left to Godot's own auto-disconnect-on-free.
+## step rather than left to Godot's own auto-disconnect-on-free. Tears down
+## BOTH connections made in _attach_to() -- disconnect() is only called for
+## a signal actually connected (is_connected() guards each independently),
+## so this is safe even if has_signal() ever caused only one of the two to
+## be wired in the first place (a duck-typed double exposing just one).
 func _detach() -> void:
-	if (
-		_attached_kart != null
-		and is_instance_valid(_attached_kart)
-		and _attached_kart.is_connected(&"hop_pressed_edge", Callable(self, "_on_victim_hop_pressed"))
-	):
-		_attached_kart.disconnect(&"hop_pressed_edge", Callable(self, "_on_victim_hop_pressed"))
+	if _attached_kart == null or not is_instance_valid(_attached_kart):
+		_attached_kart = null
+		return
+	var shake_callable := Callable(self, "_on_victim_hop_shake_edge")
+	if _attached_kart.is_connected(&"hop_pressed_edge", shake_callable):
+		_attached_kart.disconnect(&"hop_pressed_edge", shake_callable)
+	if _attached_kart.is_connected(&"boost_tap_edge", shake_callable):
+		_attached_kart.disconnect(&"boost_tap_edge", shake_callable)
 	_attached_kart = null
 
 

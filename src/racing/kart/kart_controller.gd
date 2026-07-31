@@ -59,18 +59,49 @@ extends CharacterBody3D
 ## out() reads straight through), the same "the timer just runs out" shape
 ## invulnerable_after_hit_s already uses as its own independent window.
 
-## CTR R6 Task 5: fires on EVERY real hop_pressed() call below, unconditionally
-## -- including the spin_out-stunned early-return case, since a real physical
-## button press happened regardless of whether the motor/drift FSM acted on
-## it. This is the "clean signal" tnt_stick.gd's own SHAKE-OFF mechanism
-## connects to while attached to this kart (see that file's own class doc):
-## a genuine per-press edge, not a polled counter compared tick-to-tick and
-## not a raw Input-singleton read -- the SAME hop_pressed() entry point both
-## a human's RacingInputAdapter press and an AI kart's own AiKartAgent.
-## _route_decision() hop output already call, so shaking off a TNT stick
-## works identically for the player and every AI kart with no separate
-## wiring either one has to opt into.
+## CTR R6 Task 5, fix round 1 (reviewer [HIGH] -- the ORIGINAL version of
+## this doc comment claimed hop_pressed_edge alone gives tnt_stick.gd's own
+## SHAKE-OFF mechanism parity between the player and every AI kart "with no
+## separate wiring either one has to opt into"; that claim was FALSE and is
+## corrected here, not silently fixed). hop_pressed_edge fires on EVERY real
+## hop_pressed() call below, unconditionally -- including the spin_out-
+## stunned early-return case, since a real physical button press happened
+## regardless of whether the motor/drift FSM acted on it.
+##
+## THIS ALONE IS NOT ENOUGH FOR THE PLAYER. racing_input_adapter.gd's own
+## apply_hop_pressed() routes a press to EITHER hop_pressed() OR boost_tap()
+## depending on is_sliding() (see that file's own class doc) -- NEVER both.
+## A player mashing hop WHILE SLIDING (the exact state a just-attached TNT
+## stick's own victim is very likely to be in, having just driven into it)
+## routes every one of those presses to boost_tap() instead, so hop_pressed_
+## edge alone never fires for them. boost_tap_edge below exists for exactly
+## this reason -- see its own doc. A caller that needs "count every real hop
+## button press regardless of which state routed it where" (tnt_stick.gd's
+## own SHAKE-OFF mechanism is the one real consumer) must connect to BOTH
+## signals, which is exactly what it does.
+##
+## The AI path needs no such split: AiKartAgent._route_decision() only ever
+## calls hop_pressed() directly for AiDriver's own "hop" output (already
+## gated `not is_sliding` at the driver level -- see ai_driver.gd's own SLIDE
+## (hop) COUPLING doc, so this call never lands mid-slide either), and
+## boost_tap() directly for AiDriver's own separate "boost_tap" output (the
+## AI's own analogous slide-release action) -- both already reachable
+## through this controller's real API with no adapter indirection, so both
+## signals already fire correctly for an AI kart with no extra wiring.
 signal hop_pressed_edge
+
+## CTR R6 Task 5, fix round 1 (reviewer [HIGH]): fires on EVERY real
+## boost_tap() call below, unconditionally -- same "before any gating, a
+## real press/decision happened either way" rationale as hop_pressed_edge
+## above. Exists specifically so a mid-slide hop press (racing_input_
+## adapter.gd's own apply_hop_pressed() routes it here instead of hop_
+## pressed(), see that signal's own doc) still counts as a real button press
+## for any listener that needs one -- tnt_stick.gd connects to this ALONGSIDE
+## hop_pressed_edge for exactly that reason. Also fires for an AI kart's own
+## direct boost_tap() calls (ai_kart_agent.gd's own OUTPUT ROUTING), which is
+## a real slide-release action either way -- a harmless, arguably correct
+## bonus, not something any caller has to guard against.
+signal boost_tap_edge
 
 const KartMotorType := preload("res://src/racing/kart/kart_motor.gd")
 const DriftStateMachineType := preload(
@@ -202,6 +233,7 @@ func hop_released() -> void:
 ## without ever reaching DriftStateMachine.boost_tap() -- a hit can't be
 ## "rewarded" with a boost stacked the instant before or during it.
 func boost_tap() -> StringName:
+	boost_tap_edge.emit()
 	if _motor.is_spinning_out():
 		return &"ignored"
 	return _drift.boost_tap()

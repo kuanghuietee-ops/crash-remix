@@ -1317,37 +1317,103 @@ func test_beaker_does_not_use_when_exactly_tied() -> void:
 
 
 # ---------------------------------------------------------------------------
-# CTR R6 Task 5: the three new items reuse an EXISTING heuristic verbatim --
-# bomb=missile's, tnt_stick=beaker's, triple_turbo=turbo's. One representative
-# case per reused condition (the shared _item_heuristic_satisfied() branch is
-# already exhaustively proven by the missile/beaker/turbo tests above).
+# CTR R6 Task 5: tnt_stick=beaker's heuristic, triple_turbo=turbo's, both
+# reused verbatim -- one representative case each (the shared _item_
+# heuristic_satisfied() branch is already exhaustively proven by the
+# beaker/turbo tests above). Bomb has its OWN section below (fix round 1).
 # ---------------------------------------------------------------------------
 
 
-func test_bomb_uses_at_the_target_gap_threshold_the_same_as_missile() -> void:
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5, fix round 1 (reviewer [MED-HIGH]): bomb's own PHYSICS-
+# DERIVED range, _bomb_max_range_m() -- REPLACES the original "reuse item.
+# ai_missile_max_target_gap_m verbatim" tests, which pinned a real bug
+# (missile's own 45.0m field vs. the bomb's real ~17.0m reach at the real
+# shipped tunings -- see ai_driver.gd's own &"bomb" doc paragraph). Derived
+# by hand for the real _item/_kart tunings _new_driver() configures against:
+# bomb_speed_mps=18.0, kart.gravity_mps2=24.0, bomb_blast_radius_m=3.5 ->
+# 18.0*18.0/24.0 + 3.5 = 13.5 + 3.5 = 17.0m exactly.
+# ---------------------------------------------------------------------------
+
+
+func test_bomb_uses_at_the_derived_physics_range_threshold() -> void:
 	var driver := _new_driver()
 	if driver == null:
 		return
+	var derived_range_m := (
+		(_item.bomb_speed_mps * _item.bomb_speed_mps) / _kart.gravity_mps2
+		+ _item.bomb_blast_radius_m
+	)
 
 	var result: Dictionary = driver.call("decide", _state({
 		"held_item": &"bomb",
-		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m,
+		"target_gap_ahead_m": derived_range_m,
 	}))
 
-	assert_true(bool(result.get("use_item")), "bomb reuses missile's own <= threshold verbatim")
+	assert_true(
+		bool(result.get("use_item")),
+		"bomb must use the target-gap threshold DERIVED from real bomb physics, not missile's own field"
+	)
 
 
-func test_bomb_does_not_use_beyond_the_target_gap_threshold() -> void:
+func test_bomb_does_not_use_beyond_the_derived_physics_range_threshold() -> void:
 	var driver := _new_driver()
 	if driver == null:
 		return
+	var derived_range_m := (
+		(_item.bomb_speed_mps * _item.bomb_speed_mps) / _kart.gravity_mps2
+		+ _item.bomb_blast_radius_m
+	)
 
 	var result: Dictionary = driver.call("decide", _state({
 		"held_item": &"bomb",
-		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m + 1.0,
+		"target_gap_ahead_m": derived_range_m + 1.0,
 	}))
 
 	assert_false(bool(result.get("use_item")))
+
+
+## The exact regression this fix closes: a gap the OLD (wrong) missile-field
+## reuse would have fired on (well under 45.0m) but the bomb can never
+## physically reach (well beyond its own real ~17.0m derived range) must
+## NOT fire -- pins the actual bug, not just the formula in isolation.
+func test_bomb_does_not_use_at_a_gap_missile_would_accept_but_the_bomb_cannot_physically_reach() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	var derived_range_m := (
+		(_item.bomb_speed_mps * _item.bomb_speed_mps) / _kart.gravity_mps2
+		+ _item.bomb_blast_radius_m
+	)
+	var gap_m := 30.0
+	assert_lt(gap_m, _item.ai_missile_max_target_gap_m, "fixture sanity: missile's own field would have accepted this gap")
+	assert_gt(gap_m, derived_range_m, "fixture sanity: the bomb's own real derived range cannot reach this gap")
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"bomb",
+		"target_gap_ahead_m": gap_m,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"a bomb thrown at 30m+ against the real shipped tuning is a guaranteed physical miss -- must not fire"
+	)
+
+
+func test_bomb_does_not_use_with_no_target_ahead() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"bomb",
+		"target_gap_ahead_m": INF,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"INF (nothing ahead) must never satisfy the derived range's own <="
+	)
 
 
 func test_bomb_never_uses_without_item_tuning_configured() -> void:
@@ -1363,7 +1429,7 @@ func test_bomb_never_uses_without_item_tuning_configured() -> void:
 
 	assert_false(
 		bool(result.get("use_item")),
-		"bomb shares missile's own item_tuning fail-closed contract, not a separate field"
+		"bomb shares missile's own item_tuning fail-closed shape -- _bomb_max_range_m() itself reads item_tuning fields"
 	)
 
 

@@ -438,13 +438,22 @@ extends RefCounted
 ##     ("positive = this kart is behind the player") means negative is AHEAD
 ##     of the player, i.e. leading; the brief's own "beaker when leading".
 ##     Strict <, not <=: exactly tied (band_gap_m == 0.0) is not leading.
-##   &"bomb" (CTR R6 Task 5): target_gap_ahead_m <= item.ai_missile_max_
-##     target_gap_m -- IDENTICAL condition and IDENTICAL tuning field to
-##     &"missile" above (the brief's own "reuse target_gap heuristic
-##     bounds"): a bomb is a forward lob, not a homing shot, so "something
-##     is close enough ahead to be worth throwing at" is the same judgment
-##     call a missile launch already makes, and does not earn its own
-##     bomb-specific range field.
+##   &"bomb" (CTR R6 Task 5, fix round 1 -- reviewer [MED-HIGH], REPLACES the
+##     original "reuse item.ai_missile_max_target_gap_m verbatim" version of
+##     this paragraph, which shipped a real bug: ai_missile_max_target_gap_m
+##     is 45.0m in the real tuning, but a 45-degree-launched bomb's own
+##     ACTUAL reach -- see _bomb_max_range_m()'s own doc for the derivation
+##     -- works out to ~17.0m at the real shipped bomb_speed_mps/gravity_
+##     mps2/bomb_blast_radius_m, so 60-70% of AI bomb throws gated on the
+##     missile's own field were physically guaranteed misses, thrown at
+##     targets the bomb could never reach): target_gap_ahead_m <=
+##     _bomb_max_range_m() -- a PHYSICS-DERIVED range computed from the
+##     SAME tunings bomb.gd's own real ballistic arc uses (bomb_speed_mps,
+##     kart_tuning.gravity_mps2, bomb_blast_radius_m), not a re-tuned
+##     literal or a copy of missile's own field: self-consistent by
+##     construction with whatever bomb.gd actually simulates, and never
+##     invented in this file -- an object thrown out ahead the way a missile
+##     is fired needs its own reachability judgment, not a shot's.
 ##   &"tnt_stick" (CTR R6 Task 5): band_gap_m < 0.0 -- IDENTICAL condition to
 ##     &"beaker" above (the brief's own "TNT dropped when leading, like
 ##     beaker; differentiate by held item"): both are dropped-behind hazards
@@ -498,10 +507,11 @@ extends RefCounted
 ## unchanged by this task). Missing item_tuning degrades gracefully
 ## instead: every heuristic that needs nothing from item_tuning (shield/
 ## turbo/beaker/tnt_stick/triple_turbo) keeps working normally, and only the
-## two heuristics that read item.ai_missile_max_target_gap_m (missile AND,
-## per CTR R6 Task 5, bomb -- see the class doc's own &"bomb" paragraph for
-## why they share the field) fail closed to "never fires" rather than
-## crashing on a null dereference. This mirrors
+## two heuristics that read fields off item_tuning (missile's own item.
+## ai_missile_max_target_gap_m, and, per CTR R6 Task 5 fix round 1, bomb's
+## own _bomb_max_range_m() -- see that method's own doc; the two no longer
+## share a field, only the same graceful-degrade shape) fail closed to
+## "never fires" rather than crashing on a null dereference. This mirrors
 ## ai_kart_agent.gd's own established "optional Callable, defaults to a
 ## safe no-op when not wired" shape (see its other_kart_positions_getter)
 ## rather than AiDriver's OWN existing all-or-nothing FAIL-CLOSED shape one
@@ -694,14 +704,51 @@ func _item_heuristic_satisfied(
 			return true
 		&"turbo", &"triple_turbo":
 			return absf(curvature_ahead) < _ai_tuning.slide_exit_curvature
-		&"missile", &"bomb":
+		&"missile":
 			if _item_tuning == null:
 				return false
 			return target_gap_ahead_m <= _item_tuning.ai_missile_max_target_gap_m
+		&"bomb":
+			# Fix round 1 (reviewer [MED-HIGH]): NO LONGER item.ai_missile_
+			# max_target_gap_m -- see the class doc's own &"bomb" paragraph
+			# for why that was a real bug, not just an approximation.
+			if _item_tuning == null:
+				return false
+			return target_gap_ahead_m <= _bomb_max_range_m()
 		&"beaker", &"tnt_stick":
 			return band_gap_m < 0.0
 		_:
 			return false
+
+
+## CTR R6 Task 5, fix round 1 (reviewer [MED-HIGH]): the bomb's own real
+## physical reach, derived from physics rather than copied from missile's
+## own tuning field or invented as a new one. bomb.gd's own LAUNCH GEOMETRY
+## fixes the launch angle at exactly 45 degrees (equal forward/up velocity
+## components); the textbook projectile-range identity for a launch angle
+## theta is `R = v^2 * sin(2 * theta) / g`, and sin(2 * 45 degrees) =
+## sin(90 degrees) = 1 EXACTLY -- so at theta = 45 degrees the whole sine
+## term algebraically cancels to 1 and the formula collapses to the plain
+## `R = v^2 / g` used below, with no trig call and no angle literal needed
+## at all (this file's own no-bare-numeric-literal rule, see CLAUDE.md).
+## bomb_blast_radius_m is added on top: an impact that lands short of a
+## dead-center hit still detonates and reaches a target within blast
+## radius of where it actually landed (see bomb.gd's own BLAST doc), so the
+## effective reach is the ballistic max range PLUS the blast radius, not
+## the max range alone. Every value read (_item_tuning.bomb_speed_mps,
+## _kart_tuning.gravity_mps2, _item_tuning.bomb_blast_radius_m) is a
+## tuning already read elsewhere in this file/bomb.gd itself -- if any of
+## the three changes, this range recomputes from the same numbers the real
+## flight simulates, never a separately-authored literal that could drift
+## out of sync with what a thrown bomb can actually reach. _kart_tuning is
+## never null here (decide()'s own FAIL-CLOSED guard already returned a
+## neutral output before this could ever be reached otherwise); _item_
+## tuning IS checked by both call sites above before calling this.
+func _bomb_max_range_m() -> float:
+	return (
+		(_item_tuning.bomb_speed_mps * _item_tuning.bomb_speed_mps) / _kart_tuning.gravity_mps2
+		+ _item_tuning.bomb_blast_radius_m
+	)
 
 
 ## Computes the clamped steer output and, as a side effect, updates
