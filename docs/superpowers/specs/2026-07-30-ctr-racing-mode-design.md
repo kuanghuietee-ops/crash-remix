@@ -140,17 +140,24 @@ start.
    — Task 8's boost-pad line was deliberately skipped (no track-side trigger,
    no kart-side response). R3+ candidate; needs its own tuning fields and a
    track-authoring rule (author-lint) once built, not just a scene prop.
-3. Four `RaceTuning` fields are authored and validated (registered,
+3. One `RaceTuning` field is authored and validated (registered,
    fingerprinted, panel-editable, rejected if non-positive) but read by
-   nothing in `src/racing/`: `countdown_step_s`, `start_boost_window_s`,
-   `start_bog_penalty_s`, `checkpoint_tolerance_m`. They exist for R5's
-   countdown/start-boost systems, which haven't been built yet — expected,
-   not a bug, but worth naming so a future pass doesn't assume they're
-   already wired because they validate cleanly. (`respawn_drop_height_m` was
-   the fifth field on this list; Task 4 (R3: AI opponents) consumed it —
-   `AiKartAgent`'s stuck-kart respawn teleport raises the kart this many
-   meters above the centerline point it drops onto — so it is struck from
-   this unread-fields debt as of 2026-07-30.)
+   nothing in `src/racing/`: `checkpoint_tolerance_m`. It exists for a
+   checkpoint-crossing tolerance mechanic that hasn't been built yet —
+   expected, not a bug, but worth naming so a future pass doesn't assume
+   it's already wired because it validates cleanly. (`respawn_drop_height_m`
+   was originally the fifth field on this list; Task 4 (R3: AI opponents)
+   consumed it — `AiKartAgent`'s stuck-kart respawn teleport raises the kart
+   this many meters above the centerline point it drops onto — struck from
+   this unread-fields debt as of 2026-07-30. `countdown_step_s`,
+   `start_boost_window_s`, and `start_bog_penalty_s` were the other three
+   originally named here; all three were consumed by R5 Task 1
+   (2026-07-31) — `CountdownTimer`/`StartBoostJudge`
+   (`src/racing/flow/countdown_timer.gd`/`start_boost_judge.gd`) read them
+   for the real 3-2-1 countdown timing and the start-boost verdict window,
+   see `race_session.gd`'s own COUNTDOWN + START BOOST class-doc section —
+   struck likewise, leaving `checkpoint_tolerance_m` as the sole remaining
+   unread field as of 2026-07-31.)
 4. **Known feel-gate note**: `RaceSession._route_input()` samples
    `is_action_pressed(InputIntent.ACTION_JUMP)` once per physics tick and only
    reacts to a change from the previous tick's sampled state (the same
@@ -181,7 +188,7 @@ start.
    tracks also now author 6 `ItemBox` instances each (see debt #10 below).
    See `tests/racing/test_race_session.gd`'s `test_seeded_ai_kart_picks_up_
    a_box_rolls_and_uses_a_shield_through_real_dispatch`.
-6. **Stuck detector fires on any 3s net-stationary-or-non-progressing AI
+6. ~~**Stuck detector fires on any 3s net-stationary-or-non-progressing AI
    kart — fine in R3, binding on R5.** `AiKartAgent._check_stuck_and_
    respawn()` (ai_kart_agent.gd) respawns any AI kart whose NET SPINE
    PROGRESS (fix-wave HIGH-1: `follower.total_progress_m()`, not raw
@@ -197,7 +204,22 @@ start.
    `is_run_active()` binding contract 1 freeze gate, see race_session.gd's
    `_finish_race()` and ai_kart_agent.gd's RUN-ACTIVE GATE doc) so agents
    do not accumulate stuck-window time — or drive at all — until the
-   countdown reaches GO.
+   countdown reaches GO.~~ **RESOLVED, R5 Task 1 (2026-07-31):** the gate
+   this debt called for already existed — Task 5's own `is_run_active()`
+   binding contract 1 (`ai_kart_agent.gd`'s RUN-ACTIVE GATE section) makes
+   the whole of `_physics_process()` a no-op, stuck-window accumulation
+   included, whenever a kart is frozen. R5 Task 1 makes every kart —
+   AI included — spawn frozen (`set_run_active(false)`, see
+   `race_session.gd`'s own COUNTDOWN + START BOOST class-doc section) and
+   stay frozen for the whole pre-GO countdown, so this R3-built gate covers
+   the R5 hold *by construction*, with zero new AI-side code required. Not
+   taken on faith: `tests/racing/test_race_start_flow.gd`'s own
+   `test_one_second_of_physics_during_the_countdown_produces_zero_
+   displacement_and_zero_respawns` drives a real, sustained countdown
+   through real physics and asserts every AI kart's own `respawn_count()`
+   stays exactly `0` throughout, and this task's own
+   `tests/integration/test_race_flow_e2e.gd` exercises the same gate again
+   end to end on both real tracks.
 7. **Graybox loop East-turn wedge recovers via respawn, not by never
    happening.** The graybox loop's East turn can trap an AI kart oscillating
    against the inner wall for several real seconds (Task 4's own reviewer
