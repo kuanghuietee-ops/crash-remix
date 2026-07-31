@@ -112,3 +112,60 @@ script = ExtResource("3_box")
 [node name="ItemBoxB3" type="Area3D" parent="."]
 position = Vector3(10, 1, 23)
 script = ExtResource("3_box")
+
+[node name="GateFlags" type="Node3D" parent="."]
+
+[node name="Gate0FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, 8)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Gate0FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, -8)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Gate1FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(12, 0, 10)
+rotation_degrees = Vector3(0, 180, 0)
+
+[node name="Gate1FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(28, 0, 10)
+rotation_degrees = Vector3(0, 180, 0)
+
+[node name="Gate2FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(10, 0, 12)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Gate2FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(10, 0, 28)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Gate3FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(8, 0, 10)
+rotation_degrees = Vector3(0, 0, 0)
+
+[node name="Gate3FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(-8, 0, 10)
+rotation_degrees = Vector3(0, 0, 0)
+
+[node name="Arch" type="Node3D" parent="."]
+
+[node name="Post0" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 0, 8.5)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post1" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 0, -8.5)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Crossbar" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 4.05, 0)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Banner" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 3.3, 0)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="EnvironmentArt" type="Node3D" parent="."]
+
+[node name="Dress1_test_prop" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(-20, 0, 10)

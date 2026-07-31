@@ -1,4 +1,4 @@
-[gd_scene load_steps=229 format=3]
+[gd_scene load_steps=240 format=3]
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_track_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_checkpoint_gate"]
@@ -20,6 +20,8 @@
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="18_M_beach_kit_foliage"]
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_sea.tres" id="19_M_beach_kit_sea"]
 [ext_resource type="PackedScene" path="res://scenes/racing/item_box.tscn" id="20_item_box"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/torch_post_a.res" id="21_torch_post_a"]
+[ext_resource type="Texture2D" path="res://assets/textures/T_beach_kit_atlas.png" id="22_T_beach_kit_atlas"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.18, 0.45, 0.72, 1)
@@ -768,6 +770,58 @@ size = Vector3(0.4, 1.6, 79.555)
 [sub_resource type="BoxMesh" id="BoxMesh_208"]
 material = SubResource("StandardMaterial3D_6")
 size = Vector3(0.4, 1.6, 79.555)
+
+[sub_resource type="QuadMesh" id="QuadMesh_gate_flag"]
+size = Vector2(0.9, 0.6)
+
+[sub_resource type="QuadMesh" id="QuadMesh_arch_banner"]
+size = Vector2(15.0, 1.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_cloth_ochre"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.0078, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_water_shallow"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.5078, 0.3828, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_ember"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.5078, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_flower"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.6328, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_shell"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.6328, 0.2578, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_leaf_light"]
+albedo_texture = ExtResource("22_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.2578, 0.1328, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="BoxMesh" id="BoxMesh_arch_crossbar"]
+material = SubResource("StandardMaterial3D_10")
+size = Vector3(18, 0.6, 0.6)
 
 [node name="TrackSanityShores" type="Node3D"]
 
@@ -2009,6 +2063,296 @@ gate_index = 11
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate11"]
 shape = SubResource("BoxShape3D_9")
 
+[node name="GateFlags" type="Node3D" parent="."]
+
+[node name="Gate0FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(300, 0, 308)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate0FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate0FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate0FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(300, 0, 292)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate0FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate0FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate1FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(355.7287, 0, 308)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate1FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate1FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate1FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(355.7287, 0, 292)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate1FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate1FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate2FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(411.4573, 0, 308)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate2FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate2FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate2FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(411.4573, 0, 292)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate2FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate2FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate3FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(456.8632, 0, 312.2765)
+rotation_degrees = Vector3(0, -151.5428, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate3FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate3FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate3FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(470.93, 0, 304.6525)
+rotation_degrees = Vector3(0, -151.5428, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate3FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate3FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate4FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(426.4308, 0, 324.4593)
+rotation_degrees = Vector3(0, 96.8994, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate4FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate4FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate4FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(428.3528, 0, 340.3435)
+rotation_degrees = Vector3(0, 96.8994, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate4FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate4FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate5FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(391.1672, 0, 370.3418)
+rotation_degrees = Vector3(0, 140.468, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate5FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate5FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
+
+[node name="Gate5FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(403.5076, 0, 380.526)
+rotation_degrees = Vector3(0, 140.468, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate5FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate5FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
+
+[node name="Gate6FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(344.0947, 0, 375.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate6FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate6FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate6FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(344.0947, 0, 391.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate6FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate6FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate7FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(288.366, 0, 375.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate7FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate7FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate7FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(288.366, 0, 391.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate7FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate7FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate8FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(232.6374, 0, 375.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate8FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate8FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate8FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(232.6374, 0, 391.5037)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate8FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate8FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate9FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(191.6847, 0, 358.5477)
+rotation_degrees = Vector3(0, 30.2554, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate9FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate9FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate9FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(177.8641, 0, 366.6093)
+rotation_degrees = Vector3(0, 30.2554, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate9FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate9FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate10FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(197.447, 0, 317.742)
+rotation_degrees = Vector3(0, -46.2206, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate10FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate10FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate10FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(186.3768, 0, 306.1898)
+rotation_degrees = Vector3(0, -46.2206, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate10FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate10FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate11FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(244.2713, 0, 308)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate11FlagL"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate11FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
+
+[node name="Gate11FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(244.2713, 0, 292)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate11FlagR"]
+mesh = ExtResource("21_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate11FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
+
 [node name="StartLine" type="Marker3D" parent="."]
 position = Vector3(300, 0, 300)
 rotation_degrees = Vector3(0, -90, 0)
@@ -2030,6 +2374,17 @@ position = Vector3(300, 0, 291.5)
 rotation_degrees = Vector3(0, -90, 0)
 mesh = ExtResource("16_pillar_carved_a")
 material_override = SubResource("StandardMaterial3D_10")
+
+[node name="Crossbar" type="MeshInstance3D" parent="Arch"]
+position = Vector3(300, 4.05, 300)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = SubResource("BoxMesh_arch_crossbar")
+
+[node name="Banner" type="MeshInstance3D" parent="Arch"]
+position = Vector3(300, 3, 300)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = SubResource("QuadMesh_arch_banner")
+material_override = SubResource("StandardMaterial3D_flag_flower")
 
 [node name="KartSpawn" type="Marker3D" parent="."]
 position = Vector3(290, 0.2, 300)
@@ -2480,6 +2835,486 @@ position = Vector3(280.1113, 0, 277)
 rotation_degrees = Vector3(0, 0, 0)
 mesh = ExtResource("15_water_sea_tile")
 material_override = ExtResource("19_M_beach_kit_sea")
+
+[node name="Dress75_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(311, 0, 316)
+rotation_degrees = Vector3(0, 180, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress76_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(311, 0, 278)
+rotation_degrees = Vector3(0, 6.65, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress77_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(333, 0, 316)
+rotation_degrees = Vector3(0, 194.35, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress78_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(333, 0, 278)
+rotation_degrees = Vector3(0, 21, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress79_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(355, 0, 316)
+rotation_degrees = Vector3(0, 208.7, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress80_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(355, 0, 278)
+rotation_degrees = Vector3(0, 35.35, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress81_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(377, 0, 316)
+rotation_degrees = Vector3(0, 223.05, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress82_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(377, 0, 278)
+rotation_degrees = Vector3(0, 49.7, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress83_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(399, 0, 316)
+rotation_degrees = Vector3(0, 237.4, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress84_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(399, 0, 278)
+rotation_degrees = Vector3(0, 64.05, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress85_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(420.1325, 0, 316)
+rotation_degrees = Vector3(0, 251.75, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress86_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(420.1325, 0, 278)
+rotation_degrees = Vector3(0, 78.4, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress87_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(431.1325, 0, 316)
+rotation_degrees = Vector3(0, 266.1, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress88_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(431.1325, 0, 278)
+rotation_degrees = Vector3(0, 92.75, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress89_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(442.1955, 0, 316)
+rotation_degrees = Vector3(0, 280.45, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress90_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(442.1955, 0, 278)
+rotation_degrees = Vector3(0, 107.1, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress91_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(449.8848, 0, 316.1812)
+rotation_degrees = Vector3(0, 285.8, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress92_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(455.8293, 0, 278.649)
+rotation_degrees = Vector3(0, 112.45, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress93_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(451.1762, 0, 316.3857)
+rotation_degrees = Vector3(0, 174.15, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress94_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(457.1207, 0, 278.8536)
+rotation_degrees = Vector3(0, 0.8, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress95_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(448.6883, 0, 313.8594)
+rotation_degrees = Vector3(0, 134.4996, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress96_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(482.5466, 0, 296.608)
+rotation_degrees = Vector3(0, -38.8504, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress97_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(450.7304, 0, 314.9911)
+rotation_degrees = Vector3(0, 76.85, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress98_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(477.6004, 0, 341.8612)
+rotation_degrees = Vector3(0, -96.5, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress99_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(449.6577, 0, 315.8548)
+rotation_degrees = Vector3(0, 55.2, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress100_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(455.6022, 0, 353.3869)
+rotation_degrees = Vector3(0, -118.15, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress101_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(439.4156, 0, 316)
+rotation_degrees = Vector3(0, 60.55, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress102_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(439.4156, 0, 354)
+rotation_degrees = Vector3(0, -112.8, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress103_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(424.4588, 0, 316.6645)
+rotation_degrees = Vector3(0, 83.6498, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress104_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(430.2393, 0, 354.2222)
+rotation_degrees = Vector3(0, -89.7002, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress105_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(411.7467, 0, 320.9176)
+rotation_degrees = Vector3(0, 115.5004, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress106_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(428.5539, 0, 354.9986)
+rotation_degrees = Vector3(0, -57.8496, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress107_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(392.507, 0, 345.9067)
+rotation_degrees = Vector3(0, 173.5999, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress108_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(428.2153, 0, 358.9035)
+rotation_degrees = Vector3(0, 0.2499, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress109_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(385.5892, 0, 364.0692)
+rotation_degrees = Vector3(0, 179.1997, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress110_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(418.9047, 0, 382.3469)
+rotation_degrees = Vector3(0, 5.8497, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress111_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(384.7213, 0, 365.7993)
+rotation_degrees = Vector3(0, 32.55, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress112_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(401.5283, 0, 399.8805)
+rotation_degrees = Vector3(0, -140.8, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress113_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(378.3008, 0, 367.6453)
+rotation_degrees = Vector3(0, 29.3997, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress114_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(384.0812, 0, 405.2031)
+rotation_degrees = Vector3(0, -143.9503, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress115_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(359.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 35, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress116_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(359.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -138.35, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress117_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(337.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 49.35, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress118_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(337.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -124, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress119_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(315.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 63.7, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress120_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(315.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -109.65, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress121_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(293.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 78.05, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress122_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(293.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -95.3, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress123_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(271.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 92.4, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress124_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(271.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -80.95, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress125_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(249.4666, 0, 367.5037)
+rotation_degrees = Vector3(0, 106.75, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress126_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(249.4666, 0, 405.5037)
+rotation_degrees = Vector3(0, -66.6, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress127_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(228.1541, 0, 367.5037)
+rotation_degrees = Vector3(0, 121.1, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress128_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(228.1541, 0, 405.5037)
+rotation_degrees = Vector3(0, -178.25, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress129_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(219.2179, 0, 367.1099)
+rotation_degrees = Vector3(0, 0.4503, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress130_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(213.2736, 0, 404.6421)
+rotation_degrees = Vector3(0, 187.1003, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress131_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(213.7871, 0, 366.6846)
+rotation_degrees = Vector3(0, -3.2003, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress132_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(196.5352, 0, 400.5427)
+rotation_degrees = Vector3(0, 183.4497, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress133_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(204.3531, 0, 361.8777)
+rotation_degrees = Vector3(0, 11.1497, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress134_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(187.1013, 0, 395.7358)
+rotation_degrees = Vector3(0, 197.7997, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress135_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(199.8416, 0, 356.8401)
+rotation_degrees = Vector3(0, 7.5, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress136_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(172.9716, 0, 383.7102)
+rotation_degrees = Vector3(0, 194.15, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress137_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(196.9547, 0, 351.2405)
+rotation_degrees = Vector3(0, 3.8499, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress138_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(163.0964, 0, 368.4921)
+rotation_degrees = Vector3(0, 190.4999, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress139_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(195.5291, 0, 345.7704)
+rotation_degrees = Vector3(0, 0.2001, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress140_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(157.997, 0, 351.715)
+rotation_degrees = Vector3(0, 186.8501, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress141_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(195.1566, 0, 340.0856)
+rotation_degrees = Vector3(0, -3.45, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress142_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(157.6244, 0, 334.1411)
+rotation_degrees = Vector3(0, 183.2, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress143_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(196.1745, 0, 333.7945)
+rotation_degrees = Vector3(0, -7.0999, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress144_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(162.3162, 0, 316.5429)
+rotation_degrees = Vector3(0, 179.5501, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress145_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(198.9011, 0, 327.6042)
+rotation_degrees = Vector3(0, -10.75, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress146_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(172.031, 0, 300.7341)
+rotation_degrees = Vector3(0, 49.9, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress147_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(206.3674, 0, 320.1378)
+rotation_degrees = Vector3(0, -122.4, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress148_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(179.4973, 0, 293.2678)
+rotation_degrees = Vector3(0, 64.25, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress149_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(211.3526, 0, 318.0596)
+rotation_degrees = Vector3(0, -126.0501, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress150_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(194.101, 0, 284.2013)
+rotation_degrees = Vector3(0, 60.5999, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress151_grass_patch_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(217.5166, 0, 316.6633)
+rotation_degrees = Vector3(0, -129.6999, 0)
+mesh = ExtResource("7_grass_patch_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress152_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(211.572, 0, 279.1311)
+rotation_degrees = Vector3(0, 56.9501, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress153_rock_boulder_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(236.2559, 0, 316)
+rotation_degrees = Vector3(0, 235.65, 0)
+mesh = ExtResource("12_rock_boulder_a")
+
+[node name="Dress154_palm_tall_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(236.2559, 0, 278)
+rotation_degrees = Vector3(0, 62.3, 0)
+mesh = ExtResource("11_palm_tall_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress155_rock_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(253.7394, 0, 316)
+rotation_degrees = Vector3(0, 250, 0)
+mesh = ExtResource("13_rock_cluster_a")
+
+[node name="Dress156_bush_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(253.7394, 0, 278)
+rotation_degrees = Vector3(0, 76.65, 0)
+mesh = ExtResource("3_bush_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress157_palm_lean_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(260.2225, 0, 316)
+rotation_degrees = Vector3(0, 264.35, 0)
+mesh = ExtResource("10_palm_lean_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
+
+[node name="Dress158_fern_cluster_a" type="MeshInstance3D" parent="EnvironmentArt"]
+position = Vector3(260.2225, 0, 278)
+rotation_degrees = Vector3(0, 91, 0)
+mesh = ExtResource("6_fern_cluster_a")
+material_override = ExtResource("18_M_beach_kit_foliage")
 
 [node name="ItemBoxes" type="Node3D" parent="."]
 

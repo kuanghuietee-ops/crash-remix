@@ -78,6 +78,11 @@ TRACK_GRID_SLOTS_RULE = "track_grid_slots"
 # Task 5 (CTR R4 items): item boxes must exist, sit on-road, and stay clear
 # of this scene's own origin -- see ITEM_BOX_SCRIPT's own doc below.
 TRACK_ITEM_BOX_RULE = "track_item_boxes"
+# Task 2 (CTR R6, circuit polish): dressing clearance, gate flags, start/
+# finish arch -- see each rule's own constants block below for the numbers.
+TRACK_DRESSING_CLEARANCE_RULE = "track_dressing_clearance"
+TRACK_GATE_FLAG_RULE = "track_gate_flags"
+TRACK_ARCH_RULE = "track_start_finish_arch"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -207,6 +212,42 @@ TRACK_ITEM_BOX_MIN_COUNT = 6
 # identity" wiring holds. Keep this comment in sync if a future race scene
 # ever offsets its Track child.
 TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M = 10.0
+# Task 2 (CTR R6, circuit polish): racing-line dressing (EnvironmentArt scatter
+# props -- kit palms/rocks/foliage) must clear the road by more than the bare
+# TRACK_ROAD_WIDTH_M/2 half-width every ON-road check above uses, because
+# unlike a gate or item box a dressing piece is a real multi-metre mesh, not a
+# point. The largest ground-level footprint among the small-prop roster this
+# rule is meant to cover is rock_cluster_a's own ~5.17m (four boulders
+# scattered up to sqrt(3.4^2+3.4^2)+0.36m from its own origin -- see
+# scripts/blender/build_beach_env_kit.py's build_rock_cluster()); every other
+# piece in the roster (palms, bushes, ferns, grass, single boulders) measures
+# smaller. Rounded up to a real margin, not a knife's-edge one.
+TRACK_ENVIRONMENT_ART_NODE_NAME = "EnvironmentArt"
+TRACK_DRESSING_CLEARANCE_MARGIN_M = 5.5
+# Task 2: per-gate flag posts must sit at "the gate's road edge" -- beyond the
+# bare half-width (so a torch_post_a's own ~0.5m bowl footprint, see
+# build_torch_post(), clears the wall that already sits centered ON that
+# half-width with its own ~0.2m half-thickness) but not implausibly far out,
+# so a hand-tweaked post still reads as belonging to this gate. Checked
+# against the gate's OWN authored basis (not a re-derived spine tangent) --
+# the task brief's "derive positions/rotations from the gate transforms" --
+# so a gate whose authored rotation drifts a few degrees from the spine's own
+# tangent (real, see the sanity_shores gate-transform survey) isn't
+# double-penalized here for a mismatch TRACK_GATE_WIDTH_RULE already owns.
+GATE_FLAG_NODE_NAME_PATTERN = re.compile(r"^Gate(\d+)Flag[LR]$")
+TRACK_GATE_FLAG_MAX_CLEARANCE_M = 3.0
+TRACK_GATE_FLAG_FORWARD_TOLERANCE_M = 0.5
+# Task 2: the start/finish arch at gate 0 -- two posts (pre-existing on
+# sanity_shores, reused rather than re-checked at a fixed offset since a
+# hand-placed post can legitimately vary) plus a NEW crossbar and banner,
+# both of which must actually be centered over gate 0 rather than just
+# somewhere on the Arch node.
+TRACK_ARCH_NODE_NAME = "Arch"
+ARCH_POST_NAME_SUBSTRING = "Post"
+ARCH_CROSSBAR_NODE_NAME = "Crossbar"
+ARCH_BANNER_NODE_NAME = "Banner"
+TRACK_ARCH_POST_MAX_CLEARANCE_M = 3.0
+TRACK_ARCH_CENTER_TOLERANCE_M = 1.5
 # Imported glTF scenes can only contribute visual hierarchy/material data to
 # these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
 # groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
@@ -479,6 +520,11 @@ def _track_findings(
     findings.extend(
         _track_item_box_findings(scene_name, nodes, points, cumulative)
     )
+    findings.extend(
+        _track_dressing_findings(scene_name, nodes, points, cumulative)
+    )
+    findings.extend(_track_gate_flag_findings(scene_name, gates, nodes))
+    findings.extend(_track_arch_findings(scene_name, gates, nodes))
     return findings
 
 
@@ -1017,6 +1063,292 @@ def _track_item_box_findings(
                         f"{box.path} is {offset_across_m:.3f}m off the spine "
                         f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
                         f"wide (max {half_width_m:.3f}m each side)"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_dressing_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (h): every EnvironmentArt dressing piece clears the road+wall.
+
+    Task 2 (CTR R6, circuit polish): reuses _track_item_box_findings's own
+    "project onto the whole polyline, take the LOCAL tangent at that
+    projected point" shape (each piece gets its own local road direction,
+    since dressing scatters all the way around the loop, not clustered near
+    one gate) -- INVERTED, since dressing must stay OFF the road rather than
+    on it. See TRACK_DRESSING_CLEARANCE_MARGIN_M's own doc for the margin.
+    """
+    art_node = next(
+        (
+            node
+            for node in nodes
+            if node.parent == "."
+            and node.node_type == "Node3D"
+            and node.name == TRACK_ENVIRONMENT_ART_NODE_NAME
+        ),
+        None,
+    )
+    if art_node is None:
+        return []
+    pieces = [
+        node
+        for node in nodes
+        if node.parent == art_node.path and node.node_type == "MeshInstance3D"
+    ]
+    min_offset_m = TRACK_ROAD_WIDTH_M / 2.0 + TRACK_DRESSING_CLEARANCE_MARGIN_M
+    findings: list[AuthoringViolation] = []
+    for piece in pieces:
+        progress = _project_onto_polyline(piece.world_position, points, cumulative)
+        tangent = _polyline_direction_at_distance(points, cumulative, progress)
+        if _is_zero(tangent):
+            continue
+        across = (-tangent[2], 0.0, tangent[0])
+        centerline_point = _sample_polyline(points, cumulative, progress)
+        offset_across_m = _dot(
+            _subtract(piece.world_position, centerline_point), across
+        )
+        if abs(offset_across_m) < min_offset_m and not math.isclose(
+            abs(offset_across_m),
+            min_offset_m,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_DRESSING_CLEARANCE_RULE,
+                    (
+                        f"{piece.path} is only {abs(offset_across_m):.3f}m off "
+                        "the spine centerline; racing-line dressing must clear "
+                        f"the road+wall by at least {min_offset_m:.3f}m (road "
+                        f"half-width {TRACK_ROAD_WIDTH_M / 2.0:.3f}m + "
+                        f"{TRACK_DRESSING_CLEARANCE_MARGIN_M:.3f}m prop-footprint "
+                        "margin)"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_gate_flag_findings(
+    scene_name: str,
+    gates: list[FlatNode],
+    nodes: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Rule (i): every gate has a left AND a right flag post at its edge.
+
+    Task 2 (CTR R6, circuit polish): discovers Gate{N}FlagL/Gate{N}FlagR
+    containers by NAME PATTERN (there is no script to match against -- these
+    are plain Node3D groups, like GridSlot markers) and checks each one's
+    position against the GATE'S OWN authored basis (its "across"/lateral
+    axis is basis column 0, the same axis TRACK_GATE_WIDTH_RULE measures the
+    gate box against) -- not a re-derived spine tangent, per the task
+    brief's "derive positions/rotations from the gate transforms".
+    """
+    by_index, invalid = _track_gate_indices(gates)
+    if invalid:
+        # TRACK_GATE_SEQUENCE_RULE already reports this.
+        return []
+    flags_by_gate: dict[int, list[FlatNode]] = {}
+    for node in nodes:
+        match = GATE_FLAG_NODE_NAME_PATTERN.match(node.name)
+        if match is None:
+            continue
+        flags_by_gate.setdefault(int(match.group(1)), []).append(node)
+    half_width_m = TRACK_ROAD_WIDTH_M / 2.0
+    max_offset_m = half_width_m + TRACK_GATE_FLAG_MAX_CLEARANCE_M
+    findings: list[AuthoringViolation] = []
+    for index, gate in by_index.items():
+        flags = flags_by_gate.get(index, [])
+        if len(flags) < 2:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_GATE_FLAG_RULE,
+                    (
+                        f"gate_index {index} ({gate.path}) has {len(flags)} "
+                        f"Gate{index}Flag[LR] node(s); every gate needs a flag "
+                        "post at both road edges"
+                    ),
+                )
+            )
+            continue
+        across = (
+            gate.world_transform.basis[0][0],
+            0.0,
+            gate.world_transform.basis[0][2],
+        )
+        forward = (
+            gate.world_transform.basis[2][0],
+            0.0,
+            gate.world_transform.basis[2][2],
+        )
+        for flag in flags:
+            relative = _subtract(flag.world_position, gate.world_position)
+            lateral_m = _dot(relative, across)
+            forward_m = _dot(relative, forward)
+            if abs(forward_m) > TRACK_GATE_FLAG_FORWARD_TOLERANCE_M and not math.isclose(
+                abs(forward_m),
+                TRACK_GATE_FLAG_FORWARD_TOLERANCE_M,
+            ):
+                findings.append(
+                    AuthoringViolation(
+                        scene_name,
+                        TRACK_GATE_FLAG_RULE,
+                        (
+                            f"{flag.path} is {forward_m:.3f}m along gate "
+                            f"{index}'s own travel axis; a flag post must sit "
+                            "at the gate itself, not drifted along the track"
+                        ),
+                    )
+                )
+                continue
+            in_band = half_width_m <= abs(lateral_m) <= max_offset_m
+            if not in_band and not (
+                math.isclose(abs(lateral_m), half_width_m)
+                or math.isclose(abs(lateral_m), max_offset_m)
+            ):
+                findings.append(
+                    AuthoringViolation(
+                        scene_name,
+                        TRACK_GATE_FLAG_RULE,
+                        (
+                            f"{flag.path} is {lateral_m:.3f}m across gate "
+                            f"{index}'s own basis; a flag post must sit between "
+                            f"{half_width_m:.3f}m (the road edge) and "
+                            f"{max_offset_m:.3f}m from the gate"
+                        ),
+                    )
+                )
+    return findings
+
+
+def _track_arch_findings(
+    scene_name: str,
+    gates: list[FlatNode],
+    nodes: list[FlatNode],
+) -> list[AuthoringViolation]:
+    """Rule (j): a start/finish arch (posts + crossbar + banner) at gate 0.
+
+    Task 2 (CTR R6, circuit polish): posts are checked against the SAME
+    edge band TRACK_GATE_FLAG_RULE uses (a post beyond the road edge, not
+    implausibly far); the crossbar and banner must instead sit centered
+    directly over gate 0 (near-zero lateral AND forward offset), since
+    their whole job is to frame the start/finish line itself.
+    """
+    by_index, invalid = _track_gate_indices(gates)
+    if invalid:
+        return []
+    gate0 = by_index.get(0)
+    if gate0 is None:
+        # TRACK_SPAWN_RULE (or TRACK_GATE_SEQUENCE_RULE) already reports a
+        # missing/unreadable gate 0.
+        return []
+    arch_node = next(
+        (
+            node
+            for node in nodes
+            if node.parent == "."
+            and node.node_type == "Node3D"
+            and node.name == TRACK_ARCH_NODE_NAME
+        ),
+        None,
+    )
+    if arch_node is None:
+        return [
+            AuthoringViolation(
+                scene_name,
+                TRACK_ARCH_RULE,
+                "no root Arch node found; gate 0 needs a start/finish arch",
+            )
+        ]
+    children = [node for node in nodes if node.parent == arch_node.path]
+    posts = [
+        node
+        for node in children
+        if ARCH_POST_NAME_SUBSTRING in node.name
+        and node.node_type == "MeshInstance3D"
+    ]
+    crossbar = next(
+        (node for node in children if node.name == ARCH_CROSSBAR_NODE_NAME), None
+    )
+    banner = next(
+        (node for node in children if node.name == ARCH_BANNER_NODE_NAME), None
+    )
+    half_width_m = TRACK_ROAD_WIDTH_M / 2.0
+    max_post_offset_m = half_width_m + TRACK_ARCH_POST_MAX_CLEARANCE_M
+    across = (
+        gate0.world_transform.basis[0][0],
+        0.0,
+        gate0.world_transform.basis[0][2],
+    )
+    findings: list[AuthoringViolation] = []
+    if len(posts) < 2:
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                TRACK_ARCH_RULE,
+                (
+                    f"Arch has {len(posts)} Post* MeshInstance3D child(ren); "
+                    "needs posts on both sides of gate 0"
+                ),
+            )
+        )
+    else:
+        for post in posts:
+            lateral_m = _dot(
+                _subtract(post.world_position, gate0.world_position), across
+            )
+            in_band = half_width_m <= abs(lateral_m) <= max_post_offset_m
+            if not in_band and not (
+                math.isclose(abs(lateral_m), half_width_m)
+                or math.isclose(abs(lateral_m), max_post_offset_m)
+            ):
+                findings.append(
+                    AuthoringViolation(
+                        scene_name,
+                        TRACK_ARCH_RULE,
+                        (
+                            f"{post.path} is {lateral_m:.3f}m across gate 0's "
+                            f"own basis; an arch post must sit between "
+                            f"{half_width_m:.3f}m and {max_post_offset_m:.3f}m "
+                            "from the gate"
+                        ),
+                    )
+                )
+    for label, node in (
+        (ARCH_CROSSBAR_NODE_NAME, crossbar),
+        (ARCH_BANNER_NODE_NAME, banner),
+    ):
+        if node is None:
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_ARCH_RULE,
+                    f"Arch has no {label} child",
+                )
+            )
+            continue
+        lateral_m = _dot(
+            _subtract(node.world_position, gate0.world_position), across
+        )
+        if abs(lateral_m) > TRACK_ARCH_CENTER_TOLERANCE_M and not math.isclose(
+            abs(lateral_m),
+            TRACK_ARCH_CENTER_TOLERANCE_M,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_ARCH_RULE,
+                    (
+                        f"Arch/{label} is {lateral_m:.3f}m off-center from "
+                        f"gate 0; must stay within "
+                        f"{TRACK_ARCH_CENTER_TOLERANCE_M:.3f}m to frame the "
+                        "start/finish line"
                     ),
                 )
             )

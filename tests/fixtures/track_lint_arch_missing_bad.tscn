@@ -7,7 +7,7 @@
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
 
-[node name="TrackLintRingDuplicateBad" type="Node3D"]
+[node name="TrackLintGood" type="Node3D"]
 
 [node name="Spine" type="Path3D" parent="."]
 script = ExtResource("1_spine")
@@ -17,9 +17,6 @@ position = Vector3(0, 0, 0)
 
 [node name="B" type="Marker3D" parent="Spine"]
 position = Vector3(20, 0, 0)
-
-[node name="BNearDuplicate" type="Marker3D" parent="Spine"]
-position = Vector3(20.05, 0, 0.02)
 
 [node name="C" type="Marker3D" parent="Spine"]
 position = Vector3(20, 0, 20)
@@ -149,24 +146,6 @@ rotation_degrees = Vector3(0, 0, 0)
 [node name="Gate3FlagR" type="Node3D" parent="GateFlags"]
 position = Vector3(-8, 0, 10)
 rotation_degrees = Vector3(0, 0, 0)
-
-[node name="Arch" type="Node3D" parent="."]
-
-[node name="Post0" type="MeshInstance3D" parent="Arch"]
-position = Vector3(0, 0, 8.5)
-rotation_degrees = Vector3(0, -90, 0)
-
-[node name="Post1" type="MeshInstance3D" parent="Arch"]
-position = Vector3(0, 0, -8.5)
-rotation_degrees = Vector3(0, -90, 0)
-
-[node name="Crossbar" type="MeshInstance3D" parent="Arch"]
-position = Vector3(0, 4.05, 0)
-rotation_degrees = Vector3(0, -90, 0)
-
-[node name="Banner" type="MeshInstance3D" parent="Arch"]
-position = Vector3(0, 3.3, 0)
-rotation_degrees = Vector3(0, -90, 0)
 
 [node name="EnvironmentArt" type="Node3D" parent="."]
 

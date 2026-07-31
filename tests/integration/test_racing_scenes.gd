@@ -38,6 +38,11 @@ func test_track_graybox_loop_scene_opens_with_spine_gates_and_spawn() -> void:
 	assert_not_null(track.get_node_or_null("Spine"))
 	assert_not_null(track.get_node_or_null("KartSpawn"))
 	assert_not_null(track.get_node_or_null("StartLine"))
+	# Task 2 (CTR R6, circuit polish): the graybox loop only got flags+arch,
+	# no dressing -- but the arch itself is not optional (see
+	# TRACK_ARCH_RULE in scripts/lint_level_authoring.py).
+	assert_not_null(track.get_node_or_null("Arch"))
+	assert_not_null(track.get_node_or_null("GateFlags"))
 	var gates := track.get_node_or_null("Gates")
 	assert_not_null(gates)
 	if gates != null:
@@ -98,6 +103,8 @@ func test_track_sanity_shores_scene_opens_with_spine_gates_and_spawn() -> void:
 	assert_not_null(track.get_node_or_null("KartSpawn"))
 	assert_not_null(track.get_node_or_null("StartLine"))
 	assert_not_null(track.get_node_or_null("Arch"))
+	assert_not_null(track.get_node_or_null("GateFlags"))
+	assert_not_null(track.get_node_or_null("EnvironmentArt"))
 	var gates := track.get_node_or_null("Gates")
 	assert_not_null(gates)
 	if gates != null:

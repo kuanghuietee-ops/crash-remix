@@ -1,8 +1,11 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_gate"]
 [ext_resource type="PackedScene" path="res://scenes/racing/item_box.tscn" id="3_item_box"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/torch_post_a.res" id="4_torch_post_a"]
+[ext_resource type="Texture2D" path="res://assets/textures/T_beach_kit_atlas.png" id="5_T_beach_kit_atlas"]
+[ext_resource type="Mesh" path="res://assets/models/kits/mesh/pillar_carved_a.res" id="6_pillar_carved_a"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_track"]
 sky_top_color = Color(0.16, 0.38, 0.62, 1)
@@ -77,6 +80,61 @@ albedo_color = Color(1, 0.92, 0.2, 0.85)
 [sub_resource type="BoxMesh" id="Mesh_start_stripe"]
 material = SubResource("Material_start_stripe")
 size = Vector3(14, 0.06, 0.6)
+
+[sub_resource type="QuadMesh" id="QuadMesh_gate_flag"]
+size = Vector2(0.9, 0.6)
+
+[sub_resource type="QuadMesh" id="QuadMesh_arch_banner"]
+size = Vector2(15.0, 1.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_cloth_ochre"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.0078, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_water_shallow"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.5078, 0.3828, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_ember"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.5078, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_flower"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.6328, 0.0078, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_shell"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.6328, 0.2578, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag_leaf_light"]
+albedo_texture = ExtResource("5_T_beach_kit_atlas")
+uv1_scale = Vector3(0.1094, 0.1094, 1)
+uv1_offset = Vector3(0.2578, 0.1328, 0)
+roughness = 0.92
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_arch_pillar"]
+albedo_color = Color(0.55, 0.52, 0.48, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_arch_crossbar"]
+material = SubResource("StandardMaterial3D_arch_pillar")
+size = Vector3(18, 0.6, 0.6)
 
 [node name="TrackGrayboxLoop" type="Node3D"]
 
@@ -505,6 +563,177 @@ gate_index = 5
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Gates/Gate5"]
 shape = SubResource("Shape_gate")
+
+[node name="Arch" type="Node3D" parent="."]
+
+[node name="Post0" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 0, -11.5)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = ExtResource("6_pillar_carved_a")
+material_override = SubResource("StandardMaterial3D_arch_pillar")
+
+[node name="Post1" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 0, -28.5)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = ExtResource("6_pillar_carved_a")
+material_override = SubResource("StandardMaterial3D_arch_pillar")
+
+[node name="Crossbar" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 4.05, -20)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = SubResource("BoxMesh_arch_crossbar")
+
+[node name="Banner" type="MeshInstance3D" parent="Arch"]
+position = Vector3(0, 3, -20)
+rotation_degrees = Vector3(0, -90, 0)
+mesh = SubResource("QuadMesh_arch_banner")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="GateFlags" type="Node3D" parent="."]
+
+[node name="Gate0FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, -12)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate0FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate0FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate0FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, -28)
+rotation_degrees = Vector3(0, -90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate0FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate0FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_flower")
+
+[node name="Gate1FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(46, 0, -10.3923)
+rotation_degrees = Vector3(0, -120, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate1FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate1FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate1FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(54, 0, -24.2487)
+rotation_degrees = Vector3(0, -120, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate1FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate1FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_cloth_ochre")
+
+[node name="Gate2FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(46, 0, 10.3923)
+rotation_degrees = Vector3(0, 120, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate2FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate2FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate2FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(54, 0, 24.2487)
+rotation_degrees = Vector3(0, 120, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate2FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate2FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_leaf_light")
+
+[node name="Gate3FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, 12)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate3FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate3FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate3FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(0, 0, 28)
+rotation_degrees = Vector3(0, 90, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate3FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate3FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_water_shallow")
+
+[node name="Gate4FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(-46, 0, 10.3923)
+rotation_degrees = Vector3(0, 60, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate4FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate4FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate4FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(-54, 0, 24.2487)
+rotation_degrees = Vector3(0, 60, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate4FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate4FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_shell")
+
+[node name="Gate5FlagL" type="Node3D" parent="GateFlags"]
+position = Vector3(-46, 0, -10.3923)
+rotation_degrees = Vector3(0, -60, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate5FlagL"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate5FlagL"]
+position = Vector3(0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
+
+[node name="Gate5FlagR" type="Node3D" parent="GateFlags"]
+position = Vector3(-54, 0, -24.2487)
+rotation_degrees = Vector3(0, -60, 0)
+
+[node name="Post" type="MeshInstance3D" parent="GateFlags/Gate5FlagR"]
+mesh = ExtResource("4_torch_post_a")
+
+[node name="Flag" type="MeshInstance3D" parent="GateFlags/Gate5FlagR"]
+position = Vector3(-0.6, 2.2, 0)
+mesh = SubResource("QuadMesh_gate_flag")
+material_override = SubResource("StandardMaterial3D_flag_ember")
 
 [node name="StartLine" type="Marker3D" parent="."]
 position = Vector3(0, 0, -20)

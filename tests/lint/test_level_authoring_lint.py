@@ -17,6 +17,9 @@ from scripts.lint_level_authoring import (
     SPAWN_FLOOR_RULE,
     SPINE_ORDER_RULE,
     TIME_CRATE_RULE,
+    TRACK_ARCH_RULE,
+    TRACK_DRESSING_CLEARANCE_RULE,
+    TRACK_GATE_FLAG_RULE,
     TRACK_GATE_ORDER_RULE,
     TRACK_GATE_SEQUENCE_RULE,
     TRACK_GATE_WIDTH_RULE,
@@ -1016,6 +1019,74 @@ class RacingTrackAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("ItemBoxA1", findings[0].detail)
         self.assertIn("scene's own origin", findings[0].detail)
+
+    def test_dressing_too_close_to_the_road_fires_the_clearance_rule(
+        self,
+    ) -> None:
+        # Task 2 (CTR R6, circuit polish): the fixture's dressing prop sits
+        # 10m off the spine centerline -- past the 7m road half-width, so
+        # the ON-road checks above stay silent, but short of the 12.5m
+        # (half-width + prop-footprint margin) this rule actually requires.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_dressing_clearance_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_DRESSING_CLEARANCE_RULE],
+        )
+        self.assertIn("Dress1_test_prop", findings[0].detail)
+        self.assertIn("10.000m", findings[0].detail)
+        self.assertIn("12.500m", findings[0].detail)
+
+    def test_gate_missing_a_flag_fires_the_gate_flag_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_gate_flag_missing_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GATE_FLAG_RULE],
+        )
+        self.assertIn("gate_index 2", findings[0].detail)
+        self.assertIn("has 1 Gate2Flag", findings[0].detail)
+
+    def test_flag_on_the_road_fires_the_gate_flag_rule(self) -> None:
+        # Gate1FlagL sits 3m across the gate's own basis -- inside the 7m
+        # road half-width, not "at the edge".
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_gate_flag_on_road_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_GATE_FLAG_RULE],
+        )
+        self.assertIn("Gate1FlagL", findings[0].detail)
+        self.assertIn("3.000m", findings[0].detail)
+
+    def test_missing_arch_fires_the_arch_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_arch_missing_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_ARCH_RULE],
+        )
+        self.assertIn("no root Arch node", findings[0].detail)
+
+    def test_offcenter_banner_fires_the_arch_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_arch_banner_offcenter_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_ARCH_RULE],
+        )
+        self.assertIn("Arch/Banner", findings[0].detail)
+        self.assertIn("5.000m off-center", findings[0].detail)
 
     def test_real_track_graybox_loop_passes_the_track_lint(self) -> None:
         # Task 7's working reference must already satisfy every Task 8 rule
