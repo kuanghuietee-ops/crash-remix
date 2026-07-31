@@ -26,6 +26,20 @@ extends Resource
 @export var rideable_min_triangles: int = 0
 @export var rideable_max_triangles: int = 0
 
+## CTR R6 Task 3: a NEW category, deliberately separate from `rideable`
+## (6,000-10,000 tris -- a creature mount, SK_hog). The kart is a stand-in
+## tier vehicle chassis, explicitly authored low-poly (the design doc calls
+## for "a few hundred triangles", replaced by the operator's art ladder
+## later) -- reusing the rideable band would either fail the real kart
+## outright (360 tris, an order of magnitude under 6,000) or force it to be
+## padded with detail nobody asked for yet. 150-800 was chosen against the
+## first real kart (scripts/blender/build_kart.py's own SM_kart.glb, measured
+## 360 triangles): a genuine band around that number, not a knife's-edge
+## ceiling, mirroring how the prop/kit_piece/rideable bands were each set
+## from their own first real asset.
+@export var kart_min_triangles: int = 0
+@export var kart_max_triangles: int = 0
+
 ## Texture rules. §9.4: 1-2 x 2048 atlases + trim sheet per kit, ASTC.
 @export var max_texture_dimension_px: int = 0
 
@@ -54,6 +68,8 @@ func max_triangles_for(category: StringName) -> int:
 			return kit_piece_max_triangles
 		&"rideable":
 			return rideable_max_triangles
+		&"kart":
+			return kart_max_triangles
 	return UNBUDGETED
 
 
@@ -71,4 +87,6 @@ func min_triangles_for(category: StringName) -> int:
 			return kit_piece_min_triangles
 		&"rideable":
 			return rideable_min_triangles
+		&"kart":
+			return kart_min_triangles
 	return UNBUDGETED

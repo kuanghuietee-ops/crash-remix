@@ -171,6 +171,119 @@ func test_configure_wires_fx_onto_both_the_player_and_every_ai_kart() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# Task 3 (CTR R6, circuit polish): configure()/_spawn_ai_karts() mount the
+# ONLY two likeness-gated character sources this repo has -- Crash on the
+# player, a lab assistant on every AI kart -- and give every kart (player
+# included) its own KartTuning-authored body tint. Mirrors the Fx wiring
+# test immediately above this section: white-box reads of the real, live-
+# wired state (object identity, real material colours), not a synthetic
+# double.
+# ---------------------------------------------------------------------------
+
+
+func test_configure_mounts_crash_on_the_player_kart_with_its_own_tint() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	var mounted: Node3D = kart.call("mounted_character")
+	assert_not_null(mounted, "configure() must seat the player kart with a real character")
+	if mounted != null:
+		var animation_players := mounted.find_children(
+			"*", "AnimationPlayer", true, false
+		)
+		assert_eq(
+			animation_players.size(),
+			1,
+			"the mounted player character must be the real Crash model, which carries one AnimationPlayer"
+		)
+
+	var visual := kart.get_node("Visual")
+	var mesh_instances: Array[Node] = visual.find_children(
+		"*", "MeshInstance3D", true, false
+	)
+	assert_gt(mesh_instances.size(), 0, "fixture sanity: the kart model must carry a mesh")
+	if mesh_instances.is_empty():
+		return
+	var material := (
+		(mesh_instances[0] as MeshInstance3D).material_override as StandardMaterial3D
+	)
+	assert_not_null(material, "configure() must apply a body tint material to the player kart")
+	if material == null:
+		return
+	assert_eq(
+		material.albedo_color,
+		_kart_tuning.kart_tint_player,
+		"the player kart's own tint must come from KartTuning.kart_tint_player"
+	)
+
+
+func test_spawn_ai_karts_mounts_lab_assistants_with_distinct_deterministic_tints() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_gt(opponent_count, 0, "fixture sanity: at least one AI kart must spawn by default")
+	if opponent_count <= 0:
+		return
+
+	var player_kart := race.get_node("Kart") as CharacterBody3D
+	var player_tint: Variant = _material_albedo(player_kart)
+	assert_not_null(player_tint)
+
+	var seen_tints: Array[Color] = []
+	for index in range(opponent_count):
+		var ai_kart := race.call("ai_kart", index) as CharacterBody3D
+		assert_not_null(ai_kart, "an AI kart must exist at slot %d" % index)
+		if ai_kart == null:
+			continue
+
+		var mounted: Node3D = ai_kart.call("mounted_character")
+		assert_not_null(mounted, "_spawn_ai_karts() must seat every AI kart with a real character")
+
+		var ai_tint: Variant = _material_albedo(ai_kart)
+		assert_not_null(ai_tint, "_spawn_ai_karts() must apply a body tint to every AI kart")
+		if ai_tint == null:
+			continue
+		assert_eq(
+			ai_tint,
+			_kart_tuning.tint_for_slot(index + 1),
+			"AI slot %d's own tint must come from KartTuning.tint_for_slot(slot_index)" % (index + 1)
+		)
+		assert_ne(
+			ai_tint,
+			player_tint,
+			"an AI kart must never share the player's own fixed identity colour"
+		)
+		assert_false(
+			seen_tints.has(ai_tint),
+			"two different AI slots must never land on the same tint (5 distinct slot colours)"
+		)
+		seen_tints.append(ai_tint)
+
+
+## Reads the real material_override colour off a kart's own Visual mesh --
+## the same white-box shape test_apply_body_tint_overrides_the_visual_
+## meshes_with_the_given_color already proves works in test_kart_controller.
+## gd, reused here as a small test-local helper since two tests in this
+## section both need it.
+func _material_albedo(kart: CharacterBody3D) -> Variant:
+	var visual := kart.get_node_or_null("Visual")
+	if visual == null:
+		return null
+	var mesh_instances: Array[Node] = visual.find_children(
+		"*", "MeshInstance3D", true, false
+	)
+	if mesh_instances.is_empty():
+		return null
+	var material := (
+		(mesh_instances[0] as MeshInstance3D).material_override as StandardMaterial3D
+	)
+	return material.albedo_color if material != null else null
+
+
 func test_crossing_every_gate_in_order_for_all_laps_completes_the_race() -> void:
 	var race := _boot_race()
 	if race == null:

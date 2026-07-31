@@ -49,14 +49,18 @@ document where it cannot.
   | `assets/models/rideables/` | 6,000–10,000 tris | Operator-approved 2026-07-28 for the first hog |
   | `assets/models/props/` | 100–2,500 tris | Operator-approved after the first crate measured 1,996 tris |
   | `assets/models/kits/` | 100–2,000 tris | Operator-approved after the first beach/jungle kit measured 100–1,564 tris |
+  | `assets/models/karts/` | 150–800 tris | CTR R6: a stand-in tier vehicle chassis, chosen after the first real kart measured 360 tris -- deliberately its own category, NOT `rideable` (that band is for a creature mount) |
 
   An unset category **fails the lint closed** with the exact line to add to
   `data/tuning/art_budget.tres`. That is deliberate: §9.4 specifies per-asset caps for
-  characters, enemies and bosses only, while props, rideables and kit pieces are
+  characters, enemies and bosses only, while props, rideables, kit pieces and karts are
   governed by the whole-frame budget instead. The operator approved the 100–2,500
   prop band on 2026-07-28 after the first real crate measured 1,996 triangles,
   the 100–2,000 kit-piece band after the first beach/jungle kit measured
-  100–1,564 triangles, and the 6,000–10,000 rideable band before the first hog.
+  100–1,564 triangles, the 6,000–10,000 rideable band before the first hog, and the
+  150–800 kart band (CTR R6 Task 3) after the first real kart measured 360 triangles
+  -- a stand-in tier vehicle mesh, explicitly not held to the rideable creature-mount
+  band.
 
 ## Godot side
 

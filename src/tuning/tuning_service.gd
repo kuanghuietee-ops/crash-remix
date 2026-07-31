@@ -109,6 +109,21 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"camera_look_height_m",
 		],
 	],
+	# CTR R6 Task 3: kart-body tint fields, added to the EXISTING kart
+	# section (unlike fx's own brand-new-section shape, see fx_tuning.gd's
+	# own doc contrasting the two paths). Grouped as one cohort -- an
+	# on-device override.tres saved before this task exists would be
+	# missing all six at once, never some subset of them.
+	&"kart": [
+		[
+			&"kart_tint_player",
+			&"kart_tint_slot_1",
+			&"kart_tint_slot_2",
+			&"kart_tint_slot_3",
+			&"kart_tint_slot_4",
+			&"kart_tint_slot_5",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -541,6 +556,22 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or kart.spin_out_speed_keep_ratio <= 0.0
 		or kart.spin_out_speed_keep_ratio > 1.0
 		or kart.invulnerable_after_hit_s <= 0.0
+		# CTR R6 Task 3: the same alpha-only Color bound fx.spark_color_
+		# stage1/2/3 already use below (RGB is unbounded/HDR-capable, only
+		# alpha has real meaning here -- a zero-alpha tint would make
+		# apply_body_tint()'s material_override invisible).
+		or kart.kart_tint_player.a <= 0.0
+		or kart.kart_tint_player.a > 1.0
+		or kart.kart_tint_slot_1.a <= 0.0
+		or kart.kart_tint_slot_1.a > 1.0
+		or kart.kart_tint_slot_2.a <= 0.0
+		or kart.kart_tint_slot_2.a > 1.0
+		or kart.kart_tint_slot_3.a <= 0.0
+		or kart.kart_tint_slot_3.a > 1.0
+		or kart.kart_tint_slot_4.a <= 0.0
+		or kart.kart_tint_slot_4.a > 1.0
+		or kart.kart_tint_slot_5.a <= 0.0
+		or kart.kart_tint_slot_5.a > 1.0
 	):
 		return false
 

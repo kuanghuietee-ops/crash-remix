@@ -748,6 +748,312 @@ func test_kart_scene_wires_a_blob_shadow_node() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Task 3 (CTR R6, circuit polish): kart mesh swap (graybox box -> the real
+# generated glb) + the character-mount/body-tint API. See kart_controller.gd's
+# own class doc section for the design (NODE LOOKUP NOT @onready, no physics
+# from the character, no explicit yaw sync needed).
+# ---------------------------------------------------------------------------
+
+const CRASH_MODEL_PATH := "res://assets/models/characters/SK_crash.glb"
+const LAB_ASSISTANT_MODEL_PATH := "res://assets/models/enemies/SK_lab_assistant.glb"
+const SEAT_ANIMATION_CLIP := &"A_crash_hog_ride"
+
+
+func test_kart_scene_has_the_real_mesh_and_no_character_by_default() -> void:
+	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
+	if not ResourceLoader.exists(KART_SCENE_PATH):
+		return
+	var packed := load(KART_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var kart := packed.instantiate() as Node3D
+	add_child_autofree(kart)
+
+	var visual := kart.get_node_or_null("Visual")
+	assert_not_null(visual, "kart.tscn must still carry a Visual node")
+	if visual == null:
+		return
+	var mesh_instances: Array = visual.find_children("*", "MeshInstance3D", true, false)
+	if visual is MeshInstance3D:
+		mesh_instances.append(visual)
+	assert_gt(
+		mesh_instances.size(),
+		0,
+		"the graybox box mesh must have been replaced by the generated kart glb"
+	)
+	if not mesh_instances.is_empty():
+		var mesh := (mesh_instances[0] as MeshInstance3D).mesh
+		assert_not_null(mesh, "the instanced kart model must carry a real mesh")
+		if mesh != null:
+			assert_gt(
+				mesh.get_surface_count(),
+				0,
+				"the budget-linted kart mesh must have at least one surface"
+			)
+
+	assert_not_null(
+		kart.get_node_or_null("SeatMount"),
+		"kart.tscn must author a SeatMount marker for mount_character() to seat onto"
+	)
+	assert_null(
+		kart.call("mounted_character"),
+		"kart.tscn ships with NO character by default -- RaceSession decides who rides"
+	)
+
+
+func test_mount_character_seats_the_given_scene_with_no_physics_body() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+
+	assert_not_null(mounted, "mount_character() must return the instantiated character")
+	assert_eq(
+		kart.call("mounted_character"),
+		mounted,
+		"mounted_character() must expose the same node just mounted"
+	)
+	if mounted == null:
+		return
+	assert_eq(
+		mounted.get_parent(),
+		kart.get_node("SeatMount"),
+		"the character must be parented under the kart's own SeatMount, not Visual or the kart root"
+	)
+	assert_false(
+		mounted is PhysicsBody3D,
+		"the mounted character must carry no physics body of its own -- visual only"
+	)
+
+
+func test_mount_character_plays_the_seated_ride_clip_when_the_model_has_one() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+
+	var animation_players := mounted.find_children("*", "AnimationPlayer", true, false)
+	assert_eq(animation_players.size(), 1, "the Crash model must carry exactly one AnimationPlayer")
+	if animation_players.size() != 1:
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	assert_eq(
+		animation_player.current_animation,
+		String(SEAT_ANIMATION_CLIP),
+		"mounting Crash on a kart must play the same seated-riding clip Hog Wild already uses"
+	)
+
+
+## The lab assistant model has no seated-riding clip of its own (its only
+## animation is a walk cycle) -- mount_character() must still succeed and
+## must not error or fight a nonexistent clip; it simply leaves the model at
+## whatever pose it imports with. See kart_controller.gd's own SEAT_
+## ANIMATION_CLIP doc for why this is a documented, acceptable R6 gap.
+func test_mount_character_on_a_model_without_a_seated_clip_does_not_error() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var lab_assistant_scene := load(LAB_ASSISTANT_MODEL_PATH) as PackedScene
+	assert_not_null(lab_assistant_scene)
+	if lab_assistant_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", lab_assistant_scene)
+
+	assert_not_null(mounted, "mounting a model with no seated clip must still succeed")
+	if mounted == null:
+		return
+	var animation_players := mounted.find_children("*", "AnimationPlayer", true, false)
+	if animation_players.size() == 1:
+		var animation_player := animation_players[0] as AnimationPlayer
+		assert_false(
+			animation_player.has_animation(SEAT_ANIMATION_CLIP),
+			"fixture sanity: the lab assistant must genuinely lack the seated clip"
+		)
+
+
+func test_mount_character_replaces_a_previously_mounted_character() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	var lab_assistant_scene := load(LAB_ASSISTANT_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	assert_not_null(lab_assistant_scene)
+	if crash_scene == null or lab_assistant_scene == null:
+		return
+
+	var first: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(first)
+	var second: Node3D = kart.call("mount_character", lab_assistant_scene)
+	# unmount_character() (called internally by mount_character() before
+	# seating the new one) uses queue_free(), Godot's own recommended
+	# deferred-free -- the freed node stays is_instance_valid() == true until
+	# the next frame's deferred-call queue actually runs it.
+	await wait_physics_frames(1)
+
+	assert_not_null(second)
+	assert_ne(second, first, "a second mount must be a fresh instance, not the same node")
+	assert_false(
+		is_instance_valid(first),
+		"the previously mounted character must be freed, not left orphaned in the tree"
+	)
+	assert_eq(kart.call("mounted_character"), second)
+
+
+func test_unmount_character_clears_the_seat_and_is_safe_to_call_when_empty() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("unmount_character")
+	assert_null(kart.call("mounted_character"), "unmounting an empty seat must stay a harmless no-op")
+
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(mounted)
+
+	kart.call("unmount_character")
+	# queue_free() is deferred -- see the identical wait in test_mount_
+	# character_replaces_a_previously_mounted_character's own doc.
+	await wait_physics_frames(1)
+
+	assert_null(kart.call("mounted_character"))
+	assert_false(is_instance_valid(mounted), "unmount_character() must actually free the node")
+
+
+func test_apply_body_tint_overrides_the_visual_meshes_with_the_given_color() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var tint := Color(0.2, 0.45, 0.86, 1.0)
+
+	kart.call("apply_body_tint", tint)
+
+	var visual := kart.get_node("Visual")
+	var mesh_instances: Array[Node] = visual.find_children("*", "MeshInstance3D", true, false)
+	if visual is MeshInstance3D:
+		mesh_instances.append(visual)
+	assert_gt(mesh_instances.size(), 0, "fixture sanity: the kart model must carry at least one mesh")
+	for node: Node in mesh_instances:
+		var mesh_instance := node as MeshInstance3D
+		var material := mesh_instance.material_override as StandardMaterial3D
+		assert_not_null(
+			material,
+			"apply_body_tint() must set a StandardMaterial3D material_override on every mesh instance"
+		)
+		if material == null:
+			continue
+		assert_eq(material.albedo_color, tint)
+		assert_true(
+			material.vertex_color_use_as_albedo,
+			"the override must multiply the mesh's own painted vertex colour, not replace it flatly"
+		)
+
+
+## Two different apply_body_tint() calls (the shape RaceSession uses once per
+## AI slot) must leave two INDEPENDENT karts with two DIFFERENT colours --
+## proves the override is per-instance, not a shared sub-resource every kart
+## silently repaints together (the exact hazard kart_fx.gd's own class doc
+## warns about for kart.tscn's embedded ParticleProcessMaterial).
+func test_apply_body_tint_is_independent_per_kart_instance() -> void:
+	var red_kart := _spawn_kart_on_floor(Vector3.ZERO)
+	var blue_kart := _spawn_kart_on_floor(Vector3(100.0, 0.0, 0.0))
+	if red_kart == null or blue_kart == null:
+		return
+	var red := Color(0.86, 0.22, 0.16, 1.0)
+	var blue := Color(0.2, 0.45, 0.86, 1.0)
+
+	red_kart.call("apply_body_tint", red)
+	blue_kart.call("apply_body_tint", blue)
+
+	var red_material := (
+		red_kart.get_node("Visual").find_children("*", "MeshInstance3D", true, false)[0]
+		as MeshInstance3D
+	).material_override as StandardMaterial3D
+	var blue_material := (
+		blue_kart.get_node("Visual").find_children("*", "MeshInstance3D", true, false)[0]
+		as MeshInstance3D
+	).material_override as StandardMaterial3D
+	assert_not_null(red_material)
+	assert_not_null(blue_material)
+	if red_material == null or blue_material == null:
+		return
+	assert_eq(red_material.albedo_color, red)
+	assert_eq(blue_material.albedo_color, blue)
+
+
+## The design brief's own "animation driver non-interference" requirement:
+## the mounted character must yaw together with the kart body, never lag or
+## diverge from it, with NO explicit facing-sync code of any kind (see
+## mount_character()'s own YAW doc for why this holds by construction --
+## the character is a plain scene-graph descendant of this kart's own
+## CharacterBody3D). Proven through real steering + real physics ticks, not
+## asserted from the parenting alone.
+func test_mounted_character_yaws_together_with_the_kart_body_while_steering() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before steering")
+
+	# mount_character() sets a fixed LOCAL rotation.y = PI on the character
+	# itself (the "-Y-forward-in-Blender" orientation fix, see that method's
+	# own doc) -- so the character's WORLD yaw sits at a constant offset from
+	# the kart body's own world yaw, never numerically equal to it. What
+	# "yaws together, no fighting" actually means is that the two CHANGE by
+	# the same amount tick over tick -- captured here as the delta before vs.
+	# after steering, for both the kart body and the mounted character.
+	var kart_yaw_before: float = kart.global_transform.basis.get_euler().y
+	var character_yaw_before: float = mounted.global_transform.basis.get_euler().y
+
+	kart.call("steer", 1.0)
+	await wait_physics_frames(30)
+
+	var kart_yaw_after: float = kart.global_transform.basis.get_euler().y
+	var character_yaw_after: float = mounted.global_transform.basis.get_euler().y
+	var kart_delta := wrapf(kart_yaw_after - kart_yaw_before, -PI, PI)
+	var character_delta := wrapf(character_yaw_after - character_yaw_before, -PI, PI)
+
+	assert_gt(
+		absf(kart_delta),
+		0.01,
+		"fixture setup: the kart body must have visibly yawed by now"
+	)
+	assert_almost_eq(
+		character_delta,
+		kart_delta,
+		0.001,
+		"the mounted character's world yaw must change by exactly the kart body's own yaw delta, every tick"
+	)
+
+
+# ---------------------------------------------------------------------------
 # R4 Task 3 (CTR item loop): the real per-kart ItemSlot -- configure()/
 # refresh_tuning() thread item_tuning through (optionally, see
 # _spawn_kart_on_floor()'s own doc), use_item() now delegates to the real

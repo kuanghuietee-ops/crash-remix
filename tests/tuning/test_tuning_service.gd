@@ -2693,6 +2693,22 @@ const KART_RATIO_FIELDS: Array[StringName] = [
 	&"spin_out_speed_keep_ratio",
 ]
 
+# CTR R6 Task 3: the six body-tint Color fields, excluded from
+# test_kart_tuning_rejects_nonpositive_fields' blind "set every field to
+# 0.0" sweep below -- mirrors FX_SPARK_COLOR_FIELDS' own identical exclusion
+# from test_fx_tuning_rejects_nonpositive_fields, for the identical reason
+# (Color's RGB channels are unbounded/HDR-capable; only alpha has a real
+# "reject zero" meaning here -- see test_kart_tint_color_alpha_is_bounded_
+# to_the_unit_interval below, which is that dedicated check).
+const KART_TINT_COLOR_FIELDS: Array[StringName] = [
+	&"kart_tint_player",
+	&"kart_tint_slot_1",
+	&"kart_tint_slot_2",
+	&"kart_tint_slot_3",
+	&"kart_tint_slot_4",
+	&"kart_tint_slot_5",
+]
+
 
 func test_service_catalog_exposes_kart_section() -> void:
 	var service: RefCounted = _loaded_service()
@@ -2818,6 +2834,11 @@ func test_kart_tuning_rejects_nonpositive_fields() -> void:
 	if kart == null:
 		return
 	for property_name: StringName in _exported_property_names(kart):
+		# CTR R6 Task 3: the six Color-typed tint fields are excluded here --
+		# see KART_TINT_COLOR_FIELDS' own doc for why (mirrors FX_STRICTLY_
+		# POSITIVE_FIELDS' identical exclusion of the fx spark colors).
+		if KART_TINT_COLOR_FIELDS.has(property_name):
+			continue
 		var authored_value: Variant = kart.get(property_name)
 		kart.set(property_name, 0.0)
 		assert_false(
@@ -2826,6 +2847,69 @@ func test_kart_tuning_rejects_nonpositive_fields() -> void:
 		)
 		kart.set(property_name, authored_value)
 	assert_true(service.call("catalog_is_usable"))
+
+
+## Mirrors test_fx_spark_color_alpha_is_bounded_to_the_unit_interval's own
+## shape exactly (see that test's own doc for the phase.missed_crate_
+## outline_color.a precedent this and the fx check both follow): RGB is
+## left unbounded (HDR-capable, no "wrong" hue), only alpha is checked,
+## since a zero-alpha material_override would make apply_body_tint()'s
+## recolour fully invisible.
+func test_kart_tint_color_alpha_is_bounded_to_the_unit_interval() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	for property_name: StringName in KART_TINT_COLOR_FIELDS:
+		var authored_color: Color = kart.get(property_name)
+
+		kart.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 0.0))
+		assert_false(
+			service.call("catalog_is_usable"),
+			"kart.%s must reject zero alpha" % property_name
+		)
+
+		kart.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 1.01))
+		assert_false(
+			service.call("catalog_is_usable"),
+			"kart.%s must reject alpha above 1.0" % property_name
+		)
+
+		kart.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 1.0))
+		assert_true(
+			service.call("catalog_is_usable"),
+			"kart.%s must accept alpha of exactly 1.0" % property_name
+		)
+
+		kart.set(property_name, authored_color)
+	assert_true(service.call("catalog_is_usable"))
+
+
+## Mirrors test_fingerprint_moves_when_an_fx_spark_color_changes' own doc:
+## pinned separately from any float-field fingerprint test because a Color
+## property is a different Variant type serialized through the same generic
+## var_to_str() path (_append_fingerprint_lines).
+func test_fingerprint_moves_when_a_kart_tint_color_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(kart)
+	if kart == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	var color: Color = kart.get("kart_tint_player")
+	kart.set("kart_tint_player", Color(color.r, color.g, color.b, 0.5))
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"kart tint color values never reach the tuning fingerprint"
+	)
 
 
 func test_kart_ratio_fields_are_bounded_to_unit_interval() -> void:
@@ -2968,6 +3052,69 @@ func test_old_race_override_backfills_camera_look_height_m() -> void:
 		5.0,
 		0.001,
 		"migration must preserve existing race edits"
+	)
+
+
+# CTR R6 Task 3: the six kart-body-tint Color fields were added to the
+# already-shipped kart section as ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's
+# &"kart" entry), mirroring test_old_race_override_backfills_camera_look_
+# height_m's own shape one section up -- an override.tres saved before this
+# task exists would be missing all six at once (every field still reading
+# its script default, since ResourceSaver omits default-valued fields), and
+# migration must restore all six together while leaving an unrelated,
+# already-edited field (top_speed_mps) untouched.
+func test_old_kart_override_backfills_the_body_tint_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var tint_fields: Array[StringName] = [
+		&"kart_tint_player",
+		&"kart_tint_slot_1",
+		&"kart_tint_slot_2",
+		&"kart_tint_slot_3",
+		&"kart_tint_slot_4",
+		&"kart_tint_slot_5",
+	]
+	for field: StringName in tint_fields:
+		assert_true(
+			_exported_property_names(authored.kart).has(field),
+			"the body tint fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := KartTuning.new()
+	for field: StringName in tint_fields:
+		stale.kart.set(field, defaults.get(field))
+	stale.kart.top_speed_mps = 30.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in tint_fields:
+		assert_eq(
+			migrated.kart.get(field),
+			authored.kart.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.kart.top_speed_mps,
+		30.0,
+		0.001,
+		"migration must preserve existing kart edits"
 	)
 
 

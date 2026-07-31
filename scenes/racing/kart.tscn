@@ -1,17 +1,11 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://src/racing/kart/kart_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="2_blob"]
 [ext_resource type="Script" path="res://src/racing/fx/kart_fx.gd" id="3_fx"]
+[ext_resource type="PackedScene" path="res://assets/models/karts/SM_kart.glb" id="4_kart_model"]
 
 [sub_resource type="BoxShape3D" id="Shape_kart"]
-size = Vector3(1.4, 0.6, 2.0)
-
-[sub_resource type="StandardMaterial3D" id="Material_kart"]
-albedo_color = Color(0.85, 0.15, 0.15, 1)
-
-[sub_resource type="BoxMesh" id="Mesh_kart"]
-material = SubResource("Material_kart")
 size = Vector3(1.4, 0.6, 2.0)
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcess_sparks"]
@@ -73,9 +67,11 @@ script = ExtResource("1_controller")
 position = Vector3(0, 0.3, 0)
 shape = SubResource("Shape_kart")
 
-[node name="Visual" type="MeshInstance3D" parent="."]
-position = Vector3(0, 0.3, 0)
-mesh = SubResource("Mesh_kart")
+[node name="Visual" parent="." instance=ExtResource("4_kart_model")]
+rotation = Vector3(0, 3.1415927, 0)
+
+[node name="SeatMount" type="Marker3D" parent="."]
+position = Vector3(0, 0.44, 0.05)
 
 [node name="BlobShadow" parent="." instance=ExtResource("2_blob")]
 

@@ -299,6 +299,17 @@ const CountdownTimerType := preload("res://src/racing/flow/countdown_timer.gd")
 const StartBoostJudgeType := preload(
 	"res://src/racing/flow/start_boost_judge.gd"
 )
+# Task 3 (CTR R6, circuit polish): the ONLY two character sources this
+# session ever mounts onto a kart -- the same existing, hand-made,
+# likeness-gated models scenes/player/player.tscn's own CrashModel and any
+# future lab-assistant enemy scene already reference. See KartController.
+# mount_character()'s own doc for the mount API these are handed to.
+const CrashCharacterSceneType := preload(
+	"res://assets/models/characters/SK_crash.glb"
+)
+const LabAssistantCharacterSceneType := preload(
+	"res://assets/models/enemies/SK_lab_assistant.glb"
+)
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -496,6 +507,16 @@ func configure(catalog: GameplayTuning) -> void:
 	# already get one line above.
 	_fx_tuning = catalog.fx
 	_kart.get_node("Fx").call("configure", _kart, _fx_tuning)
+	# Task 3 (CTR R6, circuit polish): the player kart always seats the
+	# likeness-gated Crash model -- see KartController.mount_character()'s
+	# own doc for why this is safe to call before add_child() (kart.tscn's
+	# SeatMount marker is an authored scene child, resolved via get_node_or_
+	# null() the same NODE LOOKUP NOT @onready way the Fx wiring above
+	# already relies on). apply_body_tint() gives the player kart its own
+	# fixed identity colour -- every kart gets a tint, there is no untinted
+	# kart (see kart_tuning.gd's own Visual-category doc).
+	_kart.call("mount_character", CrashCharacterSceneType)
+	_kart.call("apply_body_tint", _kart_tuning.kart_tint_player)
 	# R5 Task 1: KartController.configure() always ends by reactivating
 	# itself (set_run_active(true), see its own doc) -- immediately undone
 	# here so the player spawns frozen, same as every AI kart (see _spawn_
@@ -921,6 +942,16 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	if _kart != null and is_instance_valid(_kart):
 		_kart.call("refresh_tuning", _kart_tuning, _item_tuning)
 		_kart.get_node("Fx").call("refresh_tuning", _fx_tuning)
+		# Task 3 (CTR R6, circuit polish): kart_tint_player lives on the same
+		# KartTuning section refresh_tuning() above already re-applies to the
+		# motor/drift -- re-applying the tint here too keeps it live for the
+		# same reason the box loop below re-applies fx_tuning, matching this
+		# method's own established "provably live" contract. AI karts are
+		# deliberately NOT touched here -- this method has never refreshed
+		# _ai_karts at all (only _kart/_camera/_item_boxes), a pre-existing
+		# scope this task does not change; see the class doc's own tuning-
+		# refresh precedent.
+		_kart.call("apply_body_tint", _kart_tuning.kart_tint_player)
 	if _camera != null and is_instance_valid(_camera):
 		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
 	# Task 1 fix round 1 (CTR R6, circuit polish reviewer [MEDIUM]): every
@@ -1656,6 +1687,16 @@ func _spawn_ai_karts() -> void:
 		# or_null() instead of trusting @onready, which would not have fired
 		# yet on this still-detached subtree.
 		ai_kart.get_node("Fx").call("configure", ai_kart, _fx_tuning)
+		# Task 3 (CTR R6, circuit polish): every AI kart seats the OTHER
+		# likeness-gated model (the lab assistant, never Crash -- see the
+		# design doc's own "lab assistant models drive AI karts" line) and
+		# gets a per-slot body tint from the same KartTuning the player's own
+		# kart_tint_player line above reads. tint_for_slot() is 1-based and
+		# wraps deterministically past 5 slots (see kart_tuning.gd's own
+		# doc) -- slot_index here is this loop's own 1-based GridSlot number,
+		# never re-derived.
+		ai_kart.call("mount_character", LabAssistantCharacterSceneType)
+		ai_kart.call("apply_body_tint", _kart_tuning.tint_for_slot(slot_index))
 		# R5 Task 1: see the player's own identical call in configure() for
 		# why this immediately undoes configure()'s own set_run_active(true)
 		# -- every AI kart spawns frozen too, unfrozen plainly at GO (see the

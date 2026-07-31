@@ -65,6 +65,17 @@ const DriftStateMachineType := preload(
 )
 const ItemSlotType := preload("res://src/racing/items/item_slot.gd")
 
+## CTR R6 Task 3: the seated-riding clip Crash's own model already carries
+## (see src/visual/player/crash_animation_driver.gd's HOG_RIDE constant --
+## same StringName, reused verbatim, not re-authored). The lab assistant
+## model has no such clip (its only animation is A_lab_assistant_walk, an
+## on-foot patrol cycle with no seated pose) -- _play_seat_pose() below
+## checks has_animation() before playing, so mounting the lab assistant is a
+## silent, documented no-op here: it sits at whatever rest/bind pose its own
+## rig imports with, not a fought or broken animation. Static seated pose is
+## an explicitly acceptable R6 stand-in per this task's own brief.
+const SEAT_ANIMATION_CLIP := &"A_crash_hog_ride"
+
 var _tuning: KartTuning
 var _motor: KartMotorType = KartMotorType.new()
 var _drift: DriftStateMachineType = DriftStateMachineType.new()
@@ -74,6 +85,19 @@ var _steer_input: float
 var _brake_input: bool
 var _run_active: bool = true
 var _item_use_count: int = 0
+
+## CTR R6 Task 3: character-mount + body-tint node refs. NODE LOOKUP, NOT
+## @onready -- mirrors kart_fx.gd's own class-doc precedent exactly (see that
+## file's "NODE LOOKUP, NOT @onready" section): RaceSession._spawn_ai_karts()
+## calls mount_character()/apply_body_tint() on a freshly-instantiate()d kart
+## BEFORE add_child() (the same ordering that already forces kart_fx.gd's own
+## Fx.configure() to avoid @onready), so an @onready var here would still
+## read null when either method needs it. _ensure_visual_refs() looks both
+## up lazily and caches them, the identical shape kart_fx.gd's own _ensure_
+## particle_refs() already uses.
+var _visual: Node3D
+var _seat_mount: Node3D
+var _mounted_character: Node3D
 
 
 ## item_tuning (R4 Task 3) is OPTIONAL and defaults to null so every
@@ -383,3 +407,150 @@ func _physics_process(delta_s: float) -> void:
 	# velocity() this tick keeps the two consistent by construction.
 	rotation.y = deg_to_rad(_motor.yaw_degrees())
 	move_and_slide()
+
+
+# ---------------------------------------------------------------------------
+# CTR R6 Task 3: character-mount + body-tint API. kart.tscn ships with NO
+# character by default -- RaceSession decides who rides (Crash on the
+# player, a lab assistant on every AI kart) and calls these once per kart at
+# spawn time, mirroring the Fx wiring one section up (kart.get_node("Fx").
+# call("configure", ...)) exactly: same "session owns the decision, the
+# scene stays generic" split, same pre-add_child() call timing, same NODE
+# LOOKUP NOT @onready reason (see this class's own var declarations above).
+# ---------------------------------------------------------------------------
+
+
+## Instances character_scene under this kart's own SeatMount marker (a
+## Marker3D sibling of Visual, authored in kart.tscn at the seat's own
+## estimated position -- see that scene's own SeatMount node), plays its
+## seated-riding pose if the model has one (see SEAT_ANIMATION_CLIP's own
+## doc), and returns the instantiated node. A previously mounted character,
+## if any, is freed first -- mount_character() is safe to call again (a
+## defensive re-configure/retry path, the same "safe to call twice" shape
+## every other configure()-adjacent method on this controller already
+## keeps).
+##
+## NO PHYSICS FROM THE CHARACTER: character_scene's own root (SK_crash.glb/
+## SK_lab_assistant.glb) is a plain Node3D/Skeleton3D subtree, never a
+## CharacterBody3D or any other physics body -- parenting it under SeatMount
+## (itself a plain Marker3D, not a PhysicsBody3D) gives it no collision
+## shape and no physics processing of its own; it is purely visual, exactly
+## like the kart's own Visual mesh instance one node up.
+##
+## YAW: NO explicit facing sync of any kind is needed, and this is
+## deliberate, not an oversight -- contrast with hog_mount.gd's own
+## _face_travel_direction(), which exists ONLY because that rig reparents
+## the HOG VISUAL onto the PLAYER's own CharacterBody3D, a SEPARATE body
+## that does not itself rotate to face travel direction. Here the
+## relationship is the other way around and simpler: the character is a
+## plain descendant of THIS kart's own CharacterBody3D, which already
+## writes its own rotation.y from the motor's yaw every physics tick (see
+## _physics_process() above) -- Godot's scene graph carries that rotation
+## down through SeatMount to the mounted character for free. The character
+## cannot "fight" the kart's yaw because it has no yaw authority of its own
+## to fight it with.
+##
+## rotation.y = PI (via the PI built-in, never a bare numeric literal --
+## src/racing/**'s own numeric-literal lint bans everything outside 0/1/-1,
+## see CLAUDE.md) corrects the same "-Y-forward-in-Blender exports as
+## +Z-front-in-Godot" convention every character/rideable asset in this repo
+## shares (docs/art/import-export-contract.md's own Orientation section) --
+## the identical fix scenes/player/player.tscn's own CrashModel node already
+## carries (rotation = Vector3(0, 3.1415927, 0)), just applied at mount time
+## here instead of authored once in a scene, since the mounted character is
+## never scene-authored (kart.tscn ships with none, per this section's own
+## class doc).
+func mount_character(character_scene: PackedScene) -> Node3D:
+	_ensure_visual_refs()
+	unmount_character()
+	if character_scene == null or _seat_mount == null:
+		return null
+	var character := character_scene.instantiate() as Node3D
+	if character == null:
+		return null
+	_seat_mount.add_child(character)
+	character.rotation.y = PI
+	_mounted_character = character
+	_play_seat_pose(character)
+	return character
+
+
+## Frees the currently mounted character, if any. A harmless no-op when
+## nothing is mounted (mirrors this controller's other defensive-clear
+## shapes, e.g. _spawn_ai_karts()'s own _ai_root child clear in race_
+## session.gd).
+func unmount_character() -> void:
+	if _mounted_character != null and is_instance_valid(_mounted_character):
+		_mounted_character.queue_free()
+	_mounted_character = null
+
+
+## The character subtree mounted by the most recent mount_character() call,
+## or null if none was ever mounted (kart.tscn's own shipped default).
+func mounted_character() -> Node3D:
+	return _mounted_character
+
+
+## Recolors the kart's own visible shell, per RaceSession's own per-kart
+## assignment (KartTuning.kart_tint_player for the player, KartTuning.
+## tint_for_slot(slot_index) for each AI kart -- see race_session.gd's own
+## configure()/_spawn_ai_karts()). A single StandardMaterial3D override,
+## applied to EVERY MeshInstance3D found under Visual (root included --
+## _mesh_instances_in() checks both, since the imported kart glb's own root
+## node type is not guaranteed, see that helper's own doc): vertex_color_
+## use_as_albedo = true multiplies the mesh's own vertex-painted colour by
+## albedo_color = tint. scripts/blender/build_kart.py's own three palette
+## cells are deliberately unequal brightness for exactly this: BODY is
+## light/near-neutral so the tint reads clearly, WHEELS and SEAT are near-
+## black so the SAME uniform multiply barely shifts them -- see that
+## script's own module doc. This is why one material_override can recolor
+## "the kart" the way the design brief asks for without needing separate
+## per-surface materials or extra draw calls.
+func apply_body_tint(tint: Color) -> void:
+	_ensure_visual_refs()
+	if _visual == null:
+		return
+	var tint_material := StandardMaterial3D.new()
+	tint_material.vertex_color_use_as_albedo = true
+	tint_material.albedo_color = tint
+	for mesh_instance: MeshInstance3D in _mesh_instances_in(_visual):
+		mesh_instance.material_override = tint_material
+
+
+func _play_seat_pose(character: Node3D) -> void:
+	var animation_players := character.find_children(
+		"*",
+		"AnimationPlayer",
+		true,
+		false
+	)
+	if animation_players.size() != 1:
+		return
+	var animation_player := animation_players[0] as AnimationPlayer
+	if animation_player.has_animation(SEAT_ANIMATION_CLIP):
+		animation_player.play(SEAT_ANIMATION_CLIP)
+
+
+## Root-or-descendant MeshInstance3D collection -- mirrors scripts/godot/
+## enable_vertex_color_albedo.gd's own recursive walk (checks `node is
+## MeshInstance3D` before recursing into children), the same resilience this
+## repo's post-import script already needs because a glTF-imported
+## PackedScene's root node type depends on the source mesh's own shape and
+## is not something callers should have to hardcode a path assumption
+## about. Confirmed empirically for the real kart glb: its root is a plain
+## Node3D wrapping one MeshInstance3D child, not a MeshInstance3D itself --
+## this helper handles that shape and the reverse one identically.
+func _mesh_instances_in(root: Node) -> Array[MeshInstance3D]:
+	var found: Array[MeshInstance3D] = []
+	if root is MeshInstance3D:
+		found.append(root as MeshInstance3D)
+	for child: Node in root.find_children("*", "MeshInstance3D", true, false):
+		found.append(child as MeshInstance3D)
+	return found
+
+
+func _ensure_visual_refs() -> void:
+	if _visual == null:
+		_visual = get_node_or_null("Visual") as Node3D
+	if _seat_mount == null:
+		_seat_mount = get_node_or_null("SeatMount") as Node3D

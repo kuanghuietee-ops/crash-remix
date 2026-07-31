@@ -42,6 +42,12 @@ CATEGORY_BY_DIRECTORY = {
     "rideables": "rideable",
     "props": "prop",
     "kits": "kit_piece",
+    # CTR R6 Task 3: a stand-in tier vehicle chassis, deliberately its own
+    # category rather than "rideable" -- that band (6,000-10,000 tris) was
+    # set for a creature mount (SK_hog) and would either reject the real
+    # kart outright or force needless padding. See art_budget_tuning.gd's
+    # own doc for the band this category was given.
+    "karts": "kart",
 }
 BUDGET_PATH = Path("data/tuning/art_budget.tres")
 MODEL_ROOT = Path("assets/models")

@@ -20,6 +20,8 @@ func test_authored_budget_matches_the_design_doc_per_asset_caps() -> void:
 	assert_eq(budget.kit_piece_max_triangles, 2000)
 	assert_eq(budget.rideable_min_triangles, 6000)
 	assert_eq(budget.rideable_max_triangles, 10000)
+	assert_eq(budget.kart_min_triangles, 150)
+	assert_eq(budget.kart_max_triangles, 800)
 
 
 func test_authored_budget_matches_the_design_doc_frame_budgets() -> void:
@@ -44,6 +46,8 @@ func test_lookup_returns_the_category_cap() -> void:
 	assert_eq(budget.max_triangles_for(&"kit_piece"), 2000)
 	assert_eq(budget.min_triangles_for(&"rideable"), 6000)
 	assert_eq(budget.max_triangles_for(&"rideable"), 10000)
+	assert_eq(budget.min_triangles_for(&"kart"), 150)
+	assert_eq(budget.max_triangles_for(&"kart"), 800)
 
 
 ## The heaviest piece of the first beach/jungle kit measures 1,564 triangles and
@@ -55,6 +59,17 @@ func test_the_operator_approved_kit_band_spans_the_real_beach_kit() -> void:
 
 	assert_lte(budget.kit_piece_min_triangles, 100, "lightest piece: stone_cairn_a")
 	assert_gte(budget.kit_piece_max_triangles, 1564, "heaviest piece: fringe_grass_a")
+
+
+## CTR R6 Task 3: the first real kart (scripts/blender/build_kart.py's own
+## SM_kart.glb) measures 360 triangles. The 150-800 band was chosen against
+## that real measurement, deliberately far under the rideable band (a
+## creature mount) since this is a stand-in tier vehicle chassis.
+func test_the_operator_approved_kart_band_spans_the_real_kart() -> void:
+	var budget: ArtBudgetTuning = load(AUTHORED_PATH)
+
+	assert_lte(budget.kart_min_triangles, 360)
+	assert_gte(budget.kart_max_triangles, 360)
 
 
 ## Every real asset directory now has an operator-approved band -- kit pieces and

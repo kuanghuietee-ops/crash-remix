@@ -47,7 +47,7 @@ def make_repo(directory: str, budget_text: str = AUTHORED_BUDGET) -> Path:
     (root / "data" / "tuning" / "art_budget.tres").write_text(
         budget_text, encoding="utf-8"
     )
-    for name in ("characters", "enemies", "bosses", "rideables", "props", "kits"):
+    for name in ("characters", "enemies", "bosses", "rideables", "props", "kits", "karts"):
         (root / "assets" / "models" / name).mkdir(parents=True)
     (root / "assets" / "textures").mkdir(parents=True)
     return root
@@ -61,6 +61,7 @@ class CategoryResolutionTests(unittest.TestCase):
         self.assertEqual(category_for(Path("assets/models/props/SM_crate.glb")), "prop")
         self.assertEqual(category_for(Path("assets/models/kits/SM_palm.glb")), "kit_piece")
         self.assertEqual(category_for(Path("assets/models/rideables/SK_hog.glb")), "rideable")
+        self.assertEqual(category_for(Path("assets/models/karts/SM_kart.glb")), "kart")
 
     def test_an_unknown_directory_has_no_category(self) -> None:
         self.assertIsNone(category_for(Path("assets/models/SK_loose.glb")))
@@ -79,6 +80,8 @@ class BudgetLoadingTests(unittest.TestCase):
             self.assertEqual(budget.max_triangles["kit_piece"], 2000)
             self.assertEqual(budget.min_triangles["rideable"], 6000)
             self.assertEqual(budget.max_triangles["rideable"], 10000)
+            self.assertEqual(budget.min_triangles["kart"], 150)
+            self.assertEqual(budget.max_triangles["kart"], 800)
             self.assertEqual(budget.max_texture_dimension_px, 2048)
 
 
@@ -153,6 +156,40 @@ class TriangleBudgetTests(unittest.TestCase):
             )
 
             self.assertEqual(find_violations(root), [])
+
+    def test_the_operator_approved_kart_band_accepts_the_real_kart(self) -> None:
+        # scripts/blender/build_kart.py's own SM_kart.glb measures 360
+        # triangles (see art_budget_tuning.gd's own doc for this band).
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/karts/SM_kart.glb").write_bytes(build_glb(360))
+
+            self.assertEqual(find_violations(root), [])
+
+    def test_an_over_budget_kart_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/karts/SM_kart.glb").write_bytes(build_glb(5000))
+
+            violations = find_violations(root)
+
+            self.assertEqual(len(violations), 1)
+            self.assertIn("5000", violations[0].message)
+            self.assertIn("800", violations[0].message)
+
+    def test_an_under_budget_kart_is_reported(self) -> None:
+        # A kart this cheap would not even clear the rideable floor if it
+        # were mis-categorised there -- but under ITS OWN 150-tri floor is
+        # still a real violation: the whole point of a band, not a ceiling.
+        with tempfile.TemporaryDirectory() as directory:
+            root = make_repo(directory)
+            (root / "assets/models/karts/SM_kart.glb").write_bytes(build_glb(50))
+
+            violations = find_violations(root)
+
+            self.assertEqual(len(violations), 1)
+            self.assertIn("50", violations[0].message)
+            self.assertIn("150", violations[0].message)
 
     def test_an_over_budget_kit_piece_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
