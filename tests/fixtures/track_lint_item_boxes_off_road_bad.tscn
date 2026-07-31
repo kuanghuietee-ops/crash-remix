@@ -7,7 +7,7 @@
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
 
-[node name="TrackLintSpawnAheadBad" type="Node3D"]
+[node name="TrackLintItemBoxesOffRoadBad" type="Node3D"]
 
 [node name="Spine" type="Path3D" parent="."]
 script = ExtResource("1_spine")
@@ -66,7 +66,7 @@ gate_index = 3
 shape = SubResource("Shape_gate")
 
 [node name="KartSpawn" type="Marker3D" parent="."]
-position = Vector3(10, 0.2, 0)
+position = Vector3(-10, 0.2, 0)
 rotation_degrees = Vector3(0, -90, 0)
 
 [node name="GridSlot1" type="Marker3D" parent="."]
@@ -90,7 +90,7 @@ position = Vector3(-16, 0.2, 4.25)
 rotation_degrees = Vector3(0, -90, 0)
 
 [node name="ItemBoxA1" type="Area3D" parent="."]
-position = Vector3(17, 1, 10)
+position = Vector3(30, 1, 10)
 script = ExtResource("3_box")
 
 [node name="ItemBoxA2" type="Area3D" parent="."]

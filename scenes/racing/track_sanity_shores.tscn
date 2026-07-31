@@ -1,4 +1,4 @@
-[gd_scene load_steps=228 format=3]
+[gd_scene load_steps=229 format=3]
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_track_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_checkpoint_gate"]
@@ -19,6 +19,7 @@
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_foam.tres" id="17_M_beach_kit_foam"]
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_foliage.tres" id="18_M_beach_kit_foliage"]
 [ext_resource type="Material" path="res://assets/materials/M_beach_kit_sea.tres" id="19_M_beach_kit_sea"]
+[ext_resource type="PackedScene" path="res://scenes/racing/item_box.tscn" id="20_item_box"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.18, 0.45, 0.72, 1)
@@ -2479,3 +2480,23 @@ position = Vector3(280.1113, 0, 277)
 rotation_degrees = Vector3(0, 0, 0)
 mesh = ExtResource("15_water_sea_tile")
 material_override = ExtResource("19_M_beach_kit_sea")
+
+[node name="ItemBoxes" type="Node3D" parent="."]
+
+[node name="ItemBoxEast1" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(430, 1, 297)
+
+[node name="ItemBoxEast2" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(430, 1, 300)
+
+[node name="ItemBoxEast3" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(430, 1, 303)
+
+[node name="ItemBoxBack1" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(300, 1, 380.5037)
+
+[node name="ItemBoxBack2" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(300, 1, 383.5037)
+
+[node name="ItemBoxBack3" parent="ItemBoxes" instance=ExtResource("20_item_box")]
+position = Vector3(300, 1, 386.5037)

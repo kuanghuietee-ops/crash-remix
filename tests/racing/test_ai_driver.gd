@@ -12,13 +12,24 @@ extends GutTest
 #
 # See .superpowers/sdd/2026-07-30-ctr-r3-ai-karts/task-3-brief.md and
 # docs/superpowers/plans/2026-07-30-ctr-r3-ai-karts.md (Task 3).
+#
+# Task 5 (CTR R4: AI item use + boxes) -- see
+# .superpowers/sdd/2026-07-30-ctr-r4-items/task-5-brief.md. configure()
+# gains a third, OPTIONAL item_tuning: ItemTuning parameter (default null) --
+# see the "without item_tuning" tests below, which deliberately configure
+# WITHOUT it to prove every non-item output keeps working and only the
+# missile heuristic (the one heuristic that needs a real ItemTuning value,
+# ai_missile_max_target_gap_m) fails closed. Every other test in this file
+# configures fully (_new_driver() below now always passes _item too).
 
 const DRIVER_SCRIPT_PATH := "res://src/racing/ai/ai_driver.gd"
 const AI_TUNING_PATH := "res://data/tuning/racing/ai.tres"
 const KART_TUNING_PATH := "res://data/tuning/racing/kart.tres"
+const ITEM_TUNING_PATH := "res://data/tuning/racing/items.tres"
 
 var _ai: AiTuning
 var _kart: KartTuning
+var _item: ItemTuning
 
 
 func before_all() -> void:
@@ -26,6 +37,8 @@ func before_all() -> void:
 	assert_not_null(_ai, "ai.tres must load -- Task 1 registers it")
 	_kart = load(KART_TUNING_PATH)
 	assert_not_null(_kart, "kart.tres must load -- Task 1 (R1/R2) registers it")
+	_item = load(ITEM_TUNING_PATH)
+	assert_not_null(_item, "items.tres must load -- R4 Task 2 registers it")
 
 
 # ---------------------------------------------------------------------------
@@ -643,7 +656,7 @@ func test_boost_tap_does_not_fire_when_disabled_in_tuning() -> void:
 		return
 	var disabled_ai: AiTuning = _ai.duplicate()
 	disabled_ai.boost_tap_enabled = 0.0
-	driver.call("configure", disabled_ai, _kart)
+	driver.call("configure", disabled_ai, _kart, _item)
 
 	var result: Dictionary = driver.call("decide", _state({
 		"is_sliding": true,
@@ -766,6 +779,274 @@ func test_steer_clamps_to_negative_one_on_a_huge_lateral_error() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Item use (Task 5, CTR R4 items). One heuristic per held item, per
+# ai_driver.gd's own class doc: shield fires immediately; turbo needs a
+# straight (|curvature_ahead| below slide_exit_curvature); missile needs a
+# target within ai_missile_max_target_gap_m ahead; beaker needs the kart to
+# already be leading (band_gap_m < 0.0). All four are additionally gated on
+# item_cooldown_ready and produce an EDGE output (own memory, like hop/
+# boost_tap) -- see the machine-gun-guard tests below.
+# ---------------------------------------------------------------------------
+
+
+func test_shield_uses_immediately_when_held() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"shield",
+	}))
+
+	assert_true(
+		bool(result.get("use_item")),
+		"R4 keeps it simple: shield is used the instant it is held, no "
+		+ "other condition gates it"
+	)
+
+
+func test_use_item_does_not_fire_with_nothing_held() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"none",
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_turbo_uses_below_slide_exit_curvature() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"turbo",
+		"curvature_ahead": _ai.slide_exit_curvature / 2.0,
+	}))
+
+	assert_true(bool(result.get("use_item")), "a gentle straight must fire the turbo")
+
+
+func test_turbo_uses_on_a_left_bending_near_straight_via_absf() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"turbo",
+		"curvature_ahead": -_ai.slide_exit_curvature / 2.0,
+	}))
+
+	assert_true(
+		bool(result.get("use_item")),
+		"the threshold must read |curvature_ahead| -- a gentle LEFT bend is just as straight"
+	)
+
+
+func test_turbo_does_not_use_at_or_above_slide_exit_curvature() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"turbo",
+		"curvature_ahead": _ai.slide_exit_curvature,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"'below slide_exit_curvature' is a strict less-than -- AT the threshold must not count"
+	)
+
+
+func test_missile_uses_at_the_target_gap_threshold() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"missile",
+		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m,
+	}))
+
+	assert_true(
+		bool(result.get("use_item")),
+		"the brief's own '<=' -- AT the threshold must still fire"
+	)
+
+
+func test_missile_does_not_use_beyond_the_target_gap_threshold() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"missile",
+		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m + 1.0,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_missile_does_not_use_with_no_target_ahead() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"missile",
+		"target_gap_ahead_m": INF,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"INF (nothing ahead -- e.g. this kart is already in the lead) must never satisfy <="
+	)
+
+
+func test_beaker_uses_when_leading() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"beaker",
+		"band_gap_m": -5.0,
+	}))
+
+	assert_true(bool(result.get("use_item")))
+
+
+func test_beaker_does_not_use_when_behind() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"beaker",
+		"band_gap_m": 5.0,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_beaker_does_not_use_when_exactly_tied() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"beaker",
+		"band_gap_m": 0.0,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"the brief's own strict '< 0.0' -- exactly tied is not leading"
+	)
+
+
+func test_use_item_does_not_fire_when_cooldown_not_ready() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"shield",
+		"item_cooldown_ready": false,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"an otherwise-satisfied heuristic must still be gated by the cooldown"
+	)
+
+
+func test_use_item_fires_once_then_suppresses_while_the_same_condition_holds() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	# Same Dictionary reused across all three calls -- held_item, the
+	# heuristic, and the cooldown gate all stay satisfied the whole time,
+	# the same "condition holds for many ticks" shape a long straight or a
+	# multi-second cooldown-ready window produces for real.
+	var state := _state({"held_item": &"shield"})
+
+	var first: Dictionary = driver.call("decide", state)
+	assert_true(bool(first.get("use_item")))
+
+	var second: Dictionary = driver.call("decide", state)
+	assert_false(
+		bool(second.get("use_item")),
+		"own edge memory (like hop/boost_tap) must suppress a repeat fire while "
+		+ "the underlying condition is still held true -- 'once per decision, not machine-gun'"
+	)
+
+	var third: Dictionary = driver.call("decide", state)
+	assert_false(bool(third.get("use_item")))
+
+
+func test_use_item_rearms_after_the_condition_clears_and_returns() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var held: Dictionary = driver.call("decide", _state({"held_item": &"shield"}))
+	assert_true(bool(held.get("use_item")))
+
+	var cleared: Dictionary = driver.call("decide", _state({"held_item": &"none"}))
+	assert_false(bool(cleared.get("use_item")))
+
+	var held_again: Dictionary = driver.call("decide", _state({"held_item": &"shield"}))
+	assert_true(
+		bool(held_again.get("use_item")),
+		"a fresh held item (e.g. a new box pickup after the last one was used "
+		+ "and cleared) must be able to fire its own new edge"
+	)
+
+
+func test_missile_never_uses_without_item_tuning_configured() -> void:
+	var driver := _new_unconfigured_driver()
+	if driver == null:
+		return
+	# Legacy 2-arg configure() -- item_tuning is optional (default null), the
+	# same "graceful per-capability degrade" every other optional Callable in
+	# this racing suite already uses (see ai_kart_agent.gd's other_kart_
+	# positions_getter). Only the missile heuristic needs a real ItemTuning
+	# value (ai_missile_max_target_gap_m); it must fail closed (never fire),
+	# not crash, when that was never wired.
+	driver.call("configure", _ai, _kart)
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"missile",
+		"target_gap_ahead_m": 0.0,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_steer_still_works_without_item_tuning_configured() -> void:
+	var driver := _new_unconfigured_driver()
+	if driver == null:
+		return
+	driver.call("configure", _ai, _kart)
+
+	var result: Dictionary = driver.call("decide", _state({
+		"lookahead_point": Vector3(4.0, 0.0, -10.0),
+		"curvature_ahead": _ai.slide_trigger_curvature / 2.0,
+	}))
+
+	assert_true(
+		float(result.get("steer")) > 0.0,
+		"item_tuning is only required for the missile heuristic -- every other "
+		+ "output must keep working when it was never wired"
+	)
+
+
+# ---------------------------------------------------------------------------
 # reset(): clears edge memory so a reused driver instance (e.g. after a
 # stuck-kart respawn, per Task 4's brief) can re-arm hop/boost edges for a
 # state it has technically already seen.
@@ -815,6 +1096,26 @@ func test_reset_clears_boost_tap_edge_memory() -> void:
 	)
 
 
+func test_reset_clears_use_item_edge_memory() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	var state := _state({"held_item": &"shield"})
+
+	var first: Dictionary = driver.call("decide", state)
+	assert_true(bool(first.get("use_item")))
+	var second: Dictionary = driver.call("decide", state)
+	assert_false(bool(second.get("use_item")), "fixture sanity: edge memory suppresses the repeat")
+
+	driver.call("reset")
+
+	var after_reset: Dictionary = driver.call("decide", state)
+	assert_true(
+		bool(after_reset.get("use_item")),
+		"reset() must clear the use_item edge memory too"
+	)
+
+
 # ---------------------------------------------------------------------------
 # Fail-closed: decide() before a successful configure() must not crash on
 # a null tuning dereference.
@@ -834,6 +1135,7 @@ func test_decide_before_configure_fails_closed_to_a_neutral_output() -> void:
 	assert_eq(bool(result.get("hop")), false)
 	assert_eq(bool(result.get("boost_tap")), false)
 	assert_eq(float(result.get("speed_scale")), 1.0)
+	assert_eq(bool(result.get("use_item")), false)
 
 
 # ---------------------------------------------------------------------------
@@ -856,6 +1158,15 @@ func _default_state() -> Dictionary:
 		"lateral_target_m": 0.0,
 		"lateral_error_m": 0.0,
 		"band_gap_m": 0.0,
+		# Task 5: neutral/"off" defaults -- nothing held (so no heuristic can
+		# fire regardless of the other three), no target ahead, but cooldown
+		# READY (a gate, not a trigger on its own -- see ai_driver.gd's own
+		# class doc) so per-item heuristic tests don't have to remember to
+		# open this gate every time; the dedicated cooldown tests below
+		# override it closed explicitly.
+		"held_item": &"none",
+		"target_gap_ahead_m": INF,
+		"item_cooldown_ready": true,
 	}
 
 
@@ -886,5 +1197,5 @@ func _new_driver() -> RefCounted:
 	var driver := _new_unconfigured_driver()
 	if driver == null:
 		return null
-	driver.call("configure", _ai, _kart)
+	driver.call("configure", _ai, _kart, _item)
 	return driver

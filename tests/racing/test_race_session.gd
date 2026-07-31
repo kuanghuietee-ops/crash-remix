@@ -1182,24 +1182,30 @@ func test_a_real_player_finish_freezes_every_ai_kart_for_several_more_real_secon
 # R4 Task 3 (CTR item loop): RaceSession discovers ItemBox instances under
 # Track (the "gate pattern" -- see the class doc's own ITEM BOX WIRING
 # section) and routes a pickup to the entering kart's own ItemSlot via a
-# seeded RandomNumberGenerator. Neither current real track authors a box
-# yet (Task 5's job) -- these tests add a SYNTHETIC one under Track before
-# configure() runs, exactly like the class doc's own "exercised only by
-# tests that add a synthetic ItemBox" note describes.
+# seeded RandomNumberGenerator. R4 Task 5 authors 6 real ItemBox instances
+# into EACH real track (see track_graybox_loop.tscn/track_sanity_shores.
+# tscn's own ItemBoxes container and the racing-track lint's own
+# track_item_boxes rule) -- these tests still add a SYNTHETIC one under
+# Track before configure() runs on top of those, exactly like the class
+# doc's own "exercised only by tests that add a synthetic ItemBox" note
+# describes, so item_box_count() below reads REAL_TRACK_BOX_COUNT (+1 for
+# the synthetic one where a test adds one), not a bare literal.
 # ---------------------------------------------------------------------------
 
+# Task 5: track_graybox_loop.tscn's own two on-road lines of three (see its
+# ItemBoxes container) -- race_time_trial.tscn's Track child, which every
+# _boot_race()/_boot_race_with_synthetic_box() call in this file instances.
+const REAL_TRACK_BOX_COUNT := 6
 
-func test_neither_real_race_scene_authors_any_item_boxes_yet() -> void:
+
+func test_the_real_graybox_loop_authors_six_item_boxes() -> void:
 	var race := _boot_race()
 	if race == null:
 		return
 	assert_eq(
 		int(race.call("item_box_count")),
-		0,
-		(
-			"Task 5 (not yet landed) authors real boxes into tracks -- until "
-			+ "then discovery on the real graybox loop must stay a clean no-op"
-		)
+		REAL_TRACK_BOX_COUNT,
+		"R4 Task 5 authors REAL_TRACK_BOX_COUNT boxes into the graybox loop -- see its own ItemBoxes container"
 	)
 
 
@@ -1209,7 +1215,11 @@ func test_a_synthetic_item_box_under_track_is_discovered_and_configured() -> voi
 	var box: Area3D = setup.get("box")
 	if race == null or box == null:
 		return
-	assert_eq(int(race.call("item_box_count")), 1)
+	assert_eq(
+		int(race.call("item_box_count")),
+		REAL_TRACK_BOX_COUNT + 1,
+		"discovery must find every REAL authored box PLUS this test's own synthetic one"
+	)
 
 
 func test_player_kart_entering_a_synthetic_box_rolls_and_lands_its_item_slot() -> void:
@@ -1300,6 +1310,98 @@ func test_ai_kart_entering_a_synthetic_box_rolls_its_own_item_slot_not_the_playe
 		player_slot.call("state"),
 		&"empty",
 		"the player's own slot must be completely untouched by an AI kart's pickup"
+	)
+
+
+## End-to-end proof through the REAL production wiring, driven entirely
+## through Task 5's own AI decision path -- not a synthetic dispatch_item_
+## use() call, and not a forced start_roll(): the item itself comes from a
+## REAL box overlap and a REAL seeded roll. A seeded AI kart enters a real
+## ItemBox, rolls to &"held" over the real roulette window, and its own
+## AiKartAgent decides to use it through the SAME session dispatch the
+## player uses (use_item_for() -> dispatch_item_use()).
+##
+## item_rng_seed=1 is pinned (empirically, via a throwaway
+## RandomNumberGenerator probe against this exact Godot version) to roll
+## &"shield" on the very first randf() call -- the one heuristic that fires
+## unconditionally the instant it is held (see ai_driver.gd's own ITEM USE
+## HEURISTICS doc: shield is used immediately, no cornering/leading/target
+## state has to line up), so this test's timing does not also depend on
+## wherever the AI kart happens to be pointed.
+##
+## ai_kart.set_physics_process(false) suppresses the KART's OWN _physics_
+## process -- which owns BOTH the CharacterBody3D movement code AND the
+## item roulette timer (kart_controller.gd: "_item_slot.tick(delta_s)" is
+## called from inside it, gated on _run_active alongside the drift/motor
+## tick beside it) -- so it is only held off for the brief teleport-then-
+## confirm window below, then turned back on before the roll is given any
+## time to land (same sequence test_item_rng_seed_nonzero_reproduces_the_
+## same_first_roll_across_two_sessions above already establishes).
+## AiKartAgent is a SEPARATE Node (a child of the kart) with its own
+## independent _physics_process, driven by RaceSession's own is_run_
+## active() flag, not Godot's per-node processing flag, so it keeps
+## deciding throughout this whole test regardless of the kart's own flag --
+## it just has nothing to act on (held_item stays &"none") until the
+## roulette timer, now running again, actually lands the roll.
+func test_seeded_ai_kart_picks_up_a_box_rolls_and_uses_a_shield_through_real_dispatch() -> void:
+	var setup := _boot_race_with_synthetic_box(1, Vector3(200.0, 0.0, 200.0))
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart, "fixture setup: slot 1's AI kart must exist")
+	if ai_kart == null:
+		return
+	var ai_slot: Object = ai_kart.call("item_slot")
+	assert_not_null(ai_slot)
+	if ai_slot == null:
+		return
+	assert_false(bool(ai_kart.call("is_shielded")), "fixture sanity: not shielded before any of this runs")
+
+	# Real pickup: teleport onto the box (movement disabled so the physical
+	# position holds through the overlap -- see this function's own doc for
+	# why the AI's own decision loop keeps running regardless).
+	ai_kart.set_physics_process(false)
+	ai_kart.global_position = box.global_position
+	await wait_physics_frames(2)
+	assert_eq(ai_slot.call("state"), &"rolling", "fixture setup: the pickup must have started a real roll")
+
+	# The roulette timer only advances inside KartController's OWN _physics_
+	# process (kart_controller.gd: "_item_slot.tick(delta_s)", gated on
+	# _run_active the same as the drift/motor tick beside it) -- re-enable it
+	# now that the pickup itself has registered, the same "teleport with
+	# physics off, then turn it back on before waiting on the roll" sequence
+	# test_item_rng_seed_nonzero_reproduces_the_same_first_roll_across_two_
+	# sessions above already establishes. This also resumes the kart's own
+	# real movement, which does not matter here -- only the item STATE
+	# transitions are under test.
+	ai_kart.set_physics_process(true)
+
+	# Real roulette + real decision: this window is generous enough
+	# (roulette_duration_s plus a real buffer, not just a handful of raw
+	# frames) for BOTH the roll to land AND the agent's own next tick to
+	# consume it -- item_cooldown_ready starts already-true at configure()
+	# time (see ai_kart_agent.gd's own ITEM WIRING doc), so nothing else has
+	# to settle first.
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 10
+	await wait_physics_frames(frames_needed)
+
+	assert_true(
+		bool(ai_kart.call("is_shielded")),
+		(
+			"the AI's own real roll must have landed &\"shield\" (item_rng_seed=1's "
+			+ "own first randf() call, per this function's own doc) and its own "
+			+ "decide() -> use_item edge must have reached the REAL use_item_for() "
+			+ "-> dispatch_item_use() session path -- the SAME shared entry point "
+			+ "the player's own ITEM press uses"
+		)
+	)
+	assert_eq(
+		ai_slot.call("state"),
+		&"empty",
+		"a real use() must clear the slot back to empty, same as any other use"
 	)
 
 

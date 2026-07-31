@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_gate"]
+[ext_resource type="Script" path="res://src/racing/items/item_box.gd" id="3_box"]
 
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
@@ -87,3 +88,27 @@ rotation_degrees = Vector3(0, -90, 0)
 [node name="GridSlot5" type="Marker3D" parent="."]
 position = Vector3(-16, 0.2, 4.25)
 rotation_degrees = Vector3(0, -90, 0)
+
+[node name="ItemBoxA1" type="Area3D" parent="."]
+position = Vector3(17, 1, 10)
+script = ExtResource("3_box")
+
+[node name="ItemBoxA2" type="Area3D" parent="."]
+position = Vector3(20, 1, 10)
+script = ExtResource("3_box")
+
+[node name="ItemBoxA3" type="Area3D" parent="."]
+position = Vector3(23, 1, 10)
+script = ExtResource("3_box")
+
+[node name="ItemBoxB1" type="Area3D" parent="."]
+position = Vector3(10, 1, 17)
+script = ExtResource("3_box")
+
+[node name="ItemBoxB2" type="Area3D" parent="."]
+position = Vector3(10, 1, 20)
+script = ExtResource("3_box")
+
+[node name="ItemBoxB3" type="Area3D" parent="."]
+position = Vector3(10, 1, 23)
+script = ExtResource("3_box")

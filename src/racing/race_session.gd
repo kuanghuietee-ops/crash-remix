@@ -663,6 +663,12 @@ func _spawn_beaker(launcher: CharacterBody3D) -> void:
 ## configure() reads purely for kart identities. Mirrors _other_kart_
 ## positions()'s own "this session already knows every kart in the race"
 ## rationale one section up.
+##
+## R4 Task 5: also handed to every AiKartAgent (see _spawn_ai_karts()) as
+## item_targets_getter, the SAME unbound Callable every missile/beaker
+## already uses -- an AI's own target_gap_ahead_m re-scans this fresh every
+## tick rather than locking it once at launch (see ai_kart_agent.gd's own
+## ITEM WIRING doc).
 func _item_targets() -> Array:
 	var result: Array = []
 	if _kart != null and is_instance_valid(_kart):
@@ -1041,7 +1047,18 @@ func _spawn_ai_karts() -> void:
 			# Fix-wave MEDIUM-4: see ai_kart_agent.gd's own RESPAWN-ONTO-PLAYER
 			# AVOIDANCE doc -- bound per kart so each agent's own blocking
 			# check never sees ITS OWN position in the "other karts" list.
-			Callable(self, "_other_kart_positions").bind(ai_kart)
+			Callable(self, "_other_kart_positions").bind(ai_kart),
+			# R4 Task 5: see ai_kart_agent.gd's own ITEM WIRING doc.
+			# item_targets_getter is UNBOUND, same as every missile/beaker's
+			# own copy of this exact Callable -- it takes no arguments.
+			# use_item_dispatcher is also unbound: use_item_for()'s own kart
+			# argument is supplied at call time by AiKartAgent, not bound in
+			# here, so this stays the identical shared entry point the
+			# player's own ITEM-press path already routes through (see use_
+			# item_for()'s own doc).
+			_item_tuning,
+			Callable(self, "_item_targets"),
+			Callable(self, "use_item_for")
 		)
 
 		_ai_karts.append(ai_kart)

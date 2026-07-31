@@ -53,8 +53,20 @@ extends RefCounted
 ##   below needs), so it was a dead key with no consumer and has been
 ##   removed at the source rather than kept as unused bookkeeping.
 ##
+## Task 5 (CTR R4 items) adds three more keys: held_item: StringName (
+## &"missile"/&"shield"/&"turbo"/&"beaker" while an item is held, &"none"
+## otherwise -- see item_slot.gd's own held_item() doc), target_gap_ahead_m:
+## float (the nearest OTHER kart's strictly-positive progress margin ahead
+## of this one, by SpineFollower totals -- the exact "nearest kart truly
+## AHEAD" quantity missile.gd's own LAUNCH-TIME TARGET LOCK computes at
+## launch time, except AiKartAgent re-evaluates it fresh every tick rather
+## than locking it once; INF when no kart is ahead, e.g. this kart is
+## already in the lead), item_cooldown_ready: bool (see the class doc's
+## ITEM USE COOLDOWN section below for why this is an INPUT, not something
+## decide() times itself).
+##
 ## OUTPUT (Dictionary): steer: float (-1..1), brake: bool, hop: bool (edge),
-## boost_tap: bool (edge), speed_scale: float.
+## boost_tap: bool (edge), speed_scale: float, use_item: bool (edge, Task 5).
 ##
 ## CALL CONTRACT. decide() must be called exactly once per physics tick,
 ## and the caller must consume/apply its outputs before the next call --
@@ -187,6 +199,79 @@ extends RefCounted
 ## exactly 1.0 at band_gap_m == 0.0 by construction (neither branch runs,
 ## no separate third case needed).
 ##
+## ITEM USE COOLDOWN (Task 5, CTR R4 items). decide()'s own signature takes
+## no delta_s -- see the CALL CONTRACT section above, unchanged since Task
+## 3 -- so this driver has no way to time a real ai_item_use_cooldown_s
+## window itself the way AiKartAgent's own stuck-detector/box-respawn-alike
+## timers do (both accumulate real delta_s in a Node's _physics_process).
+## Consistent with that existing split (this class is pure logic with no
+## notion of wall-clock time; the Node glue owns every real timer),
+## AiKartAgent owns the actual cooldown timer and hands this driver the
+## single bit it needs as the item_cooldown_ready input key -- the same
+## shape band_gap_m already uses ("AiKartAgent computes it from real
+## session/session-adjacent state, this driver only ever consumes the
+## already-computed number/flag").
+##
+## ITEM USE HEURISTICS (Task 5). Exactly one heuristic is consulted, keyed
+## by whichever item is currently held (state.held_item) -- holding nothing
+## (&"none") never satisfies any of them:
+##   &"shield": always true. R4 keeps it simple -- a held shield is used the
+##     instant it is held, no other condition gates it (the task brief's own
+##     "shield used immediately on pickup" ruling).
+##   &"turbo": absf(curvature_ahead) < ai.slide_exit_curvature -- reuses the
+##     EXISTING "this counts as straight enough" threshold the slide-intent
+##     hysteresis band already defines (see the class doc's SLIDE (hop)
+##     COUPLING section) rather than a new tuning literal; a turbo punched
+##     into a real corner just adds speed the kart can't use through the
+##     bend, so "straight" is the right gate.
+##   &"missile": target_gap_ahead_m <= item.ai_missile_max_target_gap_m --
+##     the brief's own "a target within X ahead"; note the <=, not <.
+##   &"beaker": band_gap_m < 0.0 -- band_gap_m's own documented sign
+##     ("positive = this kart is behind the player") means negative is AHEAD
+##     of the player, i.e. leading; the brief's own "beaker when leading".
+##     Strict <, not <=: exactly tied (band_gap_m == 0.0) is not leading.
+## The satisfied-heuristic result is further gated on item_cooldown_ready
+## and combined into a single armed/not-armed "intent" exactly like SLIDE
+## (hop) COUPLING's own _intending_slide -- use_item is the RISING EDGE of
+## that intent (_was_intending_item_use is the edge memory, cleared by
+## reset() alongside every other edge field), for the identical reason hop/
+## boost_tap are edge-gated rather than level outputs: a condition that
+## stays true for many ticks (a long straight while holding turbo, a
+## leading kart still holding a beaker) must fire use_item exactly ONCE per
+## arming, not every tick it stays true -- "once per decision, not
+## machine-gun" per the task brief. In the real AiKartAgent -> RaceSession.
+## use_item_for() flow this is largely self-clearing anyway (using an item
+## empties item_slot.gd's own &"held" state back to &"empty" the same tick,
+## which flips held_item back to &"none" and drops intent on its own), but
+## the edge memory is still the primary, ROBUST guard -- it does not depend
+## on that same-tick clearing actually happening, the same defensive
+## posture hop's own edge memory already takes against a caller that
+## doesn't consume every tick's output (see the CALL CONTRACT section
+## above). It is also the ONLY guard against a DIFFERENT case same-tick
+## clearing cannot cover at all: a fresh item picked up while still inside
+## a previous item's cooldown window would otherwise satisfy its own
+## heuristic immediately (a brand new held_item, never used before) with no
+## clearing event to have suppressed it -- item_cooldown_ready is what
+## stops that back-to-back item spam.
+##
+## item_tuning: ItemTuning is an OPTIONAL third configure() parameter
+## (default null) -- unlike ai_tuning/kart_tuning, which stay hard-required
+## (decide() still fails closed to a fully neutral output, use_item
+## included, if EITHER of those is missing; see FAIL-CLOSED below,
+## unchanged by this task). Missing item_tuning degrades gracefully
+## instead: every non-missile heuristic (shield/turbo/beaker) needs nothing
+## from it and keeps working normally, and only the missile heuristic --
+## the one that reads item.ai_missile_max_target_gap_m -- fails closed to
+## "never fires" rather than crashing on a null dereference. This mirrors
+## ai_kart_agent.gd's own established "optional Callable, defaults to a
+## safe no-op when not wired" shape (see its other_kart_positions_getter)
+## rather than AiDriver's OWN existing all-or-nothing FAIL-CLOSED shape one
+## section down -- deliberately, so every one of the ~20 existing
+## AiKartAgent test fixtures that configure() a kart WITHOUT wiring any
+## item support keeps steering/braking/sliding/boosting exactly as before
+## this task, instead of silently going neutral the moment item_tuning is
+## absent.
+##
 ## FAIL-CLOSED. decide() called before a successful configure() (either
 ## tuning resource still unset) push_errors and returns a neutral, harmless
 ## output (steer 0.0, brake false, hop false, boost_tap false, speed_scale
@@ -195,24 +280,41 @@ extends RefCounted
 
 var _ai_tuning: AiTuning
 var _kart_tuning: KartTuning
+# Task 5 (CTR R4 items): OPTIONAL -- see configure()'s own doc and the class
+# doc's item_tuning paragraph for the graceful-degrade contract this enables.
+var _item_tuning: ItemTuning
 
 var _intending_slide: bool
 var _was_intending_slide: bool
 var _prev_boost_window_open: bool
+# Task 5: use_item's own edge memory -- see the class doc's ITEM USE
+# HEURISTICS section.
+var _intending_item_use: bool
+var _was_intending_item_use: bool
 
 
-func configure(ai_tuning: AiTuning, kart_tuning: KartTuning) -> void:
+## item_tuning is OPTIONAL (default null) -- see the class doc's own
+## item_tuning paragraph for exactly what degrades (only the missile
+## heuristic) versus what does not (everything else, including every
+## pre-Task-5 output) when it is left unset.
+func configure(
+	ai_tuning: AiTuning, kart_tuning: KartTuning, item_tuning: ItemTuning = null
+) -> void:
 	_ai_tuning = ai_tuning
 	_kart_tuning = kart_tuning
+	_item_tuning = item_tuning
 
 
-## Clears all per-tick edge memory (slide intent + boost-window edge)
-## without touching the configured tuning references. See the class doc's
-## STATEFUL ACROSS TICKS section for when a caller needs this.
+## Clears all per-tick edge memory (slide intent + boost-window edge + Task
+## 5's own use_item intent) without touching the configured tuning
+## references. See the class doc's STATEFUL ACROSS TICKS section for when a
+## caller needs this.
 func reset() -> void:
 	_intending_slide = false
 	_was_intending_slide = false
 	_prev_boost_window_open = false
+	_intending_item_use = false
+	_was_intending_item_use = false
 
 
 func decide(state: Dictionary) -> Dictionary:
@@ -232,6 +334,11 @@ func decide(state: Dictionary) -> Dictionary:
 	var curvature_ahead: float = state.get("curvature_ahead", 0.0)
 	var lateral_error_m: float = state.get("lateral_error_m", 0.0)
 	var band_gap_m: float = state.get("band_gap_m", 0.0)
+	# Task 5 (CTR R4 items) -- see the class doc's ITEM USE HEURISTICS
+	# section.
+	var held_item: StringName = state.get("held_item", &"none")
+	var target_gap_ahead_m: float = state.get("target_gap_ahead_m", INF)
+	var item_cooldown_ready: bool = state.get("item_cooldown_ready", false)
 
 	var steer := _steer_for(
 		position, forward, lookahead_point, lateral_error_m, curvature_ahead
@@ -255,13 +362,53 @@ func decide(state: Dictionary) -> Dictionary:
 	)
 	_prev_boost_window_open = boost_window_open
 
+	# Task 5 (CTR R4 items) -- see the class doc's ITEM USE HEURISTICS
+	# section for the full rationale; mirrors SLIDE (hop) COUPLING's own
+	# "compute intent, edge-fire on the rising transition" shape one section
+	# up.
+	_intending_item_use = (
+		held_item != &"none"
+		and item_cooldown_ready
+		and _item_heuristic_satisfied(held_item, curvature_ahead, target_gap_ahead_m, band_gap_m)
+	)
+	var use_item := _intending_item_use and not _was_intending_item_use
+	_was_intending_item_use = _intending_item_use
+
 	return {
 		"steer": steer,
 		"brake": brake,
 		"hop": hop,
 		"boost_tap": boost_tap,
 		"speed_scale": _rubber_band_speed_scale(band_gap_m),
+		"use_item": use_item,
 	}
+
+
+## See the class doc's ITEM USE HEURISTICS section for the exact condition
+## (and its rationale) per held item. held_item values outside the four
+## real item names (should never happen -- item_slot.gd's own ITEM_NAMES is
+## the only producer) fall through to false rather than erroring, matching
+## this file's own "stay total, fail closed" posture elsewhere (e.g.
+## _apply_slide_steer_floor's sign(0.0) fallback).
+func _item_heuristic_satisfied(
+	held_item: StringName,
+	curvature_ahead: float,
+	target_gap_ahead_m: float,
+	band_gap_m: float
+) -> bool:
+	match held_item:
+		&"shield":
+			return true
+		&"turbo":
+			return absf(curvature_ahead) < _ai_tuning.slide_exit_curvature
+		&"missile":
+			if _item_tuning == null:
+				return false
+			return target_gap_ahead_m <= _item_tuning.ai_missile_max_target_gap_m
+		&"beaker":
+			return band_gap_m < 0.0
+		_:
+			return false
 
 
 ## Computes the clamped steer output and, as a side effect, updates
@@ -339,4 +486,5 @@ func _neutral_output() -> Dictionary:
 		"hop": false,
 		"boost_tap": false,
 		"speed_scale": 1.0,
+		"use_item": false,
 	}

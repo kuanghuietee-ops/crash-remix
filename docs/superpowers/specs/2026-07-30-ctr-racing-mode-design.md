@@ -283,6 +283,30 @@ start.
     necessarily `KartSpawn`'s own position — check both), or this debt must
     be picked up and actually fixed before boxes ship.
 
+    **RESOLVED (R4 Task 5): the mitigation, not the structural fix, was
+    taken.** Both tracks now author 6 `ItemBox` instances each (two on-road
+    lines of three — `track_graybox_loop.tscn`/`track_sanity_shores.tscn`,
+    each under its own `ItemBoxes` container), and every authored box sits
+    comfortably clear of both this scene's own local origin AND its
+    `KartSpawn` marker (verified numerically at authoring time — the
+    closest of the 12 real boxes is ~19.75m from `Vector3.ZERO` on the
+    graybox loop, ~424m on sanity shores, both far past the clearance
+    floor). The racing-track lint's own new `track_item_boxes` rule pins
+    this so it cannot regress: every authored box must sit at least
+    `TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M` (10.0m) from `Vector3.ZERO` in the
+    track scene's own coordinate frame — see `scripts/lint_level_
+    authoring.py`'s own `TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M` doc for why
+    that one check covers both "world origin" and "this scene's own
+    origin" under the current wiring (`Track` sits at identity in both real
+    race scenes). The underlying player-kart origin-flash mechanism itself
+    is UNTOUCHED and still real — this only keeps every currently-authored
+    box out of its blast radius, the same shape the AI-kart fix's own
+    grid-slot lint precedent already established. A future box authored
+    without running the lint, or a future hazard placed origin-adjacent by
+    hand, remains exposed; the structural fix (seed the player `Kart`'s
+    transform before it ever enters the tree, or arm collision only after
+    that seeding) is still not done.
+
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
 exact frame refreshes the retiring session (self-heals next edit); racing

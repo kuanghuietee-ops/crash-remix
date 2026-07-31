@@ -35,6 +35,7 @@ var _catalog: GameplayTuning
 var _ai_tuning: AiTuning
 var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
+var _item_tuning: ItemTuning
 
 
 func before_all() -> void:
@@ -43,6 +44,7 @@ func before_all() -> void:
 	_ai_tuning = _catalog.ai
 	_kart_tuning = _catalog.kart
 	_race_tuning = _catalog.race
+	_item_tuning = _catalog.items
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +479,262 @@ func test_lateral_error_m_sign_reflects_actual_position_relative_to_the_slot_tar
 		float(state_left_of_target["lateral_error_m"]),
 		0.0,
 		"a kart to the left of its slot target must read a POSITIVE lateral_error_m (correct back right)"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Item wiring (Task 5, CTR R4 items): state assembly (held_item, target_
+# gap_ahead_m, item_cooldown_ready) and OUTPUT ROUTING (use_item -> the
+# session's use_item_for(), the same shared entry point the player's own
+# ITEM press already routes through).
+# ---------------------------------------------------------------------------
+
+
+func test_held_item_reflects_the_karts_own_item_slot() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure", kart, spine, _ai_tuning, _kart_tuning, _race_tuning, 1, func() -> float: return 0.0
+	)
+
+	var progress_empty: float = float(agent.call("total_progress_m"))
+	var state_empty: Dictionary = agent.call("_assemble_state", kart.global_position, progress_empty)
+	assert_eq(
+		StringName(state_empty["held_item"]),
+		&"none",
+		"a freshly-configured kart's ItemSlot starts &\"empty\" -- nothing held yet"
+	)
+
+	# Force the slot straight through &"rolling" to &"held" on a KNOWN item --
+	# rng_value 0.3 lands in item_slot.gd's own [0.25, 0.5) bucket, &"shield"
+	# (ITEM_NAMES = [missile, shield, turbo, beaker]).
+	var slot: Object = kart.call("item_slot")
+	slot.call("start_roll", 0.3)
+	slot.call("tick", _item_tuning.roulette_duration_s)
+	assert_eq(
+		StringName(slot.call("held_item")),
+		&"shield",
+		"fixture sanity: the forced roll must have landed on shield"
+	)
+
+	var progress_held: float = float(agent.call("total_progress_m"))
+	var state_held: Dictionary = agent.call("_assemble_state", kart.global_position, progress_held)
+	assert_eq(
+		StringName(state_held["held_item"]),
+		&"shield",
+		"held_item must read straight off the kart's own live ItemSlot"
+	)
+
+
+func test_target_gap_ahead_m_finds_the_nearest_kart_strictly_ahead() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+	var far_ahead := CharacterBody3D.new()
+	add_child_autofree(far_ahead)
+	var near_ahead := CharacterBody3D.new()
+	add_child_autofree(near_ahead)
+	var behind := CharacterBody3D.new()
+	add_child_autofree(behind)
+
+	# Mirrors race_session.gd's own _item_targets() shape -- every kart in
+	# the race (including this one, which must be excluded by identity, not
+	# by progress) paired with its own current progress.
+	var targets_getter := func() -> Array:
+		return [
+			{"kart": kart, "progress": 0.0},
+			{"kart": far_ahead, "progress": 20.0},
+			{"kart": near_ahead, "progress": 5.0},
+			{"kart": behind, "progress": -3.0},
+		]
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0,
+		Callable(),
+		_item_tuning,
+		targets_getter
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+
+	assert_almost_eq(
+		float(state["target_gap_ahead_m"]),
+		5.0,
+		0.01,
+		"the nearest STRICTLY POSITIVE margin ahead must win -- the further "
+		+ "kart and the one behind must not affect the result"
+	)
+
+
+func test_target_gap_ahead_m_is_inf_with_no_getter_wired() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure", kart, spine, _ai_tuning, _kart_tuning, _race_tuning, 1, func() -> float: return 0.0
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+
+	assert_eq(
+		float(state["target_gap_ahead_m"]),
+		INF,
+		"every pre-Task-5 caller that never wires item_targets_getter must keep reading INF (no target)"
+	)
+
+
+func test_target_gap_ahead_m_is_inf_when_nothing_is_strictly_ahead() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+	var behind := CharacterBody3D.new()
+	add_child_autofree(behind)
+
+	var targets_getter := func() -> Array:
+		return [{"kart": kart, "progress": 0.0}, {"kart": behind, "progress": -5.0}]
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0,
+		Callable(),
+		_item_tuning,
+		targets_getter
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+
+	assert_eq(
+		float(state["target_gap_ahead_m"]),
+		INF,
+		"this kart is already in the lead (e.g. missile-target sense) -- no target ahead reads INF"
+	)
+
+
+func test_item_cooldown_ready_starts_true_immediately_after_configure() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0,
+		Callable(),
+		_item_tuning
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+
+	assert_true(
+		bool(state["item_cooldown_ready"]),
+		"a freshly-configured agent must start already-ready -- the very "
+		+ "first pickup must not face an artificial race-start delay"
+	)
+
+
+func test_item_cooldown_ready_is_false_without_item_tuning_wired() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+
+	var agent := _new_agent()
+	agent.call(
+		"configure", kart, spine, _ai_tuning, _kart_tuning, _race_tuning, 1, func() -> float: return 0.0
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+
+	assert_false(
+		bool(state["item_cooldown_ready"]),
+		"no item_tuning means no cooldown DURATION to measure against -- "
+		+ "must fail closed, never read ready"
+	)
+
+
+func test_use_item_routes_through_the_dispatcher_and_resets_the_cooldown() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(_L_SHAPED_POINTS[0])
+	if kart == null:
+		return
+	# Force the slot to &"shield" -- always used immediately when held, per
+	# ai_driver.gd's own ITEM USE HEURISTICS doc, so this fires on the very
+	# first real physics tick with no cornering/leading setup needed.
+	var slot: Object = kart.call("item_slot")
+	slot.call("start_roll", 0.3)
+	slot.call("tick", _item_tuning.roulette_duration_s)
+	assert_eq(StringName(slot.call("held_item")), &"shield", "fixture sanity")
+
+	var dispatched_karts: Array = []
+	var dispatcher := func(dispatched_kart: CharacterBody3D) -> void:
+		dispatched_karts.append(dispatched_kart)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0,
+		Callable(),
+		_item_tuning,
+		Callable(),
+		dispatcher
+	)
+
+	await wait_physics_frames(1)
+
+	assert_eq(
+		dispatched_karts,
+		[kart],
+		"the shield heuristic (always true once held) must fire use_item, "
+		+ "routed straight through use_item_dispatcher with THIS kart"
+	)
+
+	var progress: float = float(agent.call("total_progress_m"))
+	var state_after: Dictionary = agent.call("_assemble_state", kart.global_position, progress)
+	assert_false(
+		bool(state_after["item_cooldown_ready"]),
+		"dispatching an item must immediately reset the cooldown window"
 	)
 
 
@@ -964,7 +1222,11 @@ func _spawn_kart_on_floor(origin: Vector3) -> CharacterBody3D:
 		return null
 	kart.position = origin
 	root.add_child(kart)
-	kart.call("configure", _kart_tuning)
+	# Task 5 (CTR R4 items): item_tuning is passed here too (harmless to
+	# every pre-existing caller of this helper -- KartController.configure()'s
+	# own item_tuning param is optional, see its own doc) so this kart's
+	# item_slot() is actually usable by the new item-wiring tests below.
+	kart.call("configure", _kart_tuning, _item_tuning)
 	return kart
 
 

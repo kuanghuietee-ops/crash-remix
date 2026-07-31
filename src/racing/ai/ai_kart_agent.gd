@@ -82,6 +82,63 @@ extends Node
 ##   construction since both sides of the subtraction are continuous
 ##   SpineFollower totals, never a raw seam-ambiguous spine offset (see the
 ##   plan's own "Seam ruling").
+## - held_item, target_gap_ahead_m, item_cooldown_ready (Task 5, CTR R4
+##   items): see the ITEM WIRING section below.
+##
+## ITEM WIRING (Task 5, CTR R4 items). Three new configure() parameters,
+## ALL OPTIONAL (default null/Callable()) -- mirrors other_kart_positions_
+## getter's own established "every existing caller that never passes one
+## keeps the exact pre-fix behavior" shape one section up, so every one of
+## this suite's own pre-Task-5 fixtures that never wires item support keeps
+## driving exactly as before:
+## - item_tuning: ItemTuning, forwarded straight through to AiDriver.
+##   configure() (see its own class doc for what that unlocks/degrades).
+## - item_targets_getter: Callable -> Array[Dictionary], each entry shaped
+##   {"kart": CharacterBody3D, "progress": float} -- the EXACT SAME Callable
+##   shape (and, in production, the exact same bound method,
+##   RaceSession._item_targets()) missile.gd's own configure() already
+##   consumes for its LAUNCH-TIME TARGET LOCK. The difference: a missile
+##   calls it ONCE and locks the result for its whole life; this agent calls
+##   it fresh every tick (see _target_gap_ahead_m()) since an AI's item
+##   decision is a live, every-tick read, not a one-shot launch commitment.
+## - use_item_dispatcher: Callable, called as use_item_dispatcher.call(kart)
+##   -- in production, Callable(self, "use_item_for") bound to nothing (the
+##   kart argument is supplied at call time, not bound in), the EXACT SAME
+##   session method racing_input_adapter.gd's own player ITEM-press path
+##   routes through (see race_session.gd's own use_item_for() doc: "Task
+##   5's AI item-use decision is documented to call kart.use_item() itself
+##   the SAME way and route its own result through THIS method"). Neither
+##   this agent nor AiDriver re-implements any part of the missile/beaker/
+##   turbo/shield switch themselves -- that switch lives in exactly one
+##   place, RaceSession.dispatch_item_use().
+##
+## STATE ASSEMBLY (item keys): held_item reads _kart.call("item_slot") ->
+## .call("held_item") every tick, unconditionally -- this needs no item
+## wiring at all (item_slot() is a base KartController capability RaceSession
+## already configure()s onto every kart, player and AI alike, independent of
+## whether THIS agent was given any item Callables), so it is guarded only by
+## _kart.has_method("item_slot") (false for a bare test-fixture CharacterBody3D
+## with no controller script at all, matching this file's own _read_kart_
+## extents() precedent for a missing capability), never by whether item
+## wiring is present. target_gap_ahead_m re-scans item_targets_getter's
+## snapshot every tick for the nearest OTHER kart with a strictly-positive
+## progress margin ahead of this one -- the identical "nearest kart truly
+## ahead" search missile.gd's own configure() already performs, just
+## re-evaluated fresh each tick instead of locked once; INF when the getter
+## is unset/invalid (mirrors player_progress_getter's own "invalid Callable
+## -> 0.0" graceful-default shape one section up) or no kart is strictly
+## ahead. item_cooldown_ready reads a real timer THIS agent owns (_item_
+## cooldown_elapsed_s, accumulated every tick in _physics_process exactly
+## like the stuck-window/hop-release timers already are) against item_
+## tuning.ai_item_use_cooldown_s -- see AiDriver's own ITEM USE COOLDOWN doc
+## for why the timer lives here and not in the driver. Starts already-ready
+## at configure() time (elapsed seeded to the cooldown duration itself, not
+## a new literal) so the very first item this kart ever picks up can be used
+## the instant its own heuristic is satisfied, with no artificial race-start
+## delay; resets to 0.0 the instant an item is actually dispatched (see
+## OUTPUT ROUTING's own use_item paragraph below), independent of the
+## stuck-respawn timers (an item-use cooldown is real wall-clock pacing,
+## unrelated to track position, so _respawn() does not touch it).
 ##
 ## LATERAL SLOT CENTERING. lateral_slot_spacing_m's own doc says "slot_i *
 ## spacing, centered across the field" -- centered across ALL
@@ -116,6 +173,19 @@ extends Node
 ## - speed_scale: set_speed_scale() every tick, unconditionally (KartMotor's
 ##   own default of 1.0 covers "no scaling" for the ticks before the first
 ##   decide() call ever runs, so there is no missing-call gap to guard).
+## - use_item (Task 5): AiDriver's own output is already a one-shot edge
+##   (see its class doc's ITEM USE HEURISTICS section), routed straight
+##   through with no press/release pairing needed -- when true AND use_
+##   item_dispatcher.is_valid() (the graceful "never wired" no-op every
+##   other optional Callable here already uses), this calls use_item_
+##   dispatcher.call(_kart) and immediately resets _item_cooldown_elapsed_s
+##   to 0.0, re-arming the cooldown window from this exact tick rather than
+##   whenever the next _physics_process tick would have naturally sampled
+##   it. An invalid dispatcher still lets the edge fire (harmlessly, since
+##   nothing consumes it) rather than suppressing use_item at the source --
+##   AiDriver's own output stays a pure function of the state it was given,
+##   never reaching back into this agent's own wiring to decide what to
+##   report.
 ##
 ## STUCK DETECTION (fix-wave HIGH-1 -- REPLACES the fix-round-1 net-
 ## DISPLACEMENT design below with NET SPINE PROGRESS). Still a TUMBLING
@@ -250,6 +320,11 @@ var _player_progress_getter: Callable
 # Fix-wave MEDIUM-4: optional -- see configure()'s own doc and the class
 # doc's RESPAWN-ONTO-PLAYER AVOIDANCE section below.
 var _other_kart_positions_getter: Callable
+# Task 5 (CTR R4 items): all three optional -- see configure()'s own doc and
+# the class doc's ITEM WIRING section.
+var _item_tuning: ItemTuning
+var _item_targets_getter: Callable
+var _use_item_dispatcher: Callable
 
 var _driver: RefCounted
 var _follower: RefCounted
@@ -265,6 +340,10 @@ var _stuck_window_anchor_total_progress_m: float
 var _stuck_window_elapsed_s: float
 var _respawn_count: int
 var _hop_release_pending: bool
+# Task 5: real wall-clock timer this agent owns for AiDriver's own
+# item_cooldown_ready input -- see the class doc's ITEM WIRING section for
+# why the timer lives here and not in the (delta_s-less) driver.
+var _item_cooldown_elapsed_s: float
 var _configured: bool
 # See the class doc's RUN-ACTIVE GATE section. Starts true so a kart that is
 # active from its very first tick (the normal case) never misreads tick 1 as
@@ -318,7 +397,11 @@ func configure(
 	race_tuning: RaceTuning,
 	slot_index: int,
 	player_progress_getter: Callable,
-	other_kart_positions_getter: Callable = Callable()
+	other_kart_positions_getter: Callable = Callable(),
+	# Task 5 (CTR R4 items): see the class doc's ITEM WIRING section.
+	item_tuning: ItemTuning = null,
+	item_targets_getter: Callable = Callable(),
+	use_item_dispatcher: Callable = Callable()
 ) -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_kart = kart
@@ -329,13 +412,16 @@ func configure(
 	_slot_index = slot_index
 	_player_progress_getter = player_progress_getter
 	_other_kart_positions_getter = other_kart_positions_getter
+	_item_tuning = item_tuning
+	_item_targets_getter = item_targets_getter
+	_use_item_dispatcher = use_item_dispatcher
 
 	var extents := _read_kart_extents()
 	_kart_width_m = extents.x
 	_kart_length_m = extents.z
 
 	_driver = AiDriverType.new()
-	_driver.configure(ai_tuning, kart_tuning)
+	_driver.configure(ai_tuning, kart_tuning, item_tuning)
 
 	_follower = SpineFollowerType.new()
 	_follower.configure(spine.length_m())
@@ -356,6 +442,12 @@ func configure(
 	_stuck_window_elapsed_s = 0.0
 	_respawn_count = 0
 	_hop_release_pending = false
+	# Task 5: already-ready at configure() time -- see the class doc's ITEM
+	# WIRING section for why this seeds from the cooldown duration itself
+	# (no new literal) rather than starting the very first pickup out on an
+	# artificial delay. Harmless when _item_tuning is null (item_cooldown_
+	# ready() below reads _item_tuning != null first).
+	_item_cooldown_elapsed_s = _item_tuning.ai_item_use_cooldown_s if _item_tuning != null else 0.0
 	_was_run_active = true
 	_configured = true
 
@@ -394,6 +486,14 @@ func _physics_process(delta_s: float) -> void:
 	if _hop_release_pending:
 		_kart.call("hop_released")
 		_hop_release_pending = false
+
+	# Task 5: real wall-clock accumulation for item_cooldown_ready -- see the
+	# class doc's ITEM WIRING section. Gated behind the same RUN-ACTIVE GATE
+	# early-returns above (a frozen kart's cooldown must not keep ticking
+	# either, matching the stuck-window's own "no accumulation while frozen"
+	# contract one section up), though nothing currently reads this while
+	# frozen anyway since decide() never runs past this point.
+	_item_cooldown_elapsed_s += delta_s
 
 	if _check_stuck_and_respawn(delta_s):
 		return
@@ -436,7 +536,54 @@ func _assemble_state(kart_pos: Vector3, progress: float) -> Dictionary:
 		"curvature_ahead": curvature_ahead,
 		"lateral_error_m": lateral_error_m,
 		"band_gap_m": band_gap_m,
+		# Task 5 (CTR R4 items) -- see the class doc's ITEM WIRING section.
+		"held_item": _held_item(),
+		"target_gap_ahead_m": _target_gap_ahead_m(),
+		"item_cooldown_ready": _item_cooldown_ready(),
 	}
+
+
+## See the class doc's ITEM WIRING/STATE ASSEMBLY section: needs no item
+## wiring at all, only item_slot() itself -- guarded by has_method() rather
+## than any of this agent's own optional item fields.
+func _held_item() -> StringName:
+	if not _kart.has_method("item_slot"):
+		return &"none"
+	var slot: Object = _kart.call("item_slot")
+	if slot == null:
+		return &"none"
+	return StringName(slot.call("held_item"))
+
+
+## See the class doc's ITEM WIRING/STATE ASSEMBLY section. Re-scans item_
+## targets_getter's own snapshot fresh every tick (unlike missile.gd's own
+## ONE-TIME launch lock) for the nearest OTHER kart with a strictly-positive
+## progress margin ahead of this one -- the identical search missile.gd's
+## own configure() already performs against the exact same snapshot shape.
+## INF when the getter is unset/invalid or nothing is strictly ahead.
+func _target_gap_ahead_m() -> float:
+	if not _item_targets_getter.is_valid():
+		return INF
+	var snapshot: Array = _item_targets_getter.call()
+	var self_progress: float = _follower.total_progress_m()
+	var best_gap_m := INF
+	for entry: Variant in snapshot:
+		var other_kart: CharacterBody3D = entry.get("kart")
+		if other_kart == null or other_kart == _kart:
+			continue
+		var margin_m: float = float(entry.get("progress", 0.0)) - self_progress
+		if margin_m > 0.0 and margin_m < best_gap_m:
+			best_gap_m = margin_m
+	return best_gap_m
+
+
+## See the class doc's ITEM WIRING section for why this timer lives on this
+## agent rather than on the (delta_s-less) AiDriver. false whenever _item_
+## tuning was never wired -- there is no cooldown DURATION to measure
+## _item_cooldown_elapsed_s against, so this fails closed rather than
+## reading an unconfigured/zero threshold as "always ready".
+func _item_cooldown_ready() -> bool:
+	return _item_tuning != null and _item_cooldown_elapsed_s >= _item_tuning.ai_item_use_cooldown_s
 
 
 func _route_decision(decision: Dictionary) -> void:
@@ -448,6 +595,10 @@ func _route_decision(decision: Dictionary) -> void:
 	if bool(decision.get("boost_tap", false)):
 		_kart.call("boost_tap")
 	_kart.call("set_speed_scale", float(decision.get("speed_scale", 1.0)))
+	# Task 5: see the class doc's OUTPUT ROUTING/use_item paragraph.
+	if bool(decision.get("use_item", false)) and _use_item_dispatcher.is_valid():
+		_use_item_dispatcher.call(_kart)
+		_item_cooldown_elapsed_s = 0.0
 
 
 ## Per-tick clamp for this kart's own SpineFollower.update() -- the true

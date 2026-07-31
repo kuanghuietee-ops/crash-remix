@@ -21,6 +21,7 @@ from scripts.lint_level_authoring import (
     TRACK_GATE_SEQUENCE_RULE,
     TRACK_GATE_WIDTH_RULE,
     TRACK_GRID_SLOTS_RULE,
+    TRACK_ITEM_BOX_RULE,
     TRACK_SPAWN_RULE,
     TRACK_SPINE_RING_RULE,
     WUMPA_TOTAL_RULE,
@@ -812,11 +813,14 @@ class LevelAuthoringLintTests(unittest.TestCase):
 
 
 class RacingTrackAuthoringLintTests(unittest.TestCase):
-    """Task 8 (CTR racing mode, R2): rules (a)-(e) for scenes/racing/ scenes
-    that author a TrackSpine directly. track_lint_good.tscn is a minimal
-    5-marker/4-gate closed loop, hand-verified clean against every rule
-    below; each _bad fixture is a single-property mutation of it, isolating
-    exactly one rule the way the platformer fixtures above do.
+    """Task 8 (CTR racing mode, R2) rules (a)-(e), plus rule (f) (Task 5,
+    CTR R3 integration, grid slots) and rule (g) (Task 5, CTR R4 items, item
+    boxes), for scenes/racing/ scenes that author a TrackSpine directly.
+    track_lint_good.tscn is a minimal 5-marker/4-gate closed loop (now also
+    carrying 5 GridSlot markers and 6 ItemBox nodes), hand-verified clean
+    against every rule below; each _bad fixture is a single-property
+    mutation of it, isolating exactly one rule the way the platformer
+    fixtures above do.
     """
 
     def test_good_track_fixture_has_no_findings(self) -> None:
@@ -968,6 +972,50 @@ class RacingTrackAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("GridSlot3", findings[0].detail)
         self.assertIn("lateral offset", findings[0].detail)
+
+    def test_missing_item_boxes_fires_the_item_box_rule(self) -> None:
+        # Task 5 (CTR R4 items): this fixture is the good fixture's geometry
+        # BEFORE this task's ItemBox nodes existed at all -- isolates exactly
+        # "no ItemBox authored" the same way track_lint_grid_slots_missing_
+        # bad.tscn isolates the equivalent GridSlot case.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_item_boxes_missing_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_ITEM_BOX_RULE],
+        )
+        self.assertIn("found 0 ItemBox", findings[0].detail)
+
+    def test_item_box_off_the_road_fires_the_item_box_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_item_boxes_off_road_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_ITEM_BOX_RULE],
+        )
+        self.assertIn("ItemBoxA1", findings[0].detail)
+        self.assertIn("off the spine centerline", findings[0].detail)
+
+    def test_item_box_near_origin_fires_the_item_box_rule(self) -> None:
+        # Spec Recorded-debt #10: an item box authored close to this scene's
+        # own origin can be stolen by the player kart's one-frame spawn-
+        # transform flash. This fixture's box sits ON-road (so the on-road
+        # check above stays silent) but well inside the clearance radius --
+        # isolates exactly the origin-clearance case from the off-road case.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_item_boxes_origin_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_ITEM_BOX_RULE],
+        )
+        self.assertIn("ItemBoxA1", findings[0].detail)
+        self.assertIn("scene's own origin", findings[0].detail)
 
     def test_real_track_graybox_loop_passes_the_track_lint(self) -> None:
         # Task 7's working reference must already satisfy every Task 8 rule

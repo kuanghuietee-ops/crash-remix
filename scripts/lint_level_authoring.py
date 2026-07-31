@@ -75,6 +75,9 @@ TRACK_SPAWN_RULE = "track_spawn_before_start"
 # Task 5 (CTR R3 integration): the AI starting grid needs markers to spawn
 # opponents on -- see race_session.gd's _spawn_ai_karts().
 TRACK_GRID_SLOTS_RULE = "track_grid_slots"
+# Task 5 (CTR R4 items): item boxes must exist, sit on-road, and stay clear
+# of this scene's own origin -- see ITEM_BOX_SCRIPT's own doc below.
+TRACK_ITEM_BOX_RULE = "track_item_boxes"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -175,6 +178,35 @@ AI_LATERAL_SLOT_SPACING_M = 1.7
 # feel tolerance, just enough to absorb the track scene's own decimal
 # rounding (see the two real tracks' own GridSlot positions).
 TRACK_GRID_SLOT_OFFSET_TOLERANCE_M = 0.01
+# Task 5 (CTR R4 items): race_session.gd discovers ItemBox instances by a
+# TYPE/SCRIPT scan under Track (_discover_item_boxes(), the same shape
+# _discover_gates() already uses for CheckpointGate) -- not by a GridSlotN-
+# style fixed root-level name, so an authored box can legally sit anywhere
+# in the flattened tree. This rule discovers them the same way, by script
+# match against ITEM_BOX_SCRIPT.
+ITEM_BOX_SCRIPT = "res://src/racing/items/item_box.gd"
+# Two on-road lines of three boxes each, per track (the R4 item-box
+# authoring brief) -- 6/track.
+TRACK_ITEM_BOX_MIN_COUNT = 6
+# Spec Recorded-debt #10 (R4 Task 4 fix round 1 [LOW-b], CARRIED to this
+# task): the PLAYER kart's own Kart node sits at Transform3D.IDENTITY --
+# this scene's own local origin -- for one full physics-server-registration
+# instant before configure()'s own _seed_kart_transform() moves it, and an
+# item box authored close enough to that point can register a real, sticky
+# false pickup against that one-frame flash (VERIFIED empirically in the R4
+# Task 4 fix-round-1 report, not just reasoned there). "This scene's own
+# local origin" and "world origin" are the SAME point under both real race
+# scenes' current wiring -- race_time_trial.tscn/race_sanity_shores.tscn
+# each instance their Track child with no transform override at all (hand-
+# verified by inspection) -- and this lint can only ever see a single
+# track_*.tscn file in isolation anyway (race_time_trial.tscn/race_sanity_
+# shores.tscn are never themselves parsed as "racing-track" scenes, see
+# _scene_declares_script's own doc), so Vector3.ZERO in THIS scene's own
+# coordinate frame is the one and only thing checkable here, and it covers
+# both readings the spec debt names as long as that "Track sits at
+# identity" wiring holds. Keep this comment in sync if a future race scene
+# ever offsets its Track child.
+TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M = 10.0
 # Imported glTF scenes can only contribute visual hierarchy/material data to
 # these authoring checks; unlike .tscn files, they cannot carry Godot scripts,
 # groups, crate IDs, checkpoint links, or tuning resources. Keep their instance
@@ -443,6 +475,9 @@ def _track_findings(
     )
     findings.extend(
         _track_grid_slot_findings(scene_name, nodes, gates, points, cumulative)
+    )
+    findings.extend(
+        _track_item_box_findings(scene_name, nodes, points, cumulative)
     )
     return findings
 
@@ -894,6 +929,94 @@ def _track_grid_slot_findings(
                         "-- an AI kart spawned here steers hard for its real "
                         "target the instant the race starts instead of "
                         "holding the grid line"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_item_box_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Rule (g): item boxes exist, sit on-road, and stay clear of this
+    scene's own origin (Task 5, CTR R4 items -- spec Recorded-debt #10; see
+    TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M's own doc for why "this scene's own
+    origin" is the one and only thing this lint can check for that debt).
+
+    Discovered by SCRIPT match (ITEM_BOX_SCRIPT), like CheckpointGate --
+    NOT by a GridSlotN-style root-level name pattern -- since race_session.
+    gd's own _discover_item_boxes() finds them the same type/script-scan
+    way, so an authored box can legally sit anywhere in the flattened tree.
+
+    "On-road" reuses _track_gate_width_findings's own per-node independent-
+    projection shape (project onto the whole polyline, take the LOCAL
+    tangent at that projected point) rather than TRACK_GRID_SLOTS_RULE's
+    single "relative to gate 0" tangent -- grid slots all cluster in one
+    spot right behind gate 0, but item boxes are authored at scattered
+    points all the way around the loop, so each one needs its own local
+    road direction, not one global reference.
+    """
+    boxes = [node for node in nodes if node.script_path == ITEM_BOX_SCRIPT]
+    findings: list[AuthoringViolation] = []
+    if len(boxes) < TRACK_ITEM_BOX_MIN_COUNT:
+        findings.append(
+            AuthoringViolation(
+                scene_name,
+                TRACK_ITEM_BOX_RULE,
+                (
+                    f"found {len(boxes)} ItemBox node(s); need at least "
+                    f"{TRACK_ITEM_BOX_MIN_COUNT} (two on-road lines of "
+                    "three, per the R4 item-box authoring brief)"
+                ),
+            )
+        )
+
+    half_width_m = TRACK_ROAD_WIDTH_M / 2.0
+    for box in boxes:
+        origin_distance_m = _length(box.world_position)
+        if origin_distance_m < TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M and not math.isclose(
+            origin_distance_m,
+            TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_ITEM_BOX_RULE,
+                    (
+                        f"{box.path} is {origin_distance_m:.3f}m from this "
+                        "scene's own origin; must stay at least "
+                        f"{TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M:.3f}m clear "
+                        "(spec Recorded-debt #10 -- the player kart's own "
+                        "one-frame origin flash can steal an origin-adjacent "
+                        "box)"
+                    ),
+                )
+            )
+
+        progress = _project_onto_polyline(box.world_position, points, cumulative)
+        tangent = _polyline_direction_at_distance(points, cumulative, progress)
+        if _is_zero(tangent):
+            continue
+        across = (-tangent[2], 0.0, tangent[0])
+        centerline_point = _sample_polyline(points, cumulative, progress)
+        offset_across_m = _dot(
+            _subtract(box.world_position, centerline_point), across
+        )
+        if abs(offset_across_m) > half_width_m and not math.isclose(
+            abs(offset_across_m),
+            half_width_m,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_ITEM_BOX_RULE,
+                    (
+                        f"{box.path} is {offset_across_m:.3f}m off the spine "
+                        f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
+                        f"wide (max {half_width_m:.3f}m each side)"
                     ),
                 )
             )
