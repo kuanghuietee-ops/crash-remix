@@ -45,6 +45,20 @@ extends Control
 ## real race starts, which is exactly why this HUD gates on the separate
 ## is_race_started() flag rather than ever comparing phase() to &"running").
 ##
+## LIVE POSITION (R5 Task 2). _position_label mirrors _wrong_way_label's/
+## _item_label's own "poll every _refresh() tick, toggle .visible directly,
+## no signal" shape one more time: visible only during the live body of a
+## race against a real field -- post-GO (RaceSession.is_race_started()),
+## pre-finish (not RaceSession.is_finished() -- the FINISHED panel takes
+## over from here, see _on_race_finished() below), and only when there is
+## someone to rank against at all (RaceSession.field_size() > 1, the exact
+## same "m > 1" gate placement_out_of()'s own FINISHED panel already uses
+## one section down -- a solo race has nobody to place against either way).
+## Text reads "POS  n / m" off RaceSession.player_position()/field_size(),
+## both live per-tick reads (see race_session.gd's own LIVE RANKING class-
+## doc section), never the FINISHED panel's one-shot placement()/
+## placement_out_of().
+##
 ## GO FLASH (fix round 1, reviewer [LOW-1]): _countdown_label does NOT just
 ## hide the instant is_race_started() flips true -- that used to make the
 ## "GO!" text unrenderable by construction, since RaceSession's own unfreeze/
@@ -65,6 +79,7 @@ const TimeFormatType := preload("res://src/core/time_format.gd")
 var _session: Object
 
 @onready var _lap_label: Label = $SafeArea/Stats/Margin/Rows/Lap
+@onready var _position_label: Label = $SafeArea/Stats/Margin/Rows/Position
 @onready var _timer_label: Label = $SafeArea/Stats/Margin/Rows/Timer
 @onready var _item_label: Label = $SafeArea/Stats/Margin/Rows/Item
 @onready var _wrong_way_label: Label = $SafeArea/WrongWay
@@ -94,6 +109,7 @@ var _session: Object
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_wrong_way_label.visible = false
+	_position_label.visible = false
 	_item_label.visible = false
 	_finish_panel.visible = false
 	_new_best_label.visible = false
@@ -129,6 +145,7 @@ func _refresh() -> void:
 	_wrong_way_label.visible = bool(_session.call("is_wrong_way"))
 	_refresh_item_display()
 	_refresh_countdown_display()
+	_refresh_position_display()
 
 
 ## See the class doc's COUNTDOWN + BOOST HINT / GO FLASH sections.
@@ -166,6 +183,24 @@ func _countdown_display_text(phase: StringName) -> String:
 			return "1"
 		_:
 			return "3"
+
+
+## See the class doc's LIVE POSITION section. Hidden pre-GO, once finished,
+## and for a solo race (field_size() <= 1) -- shown otherwise, tracking
+## RaceSession's own live per-tick ranking every poll.
+func _refresh_position_display() -> void:
+	var field_size := int(_session.call("field_size"))
+	var show_position := (
+		bool(_session.call("is_race_started"))
+		and not bool(_session.call("is_finished"))
+		and field_size > 1
+	)
+	_position_label.visible = show_position
+	if show_position:
+		_position_label.text = "POS  %d / %d" % [
+			int(_session.call("player_position")),
+			field_size,
+		]
 
 
 ## See the class doc's HELD-ITEM DISPLAY section. Hidden (no text update --

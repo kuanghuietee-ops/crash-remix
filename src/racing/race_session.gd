@@ -163,6 +163,77 @@ extends Node3D
 ## prevent. Steer/brake/item routing are harmless no-ops on a decelerating
 ## kart either way, but gating the whole function is simpler and more
 ## obviously correct than gating each call inside it individually.
+##
+## LIVE RANKING (R5 Task 2). _refresh_rank_snapshot(), called once every
+## _physics_process tick post-GO/pre-finish (right after _update_player_
+## follower()), builds one Dictionary entry per kart -- player and every AI
+## kart alike -- purely by READING numbers this session and AiKartAgent
+## already maintain: LapValidator.current_lap()/progress_gates() (pure
+## counters, gate crossings only) and each kart's own continuous
+## SpineFollower.total_progress_m() (the player's own _player_follower,
+## already updated this exact tick by _update_player_follower() one line up;
+## each AI's own private follower, updated inside ITS OWN AiKartAgent.
+## _physics_process(), a sibling node ticking independently -- see
+## ai_kart_agent.gd's own STUCK DETECTION doc for the identical "one tick of
+## staleness across sibling nodes is immaterial" precedent this shares). No
+## new TrackSpine.progress_for_position()/closest-offset call is made
+## anywhere in this path -- the fix-wave LOW-6 precedent this class doc's
+## own TIMER section already established (computed once, threaded through,
+## never recomputed) extends naturally here since every field this snapshot
+## reads was ALREADY a plain counter or cached total before this task.
+## RaceRanking.rank() (race_ranking.gd, pure) turns that Array[Dictionary]
+## into an ordered Array of kart ids; _current_rank_order caches the result,
+## and player_position()/field_size() are thin reads off that cache -- see
+## their own docs.
+##
+## AI FINISH RECORDING. Before this task, an AI kart's own LapValidator
+## (routed by _gate_validators, same as the player's) kept advancing forever
+## once it crossed gate 0 -- including a &"race_complete" outcome once it
+## banked its own lap_count laps -- but _on_gate_body_entered() discarded
+## that outcome outright for any body other than the player's own kart (the
+## `if body != _kart: return` guard, unchanged in shape, just no longer a
+## silent drop). It now calls _record_finish(body, elapsed_s()) first for
+## exactly that outcome, so an AI kart's own eventual gate_crossed() call
+## being an ordinary &"ok"/&"out_of_order" the rest of the time costs
+## nothing new -- the AI-finish check is a single StringName compare added to
+## a branch already reached every gate crossing. AI KARTS KEEP DRIVING
+## AFTER FINISHING (unchanged behavior -- no freeze, no is_run_active()
+## change) -- LapValidator's own _laps_completed counter has no upper clamp
+## (see lap_validator.gd's own SEQUENCE doc), so a still-driving AI kart
+## keeps closing laps and _complete_lap() keeps returning &"race_complete"
+## on every one of them (`_laps_completed >= _lap_count` stays true forever
+## once it first goes true). _record_finish() is idempotent specifically to
+## absorb that: only the FIRST &"race_complete" for a given kart ever writes
+## an entry, so a kart's own finished_order/finish elapsed freeze at its
+## true first-finish instant no matter how many more times its own
+## validator re-reports the same outcome afterward. RaceRanking's own tier-1
+## "finished before unfinished, unconditionally" rule is what then makes
+## that frozen finished_order outrank every further lap/gate/progress that
+## kart keeps racking up post-finish -- its RANK freezes even though the
+## KART does not, exactly the plan's own "an AI that finishes keeps driving
+## but its rank freezes at its finish slot" requirement.
+##
+## The player's own finish reuses the SAME _record_finish() helper --
+## _finish_race() calls it first thing, before anything else, so the
+## player's own finished_order/finish elapsed sit in the exact same
+## dictionaries an AI kart's would, interleaved by whenever each actually
+## crossed the line. Once _finished flips true, _on_gate_body_entered()'s
+## own top-of-function guard (`if _finished or not _race_started: return`,
+## unchanged) blocks every further gate crossing -- AI or player -- so no
+## MORE finishes can ever be recorded past that point, matching
+## _finish_race()'s own existing "freeze the whole field" contract one
+## section down: an AI kart that has not yet finished by the time the player
+## does simply never gets a finished_order at all, which is exactly what
+## Task 3's own "unfinished ranked by progress at player-finish" ruling
+## needs to read.
+##
+## finish_order_of()/finish_elapsed_s_of() are exposed now (not deferred to
+## Task 3) because the RECORDING this task's own brief calls for has nowhere
+## else to live -- Task 3's standings panel is documented to read these two
+## getters directly rather than reaching into this session's private
+## dictionaries, the same "public getter, not a private field" shape every
+## other per-kart stat in this class already uses (placement()/lap_times()/
+## etc.).
 
 const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
@@ -170,6 +241,7 @@ const RacingInputAdapterType := preload(
 const LapValidatorType := preload("res://src/racing/track/lap_validator.gd")
 const AiKartAgentType := preload("res://src/racing/ai/ai_kart_agent.gd")
 const SpineFollowerType := preload("res://src/racing/track/spine_follower.gd")
+const RaceRankingType := preload("res://src/racing/flow/race_ranking.gd")
 const KartSceneType := preload("res://scenes/racing/kart.tscn")
 # R4 Task 4: the two spawned/applied item effects that need a real scene
 # instance (missile/beaker) -- turbo/shield are pure KartController calls,
@@ -315,6 +387,19 @@ var _race_started: bool = false
 # of the time.
 var _bog_kart: CharacterBody3D
 var _bog_remaining_s: float
+
+# R5 Task 2: see the class doc's LIVE RANKING/AI FINISH RECORDING sections.
+var _ranking: RaceRankingType = RaceRankingType.new()
+# kart (CharacterBody3D) -> 1-based finish order; kart -> elapsed_s() at the
+# instant it finished. Both written only by _record_finish(), idempotent per
+# kart (first &"race_complete" wins), shared by the player and every AI kart.
+var _finish_order_index: Dictionary = {}
+var _finish_elapsed_s: Dictionary = {}
+var _next_finish_order: int = 1
+# Cached result of the most recent _refresh_rank_snapshot() -- kart ids in
+# live position order. Empty before the first snapshot; player_position()/
+# field_size() both read this directly rather than recomputing it.
+var _current_rank_order: Array = []
 
 
 func configure(catalog: GameplayTuning) -> void:
@@ -464,6 +549,15 @@ func configure(catalog: GameplayTuning) -> void:
 	_wrong_way_elapsed_s = 0.0
 	_wrong_way_flag = false
 
+	# R5 Task 2: see the class doc's LIVE RANKING/AI FINISH RECORDING
+	# sections. A re-configure()/retry must forget every previous race's
+	# finish order and live ranking too, the same "restart the whole flow"
+	# contract this reset block already establishes for everything above.
+	_finish_order_index.clear()
+	_finish_elapsed_s.clear()
+	_next_finish_order = 1
+	_current_rank_order.clear()
+
 	# R5 Task 1: see the class doc's COUNTDOWN + START BOOST section. A
 	# re-configure()/retry must restart the WHOLE flow, not resume whatever
 	# countdown/bog state a previous call left behind -- every kart was just
@@ -477,6 +571,11 @@ func configure(catalog: GameplayTuning) -> void:
 	_start_boost_judge.configure(_race_tuning)
 
 	_configured = true
+	# R5 Task 2: seeds a real snapshot (every kart unfinished, at its spawn
+	# progress) immediately, so field_size()/player_position() read something
+	# real from the very first poll rather than the empty-cache 0 default --
+	# see those getters' own docs.
+	_refresh_rank_snapshot()
 
 	_hud.call("configure", self)
 
@@ -577,6 +676,56 @@ func placement() -> int:
 ## ran, not the one that was configured.
 func placement_out_of() -> int:
 	return _ai_karts.size() + 1
+
+
+## R5 Task 2: any kart's own LIVE 1-based race position -- see the class
+## doc's LIVE RANKING section for how _current_rank_order is built. Distinct
+## from placement() one section up: placement() is a single value computed
+## ONCE at the player's own finish for the "FINISHED n / m" panel (Task 3
+## territory, untouched by this task); this is a per-tick READ that keeps
+## updating for the whole post-GO/pre-finish body of the race. 0 before the
+## first snapshot exists (mirrors this class's other "not ready yet"
+## getters) or if the given kart has somehow gone missing from its own
+## snapshot -- never a stale index. player_position() below is simply
+## kart_position(_kart); kept as its own named getter since RaceHUD's own
+## poll surface (and this class's other per-kart getters, e.g. lap_times())
+## always addresses the player's own kart by a dedicated name, never a
+## passed-in reference.
+func kart_position(kart: CharacterBody3D) -> int:
+	var index := _current_rank_order.find(kart)
+	return index + 1 if index >= 0 else 0
+
+
+## RaceHUD's own live "POS n / m" line reads this for the player's own
+## position -- see kart_position()'s own doc one section up.
+func player_position() -> int:
+	return kart_position(_kart)
+
+
+## "m" for RaceHUD's own live "POS n / m" -- the current live snapshot's own
+## size. Always equal to placement_out_of() in practice (both ultimately
+## count the same real roster: the player plus every spawned AI kart), but
+## reads off the SAME cache player_position() does rather than re-deriving
+## it from _ai_karts.size(), so the two live getters can never disagree with
+## each other even if a future change ever made them diverge.
+func field_size() -> int:
+	return _current_rank_order.size()
+
+
+## R5 Task 2: this kart's own 1-based finish order (1 = first to cross the
+## line), or -1 if it has not finished yet -- see _record_finish()'s own doc.
+## Works identically for the player's own kart and any AI kart; Task 3's own
+## standings panel is the intended other reader, alongside finish_elapsed_s_
+## of() below.
+func finish_order_of(kart: CharacterBody3D) -> int:
+	return int(_finish_order_index.get(kart, -1))
+
+
+## This kart's own elapsed_s() reading at the exact instant it crossed the
+## finish line -- 0.0 if it has not finished yet (mirrors this class's other
+## "not yet" getters, e.g. placement()'s own 0-before-finish contract).
+func finish_elapsed_s_of(kart: CharacterBody3D) -> float:
+	return float(_finish_elapsed_s.get(kart, 0.0))
 
 
 func ai_kart_count() -> int:
@@ -853,6 +1002,9 @@ func _physics_process(delta_s: float) -> void:
 	var progress := _spine.progress_for_position(_kart.global_position)
 	_update_wrong_way(delta_s, progress)
 	_update_player_follower(progress, delta_s)
+	# R5 Task 2: see the class doc's LIVE RANKING section -- reads only
+	# already-current numbers, no new closest-offset call.
+	_refresh_rank_snapshot()
 
 
 ## R5 Task 1: drives the pure CountdownTimer/StartBoostJudge one pre-GO tick.
@@ -977,6 +1129,40 @@ func _update_player_follower(raw_progress: float, delta_s: float) -> void:
 	_player_follower.update(raw_progress, max_step_m)
 
 
+## R5 Task 2: see the class doc's LIVE RANKING section. Assembles one entry
+## per kart (player first, then every AI kart in slot order -- rank() does
+## not care about input order beyond its own documented stability
+## tiebreaker, see race_ranking.gd) purely from already-current numbers, and
+## hands the whole Array[Dictionary] to RaceRanking.rank() in one call.
+func _refresh_rank_snapshot() -> void:
+	var entries: Array[Dictionary] = []
+	entries.append(_rank_entry(_kart, _validator, _player_follower.total_progress_m()))
+	for index in range(_ai_karts.size()):
+		var ai_kart := _ai_karts[index]
+		var validator: LapValidatorType = _gate_validators.get(ai_kart)
+		entries.append(
+			_rank_entry(ai_kart, validator, ai_kart_total_progress_m(index))
+		)
+	_current_rank_order = _ranking.rank(entries)
+
+
+## Builds one RaceRanking entry Dictionary for a single kart -- see race_
+## ranking.gd's own ENTRY SHAPE doc for what each key means. laps_complete is
+## deliberately validator.current_lap() - 1 (whole laps BANKED), not current_
+## lap() itself (the 1-based lap currently in progress, capped at lap_count)
+## -- see lap_validator.gd's own current_lap() doc.
+func _rank_entry(
+	kart: CharacterBody3D, validator: LapValidatorType, total_progress_m: float
+) -> Dictionary:
+	return {
+		"id": kart,
+		"finished_order": finish_order_of(kart),
+		"laps_complete": (validator.current_lap() - 1) if validator != null else 0,
+		"gates_this_lap": validator.progress_gates() if validator != null else 0,
+		"total_progress_m": total_progress_m,
+	}
+
+
 func _discover_gates() -> Array[CheckpointGate]:
 	var result: Array[CheckpointGate] = []
 	for candidate: Node in _track.find_children("*", "Area3D", true, false):
@@ -998,8 +1184,11 @@ func _discover_gates() -> Array[CheckpointGate]:
 ## on every crossing, unconditionally; only the PLAYER's crossing goes on to
 ## drive lap-time bookkeeping and the finish sequence below -- an AI kart's
 ## own validator exists so ITS gate sequence is tracked correctly (tests can
-## observe it via ai_kart_progress_gates()), not because an AI kart can ever
-## "finish" the race on its own in this task.
+## observe it via ai_kart_progress_gates()), and (R5 Task 2) so its own
+## &"race_complete" outcome gets recorded via _record_finish() -- see the
+## class doc's own AI FINISH RECORDING section. An AI kart still cannot END
+## the race on its own -- only the player's own crossing ever reaches
+## _finish_race() below.
 func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 	# Fix round 1, reviewer [LOW-2]: dormant-but-ungated pre-GO -- a frozen
 	# kart can never PHYSICALLY reach a gate before GO (see the class doc's
@@ -1017,6 +1206,12 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 		return
 	var outcome := validator.gate_crossed(gate.gate_index)
 	if body != _kart:
+		# R5 Task 2: see the class doc's AI FINISH RECORDING section. AI karts
+		# keep driving after this, unchanged -- no freeze, no lap-time
+		# bookkeeping (that stays player-only, see below) -- only their own
+		# finish order/elapsed gets recorded, once.
+		if outcome == &"race_complete":
+			_record_finish(body as CharacterBody3D, elapsed_s())
 		return
 	if outcome != &"lap_complete" and outcome != &"race_complete":
 		return
@@ -1081,6 +1276,13 @@ func _discover_item_boxes() -> Array[ItemBox]:
 ## is belt-and-braces, an explicit "stop ticking at all" rather than relying
 ## solely on the gate reading false every tick forever.
 func _finish_race(now_elapsed: float) -> void:
+	# R5 Task 2: see the class doc's AI FINISH RECORDING section -- the
+	# player's own finish goes through the exact same idempotent recorder
+	# every AI kart's own race_complete crossing does, so both share one
+	# finish-order sequence. Called first, before _finished flips true, so
+	# the ordering guard in _on_gate_body_entered() cannot have already
+	# blocked this same crossing from reaching here in the first place.
+	_record_finish(_kart, now_elapsed)
 	_finished = true
 	_final_elapsed_s = now_elapsed
 	# H2 review: nothing else stops the kart driving into the walls behind
@@ -1103,6 +1305,23 @@ func _finish_race(now_elapsed: float) -> void:
 		agent.set_physics_process(false)
 
 	race_finished.emit(_final_elapsed_s, _lap_times.duplicate())
+
+
+## R5 Task 2: the ONE place any kart's own finish (player or AI) gets
+## written into _finish_order_index/_finish_elapsed_s -- see the class doc's
+## AI FINISH RECORDING section for why idempotency here specifically matters
+## (a still-driving AI kart's own LapValidator keeps reporting
+## &"race_complete" on every further lap it closes, see lap_validator.gd's
+## own SEQUENCE doc: _laps_completed has no upper clamp). Only the FIRST
+## call for a given kart ever writes anything; every later call for that
+## same kart is a silent no-op, which is exactly what "a kart's rank freezes
+## at its finish slot" requires.
+func _record_finish(kart: CharacterBody3D, elapsed_s_at_finish: float) -> void:
+	if _finish_order_index.has(kart):
+		return
+	_finish_order_index[kart] = _next_finish_order
+	_finish_elapsed_s[kart] = elapsed_s_at_finish
+	_next_finish_order += 1
 
 
 ## Shared "place the transform, then seed yaw as an independent step"
