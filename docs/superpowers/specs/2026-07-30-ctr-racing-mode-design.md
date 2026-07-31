@@ -246,6 +246,42 @@ start.
    actually diverge the two): either split the save key by mode (e.g.
    `track_id` + a mode suffix) or stop writing best times from AI races
    (RACE) entirely and keep the personal-best record TIME-TRIAL-only.
+10. **New (R4 Task 4 fix round 1 [LOW-b]): the PLAYER kart has the same
+    one-frame spawn-transform flash the AI-kart fix (Task 4 item 6) closed
+    for `_spawn_ai_karts()`, and it is still open.** `race_time_trial.tscn`/
+    `race_sanity_shores.tscn` (and their solo variants, which instance
+    these) author their `Kart` node with NO explicit transform, so it sits
+    at `Transform3D.IDENTITY` (this scene's own local/world origin) from
+    the instant the whole packed scene enters the tree until `configure()`'s
+    own `_seed_kart_transform(_kart, spawn)` call moves it a few lines
+    later — same mechanism, same risk, as the AI-kart bug: a
+    CharacterBody3D's first entry into a live SceneTree registers a real
+    physics-server broadphase snapshot at whatever transform it has at that
+    instant, deliverable as a queued `body_entered` on a later physics tick
+    regardless of the same-script-tick reposition that follows. VERIFIED
+    empirically (not just reasoned): a synthetic `ItemBox` placed at the
+    race scene's own local origin and added as a child of the race root
+    BEFORE `add_child_autofree(race)` (so both `Kart` and the box enter the
+    tree together, the same relationship a track-authored box would have)
+    reads `is_active() == false` after `configure()` runs — a real false
+    pickup, not a false alarm. UNLIKE the AI-kart case, there is no clean
+    "instantiate → position → add_child" reorder available here: `Kart` is
+    a scene-authored child of the packed race scene, not something this
+    codebase's own script instantiates and parents at runtime, so the fix
+    shape from `_spawn_ai_karts()` does not transplant directly (candidate
+    approaches — hand-authoring `Kart`'s scene transform to already sit
+    near its real spawn marker, or a session-level "arm collision only
+    after the transform is seeded" step — both need real design work, not
+    a same-round patch). CURRENTLY LATENT: `test_neither_real_race_scene_
+    authors_any_item_boxes_yet` (test_race_session.gd) confirms neither
+    shipped track authors any `ItemBox` yet, so nothing on either real
+    track can trigger this today. Task 5 (item box placement on both
+    tracks) is what turns this from latent to live — that task MUST either
+    keep every authored box's `box_pickup_radius_m` clear of wherever each
+    track's own `KartSpawn` marker sits (the practical near-term mitigation,
+    since `Kart`'s flash position is this scene's local origin, not
+    necessarily `KartSpawn`'s own position — check both), or this debt must
+    be picked up and actually fixed before boxes ship.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that

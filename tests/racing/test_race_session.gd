@@ -1520,6 +1520,131 @@ func test_register_hit_on_an_invulnerable_kart_returns_invulnerable_and_does_not
 	)
 
 
+## Fix round 1 [MEDIUM]: precedence must be invulnerable > blocked >
+## spin_out -- checking shield BEFORE invulnerability let a kart that
+## activates a held shield during its own post-hit invuln window lose that
+## shield to a hit invulnerability alone would already have absorbed for
+## free. A kart invulnerable AND shielded at once must read &"invulnerable"
+## and keep the shield untouched; only once the invuln window has expired
+## does that same still-active shield block the next hit.
+func test_register_hit_precedence_invulnerable_beats_an_active_shield() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	assert_gt(
+		_catalog.items.shield_duration_s,
+		_catalog.kart.invulnerable_after_hit_s,
+		"fixture assumption: the shield must outlast the invulnerable window for this test's second half to mean anything"
+	)
+
+	# First hit: a real spin_out, starting the invulnerable window.
+	race.call("register_hit", kart)
+	assert_true(bool(kart.call("is_invulnerable")), "fixture setup: the first hit must start the invulnerable window")
+
+	# The kart picks up and uses a shield WHILE still invulnerable.
+	kart.call("set_shielded", _catalog.items.shield_duration_s)
+	assert_true(bool(kart.call("is_shielded")), "fixture setup: the kart must now also be shielded")
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"invulnerable", "invulnerability must take precedence over an active shield")
+	assert_true(
+		bool(kart.call("is_shielded")),
+		"a hit absorbed by invulnerability must leave an unrelated shield completely untouched"
+	)
+
+	# Wait out ONLY the (shorter) invulnerable window -- the shield's own
+	# (longer) duration must still have time left.
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	motor.call(
+		"tick",
+		_catalog.kart.invulnerable_after_hit_s + 0.01,
+		0.0,
+		false,
+		false,
+		false,
+		0
+	)
+	assert_false(bool(kart.call("is_invulnerable")), "fixture setup: the invulnerable window must have expired")
+	assert_true(bool(kart.call("is_shielded")), "fixture setup: the shield must still be active on its own longer timer")
+
+	var outcome_after_invuln_expires: StringName = race.call("register_hit", kart)
+
+	assert_eq(
+		outcome_after_invuln_expires,
+		&"blocked",
+		"once invulnerability has expired, the still-active shield must block the next hit"
+	)
+	assert_false(bool(kart.call("is_shielded")), "that block must consume the shield")
+
+
+## Fix round 1 [LOW-a]: proves the Task-1 drift-cancel survives THROUGH
+## this routing layer -- register_hit() calling apply_spin_out() (not a
+## test calling apply_spin_out() directly, which test_kart_controller.gd's
+## own test_apply_spin_out_mid_slide_ends_the_slide_and_zeroes_accrued_
+## boost already covers in isolation) must still end a real, live slide and
+## forfeit its accrued boost stage, through the REAL dispatch path a
+## missile/beaker hit actually uses in production.
+func test_register_hit_mid_slide_ends_the_slide_and_zeroes_accrued_boost_through_real_dispatch() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	# See test_finishing_mid_slide_ends_the_slide_with_no_further_rotation's
+	# own doc for why the SESSION's own input-routing tick is disabled here
+	# (it would fight this test's manual steer()/hop_pressed() calls) while
+	# the KART's own _physics_process stays fully enabled the whole time.
+	race.set_physics_process(false)
+
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup: the kart must be grounded before sliding")
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(bool(kart.call("is_sliding")), "fixture setup: the kart must land inside a slide")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_eq(
+		String(kart.call("boost_tap")),
+		"fired",
+		"fixture setup: the tap must land inside the window and actually accrue boost"
+	)
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"spin_out")
+	assert_false(
+		bool(kart.call("is_sliding")),
+		(
+			"register_hit()'s real spin_out must end a live slide through "
+			+ "the whole routing layer, not only when apply_spin_out() is "
+			+ "called directly"
+		)
+	)
+
+	var drift: RefCounted = kart.get("_drift")
+	assert_not_null(drift, "the controller must still own its private drift FSM")
+	if drift == null:
+		return
+	assert_eq(
+		int(drift.call("boost_stage")),
+		0,
+		"the hit must forfeit the accrued boost stage through the real dispatch path"
+	)
+	assert_eq(
+		float(drift.call("consume_boost")),
+		0.0,
+		"any boost accrued before the hit must have been zeroed through the real dispatch path, not merely left orphaned for the next poll"
+	)
+
+
 ## ORDER-AWARENESS pin (see register_hit()'s own doc): a boost already
 ## forwarded to the motor THIS SAME TICK (KartController's own unconditional
 ## consume_boost() -> add_boost() forward, see kart_controller.gd's BINDING

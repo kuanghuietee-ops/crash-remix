@@ -534,18 +534,28 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 ## R4 Task 4 (item 1, hit-routing foundation): the ONE place any hit source
 ## (missile.gd/beaker.gd's own _physics_process, and any future hazard)
 ## turns "this kart got hit" into the real outcome, in priority order:
-## shield block, then invulnerability, then an actual spin_out. No caller
+## invulnerability, then shield block, then an actual spin_out. No caller
 ## re-implements this priority itself -- see missile.gd's/beaker.gd's own
 ## _check_hits(), which both just forward whichever kart they reached
 ## straight here via .call("register_hit", kart).
 ##
-## &"blocked" -- the kart was shielded; the shield is consumed EARLY right
-## here (KartController.consume_shield()), not left to run out its own
-## remaining duration -- CTR's "blocks exactly one hit, then it's gone".
 ## &"invulnerable" -- the kart is still inside its post-hit invulnerable_
 ## after_hit_s window (see kart_motor.gd's own doc); apply_spin_out() is
 ## NOT called again -- a kart already reeling from one hit does not get
 ## re-stunned by a second projectile arriving during its own grace window.
+## Checked FIRST, ahead of the shield (fix round 1 [MEDIUM], reviewer): a
+## kart that picks up and uses a shield WHILE still invulnerable from an
+## earlier hit must not lose that shield to a hit invulnerability alone
+## would already have absorbed for free -- invulnerability is a strictly
+## better outcome for the kart than a block (nothing is consumed either
+## way), so it must win the precedence check, leaving the shield untouched
+## for whenever invulnerability actually runs out. Pinned by test_race_
+## session.gd's own test_register_hit_precedence_invulnerable_beats_an_
+## active_shield.
+## &"blocked" -- not invulnerable, but shielded; the shield is consumed
+## EARLY right here (KartController.consume_shield()), not left to run out
+## its own remaining duration -- CTR's "blocks exactly one hit, then it's
+## gone".
 ## &"spin_out" -- neither of the above; the hit lands for real via the
 ## Task-1-fixed apply_spin_out() (see kart_controller.gd's own R4-BINDING
 ## FIX doc), which also starts the kart's own invulnerable_after_hit_s
@@ -567,11 +577,11 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 ## test_race_session.gd's own test_register_hit_does_not_cancel_a_same_
 ## frame_boost_already_forwarded_to_the_motor.
 func register_hit(target_kart: CharacterBody3D) -> StringName:
+	if bool(target_kart.call("is_invulnerable")):
+		return &"invulnerable"
 	if bool(target_kart.call("is_shielded")):
 		target_kart.call("consume_shield")
 		return &"blocked"
-	if bool(target_kart.call("is_invulnerable")):
-		return &"invulnerable"
 	target_kart.call("apply_spin_out")
 	return &"spin_out"
 
