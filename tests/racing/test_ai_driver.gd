@@ -159,6 +159,296 @@ func test_negative_lateral_error_steers_toward_the_slot_on_the_left() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Task 4 (CTR R6): APEX LATERAL TARGETING. curvature_ahead == 0.0 must
+# reduce the apex-adjusted lateral term back to the plain lateral_error_m
+# formula exactly, REGARDLESS of slot_lateral_target_m's own value (proving
+# "straights -> back to slot offsets" is a property of the formula, not
+# something only true when slot_lateral_target_m happens to be 0.0).
+# ---------------------------------------------------------------------------
+
+
+func test_apex_blend_is_a_no_op_on_a_straight_regardless_of_the_slot_target() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": 0.0,
+		"lateral_error_m": 0.3,
+		"slot_lateral_target_m": 1.7,
+	}))
+
+	# Identical to the pre-Task-4 lateral-error-only formula: the apex blend
+	# must contribute exactly zero when curvature_ahead is zero.
+	var expected: float = _ai.steer_gain * (0.3 / 10.0)
+	assert_almost_eq(
+		float(result.get("steer")),
+		expected,
+		0.0001,
+		"a nonzero slot_lateral_target_m must not leak into the steer output on a dead-straight lookahead"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (CTR R6): APEX LATERAL TARGETING away from a straight -- the target
+# blends toward the corner's own inside as curvature rises, ramped (not
+# snapped) via blend_ratio = clamp(absf(curvature_ahead) *
+# apex_entry_lookahead_m, 0, 1). Both tests below stay below slide_trigger_
+# curvature so the slide floor never engages, isolating the apex math.
+# ---------------------------------------------------------------------------
+
+
+func test_apex_blend_shifts_the_target_toward_the_inside_as_curvature_rises() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var curvature: float = _ai.slide_trigger_curvature * 0.5
+	assert_true(
+		curvature < _ai.slide_trigger_curvature,
+		"fixture sanity: curvature must stay below slide_trigger_curvature to isolate the apex math from the slide floor"
+	)
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": curvature,
+		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
+	}))
+
+	var blend_ratio: float = clampf(absf(curvature) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	assert_true(blend_ratio > 0.0 and blend_ratio < 1.0, "fixture sanity: this must be a PARTIAL blend, not 0 or saturated")
+	var apex_target_signed: float = signf(curvature) * _ai.apex_offset_max_m
+	var blended_target: float = lerpf(0.0, apex_target_signed, blend_ratio)
+	var expected: float = _ai.steer_gain * (blended_target / 10.0)
+
+	assert_almost_eq(float(result.get("steer")), expected, 0.0001)
+	assert_true(expected > 0.0, "a right-bending corner (positive curvature) must pull the target positive (right)")
+
+
+func test_apex_blend_saturates_at_the_max_offset_once_curvature_clears_the_entry_threshold() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var curvature: float = _ai.slide_trigger_curvature * 4.0
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": curvature,
+		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
+	}))
+
+	# expected magnitude must clear kart.slide_min_steer so the slide floor
+	# (which DOES engage at this curvature) is a provable no-op here, not an
+	# accidental mask of the apex math.
+	var expected: float = _ai.steer_gain * (_ai.apex_offset_max_m / 10.0)
+	assert_true(
+		expected > _kart.slide_min_steer,
+		"fixture sanity: the saturated apex contribution must exceed the slide floor so the floor cannot mask it"
+	)
+	assert_almost_eq(
+		float(result.get("steer")),
+		expected,
+		0.0001,
+		"once curvature clears the entry threshold the apex target must saturate at exactly apex_offset_max_m"
+	)
+
+
+func test_apex_blend_interpolates_from_the_raw_slot_target_not_from_zero() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var curvature: float = _ai.slide_trigger_curvature * 0.5
+	var slot_target := 1.7
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": curvature,
+		# Kart currently sitting exactly at its own slot target.
+		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": slot_target,
+	}))
+
+	var blend_ratio: float = clampf(absf(curvature) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	var apex_target_signed: float = signf(curvature) * _ai.apex_offset_max_m
+	var blended_target: float = lerpf(slot_target, apex_target_signed, blend_ratio)
+	var expected: float = _ai.steer_gain * ((blended_target - slot_target) / 10.0)
+
+	assert_almost_eq(
+		float(result.get("steer")),
+		expected,
+		0.0001,
+		"the blend must interpolate from the RAW slot target, not from zero"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (CTR R6): STEER DAMPING. A jittery (alternating-sign) input trace
+# must produce a SMALLER tick-to-tick steer delta than the raw, undamped
+# formula would -- and a fresh driver's very first tick, and the first tick
+# after reset(), must stay completely unfiltered (no phantom prior output
+# to smooth against). curvature_ahead stays 0.0 throughout so neither the
+# apex blend nor the slide floor interferes.
+# ---------------------------------------------------------------------------
+
+
+func test_steer_damping_does_not_affect_a_fresh_drivers_first_tick() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": 0.0,
+		"lateral_error_m": 2.0,
+	}))
+
+	var raw: float = _ai.steer_gain * (2.0 / 10.0)
+	assert_almost_eq(
+		float(result.get("steer")),
+		raw,
+		0.0001,
+		"a freshly-configured driver's first tick must not be damped -- there is no prior output to smooth against"
+	)
+
+
+func test_steer_damping_reduces_the_tick_to_tick_delta_on_a_jittery_trace() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var base := {
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": 0.0,
+	}
+
+	var raw1: float = _ai.steer_gain * (2.0 / 10.0)
+	var tick1: Dictionary = driver.call("decide", _state(_merged(base, {"lateral_error_m": 2.0})))
+	assert_almost_eq(float(tick1.get("steer")), raw1, 0.0001, "fixture sanity: tick 1 is a cold start, must equal raw")
+
+	var raw2: float = _ai.steer_gain * (-2.0 / 10.0)
+	var tick2: Dictionary = driver.call("decide", _state(_merged(base, {"lateral_error_m": -2.0})))
+
+	# steer_after_damping = lerp(prev_steer_output, raw_steer, 1 - steer_damping)
+	var expected2: float = lerpf(raw1, raw2, 1.0 - _ai.steer_damping)
+	assert_almost_eq(
+		float(tick2.get("steer")),
+		expected2,
+		0.0001,
+		"tick 2's steer must match the documented low-pass formula exactly"
+	)
+	assert_lt(
+		absf(float(tick2.get("steer")) - raw1),
+		absf(raw2 - raw1),
+		"damping must reduce the tick-to-tick delta versus the raw (undamped) trace"
+	)
+
+
+func test_reset_clears_steer_damping_memory() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var base := {
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": 0.0,
+	}
+
+	driver.call("decide", _state(_merged(base, {"lateral_error_m": 2.0})))
+	driver.call("reset")
+
+	var raw: float = _ai.steer_gain * (-2.0 / 10.0)
+	var result: Dictionary = driver.call("decide", _state(_merged(base, {"lateral_error_m": -2.0})))
+	assert_almost_eq(
+		float(result.get("steer")),
+		raw,
+		0.0001,
+		"reset() must clear the steer-damping memory -- the next tick must read as a fresh cold start, not blend toward the pre-reset value"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (CTR R6): ordering -- the slide floor's minimum-|steer| guarantee
+# must hold even when damping, left unchecked, would have pulled the value
+# below the floor (or even flipped its sign) by blending toward a large
+# opposite-signed prior tick. This is the regression lock for "the floor
+# applies AFTER damping" (see ai_driver.gd's own ORDERING VS. THE SLIDE
+# FLOOR doc for the worked-out reasoning).
+# ---------------------------------------------------------------------------
+
+
+func test_slide_floor_overrides_damping_even_after_a_large_opposite_prior_tick() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# Tick 1: a large NEGATIVE steer with no slide involved (cold start).
+	var tick1: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": 0.0,
+		"lateral_error_m": -2.0,
+	}))
+	var raw1: float = _ai.steer_gain * (-2.0 / 10.0)
+	assert_almost_eq(float(tick1.get("steer")), raw1, 0.0001, "fixture sanity: tick 1 cold start")
+
+	# Tick 2: a POSITIVE, tight, RIGHT-bending curvature arms the slide floor
+	# (positive sign). A large lookahead distance (100m) keeps this same
+	# curvature's own apex contribution small (well under the floor) so the
+	# floor's guarantee is exercised by damping's own carry-over, not masked
+	# by a large apex term.
+	var curvature: float = _ai.slide_trigger_curvature * 2.0
+	var tick2: Dictionary = driver.call("decide", _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -100.0),
+		"curvature_ahead": curvature,
+		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
+		"is_sliding": false,
+	}))
+
+	var blend_ratio: float = clampf(absf(curvature) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	var apex_target_signed: float = signf(curvature) * _ai.apex_offset_max_m
+	var raw2: float = _ai.steer_gain * (lerpf(0.0, apex_target_signed, blend_ratio) / 100.0)
+	var damped2: float = lerpf(raw1, raw2, 1.0 - _ai.steer_damping)
+	assert_true(
+		absf(damped2) < _kart.slide_min_steer,
+		"fixture sanity: the damped (pre-floor) value must undershoot the floor for this test to prove anything"
+	)
+
+	assert_almost_eq(
+		float(tick2.get("steer")),
+		_kart.slide_min_steer,
+		0.0001,
+		(
+			"the slide floor must override the damped value and land exactly on "
+			+ "+slide_min_steer (curvature's own sign), regardless of what damping "
+			+ "alone would have produced"
+		)
+	)
+
+
+# ---------------------------------------------------------------------------
 # Overspeed into a hairpin -> brake.
 # ---------------------------------------------------------------------------
 
@@ -337,12 +627,20 @@ func test_hop_tick_on_a_hairpin_bending_right_floors_steer_positive() -> void:
 	if driver == null:
 		return
 
+	# CTR R6 Task 4: a 1000m lookahead (was 10m) keeps the APEX LATERAL
+	# TARGETING contribution at this curvature a tiny fraction of kart.
+	# slide_min_steer, so the floor -- this test's own subject -- is what
+	# actually sets the exact returned value, not apex saturating past it.
+	# See test_apex_blend_saturates_at_the_max_offset_once_curvature_clears_
+	# the_entry_threshold above for the dedicated (short-lookahead) apex
+	# magnitude test.
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
 		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
 		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
 	}))
 
 	assert_true(bool(result.get("hop")))
@@ -363,12 +661,14 @@ func test_hop_tick_on_a_hairpin_bending_left_floors_steer_negative() -> void:
 	if driver == null:
 		return
 
+	# CTR R6 Task 4: see the mirror test's own lookahead-widening comment.
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
 		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
 		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
 	}))
 
 	assert_true(bool(result.get("hop")))
@@ -392,20 +692,28 @@ func test_floor_direction_follows_curvature_even_when_a_small_raw_steer_disagree
 	if driver == null:
 		return
 
-	# lateral_term = steer_gain * (0.1 / 10.0) -- small POSITIVE, well under
-	# slide_min_steer (0.25 in kart.tres).
-	var raw_would_be: float = _ai.steer_gain * (0.1 / 10.0)
+	# CTR R6 Task 4: a 1000m lookahead + a bigger (10.0, was 0.1)
+	# lateral_error_m keeps the LATERAL-ERROR portion of raw steer dominant
+	# over the (now tiny at this distance) apex pull, so the two still
+	# genuinely disagree in sign -- lateral_error_m alone pulls positive
+	# (right), curvature pulls negative (left) -- while the COMBINED raw
+	# stays small and under the floor either way.
+	var curvature: float = -_ai.slide_trigger_curvature * 2.0
+	var blend_ratio: float = clampf(absf(curvature) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	var apex_delta: float = signf(curvature) * _ai.apex_offset_max_m
+	var raw_would_be: float = _ai.steer_gain * ((10.0 + apex_delta * blend_ratio) / 1000.0)
 	assert_true(
 		raw_would_be > 0.0 and raw_would_be < _kart.slide_min_steer,
-		"fixture sanity: raw steer must be small, positive, and under the floor"
+		"fixture sanity: the combined (apex-inclusive) raw steer must be small, positive, and under the floor"
 	)
 
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
-		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
-		"lateral_error_m": 0.1,
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
+		"curvature_ahead": curvature,
+		"lateral_error_m": 10.0,
+		"slot_lateral_target_m": 0.0,
 	}))
 
 	assert_almost_eq(
@@ -423,12 +731,15 @@ func test_floor_direction_follows_curvature_even_when_a_small_raw_steer_disagree
 	if driver == null:
 		return
 
+	# CTR R6 Task 4: see the mirror test's own lookahead/lateral_error
+	# widening comment.
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
 		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
-		"lateral_error_m": -0.1,
+		"lateral_error_m": -10.0,
+		"slot_lateral_target_m": 0.0,
 	}))
 
 	assert_almost_eq(
@@ -449,15 +760,28 @@ func test_floor_leaves_an_already_sufficient_raw_steer_unchanged_even_against_cu
 	if driver == null:
 		return
 
-	# lateral_term alone = steer_gain * (5.0 / 10.0) = 1.1, comfortably past
-	# slide_min_steer (0.25) -- curvature says LEFT (negative), raw steer
-	# says strongly RIGHT (positive).
+	# CTR R6 Task 4: a 1000m lookahead + a much bigger (500.0, was 5.0)
+	# lateral_error_m keeps this comfortably past slide_min_steer (0.25)
+	# EVEN AFTER apex's own (curvature-signed, LEFT/negative) pull is
+	# netted in -- apex_offset_max_m (4.0) is a rounding error against 500.0,
+	# so the "already sufficient, keeps its own sign" property this test
+	# exists to pin is undisturbed by the new apex term.
+	var curvature: float = -_ai.slide_trigger_curvature * 2.0
+	var blend_ratio: float = clampf(absf(curvature) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	var apex_delta: float = signf(curvature) * _ai.apex_offset_max_m
+	var raw_would_be: float = _ai.steer_gain * ((500.0 + apex_delta * blend_ratio) / 1000.0)
+	assert_true(
+		raw_would_be > _kart.slide_min_steer,
+		"fixture sanity: the combined (apex-inclusive) raw steer must still comfortably clear the floor"
+	)
+
 	var result: Dictionary = driver.call("decide", _state({
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
-		"curvature_ahead": -_ai.slide_trigger_curvature * 2.0,
-		"lateral_error_m": 5.0,
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
+		"curvature_ahead": curvature,
+		"lateral_error_m": 500.0,
+		"slot_lateral_target_m": 0.0,
 	}))
 
 	assert_true(
@@ -473,11 +797,16 @@ func test_floor_direction_is_independent_of_a_prior_opposite_direction_tick() ->
 	var driver := _new_driver()
 	if driver == null:
 		return
+	# CTR R6 Task 4: 1000m lookahead (was 10m) -- see test_hop_tick_on_a_
+	# hairpin_bending_right_floors_steer_positive's own comment; this test's
+	# own subject (steer-history independence) needs the floor, not apex
+	# saturation, to be what sets each episode's exact value.
 	var base := {
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
 		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
 	}
 
 	# Episode 1: a LEFT-bending hairpin, hop + floor to -slide_min_steer.
@@ -516,14 +845,25 @@ func test_steer_floor_stays_enforced_while_intent_remains_armed_across_ticks() -
 	if driver == null:
 		return
 
+	# CTR R6 Task 4: lookahead_point is 1000m out (was 10m) so the APEX
+	# LATERAL TARGETING contribution at every curvature this test uses stays
+	# a tiny fraction of kart.slide_min_steer (steer_gain * apex_offset_max_m
+	# / 1000 << slide_min_steer) -- this test's own job is the slide FLOOR's
+	# arm/sustain/release hysteresis, which now has its own dedicated apex
+	# tests above; a short lookahead here would let the apex term itself
+	# clear the floor and mask exactly the behavior this test exists to
+	# pin.
 	var base := {
 		"position": Vector3.ZERO,
 		"forward": Vector3(0.0, 0.0, -1.0),
-		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"lookahead_point": Vector3(0.0, 0.0, -1000.0),
 		"lateral_error_m": 0.0,
+		"slot_lateral_target_m": 0.0,
 	}
 
 	# Tick 1: curvature past trigger, not yet sliding -> hop + floored steer.
+	# Cold start (no prior tick), so damping is a no-op here too -- the raw
+	# (apex-adjusted) value is tiny and the floor is what actually sets this.
 	var tick1: Dictionary = driver.call("decide", _state(_merged(base, {
 		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
 		"is_sliding": false,
@@ -532,7 +872,10 @@ func test_steer_floor_stays_enforced_while_intent_remains_armed_across_ticks() -
 	assert_almost_eq(float(tick1.get("steer")), _kart.slide_min_steer, 0.0001)
 
 	# Tick 2: the real FSM has now started the slide; curvature still high.
-	# No new hop edge, but the floor must still hold the sustain threshold.
+	# No new hop edge, but the floor must still hold the sustain threshold --
+	# even though tick 1's OWN floored output (0.25) is now what damping
+	# blends the (still-tiny) raw value toward, the floor unconditionally
+	# re-asserts itself since the damped result still undershoots it.
 	var tick2: Dictionary = driver.call("decide", _state(_merged(base, {
 		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
 		"is_sliding": true,
@@ -558,19 +901,43 @@ func test_steer_floor_stays_enforced_while_intent_remains_armed_across_ticks() -
 	)
 
 	# Tick 4: curvature drops to/below slide_exit_curvature -- intent clears
-	# and the driver lets steer follow the natural (near-zero) line, which
-	# is what allows the real FSM's own sustain check to end the slide.
+	# and the floor releases, letting steer follow the (apex-adjusted) raw
+	# line filtered through damping -- NOT an instant snap to 0.0 anymore
+	# (CTR R6 Task 4): three prior ticks all returned exactly slide_min_steer
+	# (0.25), so tick 4's damping still carries a real fraction of that
+	# forward for exactly one more tick even though the floor itself no
+	# longer applies. Computed via the documented formula rather than
+	# hand-picked, so this stays a precise regression lock on both the apex
+	# and damping math, not just the floor's own release.
+	var curvature4: float = _ai.slide_exit_curvature
+	var blend_ratio4: float = clampf(absf(curvature4) * _ai.apex_entry_lookahead_m, 0.0, 1.0)
+	var apex_target4: float = signf(curvature4) * _ai.apex_offset_max_m
+	var raw4: float = _ai.steer_gain * (lerpf(0.0, apex_target4, blend_ratio4) / 1000.0)
+	var expected4: float = lerpf(_kart.slide_min_steer, raw4, 1.0 - _ai.steer_damping)
 	var tick4: Dictionary = driver.call("decide", _state(_merged(base, {
-		"curvature_ahead": _ai.slide_exit_curvature,
+		"curvature_ahead": curvature4,
 		"is_sliding": true,
 	})))
 	assert_almost_eq(
 		float(tick4.get("steer")),
-		0.0,
+		expected4,
 		0.0001,
-		"once curvature drops to slide_exit_curvature the floor must release and steer must follow the natural line"
+		"once curvature drops to slide_exit_curvature the floor must release, leaving the damped (apex-adjusted) natural line"
 	)
 	assert_false(bool(tick4.get("hop")))
+
+	# Tick 5: curvature stays low -- steer continues decaying toward the
+	# tiny natural (apex-adjusted) raw line as the floor's own influence
+	# fades out of the damping window, confirming tick 4 was not a fluke.
+	var tick5: Dictionary = driver.call("decide", _state(_merged(base, {
+		"curvature_ahead": curvature4,
+		"is_sliding": true,
+	})))
+	assert_lt(
+		absf(float(tick5.get("steer")) - raw4),
+		absf(float(tick4.get("steer")) - raw4),
+		"steer must keep converging toward the natural raw line on subsequent low-curvature ticks"
+	)
 
 
 # ---------------------------------------------------------------------------
@@ -1047,6 +1414,143 @@ func test_steer_still_works_without_item_tuning_configured() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Task 4 (CTR R6): PERSONALITY. AGGRESSION modulates the effective brake
+# threshold per slot_index; SKILL JITTER deterministically (NO RNG) gates
+# the boost tap per (slot_index, tick). Both must differentiate two slots'
+# decisions, and both must be exactly reproducible for the same slot.
+# ---------------------------------------------------------------------------
+
+
+func test_personality_aggression_raises_the_effective_brake_threshold_for_a_higher_slot() -> void:
+	# target_speed = top_speed * clamp(1 - gain*curvature, floor, 1), floored
+	# at this curvature (same hairpin magnitude the existing brake tests use).
+	var curvature: float = _ai.slide_trigger_curvature * 2.0
+	var target_speed: float = _kart.top_speed_mps * clampf(
+		1.0 - _ai.corner_speed_curvature_gain * curvature, _ai.corner_speed_floor_ratio, 1.0
+	)
+	var slot0_threshold: float = target_speed * _ai.brake_margin_ratio
+	var slot3_threshold: float = target_speed * (_ai.brake_margin_ratio + 3.0 * _ai.personality_aggression_step)
+	var speed_mps: float = (slot0_threshold + slot3_threshold) / 2.0
+	assert_true(
+		speed_mps > slot0_threshold and speed_mps < slot3_threshold,
+		"fixture sanity: the probe speed must sit strictly between the two slots' own brake thresholds"
+	)
+
+	var state := _state({
+		"position": Vector3.ZERO,
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"curvature_ahead": curvature,
+		"speed_mps": speed_mps,
+	})
+
+	var slot0_driver := _new_unconfigured_driver()
+	if slot0_driver == null:
+		return
+	slot0_driver.call("configure", _ai, _kart, _item, 0)
+	var slot0_result: Dictionary = slot0_driver.call("decide", state)
+
+	var slot3_driver := _new_unconfigured_driver()
+	if slot3_driver == null:
+		return
+	slot3_driver.call("configure", _ai, _kart, _item, 3)
+	var slot3_result: Dictionary = slot3_driver.call("decide", state)
+
+	assert_true(
+		bool(slot0_result.get("brake")),
+		"slot 0 (no aggression offset) must brake at a speed past its own unmodulated threshold"
+	)
+	assert_false(
+		bool(slot3_result.get("brake")),
+		"a more aggressive higher slot must tolerate the same speed without braking yet"
+	)
+
+
+func test_personality_is_deterministic_for_the_same_slot_across_separate_driver_instances() -> void:
+	var states: Array[Dictionary] = [
+		_state({
+			"position": Vector3.ZERO,
+			"forward": Vector3(0.0, 0.0, -1.0),
+			"lookahead_point": Vector3(3.0, 0.0, -10.0),
+			"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+			"is_sliding": true,
+			"boost_window_open": false,
+		}),
+		_state({
+			"position": Vector3.ZERO,
+			"forward": Vector3(0.0, 0.0, -1.0),
+			"lookahead_point": Vector3(3.0, 0.0, -10.0),
+			"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+			"is_sliding": true,
+			"boost_window_open": true,
+		}),
+	]
+
+	var driver_a := _new_unconfigured_driver()
+	var driver_b := _new_unconfigured_driver()
+	if driver_a == null or driver_b == null:
+		return
+	driver_a.call("configure", _ai, _kart, _item, 2)
+	driver_b.call("configure", _ai, _kart, _item, 2)
+
+	for state: Dictionary in states:
+		var result_a: Dictionary = driver_a.call("decide", state)
+		var result_b: Dictionary = driver_b.call("decide", state)
+		assert_almost_eq(float(result_a.get("steer")), float(result_b.get("steer")), 0.0001)
+		assert_eq(bool(result_a.get("brake")), bool(result_b.get("brake")))
+		assert_eq(bool(result_a.get("hop")), bool(result_b.get("hop")))
+		assert_eq(
+			bool(result_a.get("boost_tap")),
+			bool(result_b.get("boost_tap")),
+			"same slot_index, same state sequence -> identical boost_tap decisions every run"
+		)
+
+
+## Formula-replication regression lock: computes the SAME hash-based
+## confidence ai_driver.gd's own PERSONALITY section documents (Vector2i(
+## slot_index, tick_index) through Godot's own deterministic hash(), folded
+## via fmod/TAU) and asserts decide()'s actual boost_tap output matches what
+## that formula predicts for every slot in a wide sweep -- proving the
+## wiring genuinely GATES on confidence (both firing AND suppressing occur
+## in-range, ruling out an accidental always-true/always-false
+## implementation) rather than merely existing.
+func test_skill_jitter_gates_the_boost_tap_by_deterministic_per_slot_confidence() -> void:
+	var saw_fire := false
+	var saw_suppress := false
+	for slot_index in range(100):
+		var driver := _new_unconfigured_driver()
+		if driver == null:
+			return
+		driver.call("configure", _ai, _kart, _item, slot_index)
+		# The first decide() call after configure()/reset() uses tick_index
+		# 1 -- see ai_driver.gd's own decide() doc for why the counter is
+		# incremented before it is read.
+		var confidence: float = absf(fmod(float(hash(Vector2i(slot_index, 1))), TAU)) / TAU
+		var result: Dictionary = driver.call("decide", _state({
+			"is_sliding": true,
+			"boost_window_open": true,
+		}))
+		var fired := bool(result.get("boost_tap"))
+		assert_eq(
+			fired,
+			confidence >= _ai.personality_skill_jitter,
+			(
+				"slot %d: boost_tap must fire iff its deterministic confidence "
+				+ "(%s) >= personality_skill_jitter (%s)"
+			) % [slot_index, confidence, _ai.personality_skill_jitter]
+		)
+		saw_fire = saw_fire or fired
+		saw_suppress = saw_suppress or not fired
+
+	assert_true(saw_fire, "fixture sanity: at least one slot in this range must fire the tap")
+	assert_true(
+		saw_suppress,
+		"fixture sanity: at least one slot in this range must be suppressed by "
+		+ "skill jitter -- otherwise this test cannot distinguish 'gated' from 'always fires'"
+	)
+
+
+# ---------------------------------------------------------------------------
 # reset(): clears edge memory so a reused driver instance (e.g. after a
 # stuck-kart respawn, per Task 4's brief) can re-arm hop/boost edges for a
 # state it has technically already seen.
@@ -1157,6 +1661,11 @@ func _default_state() -> Dictionary:
 		"curvature_ahead": 0.0,
 		"lateral_target_m": 0.0,
 		"lateral_error_m": 0.0,
+		# Task 4 (CTR R6): the RAW slot target APEX LATERAL TARGETING blends
+		# from -- 0.0 by default so a straight-out-of-the-box _state() call
+		# (curvature_ahead 0.0 too) reduces to the pre-Task-4 lateral_error_m
+		# formula exactly (see the class doc's own STRAIGHTS paragraph).
+		"slot_lateral_target_m": 0.0,
 		"band_gap_m": 0.0,
 		# Task 5: neutral/"off" defaults -- nothing held (so no heuristic can
 		# fire regardless of the other three), no target ahead, but cooldown

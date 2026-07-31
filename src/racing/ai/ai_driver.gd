@@ -53,6 +53,18 @@ extends RefCounted
 ##   below needs), so it was a dead key with no consumer and has been
 ##   removed at the source rather than kept as unused bookkeeping.
 ##
+## CTR R6 Task 4 REINTRODUCES a raw slot-target key under a new name,
+## slot_lateral_target_m: float (default 0.0) -- NOT a revival of the dead
+## LOW-9 key: that one was removed because nothing consumed it; this one
+## has a real, new consumer (see the APEX LATERAL TARGETING section below).
+## The apex blend needs the slot's own RAW target (not just its error from
+## the kart's current position) because it interpolates the ABSOLUTE target
+## value itself (slot target -> apex target) as curvature rises, which
+## lateral_error_m alone cannot reconstruct (lateral_error_m = slot_target -
+## actual_lateral -- one equation, two unknowns). Every pre-Task-4 caller
+## that never populates this key gets slot_lateral_target_m = 0.0, which
+## still degrades gracefully (see APEX LATERAL TARGETING's own doc).
+##
 ## Task 5 (CTR R4 items) adds three more keys: held_item: StringName (
 ## &"missile"/&"shield"/&"turbo"/&"beaker" while an item is held, &"none"
 ## otherwise -- see item_slot.gd's own held_item() doc), target_gap_ahead_m:
@@ -95,15 +107,128 @@ extends RefCounted
 ## correction the slot offset needs -- the same units the pursuit term's
 ## angle is already in -- so multiplying by steer_gain applies exactly the
 ## same angle-to-steer conversion to both terms:
-##   lateral_term = steer_gain * (lateral_error_m / lookahead_distance_m)
-## raw_steer = pursuit_term + lateral_term, before the slide-floor
-## enforcement and final clamp below.
+##   lateral_term = steer_gain * (apex_adjusted_lateral_error_m / lookahead_distance_m)
+## (CTR R6 Task 4: apex_adjusted_lateral_error_m REPLACES the bare
+## lateral_error_m input here -- see APEX LATERAL TARGETING immediately
+## below for what adjusts it and why it collapses back to the original
+## lateral_error_m on a straight.)
+## raw_steer = pursuit_term + lateral_term. CTR R6 Task 4 inserts STEER
+## DAMPING between this raw_steer and the slide-floor enforcement (see that
+## section below for the ordering rationale) before the final clamp.
+##
+## APEX LATERAL TARGETING (Task 4, CTR R6: circuit polish -- smarter AI).
+## Blends the slot's own raw target (state.slot_lateral_target_m) toward a
+## curvature-driven "apex" target as the corner ahead tightens, so AI karts
+## converge onto a shared racing line through a bend and re-spread to their
+## own slots on the following straight, instead of holding a fixed lateral
+## offset through every corner regardless of how sharp it is:
+##   blend_ratio = clamp(absf(curvature_ahead) * ai.apex_entry_lookahead_m, 0.0, 1.0)
+##   apex_target_signed_m = signf(curvature_ahead) * ai.apex_offset_max_m
+##   blended_target_m = lerp(slot_lateral_target_m, apex_target_signed_m, blend_ratio)
+##   apex_adjusted_lateral_error_m = lateral_error_m + (blended_target_m - slot_lateral_target_m)
+## DERIVATION. curvature_ahead's own units are 1/m (see the SIGNED CURVATURE
+## CONTRACT below); ai.apex_entry_lookahead_m is a distance in m; their
+## product is therefore dimensionless, giving a clean 0..1 engagement ratio
+## with no separate literal needed -- blend_ratio reaches 1.0 (full apex
+## commitment) once the corner's own local radius (~1/curvature_ahead)
+## shrinks to roughly ai.apex_entry_lookahead_m, i.e. that field doubles as
+## "how tight a corner has to be before the AI fully commits to the apex
+## line," exactly the plan's own "ramped over apex_entry_lookahead" phrasing.
+## Multiplying that ratio through ai.apex_offset_max_m (rather than a second,
+## separate magnitude field) is the plan's own "no new literals beyond the
+## apex fields" constraint -- the SAME blend_ratio the engagement ramp uses
+## also scales the magnitude, so "ramp from 0 to apex_offset_max_m scaled by
+## |curvature|" and "engaged within apex_entry_lookahead_m" are one formula,
+## not two independent ones.
+## SIGN -- PIN WORLD-SIDE. apex_target_signed_m takes curvature_ahead's own
+## sign, the SAME sign _apply_slide_steer_floor already keys off of one
+## section down: positive curvature_ahead = a right-bending corner (per the
+## SIGNED CURVATURE CONTRACT below) = apex_target_signed_m positive = a
+## target to the kart's world-space right (per lateral_error_m's own "target
+## - actual, positive = kart's right" contract at the top of this file).
+## Verified against the REAL graybox loop's own East turn, not just the
+## algebra: test_ai_kart_agent.gd's own apex-sign test reads the East turn's
+## real wall geometry (Walls/SouthInner vs Walls/SouthOuter positions
+## relative to the south-straight centerline and its own right vector) and
+## proves the INNER wall -- the corner's own geometric inside -- sits on
+## that same world-space right side that this formula's positive sign
+## points to; the East turn itself is an independently-pinned RIGHT-bending
+## (positive-curvature) corner (test_track_spine.gd's own test against this
+## exact marker). So "apex side = inside of the corner" and "positive
+## curvature = positive apex lateral" are the SAME claim on this real track,
+## not two conventions that happen to agree by luck.
+## STRAIGHTS. At curvature_ahead == 0.0: blend_ratio == 0.0 unconditionally
+## (regardless of apex_target_signed_m's own value, since signf(0.0) is also
+## 0.0 -- an edge case that never needs its own fallback here the way
+## _apply_slide_steer_floor's sign(0.0) does, because a zero blend_ratio
+## already zeroes out whatever sign apex_target_signed_m would have taken),
+## so lerp(slot_lateral_target_m, apex_target_signed_m, 0.0) returns
+## slot_lateral_target_m exactly and apex_adjusted_lateral_error_m collapses
+## to the original lateral_error_m -- "straights -> back to slot offsets,
+## karts spread again" falls out of the formula rather than needing a
+## separate straight-line special case.
+## GRACEFUL DEGRADE. A caller that never populates slot_lateral_target_m
+## (default 0.0, see the INPUT STATE section above) still gets a sensibly-
+## signed apex pull toward apex_target_signed_m -- the (blended_target_m -
+## slot_lateral_target_m) delta just no longer nets out to exactly
+## slot_lateral_target_m's own contribution at partial engagement, the same
+## "everything still works, just slightly less precisely" degrade this
+## file's other optional-input paragraphs already establish as the norm.
+##
+## STEER DAMPING (Task 4, CTR R6). raw_steer (pursuit + apex-adjusted
+## lateral) is low-pass filtered before anything else touches it:
+##   steer_after_damping = lerp(_prev_steer_output, raw_steer, 1.0 - ai.steer_damping)
+## i.e. an exponential moving average with smoothing factor ai.steer_damping
+## (higher = more inertia, more smoothing) -- the R3 final review measured
+## this driver's undamped steer regressing (reversing the kart's own net
+## spine progress tick-to-tick, see AiKartAgent's STUCK DETECTION doc for
+## what "regressing" means here) on 7-28% of ticks through the graybox
+## loop's East turn, i.e. real, measurable oscillation against the inner
+## wall, not a cosmetic jitter.
+## COLD START. _has_prev_steer_output starts false (a fresh driver, or one
+## just reset() -- see below) and the FIRST decide() call after either
+## returns raw_steer completely unfiltered (no artificial ramp-up from a
+## phantom zero prior output) -- this is what keeps every pre-Task-4 single-
+## call test in this suite passing unchanged, and it is also the physically
+## correct behavior: a kart that just spawned or was just teleported by the
+## stuck-respawn safety net has no meaningful "previous tick" to smooth
+## against, and blending toward a stale pre-respawn value would be a bug,
+## not a feature.
+## ORDERING VS. THE SLIDE FLOOR -- THE FLOOR APPLIES AFTER DAMPING, NOT
+## BEFORE. _apply_slide_steer_floor's whole job (see FLOOR DIRECTION below)
+## is to GUARANTEE |steer| >= kart.slide_min_steer on every tick intent
+## stays armed, unconditionally, because DriftStateMachine reads that exact
+## per-tick value to decide whether to start/keep sustaining a real slide --
+## a guarantee the low-pass filter must never be allowed to soften. Applying
+## damping to the RAW value and then flooring the damped result (this
+## driver's actual order) preserves that guarantee exactly: whatever the
+## damped value came out to, if its magnitude undershoots the floor, the
+## floor still unconditionally corrects it to exactly ai.kart_tuning.
+## slide_min_steer with curvature_ahead's own sign, every single tick.
+## Flooring FIRST and damping SECOND would break the guarantee instead: the
+## floor's own output from one tick would immediately get re-blended toward
+## whatever raw_steer (potentially near zero, or the wrong sign entirely
+## after a corner reversal) the NEXT tick produces, capable of dragging the
+## post-floor, post-damping value back UNDER slide_min_steer or even
+## flipping its sign -- silently breaking DriftStateMachine's own start/
+## sustain contract on exactly the ticks it matters most (see
+## test_slide_floor_overrides_damping_even_after_a_large_opposite_prior_tick
+## in test_ai_driver.gd for a worked case: a large opposite-signed prior
+## output, damped-then-floored still lands exactly on the guarantee;
+## floored-then-damped would not). _prev_steer_output is updated to the
+## FINAL returned value (post-floor, post-clamp) at the end of every
+## decide() call, not the pre-floor raw/damped value -- so damping always
+## smooths toward what the kart was ACTUALLY commanded last tick (including
+## any floor bump), never a value that was silently overridden before ever
+## reaching the caller.
 ##
 ## CORNERING / BRAKE. target_speed = kart.top_speed_mps * clamp(1 -
 ## ai.corner_speed_curvature_gain * absf(curvature_ahead),
 ## ai.corner_speed_floor_ratio, 1.0); brake = speed_mps > target_speed *
-## ai.brake_margin_ratio. absf() because how tight a corner is (and how
-## hard to brake for it) does not depend on which way it turns.
+## effective_brake_margin_ratio, where effective_brake_margin_ratio =
+## ai.brake_margin_ratio + slot_index * ai.personality_aggression_step (see
+## the PERSONALITY section below) -- absf() because how tight a corner is
+## (and how hard to brake for it) does not depend on which way it turns.
 ##
 ## SLIDE (hop) COUPLING. absf(curvature_ahead) crossing
 ## slide_trigger_curvature (from below) while not already sliding arms
@@ -181,15 +306,61 @@ extends RefCounted
 ##
 ## BOOST TAP. Fires on the RISING EDGE of state.boost_window_open (false on
 ## the previous decide() call, true on this one) while state.is_sliding is
-## true and ai.boost_tap_enabled is truthy (>= 1.0 -- the tuning field is a
-## 0/1 float flag, not a real bool, per the brief). Edge-gated rather than
-## "true for as long as the window stays open" for the same reason hop is:
-## a caller translating boost_tap=true into a real boost_tap() call every
-## tick the window stays open would tap far more often than CTR's
+## true, ai.boost_tap_enabled is truthy (>= 1.0 -- the tuning field is a
+## 0/1 float flag, not a real bool, per the brief), AND (Task 4, CTR R6)
+## this tick's per-(slot, tick) confidence value clears ai.personality_
+## skill_jitter -- see PERSONALITY below for exactly how confidence is
+## computed and why this is the one output it modulates. Edge-gated rather
+## than "true for as long as the window stays open" for the same reason hop
+## is: a caller translating boost_tap=true into a real boost_tap() call
+## every tick the window stays open would tap far more often than CTR's
 ## one-tap-per-window model intends (and if a window's open_s is ever
 ## authored as 0.0, the real FSM would otherwise re-open the very next
 ## stage's window before this driver's next tick and get tapped again
-## immediately). _prev_boost_window_open is the edge memory.
+## immediately). _prev_boost_window_open is the edge memory. A tick whose
+## confidence check fails still advances _prev_boost_window_open normally
+## (this is a gate on the EDGE firing, not on whether the edge is tracked) --
+## so a "missed" window does not somehow re-arm and fire late on a later
+## tick of the same still-open window; it is simply skipped, the same "a
+## less confident AI misses the window entirely" a real human's own
+## mistimed thumb would produce.
+##
+## PERSONALITY (Task 4, CTR R6: circuit polish -- smarter AI). Two slot-
+## indexed, per-driver-lifetime scalars (slot_index is supplied once at
+## configure() time, see below -- it never changes tick to tick, the same
+## "constant across this driver's life" shape ai_tuning/kart_tuning/item_
+## tuning already have):
+##   AGGRESSION. effective_brake_margin_ratio = ai.brake_margin_ratio +
+##   slot_index * ai.personality_aggression_step (see CORNERING / BRAKE
+##   above) -- a higher slot index tolerates a higher speed-over-target
+##   multiple before braking, i.e. brakes later and carries more corner
+##   speed. Purely a function of slot_index and tuning, so it is IDENTICAL
+##   every tick and every run for a given slot -- no separate per-tick state
+##   to track.
+##   SKILL JITTER. A per-(slot_index, tick) DETERMINISTIC pseudo-noise
+##   confidence value gates the boost tap (see BOOST TAP above) -- NO
+##   RandomNumberGenerator, NO randf()/randi(), and no seed to manage,
+##   because "same slot -> same behavior every run" (the brief's own
+##   determinism requirement) rules out anything stateful/seeded:
+##     confidence = absf(fmod(float(hash(Vector2i(slot_index, _tick_index))), TAU)) / TAU
+##   hash() is Godot's own built-in deterministic Variant hash (used
+##   internally for Dictionary/Set keys) -- a pure function of its input,
+##   not a random-number source, so the SAME (slot_index, _tick_index) pair
+##   always hashes to the SAME int, on every call, every run. fmod(..., TAU)
+##   folds that (signed, wide-range) int down to a bounded span using only
+##   Godot's own built-in TAU constant (no new tuning literal, no bare
+##   numeric-literal gain -- see this file's own no-bare-literal
+##   convention), and dividing by TAU normalizes to [0.0, 1.0). The tap
+##   fires only when confidence >= ai.personality_skill_jitter -- so
+##   personality_skill_jitter reads directly as "the per-tick probability
+##   this slot fumbles the tap," despite involving no actual randomness.
+##   _tick_index is a plain per-driver counter, incremented once per
+##   decide() call (see reset()'s own doc for why it is edge memory too):
+##   using it rather than a wall-clock delta_s keeps this driver's own "pure
+##   function of state + internal edge memory, no delta_s parameter" shape
+##   (see the CALL CONTRACT section above) intact, and keeps confidence
+##   reproducible from a fresh configure()/reset() regardless of real frame
+##   timing.
 ##
 ## RUBBER BAND. speed_scale = 1.0 + ai.rubber_band_boost_max_ratio *
 ## clamp(band_gap_m / ai.rubber_band_full_gap_m, 0.0, 1.0) when
@@ -283,6 +454,13 @@ var _kart_tuning: KartTuning
 # Task 5 (CTR R4 items): OPTIONAL -- see configure()'s own doc and the class
 # doc's item_tuning paragraph for the graceful-degrade contract this enables.
 var _item_tuning: ItemTuning
+# Task 4 (CTR R6): this driver's own constant identity for the whole of its
+# life -- see the class doc's PERSONALITY section. Defaults to 0 (the
+# player's own conventional slot, see ai_kart_agent.gd's LATERAL SLOT
+# CENTERING doc) for every pre-Task-4 caller that never passes one, which
+# reads as "no aggression offset, slot-0 confidence" -- a harmless neutral,
+# not a crash or a fail-closed path.
+var _slot_index: int
 
 var _intending_slide: bool
 var _was_intending_slide: bool
@@ -291,30 +469,57 @@ var _prev_boost_window_open: bool
 # HEURISTICS section.
 var _intending_item_use: bool
 var _was_intending_item_use: bool
+# Task 4 (CTR R6): STEER DAMPING's own edge memory -- see that section's
+# COLD START paragraph. _prev_steer_output only means something once
+# _has_prev_steer_output is true; reading it beforehand would blend toward
+# a meaningless zero.
+var _prev_steer_output: float
+var _has_prev_steer_output: bool
+# Task 4 (CTR R6): PERSONALITY's own skill-jitter tick counter -- see that
+# section's own doc for why a plain per-decide()-call counter is used
+# instead of a wall-clock delta_s.
+var _tick_index: int
 
 
 ## item_tuning is OPTIONAL (default null) -- see the class doc's own
 ## item_tuning paragraph for exactly what degrades (only the missile
 ## heuristic) versus what does not (everything else, including every
-## pre-Task-5 output) when it is left unset.
+## pre-Task-5 output) when it is left unset. slot_index (Task 4, CTR R6) is
+## OPTIONAL too (default 0) -- see the class doc's PERSONALITY section and
+## the _slot_index field doc immediately above for what a default of 0
+## means for every pre-Task-4 caller.
 func configure(
-	ai_tuning: AiTuning, kart_tuning: KartTuning, item_tuning: ItemTuning = null
+	ai_tuning: AiTuning,
+	kart_tuning: KartTuning,
+	item_tuning: ItemTuning = null,
+	slot_index: int = 0
 ) -> void:
 	_ai_tuning = ai_tuning
 	_kart_tuning = kart_tuning
 	_item_tuning = item_tuning
+	_slot_index = slot_index
 
 
 ## Clears all per-tick edge memory (slide intent + boost-window edge + Task
-## 5's own use_item intent) without touching the configured tuning
-## references. See the class doc's STATEFUL ACROSS TICKS section for when a
-## caller needs this.
+## 5's own use_item intent + Task 4's own steer-damping/skill-jitter tick
+## state) without touching the configured tuning references or slot_index
+## (that is this driver's constant identity, not edge memory -- unaffected
+## by reset() the same way _ai_tuning/_kart_tuning/_item_tuning already are).
+## See the class doc's STATEFUL ACROSS TICKS section for when a caller needs
+## this -- Task 4's own STEER DAMPING/COLD START paragraph is why a stuck-
+## kart respawn (ai_kart_agent.gd's own _respawn(), which already calls this)
+## must also clear _has_prev_steer_output: a kart teleported onto a fresh
+## line has no business smoothing its first post-respawn tick toward
+## whatever it was doing right before it got stuck.
 func reset() -> void:
 	_intending_slide = false
 	_was_intending_slide = false
 	_prev_boost_window_open = false
 	_intending_item_use = false
 	_was_intending_item_use = false
+	_prev_steer_output = 0.0
+	_has_prev_steer_output = false
+	_tick_index = 0
 
 
 func decide(state: Dictionary) -> Dictionary:
@@ -334,14 +539,24 @@ func decide(state: Dictionary) -> Dictionary:
 	var curvature_ahead: float = state.get("curvature_ahead", 0.0)
 	var lateral_error_m: float = state.get("lateral_error_m", 0.0)
 	var band_gap_m: float = state.get("band_gap_m", 0.0)
+	# Task 4 (CTR R6) -- see the class doc's APEX LATERAL TARGETING section
+	# and the INPUT STATE section's own slot_lateral_target_m paragraph.
+	var slot_lateral_target_m: float = state.get("slot_lateral_target_m", 0.0)
 	# Task 5 (CTR R4 items) -- see the class doc's ITEM USE HEURISTICS
 	# section.
 	var held_item: StringName = state.get("held_item", &"none")
 	var target_gap_ahead_m: float = state.get("target_gap_ahead_m", INF)
 	var item_cooldown_ready: bool = state.get("item_cooldown_ready", false)
 
+	# Task 4 (CTR R6): PERSONALITY's own tick counter -- incremented once per
+	# decide() call, BEFORE it is read below, so the very first post-
+	# configure()/reset() call uses tick 1, never tick 0 (an off-by-one that
+	# would otherwise make _tick_index's very first meaningful value
+	# indistinguishable from its own zeroed reset() state).
+	_tick_index += 1
+
 	var steer := _steer_for(
-		position, forward, lookahead_point, lateral_error_m, curvature_ahead
+		position, forward, lookahead_point, lateral_error_m, slot_lateral_target_m, curvature_ahead
 	)
 
 	var hop := _intending_slide and not _was_intending_slide and not is_sliding
@@ -352,13 +567,23 @@ func decide(state: Dictionary) -> Dictionary:
 		_ai_tuning.corner_speed_floor_ratio,
 		1.0
 	)
-	var brake := speed_mps > target_speed * _ai_tuning.brake_margin_ratio
+	# Task 4 (CTR R6): PERSONALITY's own AGGRESSION scalar -- see the class
+	# doc's CORNERING / BRAKE and PERSONALITY sections.
+	var effective_brake_margin_ratio: float = (
+		_ai_tuning.brake_margin_ratio
+		+ float(_slot_index) * _ai_tuning.personality_aggression_step
+	)
+	var brake := speed_mps > target_speed * effective_brake_margin_ratio
 
+	# Task 4 (CTR R6): PERSONALITY's own SKILL JITTER confidence gate -- see
+	# the class doc's BOOST TAP and PERSONALITY sections.
+	var confident := _skill_confidence(_slot_index, _tick_index) >= _ai_tuning.personality_skill_jitter
 	var boost_tap := (
 		is_sliding
 		and boost_window_open
 		and not _prev_boost_window_open
 		and _ai_tuning.boost_tap_enabled >= 1.0
+		and confident
 	)
 	_prev_boost_window_open = boost_window_open
 
@@ -416,12 +641,16 @@ func _item_heuristic_satisfied(
 ## doc's SLIDE (hop) COUPLING section) -- steering and slide-intent share
 ## the same curvature reading each tick, so they are resolved together
 ## here rather than the caller having to thread curvature_ahead through
-## twice.
+## twice. Task 4 (CTR R6) inserts two more steps between the raw pursuit+
+## lateral value and the final clamp -- see the class doc's APEX LATERAL
+## TARGETING and STEER DAMPING sections for what each does and, for
+## damping, exactly why it runs BEFORE the slide floor rather than after.
 func _steer_for(
 	position: Vector3,
 	forward: Vector3,
 	lookahead_point: Vector3,
 	lateral_error_m: float,
+	slot_lateral_target_m: float,
 	curvature_ahead: float
 ) -> float:
 	var flat_forward := Vector3(forward.x, 0.0, forward.z)
@@ -434,8 +663,11 @@ func _steer_for(
 	if lookahead_distance_m > 0.0:
 		var angle := flat_forward.signed_angle_to(flat_to_target, Vector3.UP)
 		var pursuit_term := -angle * _ai_tuning.steer_gain
+		var apex_adjusted_lateral_error_m := _apex_adjusted_lateral_error_m(
+			lateral_error_m, slot_lateral_target_m, curvature_ahead
+		)
 		var lateral_term := _ai_tuning.steer_gain * (
-			lateral_error_m / lookahead_distance_m
+			apex_adjusted_lateral_error_m / lookahead_distance_m
 		)
 		raw_steer = pursuit_term + lateral_term
 
@@ -444,10 +676,52 @@ func _steer_for(
 	elif absf(curvature_ahead) <= _ai_tuning.slide_exit_curvature:
 		_intending_slide = false
 
-	var steer := raw_steer
+	var damped_steer := _apply_steer_damping(raw_steer)
+
+	var steer := damped_steer
 	if _intending_slide:
 		steer = _apply_slide_steer_floor(steer, curvature_ahead)
-	return clampf(steer, -1.0, 1.0)
+	steer = clampf(steer, -1.0, 1.0)
+
+	# See the class doc's STEER DAMPING section: _prev_steer_output tracks
+	# the FINAL (post-floor, post-clamp) value actually returned, never the
+	# pre-floor raw/damped intermediate -- damping must always smooth toward
+	# what the kart was ACTUALLY commanded last tick.
+	_prev_steer_output = steer
+	_has_prev_steer_output = true
+	return steer
+
+
+## See the class doc's APEX LATERAL TARGETING section for the full
+## derivation (dimensional analysis, the "no snap, straights fall out for
+## free" properties, and the world-side sign pin against the real graybox
+## loop's East turn).
+func _apex_adjusted_lateral_error_m(
+	lateral_error_m: float, slot_lateral_target_m: float, curvature_ahead: float
+) -> float:
+	var blend_ratio := clampf(
+		absf(curvature_ahead) * _ai_tuning.apex_entry_lookahead_m, 0.0, 1.0
+	)
+	var apex_target_signed_m := signf(curvature_ahead) * _ai_tuning.apex_offset_max_m
+	var blended_target_m := lerpf(slot_lateral_target_m, apex_target_signed_m, blend_ratio)
+	return lateral_error_m + (blended_target_m - slot_lateral_target_m)
+
+
+## See the class doc's STEER DAMPING section for the cold-start rationale
+## (no prior tick to smooth against yet) and why the slide floor is applied
+## by the CALLER after this, never before.
+func _apply_steer_damping(raw_steer: float) -> float:
+	if not _has_prev_steer_output:
+		return raw_steer
+	return lerpf(_prev_steer_output, raw_steer, 1.0 - _ai_tuning.steer_damping)
+
+
+## See the class doc's PERSONALITY section's own SKILL JITTER paragraph for
+## the full derivation of this NO-RNG, deterministic-per-(slot, tick) hash
+## normalization.
+func _skill_confidence(slot_index: int, tick_index: int) -> float:
+	var raw_hash: int = hash(Vector2i(slot_index, tick_index))
+	return absf(fmod(float(raw_hash), TAU)) / TAU
 
 
 ## Bumps |steer| up to kart.slide_min_steer whenever the natural
@@ -456,7 +730,10 @@ func _steer_for(
 ## from raw_steer and not from any remembered steer history -- see the
 ## class doc's FLOOR DIRECTION section (fix round 1, [HIGH]) for why
 ## history was the bug. A raw_steer that already meets or exceeds the
-## floor is returned unchanged, sign and all.
+## floor is returned unchanged, sign and all. Task 4 (CTR R6): "raw_steer"
+## here is actually the DAMPED value by the time this is called -- see the
+## class doc's STEER DAMPING/ORDERING VS. THE SLIDE FLOOR section for why
+## that order is load-bearing.
 func _apply_slide_steer_floor(steer: float, curvature_ahead: float) -> float:
 	var floor_mag: float = _kart_tuning.slide_min_steer
 	if absf(steer) >= floor_mag:

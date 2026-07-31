@@ -50,3 +50,47 @@ extends Resource
 @export var respawn_stuck_speed_mps: float
 @export var respawn_stuck_after_s: float
 @export var respawn_drop_gap_m: float
+
+# Task 4 (CTR R6: circuit polish -- smarter AI). See ai_driver.gd's own
+# APEX LATERAL TARGETING/STEER DAMPING/PERSONALITY sections for exactly how
+# each of these five fields is consumed; added to the ALREADY-SHIPPED "ai"
+# section as one migration cohort (tuning_service.gd's own
+# LEGACY_FIELD_GROUPS_BY_SECTION[&"ai"]), the same "new fields on an
+# existing section" shape kart.tres's own body-tint fields used one task
+# earlier -- NOT a brand-new section (that shape is fx_tuning.gd's own, see
+# its doc contrasting the two paths).
+@export_category("Apex")
+## Maximum lateral shift (meters), toward the corner's own geometric inside,
+## at full apex engagement -- see ai_driver.gd's APEX LATERAL TARGETING
+## section for the signed-curvature-derived "which side is inside" contract.
+@export var apex_offset_max_m: float
+## Engagement distance (meters) the apex blend ramps in over: blend_ratio =
+## clamp(absf(curvature_ahead) * apex_entry_lookahead_m, 0.0, 1.0) --
+## curvature's own units (1/m) paired with this distance (m) give a
+## dimensionless engagement ratio, so this doubles as "the corner radius (in
+## meters) at which the AI is fully committed to the apex line." See ai_
+## driver.gd's own APEX LATERAL TARGETING section for the full derivation.
+@export var apex_entry_lookahead_m: float
+
+@export_category("Damping")
+## Low-pass coefficient in (0.0, 1.0) exclusive: steer_new = lerp(prev_
+## steer_output, raw_steer, 1.0 - steer_damping) -- see ai_driver.gd's own
+## STEER DAMPING section for the cold-start/ordering-vs-the-slide-floor
+## contract. Bounded exclusive of both ends for the same reason the rubber-
+## band ratios are: 0.0 would defeat the whole feature (no smoothing at
+## all) and 1.0 would freeze steer at its previous output forever (the
+## kart could never actually turn).
+@export var steer_damping: float
+
+@export_category("Personality")
+## Per-slot brake-threshold step (see ai_driver.gd's PERSONALITY section):
+## effective_brake_margin_ratio = brake_margin_ratio + slot_index *
+## personality_aggression_step -- a higher slot index brakes later (tolerates
+## a higher speed-over-target multiple before braking).
+@export var personality_aggression_step: float
+## Per-(slot, tick) deterministic miss-probability in (0.0, 1.0) exclusive
+## for the boost tap -- see ai_driver.gd's own PERSONALITY section for the
+## NO-RNG hash-based confidence this gates against. Bounded exclusive for the
+## same reason steer_damping is: 0.0 would defeat the feature (jitter never
+## suppresses anything) and 1.0 would suppress every tap unconditionally.
+@export var personality_skill_jitter: float

@@ -124,6 +124,19 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"kart_tint_slot_5",
 		],
 	],
+	# CTR R6 Task 4: apex/damping/personality fields, added to the already-
+	# shipped ai section as ONE cohort -- mirrors kart's own body-tint entry
+	# immediately above (an override.tres saved before this task exists
+	# would be missing all five at once, never some subset).
+	&"ai": [
+		[
+			&"apex_offset_max_m",
+			&"apex_entry_lookahead_m",
+			&"steer_damping",
+			&"personality_aggression_step",
+			&"personality_skill_jitter",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -634,6 +647,20 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or ai.respawn_stuck_speed_mps <= 0.0
 		or ai.respawn_stuck_after_s <= 0.0
 		or ai.respawn_drop_gap_m <= 0.0
+		# Task 4 (CTR R6: circuit polish -- smarter AI). apex_offset_max_m/
+		# apex_entry_lookahead_m are plain magnitude/distance fields (same
+		# "strictly positive, no upper bound" shape as steer_gain/lateral_
+		# slot_spacing_m above); personality_aggression_step the same. steer_
+		# damping/personality_skill_jitter are ratio-typed exactly like the
+		# rubber-band caps above -- bounded (0.0, 1.0) exclusive, see ai_
+		# tuning.gd's own doc comment on each for why both ends are rejected.
+		or ai.apex_offset_max_m <= 0.0
+		or ai.apex_entry_lookahead_m <= 0.0
+		or ai.steer_damping <= 0.0
+		or ai.steer_damping >= 1.0
+		or ai.personality_aggression_step <= 0.0
+		or ai.personality_skill_jitter <= 0.0
+		or ai.personality_skill_jitter >= 1.0
 	):
 		return false
 

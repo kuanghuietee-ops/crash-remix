@@ -3238,6 +3238,12 @@ const AI_STRICTLY_POSITIVE_FIELDS_EXCLUDING_FLAGS: Array[StringName] = [
 	&"respawn_stuck_speed_mps",
 	&"respawn_stuck_after_s",
 	&"respawn_drop_gap_m",
+	# CTR R6 Task 4: plain magnitude/distance/step fields, same "strictly
+	# positive, no upper bound" shape as steer_gain/lateral_slot_spacing_m
+	# above -- see ai_tuning.gd's own doc comment on each.
+	&"apex_offset_max_m",
+	&"apex_entry_lookahead_m",
+	&"personality_aggression_step",
 ]
 # Bounded to (0.0, 1.0] -- see AiTuning.corner_speed_floor_ratio's doc
 # comment: it clamps the low end of a multiplier whose high end is fixed at
@@ -3247,9 +3253,14 @@ const AI_INCLUSIVE_UNIT_RATIO_FIELDS: Array[StringName] = [
 ]
 # Bounded to (0.0, 1.0) exclusive per the design brief -- unlike the kart/
 # race ratio fields (which accept exactly 1.0), these two must reject 1.0.
+# CTR R6 Task 4: steer_damping/personality_skill_jitter join this bucket --
+# see ai_tuning.gd's own doc comment on each for why both ends are rejected
+# (0.0 defeats the feature, 1.0 makes it total/unconditional).
 const AI_EXCLUSIVE_UNIT_RATIO_FIELDS: Array[StringName] = [
 	&"rubber_band_boost_max_ratio",
 	&"rubber_band_drag_max_ratio",
+	&"steer_damping",
+	&"personality_skill_jitter",
 ]
 
 
@@ -3266,6 +3277,13 @@ func test_service_catalog_exposes_ai_section() -> void:
 	assert_eq(ai.get("opponent_count"), 5.0)
 	assert_eq(ai.get("boost_tap_enabled"), 1.0)
 	assert_eq(ai.get("rubber_band_full_gap_m"), 60.0)
+	# CTR R6 Task 4: the five new apex/damping/personality fields, per the
+	# plan's own authored defaults.
+	assert_eq(ai.get("apex_offset_max_m"), 4.0)
+	assert_eq(ai.get("apex_entry_lookahead_m"), 18.0)
+	assert_eq(ai.get("steer_damping"), 0.35)
+	assert_eq(ai.get("personality_aggression_step"), 0.15)
+	assert_eq(ai.get("personality_skill_jitter"), 0.08)
 
 
 func test_fingerprint_moves_when_an_ai_value_changes() -> void:
@@ -3284,6 +3302,95 @@ func test_fingerprint_moves_when_an_ai_value_changes() -> void:
 		service.call("fingerprint"),
 		before,
 		"ai values never reach the tuning fingerprint"
+	)
+
+
+# CTR R6 Task 4: a dedicated fingerprint check on the new apex_offset_max_m
+# field -- test_fingerprint_moves_when_an_ai_value_changes above already
+# proves the ai section generically reaches the fingerprint (via steer_
+# gain), but a NEW field could in principle be missed if it were somehow
+# excluded from the generic per-section export walk (e.g. a typo'd
+# @export), so this pins the new field specifically rather than trusting
+# the generic mechanism alone.
+func test_fingerprint_moves_when_apex_offset_max_m_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	ai.set("apex_offset_max_m", float(ai.get("apex_offset_max_m")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"apex_offset_max_m never reaches the tuning fingerprint"
+	)
+
+
+# CTR R6 Task 4: apex_offset_max_m/apex_entry_lookahead_m/steer_damping/
+# personality_aggression_step/personality_skill_jitter were added to the
+# already-shipped ai section as ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's
+# &"ai" entry) -- mirrors test_old_kart_override_backfills_the_body_tint_
+# field_group's own shape one section up: an override.tres saved before
+# this task exists would be missing all five at once (every field still
+# reading its script default, since ResourceSaver omits default-valued
+# fields), and migration must restore all five together while leaving an
+# unrelated, already-edited field (steer_gain) untouched.
+func test_old_ai_override_backfills_the_apex_damping_personality_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var new_fields: Array[StringName] = [
+		&"apex_offset_max_m",
+		&"apex_entry_lookahead_m",
+		&"steer_damping",
+		&"personality_aggression_step",
+		&"personality_skill_jitter",
+	]
+	for field: StringName in new_fields:
+		assert_true(
+			_exported_property_names(authored.ai).has(field),
+			"the apex/damping/personality fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := AiTuning.new()
+	for field: StringName in new_fields:
+		stale.ai.set(field, defaults.get(field))
+	stale.ai.steer_gain = 3.3
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in new_fields:
+		assert_eq(
+			migrated.ai.get(field),
+			authored.ai.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.ai.steer_gain,
+		3.3,
+		0.0001,
+		"migration must preserve existing ai edits"
 	)
 
 

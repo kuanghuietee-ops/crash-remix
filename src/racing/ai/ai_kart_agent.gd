@@ -62,21 +62,28 @@ extends Node
 ##   _lateral_target_m is this slot's own centered offset from the pursuit
 ##   line, computed once in configure() (see _compute_lateral_target_m())
 ##   since slot_index/ai_tuning never change per tick -- fix-wave LOW-9: this
-##   private field is NOT itself included as a separate "lateral_target_m"
-##   key in the assembled state Dictionary below. It used to be, but ai_
-##   driver.gd's own INPUT STATE doc already says that key is "not read
-##   here, lateral_error_m already carries what this driver needs" -- a
-##   dead key with no consumer, removed rather than kept as unused
-##   bookkeeping (see ai_driver.gd's own doc, updated to match). actual_
-##   lateral_m is the perpendicular projection of (kart_pos -
-##   centerline_point) onto the CURRENT tangent's own "right" vector
-##   (tangent.cross(Vector3.UP) -- the same right-hand identity
-##   kart_motor.gd's own velocity() uses: for the default facing (0,0,-1),
-##   forward.cross(UP) = (1,0,0) = world +X = Godot's own basis.x for an
-##   identity transform, i.e. "right" by the same convention steer's own
-##   +right sign already uses). Positive lateral_error_m therefore means
-##   the target slot sits to the kart's world-space right, satisfying
-##   ai_driver.gd's own documented sign requirement for this value.
+##   private field was NOT itself included as a separate "lateral_target_m"
+##   key in the assembled state Dictionary below at the time (ai_driver.gd's
+##   own INPUT STATE doc said that key was "not read here, lateral_error_m
+##   already carries what this driver needs" -- a dead key with no
+##   consumer, removed rather than kept as unused bookkeeping). Task 4 (CTR
+##   R6) REINTRODUCES it under a new name and a real consumer -- see the
+##   slot_lateral_target_m paragraph below. actual_lateral_m is the
+##   perpendicular projection of (kart_pos - centerline_point) onto the
+##   CURRENT tangent's own "right" vector (tangent.cross(Vector3.UP) -- the
+##   same right-hand identity kart_motor.gd's own velocity() uses: for the
+##   default facing (0,0,-1), forward.cross(UP) = (1,0,0) = world +X =
+##   Godot's own basis.x for an identity transform, i.e. "right" by the same
+##   convention steer's own +right sign already uses). Positive
+##   lateral_error_m therefore means the target slot sits to the kart's
+##   world-space right, satisfying ai_driver.gd's own documented sign
+##   requirement for this value.
+## - slot_lateral_target_m (Task 4, CTR R6) = _lateral_target_m itself, RAW
+##   (pre-error-subtraction) -- see ai_driver.gd's own INPUT STATE and APEX
+##   LATERAL TARGETING sections for why the apex blend needs the raw slot
+##   target in addition to lateral_error_m (one equation, two unknowns:
+##   lateral_error_m alone cannot reconstruct both the target and the
+##   kart's actual position from a single subtraction).
 ## - band_gap_m = player_progress_getter.call() - follower.total_progress_m()
 ##   (positive = this kart is behind the player) -- SEAM-SAFE by
 ##   construction since both sides of the subtraction are continuous
@@ -421,7 +428,10 @@ func configure(
 	_kart_length_m = extents.z
 
 	_driver = AiDriverType.new()
-	_driver.configure(ai_tuning, kart_tuning, item_tuning)
+	# Task 4 (CTR R6): slot_index forwarded straight through -- see ai_
+	# driver.gd's own class doc PERSONALITY section for what it unlocks
+	# (aggression/skill-jitter, both deterministic functions of this value).
+	_driver.configure(ai_tuning, kart_tuning, item_tuning, slot_index)
 
 	_follower = SpineFollowerType.new()
 	_follower.configure(spine.length_m())
@@ -535,6 +545,11 @@ func _assemble_state(kart_pos: Vector3, progress: float) -> Dictionary:
 		"lookahead_point": lookahead_point,
 		"curvature_ahead": curvature_ahead,
 		"lateral_error_m": lateral_error_m,
+		# Task 4 (CTR R6): the RAW slot target (not the error) -- see ai_
+		# driver.gd's own INPUT STATE section (slot_lateral_target_m
+		# paragraph) and APEX LATERAL TARGETING section for why the apex
+		# blend needs this in addition to lateral_error_m.
+		"slot_lateral_target_m": _lateral_target_m,
 		"band_gap_m": band_gap_m,
 		# Task 5 (CTR R4 items) -- see the class doc's ITEM WIRING section.
 		"held_item": _held_item(),
