@@ -250,18 +250,21 @@ func test_hop_released_forwards_to_controller() -> void:
 	assert_eq(controller.hop_released_calls, 1)
 
 
-## R4 Task 2 (CTR item loop): apply_item_pressed() routes straight to
+## R4 Task 2/4 (CTR item loop): apply_item_pressed() routes straight to
 ## controller.use_item() -- see racing_input_adapter.gd's own doc for why
-## there is no matching apply_item_released().
-func test_item_pressed_forwards_to_controller_use_item() -> void:
+## there is no matching apply_item_released() -- and (R4 Task 4) returns
+## whatever use_item() handed back, so RaceSession can route the used
+## item's name through its own shared dispatch (dispatch_item_use()).
+func test_item_pressed_forwards_to_controller_use_item_and_returns_its_result() -> void:
 	var adapter := _new_adapter()
 	if adapter == null:
 		return
 	var controller := FakeKartController.new()
 
-	adapter.call("apply_item_pressed", controller)
+	var used_item: StringName = adapter.call("apply_item_pressed", controller)
 
 	assert_eq(controller.use_item_calls, 1)
+	assert_eq(used_item, &"none", "must return exactly what controller.use_item() handed back")
 
 
 func _new_adapter() -> RefCounted:

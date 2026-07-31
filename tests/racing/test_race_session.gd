@@ -1440,6 +1440,333 @@ func test_item_rng_seed_nonzero_reproduces_the_same_first_roll_across_two_sessio
 	)
 
 
+# ---------------------------------------------------------------------------
+# R4 Task 4 (CTR item loop): register_hit() -- the shared hit-routing
+# priority order (shield block > invulnerability > real spin_out).
+# ---------------------------------------------------------------------------
+
+
+func test_register_hit_applies_spin_out_by_default() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	assert_false(bool(kart.call("is_spinning_out")), "fixture sanity")
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"spin_out")
+	assert_true(bool(kart.call("is_spinning_out")))
+	assert_true(bool(kart.call("is_invulnerable")), "apply_spin_out() must also start the invulnerable window")
+
+
+func test_register_hit_on_a_shielded_kart_blocks_and_consumes_the_shield_early() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	kart.call("set_shielded", _catalog.items.shield_duration_s)
+	assert_true(bool(kart.call("is_shielded")), "fixture sanity")
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"blocked")
+	assert_false(bool(kart.call("is_spinning_out")), "a blocked hit must not also spin the kart out")
+	assert_false(bool(kart.call("is_shielded")), "a block must consume the shield early, not run out its own remaining duration")
+
+
+## See the class doc's ITEM RNG... no -- see register_hit()'s own doc: the
+## brief's own exact phrasing, "shield blocks exactly one hit then gone".
+func test_register_hit_shield_blocks_exactly_one_hit_then_the_next_is_a_real_spin_out() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	kart.call("set_shielded", _catalog.items.shield_duration_s)
+
+	var first: StringName = race.call("register_hit", kart)
+	var second: StringName = race.call("register_hit", kart)
+
+	assert_eq(first, &"blocked")
+	assert_eq(second, &"spin_out")
+
+
+func test_register_hit_on_an_invulnerable_kart_returns_invulnerable_and_does_not_restack_the_stun() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	motor.set("_forward_speed_mps", _catalog.kart.top_speed_mps)
+
+	race.call("register_hit", kart)
+	assert_true(bool(kart.call("is_invulnerable")), "fixture setup: the first hit must start the invulnerable window")
+	var speed_after_first_hit: float = float(motor.call("forward_speed_mps"))
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"invulnerable")
+	# apply_spin_out() dumps forward speed by spin_out_speed_keep_ratio EVERY
+	# time it is called -- if the second hit had wrongly re-applied it, the
+	# speed would have been multiplied down again. It must not have moved.
+	assert_almost_eq(
+		float(motor.call("forward_speed_mps")),
+		speed_after_first_hit,
+		0.0001,
+		"a second hit landing during the invulnerable window must not re-apply spin_out"
+	)
+
+
+## ORDER-AWARENESS pin (see register_hit()'s own doc): a boost already
+## forwarded to the motor THIS SAME TICK (KartController's own unconditional
+## consume_boost() -> add_boost() forward, see kart_controller.gd's BINDING
+## CONTRACT doc) must survive a hit landing the same tick -- an INTENTIONAL,
+## strict-CTR ruling, not a bug apply_spin_out() should "fix" by also
+## zeroing boost.
+func test_register_hit_does_not_cancel_a_same_frame_boost_already_forwarded_to_the_motor() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor, "the controller must still own its private motor")
+	if motor == null:
+		return
+	motor.call("add_boost", _catalog.kart.boost_duration_s)
+	assert_true(bool(motor.call("is_boosting")), "fixture sanity: the boost must really be active before the hit")
+
+	var outcome: StringName = race.call("register_hit", kart)
+
+	assert_eq(outcome, &"spin_out")
+	assert_true(
+		bool(motor.call("is_boosting")),
+		(
+			"a boost already forwarded to the motor this same tick must "
+			+ "survive a hit landing the same tick -- INTENTIONAL, strict-CTR "
+			+ "ruling (see register_hit()'s own doc)"
+		)
+	)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 4: item-use dispatch -- turbo/shield apply directly, missile/
+# beaker spawn a real, configured scene instance under the session.
+# ---------------------------------------------------------------------------
+
+
+func test_dispatch_item_use_turbo_applies_boost_immediately_to_the_kart() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	assert_false(bool(motor.call("is_boosting")), "fixture sanity")
+
+	race.call("dispatch_item_use", kart, &"turbo")
+
+	assert_true(bool(motor.call("is_boosting")), "a turbo use must apply boost immediately, not on some later tick")
+	assert_almost_eq(float(motor.call("boost_time_remaining_s")), _catalog.items.turbo_boost_s, 0.01)
+
+
+func test_dispatch_item_use_shield_sets_the_kart_shielded() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	assert_false(bool(kart.call("is_shielded")), "fixture sanity")
+
+	race.call("dispatch_item_use", kart, &"shield")
+
+	assert_true(bool(kart.call("is_shielded")))
+
+
+func test_dispatch_item_use_none_spawns_and_applies_nothing() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	race.call("dispatch_item_use", kart, &"none")
+
+	assert_null(
+		race.get_node_or_null("ItemHazards"),
+		"an unheld/none item use must never even create the hazards container"
+	)
+
+
+func test_dispatch_item_use_missile_spawns_a_configured_missile_under_the_session() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	race.call("dispatch_item_use", kart, &"missile")
+	await wait_physics_frames(1)
+
+	var hazards := race.get_node_or_null("ItemHazards")
+	assert_not_null(hazards, "a spawned missile must be parented under the session's own hazards container")
+	if hazards == null:
+		return
+	assert_eq(hazards.get_child_count(), 1)
+
+
+func test_dispatch_item_use_beaker_drops_behind_the_launcher_by_one_kart_length() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	# A known, axis-aligned facing so the expected drop point is easy to
+	# compute independently of wherever the graybox loop's own KartSpawn
+	# happens to be authored.
+	kart.global_transform = Transform3D(Basis.IDENTITY, Vector3(10.0, 0.0, 10.0))
+	var collision := kart.get_node("CollisionShape3D") as CollisionShape3D
+	assert_not_null(collision)
+	if collision == null:
+		return
+	var box := collision.shape as BoxShape3D
+	assert_not_null(box)
+	if box == null:
+		return
+	var kart_length_m := box.size.z
+	var launcher_forward := -kart.global_transform.basis.z
+
+	race.call("dispatch_item_use", kart, &"beaker")
+
+	var hazards := race.get_node_or_null("ItemHazards")
+	assert_not_null(hazards)
+	if hazards == null:
+		return
+	assert_eq(hazards.get_child_count(), 1)
+	var beaker := hazards.get_child(0) as Node3D
+	var expected := kart.global_position - launcher_forward * kart_length_m
+	assert_almost_eq(beaker.global_position.x, expected.x, 0.01)
+	assert_almost_eq(beaker.global_position.z, expected.z, 0.01)
+
+
+## End-to-end proof through the REAL production wiring (not a synthetic
+## dispatch_item_use() call): a real ITEM press on a kart holding a real
+## rolled &"turbo" reaches KartController.use_item() via RacingInputAdapter,
+## and the returned name reaches dispatch_item_use() via _route_input() --
+## see race_session.gd's own doc on why this replaces the Task-3 return-
+## name-only path.
+func test_a_real_item_press_on_a_held_turbo_reaches_dispatch_and_applies_boost() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	# rng_value=0.5 maps to turbo -- see item_slot.gd's own FOUR-WAY MAPPING
+	# doc / test_item_slot.gd's identical boundary test.
+	slot.call("start_roll", 0.5)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+	assert_eq(slot.call("state"), &"held", "fixture setup: the roll must have landed")
+	assert_eq(slot.call("held_item"), &"turbo", "fixture setup: rng_value=0.5 must roll turbo")
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	assert_false(bool(motor.call("is_boosting")), "fixture sanity: no boost yet")
+
+	var router := race.get_node("Input/InputRouter")
+	router.call("push_button", InputIntent.ACTION_ITEM, true, 0.0, InputIntent.SOURCE_TOUCH)
+	await wait_physics_frames(2)
+
+	assert_true(
+		bool(motor.call("is_boosting")),
+		"a real ITEM press on a held turbo must reach dispatch_item_use() and apply boost"
+	)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 4 (CARRIED MEDIUM fix, item 6): _spawn_ai_karts() must build each
+# kart's transform BEFORE add_child() -- a freshly-instantiated kart
+# entering the tree still at its Transform3D.IDENTITY default registers a
+# real, one-instant physics-server snapshot at that position, which an
+# origin-adjacent Area3D could catch as a permanently-sticky false trigger.
+# ---------------------------------------------------------------------------
+
+
+## NOT a plain "configure() then check the box" test: the PLAYER's own Kart
+## node is a SCENE-FILE child of race_time_trial.tscn with no authored
+## transform of its own, so it ALSO sits at Transform3D.IDENTITY (this
+## fixture's own world origin) from the instant add_child_autofree(race)
+## runs, until configure()'s own _seed_kart_transform() moves it -- a
+## SEPARATE, pre-existing flash risk this task was not asked to fix (only
+## _spawn_ai_karts() was). This test isolates the AI-kart mechanism
+## SPECIFICALLY by: (1) letting a normal boot settle for several real
+## physics ticks BEFORE the synthetic box even exists, so any broadphase
+## residue from the PLAYER's own historical origin visit (or anything else
+## about a fresh boot) has fully cleared and cannot be mistaken for what
+## this test actually probes; (2) only THEN adding the box at _ai_root's
+## own resting point and confirming it starts genuinely clean; (3) only
+## THEN re-running JUST _spawn_ai_karts() (the same idempotent rebuild the
+## real retry path already exercises -- see that function's own RETRY /
+## RE-CONFIGURE SAFETY doc), so a failure past this point can only come
+## from THIS SPECIFIC call's own kart-spawning mechanism, never a stale
+## signal from the unrelated player-kart flash. (Confirmed empirically
+## while writing this test: skipping the settle step and adding the box
+## immediately after _boot_race() makes the box read inactive before
+## _spawn_ai_karts() is ever called a second time at all -- purely the
+## player's own pre-existing, out-of-scope origin flash, not this fix.)
+func test_spawning_ai_karts_does_not_flash_a_kart_through_the_track_origin() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	# Let the boot's own one-time transients (including the player kart's
+	# own pre-existing, separate origin-flash -- see this function's own
+	# doc) fully settle before the box under test ever exists.
+	await wait_physics_frames(10)
+
+	var ai_root := race.get_node_or_null("AiKarts")
+	assert_not_null(ai_root, "fixture setup: a normal boot must have already created the AI karts container")
+	if ai_root == null:
+		return
+
+	var box_packed := load(ITEM_BOX_SCENE_PATH) as PackedScene
+	assert_not_null(box_packed)
+	if box_packed == null:
+		return
+	var box := box_packed.instantiate() as Area3D
+	# LOCAL position under `race` itself, set BEFORE add_child (see item_
+	# box.gd's own tests for why position-before-add_child matters for a
+	# freshly-added Area3D's own entry too) -- matching _ai_root's own
+	# CURRENT global position exactly, whatever it actually is in this
+	# fixture (never assumed to be the literal world origin).
+	box.position = race.to_local(ai_root.global_position)
+	race.add_child(box)
+	await wait_physics_frames(3)
+	assert_true(
+		bool(box.call("is_active")),
+		"fixture setup: a freshly-added box, well after the boot itself has settled, must start active"
+	)
+
+	race.call("_spawn_ai_karts")
+	await wait_physics_frames(5)
+
+	assert_true(
+		bool(box.call("is_active")),
+		(
+			"an AI kart's spawn-transform flash through _ai_root's own "
+			+ "resting point must never trigger a nearby box pickup -- each "
+			+ "kart's real transform must be built BEFORE it ever enters "
+			+ "the tree, not seeded on a later tick after it already "
+			+ "flashed there"
+		)
+	)
+
+
 ## Instantiates the real race_time_trial.tscn, adds a synthetic ItemBox
 ## under Track (a location already proven grounded, see the fixture
 ## rationale on every other test in this file), then configures it -- the

@@ -9,13 +9,17 @@ extends GutTest
 
 const MOTOR_SCRIPT_PATH := "res://src/racing/kart/kart_motor.gd"
 const TUNING_PATH := "res://data/tuning/racing/kart.tres"
+const ITEM_TUNING_PATH := "res://data/tuning/racing/items.tres"
 
 var _kart: KartTuning
+var _item_tuning: ItemTuning
 
 
 func before_all() -> void:
 	_kart = load(TUNING_PATH)
 	assert_not_null(_kart, "kart.tres must load — Task 1 registers it")
+	_item_tuning = load(ITEM_TUNING_PATH)
+	assert_not_null(_item_tuning, "items.tres must load — Task 2 registers it")
 
 
 # ---------------------------------------------------------------------------
@@ -605,6 +609,97 @@ func test_spin_out_and_invulnerability_run_as_independent_timers() -> void:
 		bool(motor.call("is_invulnerable")),
 		"invulnerability must end at its own authored duration"
 	)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 4 (CTR item loop): the shield timed flag -- set_shielded()/
+# is_shielded()/consume_shield(), independent of boost/spin_out/
+# invulnerable.
+# ---------------------------------------------------------------------------
+
+
+func test_a_fresh_motor_is_not_shielded() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	assert_false(bool(motor.call("is_shielded")))
+
+
+func test_set_shielded_reports_shielded_for_its_full_duration() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+	assert_true(bool(motor.call("is_shielded")))
+
+	motor.call("tick", _item_tuning.shield_duration_s * 0.5, 0.0, false, false, false, 0)
+	assert_true(
+		bool(motor.call("is_shielded")),
+		"the shield must still be up at half its own authored duration"
+	)
+
+
+func test_shield_expires_at_its_own_authored_duration() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+
+	motor.call("tick", _item_tuning.shield_duration_s, 0.0, false, false, false, 0)
+
+	assert_false(
+		bool(motor.call("is_shielded")),
+		"the shield must expire once shield_duration_s has elapsed"
+	)
+
+
+func test_set_shielded_replaces_rather_than_stacks_remaining_time() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+	motor.call("tick", _item_tuning.shield_duration_s * 0.5, 0.0, false, false, false, 0)
+
+	# A second pickup mid-window resets to the FULL duration again, not an
+	# additive stack on top of whatever remained.
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+	motor.call("tick", _item_tuning.shield_duration_s * 0.9, 0.0, false, false, false, 0)
+
+	assert_true(
+		bool(motor.call("is_shielded")),
+		"a fresh set_shielded() call must restart the full duration, not stack onto the old remainder"
+	)
+
+
+func test_consume_shield_ends_it_immediately_regardless_of_remaining_time() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+	assert_true(bool(motor.call("is_shielded")), "fixture setup: the shield must be up before consuming it")
+
+	motor.call("consume_shield")
+
+	assert_false(
+		bool(motor.call("is_shielded")),
+		"consume_shield() must end the shield immediately, even with most of its duration still remaining"
+	)
+
+
+func test_shield_timer_runs_independently_of_spin_out_and_boost() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("set_shielded", _item_tuning.shield_duration_s)
+	motor.call("apply_spin_out")
+	motor.call("add_boost", _kart.boost_duration_s)
+
+	assert_true(
+		bool(motor.call("is_shielded")),
+		"a spin_out landing (e.g. a separate hit) must not touch an unrelated shield timer"
+	)
+	assert_true(bool(motor.call("is_spinning_out")))
+	assert_true(bool(motor.call("is_boosting")))
 
 
 # ---------------------------------------------------------------------------

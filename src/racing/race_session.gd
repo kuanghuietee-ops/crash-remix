@@ -103,6 +103,11 @@ const LapValidatorType := preload("res://src/racing/track/lap_validator.gd")
 const AiKartAgentType := preload("res://src/racing/ai/ai_kart_agent.gd")
 const SpineFollowerType := preload("res://src/racing/track/spine_follower.gd")
 const KartSceneType := preload("res://scenes/racing/kart.tscn")
+# R4 Task 4: the two spawned/applied item effects that need a real scene
+# instance (missile/beaker) -- turbo/shield are pure KartController calls,
+# no scene needed. See dispatch_item_use()/register_hit().
+const MissileSceneType := preload("res://scenes/racing/missile.tscn")
+const BeakerSceneType := preload("res://scenes/racing/beaker.tscn")
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -183,6 +188,15 @@ var _validator: LapValidatorType = LapValidatorType.new()
 var _ai_root: Node3D
 var _ai_karts: Array[CharacterBody3D] = []
 var _ai_agents: Array[AiKartAgentType] = []
+
+# R4 Task 4: lazily-created container for spawned missile/beaker instances
+# (see _ensure_hazards_root()/_spawn_missile()/_spawn_beaker()) -- mirrors
+# _ai_root's own lazy-container shape one section up. Every hazard already
+# self-despawns (queue_free()) on hit or its own lifetime, so this container
+# needs no per-tick bookkeeping of its own; it exists only so a re-
+# configure()/retry never leaves a PREVIOUS race's still-flying hazards
+# parented under a fresh one (see configure()'s own defensive clear).
+var _hazards_root: Node3D
 
 # Cross-kart-progress "seam ruling" (Task 5 binding contract 2): the ONLY
 # thing gate crossings do per body is advance THAT body's own LapValidator,
@@ -339,6 +353,17 @@ func configure(catalog: GameplayTuning) -> void:
 	_placement = 0
 
 	_spawn_ai_karts()
+
+	# R4 Task 4: a defensive re-configure/retry clear, the same shape
+	# _spawn_ai_karts() already uses for _ai_root's own children -- a
+	# re-configure() on the SAME session instance must never leave a
+	# PREVIOUS race's still-flying missile/beaker instances parented under
+	# this fresh one. Every hazard already self-despawns on hit or its own
+	# lifetime in the normal case, so this only matters for the defensive
+	# reuse path, not ordinary play.
+	if _hazards_root != null:
+		for hazard: Node in _hazards_root.get_children():
+			hazard.queue_free()
 
 	_finished = false
 	_hop_was_pressed = false
@@ -506,6 +531,155 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
 
 
+## R4 Task 4 (item 1, hit-routing foundation): the ONE place any hit source
+## (missile.gd/beaker.gd's own _physics_process, and any future hazard)
+## turns "this kart got hit" into the real outcome, in priority order:
+## shield block, then invulnerability, then an actual spin_out. No caller
+## re-implements this priority itself -- see missile.gd's/beaker.gd's own
+## _check_hits(), which both just forward whichever kart they reached
+## straight here via .call("register_hit", kart).
+##
+## &"blocked" -- the kart was shielded; the shield is consumed EARLY right
+## here (KartController.consume_shield()), not left to run out its own
+## remaining duration -- CTR's "blocks exactly one hit, then it's gone".
+## &"invulnerable" -- the kart is still inside its post-hit invulnerable_
+## after_hit_s window (see kart_motor.gd's own doc); apply_spin_out() is
+## NOT called again -- a kart already reeling from one hit does not get
+## re-stunned by a second projectile arriving during its own grace window.
+## &"spin_out" -- neither of the above; the hit lands for real via the
+## Task-1-fixed apply_spin_out() (see kart_controller.gd's own R4-BINDING
+## FIX doc), which also starts the kart's own invulnerable_after_hit_s
+## window as a side effect.
+##
+## ORDER-AWARENESS (ledger note, per this task's own brief): this is called
+## from a projectile/hazard's own _physics_process, i.e. potentially the
+## SAME physics tick KartController._physics_process already ran and
+## unconditionally forwarded a same-frame slide-boost tap into KartMotor
+## (see kart_controller.gd's own BINDING CONTRACT doc). apply_spin_out()
+## below does NOT touch KartMotor's own _boost_time_remaining_s (see
+## kart_motor.gd's apply_spin_out() -- it only dumps forward speed once by
+## spin_out_speed_keep_ratio and starts the spin_out/invulnerable timers),
+## so a boost that already landed in the motor THIS SAME TICK survives a
+## hit landing the same tick. This is INTENTIONAL, a strict-CTR ruling (a
+## boost that already fired is already committed -- a real CTR kart
+## mid-boost that gets hit keeps its boost speed through the spin), not an
+## ordering bug to "fix" by also zeroing boost here -- pinned by
+## test_race_session.gd's own test_register_hit_does_not_cancel_a_same_
+## frame_boost_already_forwarded_to_the_motor.
+func register_hit(target_kart: CharacterBody3D) -> StringName:
+	if bool(target_kart.call("is_shielded")):
+		target_kart.call("consume_shield")
+		return &"blocked"
+	if bool(target_kart.call("is_invulnerable")):
+		return &"invulnerable"
+	target_kart.call("apply_spin_out")
+	return &"spin_out"
+
+
+## R4 Task 4 (item 5): the shared item-use dispatch surface. The player's
+## ITEM press below (_route_input()) already calls KartController.use_item()
+## itself via RacingInputAdapter.apply_item_pressed() (which returns the
+## used item's name) and hands the result straight to dispatch_item_use();
+## Task 5's AI item-use decision is documented to call kart.use_item()
+## itself the SAME way and route its own result through THIS method, so
+## neither caller re-implements its own missile/beaker/turbo/shield switch.
+## Exposed as a convenience for any future caller that wants "call use_item
+## AND dispatch" as one step (Task 5's AiKartAgent is the intended other
+## caller once its own decision lands).
+func use_item_for(kart: CharacterBody3D) -> StringName:
+	var item_name: StringName = kart.call("use_item")
+	dispatch_item_use(kart, item_name)
+	return item_name
+
+
+## &"none" (nothing was held, or use_item() was called on an empty/rolling
+## slot -- see item_slot.gd's own use() doc) is a harmless no-op match.
+func dispatch_item_use(kart: CharacterBody3D, item_name: StringName) -> void:
+	match item_name:
+		&"missile":
+			_spawn_missile(kart)
+		&"beaker":
+			_spawn_beaker(kart)
+		&"turbo":
+			kart.call("apply_boost", _item_tuning.turbo_boost_s)
+		&"shield":
+			kart.call("set_shielded", _item_tuning.shield_duration_s)
+
+
+func _ensure_hazards_root() -> Node3D:
+	if _hazards_root == null:
+		_hazards_root = Node3D.new()
+		_hazards_root.name = "ItemHazards"
+		add_child(_hazards_root)
+	return _hazards_root
+
+
+## Spawns at the launcher's own position/facing (no offset -- see missile.
+## gd's own class doc: this node has no opinion on where it starts, it just
+## configures the just-instantiated missile with everything it needs to
+## lock its own launch-time target and run its own hit-testing from here
+## on).
+func _spawn_missile(launcher: CharacterBody3D) -> void:
+	var missile := MissileSceneType.instantiate()
+	_ensure_hazards_root().add_child(missile)
+	missile.global_transform = launcher.global_transform
+	missile.call(
+		"configure", self, launcher, _item_tuning, Callable(self, "_item_targets")
+	)
+
+
+## Dropped at the launcher's own position minus its own forward vector
+## times one kart length -- see beaker.gd's own class doc SPAWN POSITION
+## section and _read_kart_length_m()'s own doc for the collision-extents
+## derivation.
+func _spawn_beaker(launcher: CharacterBody3D) -> void:
+	var beaker := BeakerSceneType.instantiate()
+	_ensure_hazards_root().add_child(beaker)
+	var launcher_forward := -launcher.global_transform.basis.z
+	var drop_point := (
+		launcher.global_position - launcher_forward * _read_kart_length_m(launcher)
+	)
+	beaker.global_transform = Transform3D(launcher.global_transform.basis, drop_point)
+	beaker.call(
+		"configure", self, launcher, _item_tuning, Callable(self, "_item_targets")
+	)
+
+
+## The targets_getter Callable handed to every spawned missile/beaker (see
+## _spawn_missile()/_spawn_beaker()) -- every kart currently in the race
+## (player + AI) paired with its own current SpineFollower total_progress_m(),
+## the exact seam-safe shape (see spine_follower.gd's own class doc) missile.
+## gd's configure() uses to lock its launch-time target, and beaker.gd's own
+## configure() reads purely for kart identities. Mirrors _other_kart_
+## positions()'s own "this session already knows every kart in the race"
+## rationale one section up.
+func _item_targets() -> Array:
+	var result: Array = []
+	if _kart != null and is_instance_valid(_kart):
+		result.append({"kart": _kart, "progress": player_total_progress_m()})
+	for index in range(_ai_karts.size()):
+		var ai_kart := _ai_karts[index]
+		if ai_kart != null and is_instance_valid(ai_kart):
+			result.append({"kart": ai_kart, "progress": ai_kart_total_progress_m(index)})
+	return result
+
+
+## Kart-length derivation mirrors ai_kart_agent.gd's own _read_kart_extents()
+## (same BoxShape3D.size.z reading, see that file's own RESPAWN-ONTO-PLAYER
+## AVOIDANCE doc) -- see the task brief's own "derive from kart collision
+## extents like the respawn stepper did". 0.0 (a harmless zero offset -- the
+## beaker drops exactly at the launcher's own position rather than crashing)
+## for a kart with no readable CollisionShape3D, e.g. a bare test fixture.
+func _read_kart_length_m(kart: CharacterBody3D) -> float:
+	var collision := kart.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null:
+		return 0.0
+	var box := collision.shape as BoxShape3D
+	if box == null:
+		return 0.0
+	return box.size.z
+
+
 func _physics_process(delta_s: float) -> void:
 	if not _configured or _finished:
 		return
@@ -533,14 +707,19 @@ func _route_input() -> void:
 		else:
 			_input_adapter.apply_hop_released(_kart)
 		_hop_was_pressed = hop_held
-	# R4 Task 2: ITEM is a fire-once action (see racing_input_adapter.gd's
+	# R4 Task 2/4: ITEM is a fire-once action (see racing_input_adapter.gd's
 	# apply_item_pressed() doc) -- only the false -> true edge routes to the
 	# kart, mirroring HOP's own edge-sampling above but with no release
 	# counterpart, so holding the button down never re-fires use_item()
-	# every tick.
+	# every tick. apply_item_pressed() now returns whichever item name
+	# KartController.use_item() handed back (Task 3's own return-name-only
+	# path); Task 4 routes that name through dispatch_item_use() -- see its
+	# own doc for why this is the SAME shared entry point Task 5's AI
+	# item-use decision is documented to call through too.
 	var item_held := _router.buffer.is_action_pressed(InputIntent.ACTION_ITEM)
 	if item_held and not _item_was_pressed:
-		_input_adapter.apply_item_pressed(_kart)
+		var used_item: StringName = _input_adapter.apply_item_pressed(_kart)
+		dispatch_item_use(_kart, used_item)
 	_item_was_pressed = item_held
 
 
@@ -701,6 +880,30 @@ func _seed_kart_transform(kart: CharacterBody3D, marker: Marker3D) -> void:
 	)
 
 
+## R4 Task 4 (CARRIED MEDIUM fix -- see _spawn_ai_karts()'s own SPAWN-
+## TRANSFORM ORDERING doc for the probe-confirmed hazard this closes):
+## the same "place the transform, then seed yaw" sequence as
+## _seed_kart_transform() above, but usable on a kart that is NOT YET
+## inside the tree (no parent of its own yet) -- composing against
+## parent.global_transform.affine_inverse() rather than assigning kart.
+## global_transform directly (which, for an orphan node, treats the parent
+## chain as identity and would silently double-apply the real parent's own
+## global transform once actually added as a child, unless that parent
+## chain truly is world-identity). `parent` (_ai_root) is guaranteed
+## already inside the tree by the time _spawn_ai_karts() calls this, so
+## its own global_transform is a valid, already-resolved reference to
+## compose against.
+func _seed_kart_transform_for_parent(
+	kart: CharacterBody3D, marker: Marker3D, parent: Node3D
+) -> void:
+	kart.transform = parent.global_transform.affine_inverse() * marker.global_transform
+	var spawn_forward := -marker.global_transform.basis.z
+	kart.call(
+		"set_yaw_degrees",
+		rad_to_deg(Vector3.FORWARD.signed_angle_to(spawn_forward, Vector3.UP))
+	)
+
+
 func _make_lap_validator() -> LapValidatorType:
 	var validator := LapValidatorType.new()
 	validator.configure(_gates.size(), int(_race_tuning.lap_count))
@@ -756,6 +959,25 @@ func _other_kart_positions(requesting_kart: CharacterBody3D) -> Array:
 ## anyway (clears and rebuilds _ai_root's children first) so a hypothetical
 ## second configure() call on the SAME instance never leaks or duplicates
 ## karts either.
+##
+## SPAWN-TRANSFORM ORDERING (R4 Task 4, CARRIED MEDIUM, probe-confirmed
+## hazard): each kart's full spawn transform is now built via
+## _seed_kart_transform_for_parent() BEFORE add_child() ever runs, not
+## after (the shape this loop used until this fix). A freshly-instantiated
+## CharacterBody3D that enters the tree still at its Transform3D.IDENTITY
+## default registers a REAL, one-instant physics-server broadphase
+## snapshot at that position the moment add_child() runs -- before any
+## later transform write in the same script tick can reach it -- exactly
+## the mechanism test_item_box.gd's own _new_kart_body()/_new_box() doc
+## already empirically confirmed for a dynamically-added fixture (Godot/
+## Jolt can queue a body_entered delivery from that one-instant placement
+## for a LATER physics frame, well after this function has already moved
+## the kart to its real GridSlotN position). An origin-adjacent Area3D --
+## an item box authored near a track's own origin, or any future hazard
+## sharing that space -- could register a transient, permanently-sticky
+## pickup/trigger against that one-frame flash. Locked with a regression
+## test (test_race_session.gd's test_spawning_ai_karts_does_not_flash_a_
+## kart_through_the_track_origin).
 func _spawn_ai_karts() -> void:
 	if _ai_root == null:
 		_ai_root = Node3D.new()
@@ -785,9 +1007,13 @@ func _spawn_ai_karts() -> void:
 			continue
 
 		var ai_kart := KartSceneType.instantiate() as CharacterBody3D
-		_ai_root.add_child(ai_kart)
+		# See this function's own SPAWN-TRANSFORM ORDERING doc: configure()
+		# and the transform seed both happen BEFORE add_child(), so the
+		# kart's very first physics-server registration already carries its
+		# real GridSlotN position -- never a one-frame flash at the origin.
 		ai_kart.call("configure", _kart_tuning, _item_tuning)
-		_seed_kart_transform(ai_kart, marker)
+		_seed_kart_transform_for_parent(ai_kart, marker, _ai_root)
+		_ai_root.add_child(ai_kart)
 
 		_gate_validators[ai_kart] = _make_lap_validator()
 

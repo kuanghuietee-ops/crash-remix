@@ -58,9 +58,13 @@ func apply_hop_released(controller: Object) -> void:
 ## controller's own use_item() -- a fire-once action, not press-and-hold,
 ## so unlike hop there is no matching apply_item_released(). See
 ## race_session.gd's _route_input() for the edge-sampling that guarantees
-## this is only ever called once per real press.
-func apply_item_pressed(controller: Object) -> void:
-	controller.use_item()
+## this is only ever called once per real press. R4 Task 4: returns
+## whatever use_item() handed back (&"missile"/&"shield"/&"turbo"/
+## &"beaker"/&"none") so the caller can route it through RaceSession's own
+## shared item-use dispatch (see race_session.gd's dispatch_item_use())
+## instead of the Task-3 return-name-only path that used to discard it.
+func apply_item_pressed(controller: Object) -> StringName:
+	return controller.use_item()
 
 
 func _is_brake_pull(value: Vector2) -> bool:

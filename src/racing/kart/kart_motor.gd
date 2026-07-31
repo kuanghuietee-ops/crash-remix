@@ -73,6 +73,7 @@ var _vertical_speed_mps: float
 var _boost_time_remaining_s: float
 var _spin_out_remaining_s: float
 var _invulnerable_remaining_s: float
+var _shield_remaining_s: float
 
 var _speed_scale := 1.0
 
@@ -189,6 +190,7 @@ func tick(
 	_boost_time_remaining_s = maxf(_boost_time_remaining_s - delta_s, 0.0)
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
+	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
 
 
 ## Decelerates the CURRENT forward speed toward a full stop at brake_mps2,
@@ -220,6 +222,7 @@ func decelerate_to_stop(delta_s: float, grounded: bool) -> void:
 	_boost_time_remaining_s = maxf(_boost_time_remaining_s - delta_s, 0.0)
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
+	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
 
 
 func hop() -> void:
@@ -307,3 +310,30 @@ func is_spinning_out() -> bool:
 
 func is_invulnerable() -> bool:
 	return _invulnerable_remaining_s > 0.0
+
+
+## Timed "block one hit" flag (R4 Task 4, CTR item loop shield). A fresh
+## set_shielded() call REPLACES whatever shield time remained rather than
+## stacking -- picking up a second shield mid-window restarts the full
+## duration; there is no "stack" concept for a shield the way boost stacks
+## via add_boost(). Independent of every other timer here (boost/spin_out/
+## invulnerable): a shielded kart can still be mid-boost or mid-spin-out at
+## the same time, and RaceSession.register_hit() is the one caller that
+## reads is_shielded() to decide whether an incoming hit even reaches
+## apply_spin_out() at all (see race_session.gd's own register_hit doc).
+func set_shielded(duration_s: float) -> void:
+	_shield_remaining_s = duration_s
+
+
+func is_shielded() -> bool:
+	return _shield_remaining_s > 0.0
+
+
+## Ends the shield immediately, regardless of how much time was left on it.
+## RaceSession.register_hit() calls this the instant a hit is BLOCKED (see
+## its own doc) -- CTR's shield is "blocks exactly one hit, then it's
+## gone", not "blocks every hit until shield_duration_s runs out", so a
+## block must consume the remaining window rather than letting it keep
+## ticking down and expire on its own.
+func consume_shield() -> void:
+	_shield_remaining_s = 0.0

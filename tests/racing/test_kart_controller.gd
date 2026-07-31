@@ -625,6 +625,40 @@ func test_invulnerability_outlasts_spin_out_through_the_controller() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# R4 Task 4 (CTR item loop): set_shielded()/is_shielded()/consume_shield()
+# proxy straight onto the real KartMotor's own timed shield flag -- mirrors
+# is_invulnerable()'s own proxy shape one section up.
+# ---------------------------------------------------------------------------
+
+
+func test_a_fresh_kart_is_not_shielded() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	assert_false(kart.call("is_shielded"))
+
+
+func test_set_shielded_reaches_the_real_motor() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("set_shielded", _item_tuning.shield_duration_s)
+	assert_true(kart.call("is_shielded"))
+
+
+func test_consume_shield_reaches_the_real_motor() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("set_shielded", _item_tuning.shield_duration_s)
+	assert_true(kart.call("is_shielded"), "fixture setup: the shield must be up before consuming it")
+
+	kart.call("consume_shield")
+
+	assert_false(kart.call("is_shielded"), "consume_shield() must reach the real motor and end the shield")
+
+
 func test_kart_scene_wires_a_blob_shadow_node() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
 	if not ResourceLoader.exists(KART_SCENE_PATH):

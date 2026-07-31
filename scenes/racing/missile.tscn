@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/racing/items/missile.gd" id="1_missile"]
+
+[sub_resource type="StandardMaterial3D" id="Material_missile"]
+albedo_color = Color(0.9, 0.35, 0.1, 1)
+
+[sub_resource type="CapsuleMesh" id="Mesh_missile"]
+material = SubResource("Material_missile")
+radius = 0.25
+height = 1.0
+
+[node name="Missile" type="Node3D"]
+script = ExtResource("1_missile")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_missile")

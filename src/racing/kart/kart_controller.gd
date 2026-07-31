@@ -233,6 +233,27 @@ func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
 
 
+## Proxies straight onto the real KartMotor's own timed shield flag -- see
+## kart_motor.gd's set_shielded() doc. RaceSession applies this the instant
+## a &"shield" item is used (see race_session.gd's own item-use dispatch
+## doc), unconditionally replacing any remaining shield window rather than
+## stacking.
+func set_shielded(duration_s: float) -> void:
+	_motor.set_shielded(duration_s)
+
+
+func is_shielded() -> bool:
+	return _motor.is_shielded()
+
+
+## Proxies straight onto the real KartMotor's own consume_shield() -- see
+## its own doc. RaceSession.register_hit() is the one caller, ending a
+## shield the instant it blocks a hit rather than leaving the remainder of
+## its own timer to run out on its own.
+func consume_shield() -> void:
+	_motor.consume_shield()
+
+
 ## Proxies straight onto the real KartMotor's own query -- see kart_motor.
 ## gd's is_spinning_out() doc. Exposed alongside is_invulnerable() so a
 ## caller (HUD, AI, or a test) can distinguish "still stunned" (zero yaw
