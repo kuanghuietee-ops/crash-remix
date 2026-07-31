@@ -1,0 +1,47 @@
+# CTR R6 — Circuit Polish Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Sanity Shores as the showcase — stage-colored drift FX, dressed circuit, Crash-on-kart characters, apex-driven smarter AI, three new items with position-weighted rolls — per `docs/superpowers/specs/2026-07-31-ctr-r6-circuit-polish-design.md`.
+
+**Architecture:** FX via GPU particles parameterized from a new `&"fx"` tuning section; characters reuse the likeness-gated models + the Hog Wild seated-rig precedent; AI line = curvature-derived apex lateral profile layered onto the existing slot offsets; new items ride the R4 dispatch/registry unchanged in shape.
+
+## Global Constraints
+
+Same as R5's (literals 0/1/-1 in `src/racing/**`; tuning provably live incl. new-section registration; TDD; suites green each commit — GUT 1203 / Py 250 / 5 lints + export verifier baseline; grep raw GUT for 'Parse Error'; known flakes island_slice + camera_archetypes — re-run isolated; stage explicit paths; never stage the two other-agent WIP docs; foreground suites only — never background-and-wait). Art budgets: every new mesh/texture through the art-budget lint; particles capped via fx tuning; the likeness/animation assets are REUSED, never re-authored. APK checkpoint after T3 for the operator's look verdict (non-blocking for T4/T5 which are code-side).
+
+---
+
+### Task 1: FX foundation — drift sparks, boost flame, box visual
+
+**Files:** Create `src/tuning/fx_tuning.gd` + `data/tuning/racing/fx.tres` (new section `&"fx"`: `spark_amount_stage0=12.0`, `spark_amount_per_stage=8.0`, `spark_lifetime_s=0.35`, `spark_velocity_mps=6.0`, `boost_flame_lifetime_s=0.25`, `boost_flame_amount=20.0`, `item_box_spin_degrees_per_s=90.0`, `item_box_bob_amplitude_m=0.15`, `item_box_bob_hz=0.8`; stage colors as Color exports: `spark_color_stage1/2/3` — read how Color fields validate/fingerprint in existing tuning, follow), full section registration per the five-section precedent. Create `src/racing/fx/kart_fx.gd` + scene chunk on kart.tscn (two GPUParticles3D: sparks at rear contact, flame at exhaust; emitting gated by is_sliding/boost state; spark color = stage color from the DriftStateMachine's boost_stage — the exhaust language). ItemBox visual: spin + bob via fx tuning (replace static cube look with the crate-style mesh pattern from the platformer crate scenes — reuse materials/meshes, no new assets).
+- [ ] TDD: fx section registration; kart_fx state mapping (stage N → color N, emitting flags — poll model, headless-testable via the controller's public state); box spin/bob params reach the node. Budgets: particle amounts capped by validation (≤ a documented ceiling). Suites → commit.
+
+### Task 2: Circuit dressing, arch, gate flags
+
+**Files:** Modify `scenes/racing/track_sanity_shores.tscn` (+graybox loop gets flags/arch only): racing-line dressing densified with existing kit pieces (palms/rocks/foliage outside walls, verified against road clearance numerically), start/finish arch from kit posts + a banner plane (palette texture), per-gate flag posts (kit posts + small flag planes, one per CheckpointGate, positioned at the gate's road edges — derive from gate transforms). Art budget lint green; track lint untouched rules still pass.
+- [ ] Numeric placement verification in tests/lint (flags at every gate, arch at gate 0, dressing clear of the road); scene-open + session integration stay green. Suites → commit.
+
+### Task 3: Kart mesh + characters (APK checkpoint after)
+
+**Files:** Blender pipeline (follow scripts/blender/ + kit build precedent) generates an original stylized kart mesh (palette-textured, budget-linted); kart.tscn swaps the graybox box for it (collision unchanged — visual only). Player kart seats the EXISTING Crash model (read how Hog Wild seats Crash — the seated riding rig/animation driver — and mirror; the model is scenes/player-side, instance the visual-only subtree). AI karts: lab assistant model seated, kart body tinted per slot (palette recolor via material override — follow the kit material routing conventions). Blob shadows unchanged.
+- [ ] Budget lint per asset; scene tests (kart scene has the mesh + seated character, AI karts differentiated); animation driver doesn't fight the seat (hog precedent). Suites → commit → REPORT APK-CHECKPOINT READY (the orchestrator builds it).
+
+### Task 4: Smarter AI — apex lines, damping, personality
+
+**Files:** `src/racing/ai/ai_driver.gd` + `ai_kart_agent.gd` + `src/tuning/ai_tuning.gd` (+ai.tres): new fields `apex_offset_max_m=4.0`, `apex_entry_lookahead_m=18.0`, `steer_damping=0.35`, `personality_aggression_step=0.15`, `personality_skill_jitter=0.08`; lateral target = slot offset blended toward a curvature-driven apex offset (sign: inside of the corner; magnitude scaled by |curvature| up to apex_offset_max, ramped over apex_entry_lookahead — pure math in the driver, agent supplies signed curvature already); steering output low-pass damped (steer_damping) to kill oscillation; slide entry/exit thresholds modulated per personality (slot-indexed scalars); boost usage on straights confidence-gated by skill jitter.
+- [ ] TDD: apex sign/magnitude math (right-hand corner → inside = negative lateral... derive against the signed-curvature convention and PIN world-side); damping reduces tick-to-tick steer delta on a jittery input trace; personality scalars differentiate two slots' decisions deterministically; the East-turn invariant test now passes WITHOUT any respawn (raise the bar: healthy progress, 0 respawns on graybox 20s — if the apex line still can't clear it, STOP and report rather than lowering); oscillation metric improved (assert regressing-tick fraction < a documented bound on a 10s run). Suites → commit.
+
+### Task 5: New items + weighted roulette + AI intent
+
+**Files:** `src/racing/items/bomb.gd`+scene (lobbed: ballistic arc forward, gravity from kart tuning, blast radius on impact/ground → register_hit all in radius except launcher pre-arm), `src/racing/items/tnt_stick.gd`+scene (attaches to nearest-ahead target ON HIT of a thrown... simpler CTR-authentic: attaches on box-contact? NO — CTR TNT sits on track like beaker but ATTACHES when driven into, then countdown + hop-shake-off. Build: dropped like beaker, on kart contact attaches to that kart, countdown `tnt_fuse_s`, victim shakes off by hopping `tnt_shake_hops` times before fuse → else spin-out), triple turbo (ItemSlot holds charges: use() on a charged slot consumes one of 3 — extend ItemSlot cleanly with a charges concept, documented). ItemTuning additions: `bomb_speed_mps=18.0`, `bomb_blast_radius_m=3.5`, `bomb_arm_delay_s=0.2`, `tnt_fuse_s=3.0`, `tnt_shake_hops=3.0`, `roulette weights`: `weight_front_missile=1.0` style per-item front/back weights (design the minimal field set: per-item weight when leading vs trailing, linear blend by position ratio — document; the roll maps rng through the weighted table). AI intent: hold shield while leading until attacked-window, beaker/TNT dropped on the racing line when leading, missile immediate on sight, turbo/triple on the longest straight (longest-straight = lowest-|curvature| stretch — driver already sees curvature; keep heuristics simple + documented). AI use new items through the same dispatch.
+- [ ] TDD per item (bomb arc/blast/launcher-immunity; TNT attach/shake-off/fuse both outcomes; triple charges semantics); weighted roll determinism (seeded rng + position ratio → pinned item); AI intent cases; dispatch parity. Suites → commit.
+
+### Task 6: Integration, verification, R6 APK readiness
+
+- [ ] End-to-end seeded race with new items + apex AI on Sanity Shores (bounded real physics, no error spam, race completes); full sweep (GUT/Py/lints/export verifier — fx+items tuning in pack); spec debt bookkeeping (weighted-roulette + new items noted; any new debts recorded); R6 summary report. Orchestrator merges + builds the R6 APK.
+
+## Self-Review
+- Spec coverage: A→T1+T2, B→T3, C→T4, D→T5; checkpoint after T3 per spec.
+- Conventions: signed-curvature contract reused (T4); dispatch/registry shape unchanged (T5); likeness assets reused not re-authored (T3); all numbers in tuning.
+- No placeholders; field defaults stated; every task carries tests.
