@@ -1832,10 +1832,31 @@ func test_refresh_tuning_reaches_the_player_kart_item_slot() -> void:
 ## sessions -- the only way this can hold is if the exported seed genuinely
 ## reaches a real RandomNumberGenerator.seed and both sessions' first
 ## randf() call after configure() lines up deterministically.
+##
+## CTR R6 Task 5: opponent_count pinned to 0.0 (spawn_opponents stays at its
+## own default true, so items are still enabled -- see _items_allowed()'s
+## own doc, and the established test_solo_race_with_zero_opponents_spawns_
+## no_ai_and_places_first_alone precedent one section up for this exact
+## "opponent_count=0, items still on" shape) -- this pins field_size() to
+## exactly 1 in BOTH sessions, which _position_ratio_for() reads as the
+## sentinel "no live position known" case (see its own doc), keeping the
+## roll a pure function of rng_value alone, the ONLY thing this test's own
+## name claims to prove. Two SEPARATE scene instances racing side-by-side in
+## the SAME shared World3D (both add_child_autofree()'d into this one test)
+## were never a rigorous guarantee of identical live RANKING between them --
+## before the weighted roulette existed that never mattered (the old roll
+## never read position at all); leaving field_size() at its real multi-kart
+## value here would make this specifically-scoped RNG-reproducibility test
+## flaky on whichever of the two sessions' ranks happened to diverge, a
+## DIFFERENT and already-separately-covered concern (see this file's own
+## test_on_box_body_entered_threads_the_live_position_ratio_into_the_
+## weighted_roll).
 func test_item_rng_seed_nonzero_reproduces_the_same_first_roll_across_two_sessions() -> void:
+	var solo_field_catalog: GameplayTuning = _catalog.duplicate_deep(Resource.DEEP_DUPLICATE_ALL)
+	solo_field_catalog.ai.opponent_count = 0.0
 	var seed_value := 918273
-	var first := _boot_race_with_synthetic_box(seed_value)
-	var second := _boot_race_with_synthetic_box(seed_value)
+	var first := _boot_race_with_synthetic_box(seed_value, null, solo_field_catalog)
+	var second := _boot_race_with_synthetic_box(seed_value, null, solo_field_catalog)
 	var race_a: Node = first.get("race")
 	var box_a: Area3D = first.get("box")
 	var race_b: Node = second.get("race")
@@ -2210,6 +2231,190 @@ func test_dispatch_item_use_beaker_drops_behind_the_launcher_by_one_kart_length(
 	assert_almost_eq(beaker.global_position.z, expected.z, 0.01)
 
 
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5: dispatch for the three new items -- bomb/tnt_stick spawn a
+# real scene instance the same way missile/beaker do above; triple_turbo
+# applies boost immediately the same way turbo does.
+# ---------------------------------------------------------------------------
+
+
+func test_dispatch_item_use_triple_turbo_applies_boost_immediately_to_the_kart() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	assert_false(bool(motor.call("is_boosting")), "fixture sanity")
+
+	race.call("dispatch_item_use", kart, &"triple_turbo")
+
+	assert_true(bool(motor.call("is_boosting")), "a triple_turbo use must apply boost immediately, same as turbo")
+	assert_almost_eq(
+		float(motor.call("boost_time_remaining_s")),
+		_catalog.items.turbo_boost_s,
+		0.01,
+		"one triple_turbo charge applies exactly one turbo_boost_s -- no separate tuning field"
+	)
+
+
+func test_dispatch_item_use_bomb_spawns_a_configured_bomb_under_the_session() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	race.call("dispatch_item_use", kart, &"bomb")
+	await wait_physics_frames(1)
+
+	var hazards := race.get_node_or_null("ItemHazards")
+	assert_not_null(hazards, "a spawned bomb must be parented under the session's own hazards container")
+	if hazards == null:
+		return
+	assert_eq(hazards.get_child_count(), 1)
+
+
+func test_dispatch_item_use_tnt_stick_drops_behind_the_launcher_by_one_kart_length() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	kart.global_transform = Transform3D(Basis.IDENTITY, Vector3(10.0, 0.0, 10.0))
+	var collision := kart.get_node("CollisionShape3D") as CollisionShape3D
+	assert_not_null(collision)
+	if collision == null:
+		return
+	var box := collision.shape as BoxShape3D
+	assert_not_null(box)
+	if box == null:
+		return
+	var kart_length_m := box.size.z
+	var launcher_forward := -kart.global_transform.basis.z
+
+	race.call("dispatch_item_use", kart, &"tnt_stick")
+
+	var hazards := race.get_node_or_null("ItemHazards")
+	assert_not_null(hazards)
+	if hazards == null:
+		return
+	assert_eq(hazards.get_child_count(), 1)
+	var stick := hazards.get_child(0) as Node3D
+	var expected := kart.global_position - launcher_forward * kart_length_m
+	assert_almost_eq(stick.global_position.x, expected.x, 0.01)
+	assert_almost_eq(stick.global_position.z, expected.z, 0.01)
+
+
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5: weighted roulette -- _position_ratio_for() and its wiring
+# into _on_box_body_entered().
+# ---------------------------------------------------------------------------
+
+
+func test_position_ratio_for_matches_the_documented_formula_against_live_ranking() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	# One real tick so _refresh_rank_snapshot() has populated a live order --
+	# see race_session.gd's own LIVE RANKING doc.
+	await wait_physics_frames(2)
+
+	var field := int(race.call("field_size"))
+	assert_gt(field, 1, "fixture sanity: the default race must spawn a real multi-kart field")
+	var position := int(race.call("player_position"))
+	var expected_ratio := float(position - 1) / float(field - 1)
+
+	assert_almost_eq(
+		float(race.call("_position_ratio_for", kart)),
+		expected_ratio,
+		0.0001
+	)
+
+
+func test_position_ratio_for_returns_the_uniform_sentinel_for_a_field_of_one() -> void:
+	var solo_catalog: GameplayTuning = _catalog.duplicate_deep(Resource.DEEP_DUPLICATE_ALL)
+	solo_catalog.ai.opponent_count = 0.0
+	var race := _boot_race_with_catalog(solo_catalog)
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	await wait_physics_frames(2)
+
+	assert_eq(int(race.call("field_size")), 1, "fixture sanity: a solo field is exactly one kart")
+	assert_lt(
+		float(race.call("_position_ratio_for", kart)),
+		0.0,
+		"field_size() <= 1 must never divide by zero -- returns ItemSlot's own uniform sentinel instead"
+	)
+
+
+## Proves _on_box_body_entered() actually THREADS a real, LIVE position
+## ratio into the weighted roll (not just that the pure formula above is
+## correct in isolation). Directly overwrites the session's own _current_
+## rank_order cache -- the SAME private-state-reach convention this suite
+## already uses elsewhere (e.g. kart.get("_motor")) -- rather than trying to
+## force a real position change through the clamped SpineFollower.update()
+## real driving would go through (see _update_player_follower()'s own
+## max_step_m clamp doc: a raw teleport is NOT reflected in total_progress_m()
+## within a couple of ticks, so this is the only fast, deterministic way to
+## pin kart_position()/field_size() for a test). A catalog where every
+## item's own weight is zeroed except weight_front_shield and weight_back_
+## bomb makes the outcome deterministic regardless of the actual rng draw
+## (see item_slot.gd's own test suite for the identical "isolate one item's
+## weight" technique) -- so a real box pickup while the cache reports the
+## player LEADING must land on shield, and the SAME kart's SAME slot,
+## picking up again while the cache reports the player TRAILING, must land
+## on bomb.
+func test_on_box_body_entered_threads_the_live_position_ratio_into_the_weighted_roll() -> void:
+	var catalog: GameplayTuning = _catalog.duplicate_deep(Resource.DEEP_DUPLICATE_ALL)
+	for item_name: StringName in ItemSlot.ITEM_NAMES:
+		catalog.items.set("weight_front_" + String(item_name), 0.0)
+		catalog.items.set("weight_back_" + String(item_name), 0.0)
+	catalog.items.weight_front_shield = 1.0
+	catalog.items.weight_back_bomb = 1.0
+
+	var race := _boot_race_with_catalog(catalog)
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	var ai_kart_count := int(race.call("ai_kart_count"))
+	assert_gt(ai_kart_count, 0, "fixture sanity: the default race must spawn real AI karts to rank against")
+	var ai_karts: Array = []
+	for index in range(ai_kart_count):
+		ai_karts.append(race.call("ai_kart", index))
+
+	# LEADING: player first in the cached rank order.
+	race.set("_current_rank_order", [kart] + ai_karts)
+	assert_eq(int(race.call("player_position")), 1, "fixture sanity: the forced cache must read the player as leading")
+
+	race.call("_on_box_body_entered", kart)
+	await wait_physics_frames(
+		int(ceil(catalog.items.roulette_duration_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_eq(slot.call("held_item"), &"shield", "leading (ratio 0.0) must land on the front-only-weighted item")
+	slot.call("use")
+
+	# TRAILING: player last in the cached rank order.
+	race.set("_current_rank_order", ai_karts + [kart])
+	assert_eq(
+		int(race.call("player_position")),
+		int(race.call("field_size")),
+		"fixture sanity: the forced cache must read the player as trailing"
+	)
+
+	race.call("_on_box_body_entered", kart)
+	await wait_physics_frames(
+		int(ceil(catalog.items.roulette_duration_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_eq(slot.call("held_item"), &"bomb", "trailing (ratio 1.0) must land on the back-only-weighted item")
+
+
 ## End-to-end proof through the REAL production wiring (not a synthetic
 ## dispatch_item_use() call): a real ITEM press on a kart holding a real
 ## rolled &"turbo" reaches KartController.use_item() via RacingInputAdapter,
@@ -2225,14 +2430,14 @@ func test_a_real_item_press_on_a_held_turbo_reaches_dispatch_and_applies_boost()
 	assert_not_null(slot)
 	if slot == null:
 		return
-	# rng_value=0.5 maps to turbo -- see item_slot.gd's own FOUR-WAY MAPPING
-	# doc / test_item_slot.gd's identical boundary test.
-	slot.call("start_roll", 0.5)
+	# rng_value=0.3 maps to turbo -- see item_slot.gd's own N-WAY UNIFORM
+	# MAPPING doc / test_item_slot.gd's identical boundary test.
+	slot.call("start_roll", 0.3)
 	var physics_fps := float(Engine.physics_ticks_per_second)
 	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
 	await wait_physics_frames(frames_needed)
 	assert_eq(slot.call("state"), &"held", "fixture setup: the roll must have landed")
-	assert_eq(slot.call("held_item"), &"turbo", "fixture setup: rng_value=0.5 must roll turbo")
+	assert_eq(slot.call("held_item"), &"turbo", "fixture setup: rng_value=0.3 must roll turbo")
 
 	var motor: RefCounted = kart.get("_motor")
 	assert_not_null(motor)
@@ -2343,8 +2548,12 @@ func test_spawning_ai_karts_does_not_flash_a_kart_through_the_track_origin() -> 
 ## there), a box placed AT KartSpawn would be a fixture bug, not a
 ## production one -- the player's real kart would legitimately pick it up
 ## too, defeating the very isolation the test is trying to prove.
+## catalog defaults to null (this suite's own shared _catalog) -- CTR R6
+## Task 5's own test_item_rng_seed_nonzero_reproduces_the_same_first_roll_
+## across_two_sessions is the one caller that overrides it (to ai.
+## opponent_count = 0.0, see that test's own updated doc for why).
 func _boot_race_with_synthetic_box(
-	item_rng_seed: int = 0, local_position: Variant = null
+	item_rng_seed: int = 0, local_position: Variant = null, catalog: GameplayTuning = null
 ) -> Dictionary:
 	assert_true(ResourceLoader.exists(RACE_SCENE_PATH))
 	if not ResourceLoader.exists(RACE_SCENE_PATH):
@@ -2373,7 +2582,7 @@ func _boot_race_with_synthetic_box(
 	# doc for the full mechanism).
 	box.position = local_position if local_position != null else spawn.position
 	track.add_child(box)
-	race.call("configure", _catalog)
+	race.call("configure", catalog if catalog != null else _catalog)
 	_skip_pre_race_countdown(race)
 	return {"race": race, "box": box}
 
@@ -2569,21 +2778,85 @@ func test_hud_item_label_shows_the_held_item_name_once_a_roll_lands() -> void:
 	assert_not_null(slot)
 	if slot == null:
 		return
-	# rng_value=0.9 maps to beaker -- see item_slot.gd's own FOUR-WAY MAPPING
-	# doc / test_item_slot.gd's identical boundary test.
-	slot.call("start_roll", 0.9)
+	# rng_value=0.8 maps to tnt_stick -- see item_slot.gd's own N-WAY UNIFORM
+	# MAPPING doc / test_item_slot.gd's identical boundary test. Doubles as
+	# the underscore-to-space LABEL TEXT proof (see race_hud.gd's own doc):
+	# &"tnt_stick" must render "TNT STICK", not a raw underscore.
+	slot.call("start_roll", 0.8)
 	var physics_fps := float(Engine.physics_ticks_per_second)
 	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
 	await wait_physics_frames(frames_needed)
 	assert_eq(slot.call("state"), &"held", "fixture setup: the roll must have landed")
-	assert_eq(slot.call("held_item"), &"beaker", "fixture setup: rng_value=0.9 must roll beaker")
+	assert_eq(slot.call("held_item"), &"tnt_stick", "fixture setup: rng_value=0.8 must roll tnt_stick")
 
 	var hud := race.get_node("UI/RaceHUD")
 	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
 	await wait_process_frames(1)
 
 	assert_true(item_label.visible, "a held item must show the label")
-	assert_eq(item_label.text, "ITEM  BEAKER")
+	assert_eq(item_label.text, "ITEM  TNT STICK")
+
+
+## CTR R6 Task 5: charges display -- see race_hud.gd's own LABEL TEXT/
+## CHARGES doc. A freshly-landed triple_turbo (still carrying every one of
+## its ItemTuning.triple_turbo_charges) must show the "xN" suffix.
+func test_hud_item_label_shows_the_charge_count_for_a_freshly_landed_triple_turbo() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	# 6.0 / 7.0 maps to triple_turbo (ITEM_NAMES' own last entry) under the
+	# N-WAY UNIFORM mapping -- see item_slot.gd's own boundary doc.
+	slot.call("start_roll", 6.0 / 7.0)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+	assert_eq(slot.call("held_item"), &"triple_turbo", "fixture setup: 6/7 must roll triple_turbo")
+
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	await wait_process_frames(1)
+
+	assert_eq(
+		item_label.text,
+		"ITEM  TRIPLE TURBO x%d" % int(_catalog.items.triple_turbo_charges),
+		"a freshly-landed triple_turbo must announce its full charge count"
+	)
+
+
+## Once only ONE charge remains, the "xN" suffix must disappear entirely --
+## reads exactly like an ordinary single-use item's own label, per race_hud.
+## gd's own doc ("the suffix only appears once there is more than one to
+## announce").
+func test_hud_item_label_omits_the_charge_suffix_once_only_one_charge_remains() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 6.0 / 7.0)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+	assert_eq(slot.call("held_item"), &"triple_turbo", "fixture setup: 6/7 must roll triple_turbo")
+
+	var charge_count := int(_catalog.items.triple_turbo_charges)
+	for _use_index in range(charge_count - 1):
+		slot.call("use")
+	assert_eq(int(slot.call("charges_remaining")), 1, "fixture setup: exactly one charge must remain")
+
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	await wait_process_frames(1)
+
+	assert_eq(item_label.text, "ITEM  TRIPLE TURBO", "with one charge left, the label must match an ordinary item's own")
 
 
 ## Solo semantics (R4 Task 6, item 4): items_enabled() must gate the HUD

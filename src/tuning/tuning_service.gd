@@ -137,6 +137,35 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"personality_skill_jitter",
 		],
 	],
+	# CTR R6 Task 5: three new items (bomb, TNT stick, triple turbo) plus
+	# weighted roulette, added to the already-shipped items section as ONE
+	# cohort -- mirrors kart's own body-tint entry and ai's own apex entry
+	# above (an override.tres saved before this task exists would be missing
+	# every one of these fields at once, never some subset).
+	&"items": [
+		[
+			&"bomb_speed_mps",
+			&"bomb_blast_radius_m",
+			&"bomb_arm_delay_s",
+			&"tnt_fuse_s",
+			&"tnt_shake_hops",
+			&"triple_turbo_charges",
+			&"weight_front_missile",
+			&"weight_back_missile",
+			&"weight_front_shield",
+			&"weight_back_shield",
+			&"weight_front_turbo",
+			&"weight_back_turbo",
+			&"weight_front_beaker",
+			&"weight_back_beaker",
+			&"weight_front_bomb",
+			&"weight_back_bomb",
+			&"weight_front_tnt_stick",
+			&"weight_back_tnt_stick",
+			&"weight_front_triple_turbo",
+			&"weight_back_triple_turbo",
+		],
+	],
 }
 
 var catalog: GameplayTuning
@@ -686,7 +715,46 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or items.beaker_hit_radius_m <= 0.0
 		or items.ai_item_use_cooldown_s <= 0.0
 		or items.ai_missile_max_target_gap_m <= 0.0
+		# CTR R6 Task 5: bomb/TNT/triple-turbo -- same "every field simply
+		# strictly positive" shape as every other items.* field above (see
+		# item_tuning.gd's own doc for why bomb/TNT reuse beaker_* for their
+		# lifetime/arm/hit-radius fields instead of duplicating them here).
+		or items.bomb_speed_mps <= 0.0
+		or items.bomb_blast_radius_m <= 0.0
+		or items.bomb_arm_delay_s <= 0.0
+		or items.tnt_fuse_s <= 0.0
+		or items.tnt_shake_hops <= 0.0
+		or items.triple_turbo_charges <= 0.0
 	):
+		return false
+
+	# CTR R6 Task 5: weighted roulette. Every individual weight must be
+	# >= 0.0 (a negative weight has no meaning in a cumulative table), and
+	# the brief's own "at least one positive at any [position] ratio" is
+	# satisfied by checking only the two ENDPOINTS (ratio 0.0 = pure front,
+	# ratio 1.0 = pure back) rather than an infinite sweep: ItemSlot's own
+	# blend is `(1.0 - ratio) * front + ratio * back` per item, so the total
+	# weight at any ratio is `(1.0 - ratio) * sum(front) + ratio * sum(back)`
+	# -- a convex combination of the two endpoint sums. If BOTH endpoint sums
+	# are > 0.0, every ratio strictly between them multiplies at least one of
+	# the two positive sums by a strictly-positive coefficient ((1.0 - ratio)
+	# or ratio, and at least one of those two is always > 0.0 for any ratio
+	# in [0.0, 1.0]), so the blended total is provably > 0.0 everywhere in
+	# the interval, not just at the two checked endpoints. Iterates ItemSlot.
+	# ITEM_NAMES + Object.get() rather than a hand-typed field list, so this
+	# check and ItemSlot's own weighted-pick table can never drift apart on
+	# which fields exist -- see item_slot.gd's own WEIGHTED MAPPING doc for
+	# the identical lookup shape.
+	var weight_sum_front := 0.0
+	var weight_sum_back := 0.0
+	for item_name: StringName in ItemSlot.ITEM_NAMES:
+		var front_weight: float = float(items.get("weight_front_" + String(item_name)))
+		var back_weight: float = float(items.get("weight_back_" + String(item_name)))
+		if front_weight < 0.0 or back_weight < 0.0:
+			return false
+		weight_sum_front += front_weight
+		weight_sum_back += back_weight
+	if weight_sum_front <= 0.0 or weight_sum_back <= 0.0:
 		return false
 
 	var fx := checked.fx

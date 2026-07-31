@@ -65,9 +65,11 @@ extends RefCounted
 ## that never populates this key gets slot_lateral_target_m = 0.0, which
 ## still degrades gracefully (see APEX LATERAL TARGETING's own doc).
 ##
-## Task 5 (CTR R4 items) adds three more keys: held_item: StringName (
-## &"missile"/&"shield"/&"turbo"/&"beaker" while an item is held, &"none"
-## otherwise -- see item_slot.gd's own held_item() doc), target_gap_ahead_m:
+## Task 5 (CTR R4 items) adds three more keys: held_item: StringName (any
+## ItemSlot.ITEM_NAMES entry while an item is held, &"none" otherwise -- see
+## item_slot.gd's own held_item() doc; three more entries joined this set in
+## CTR R6 Task 5: &"bomb"/&"tnt_stick"/&"triple_turbo", see this class doc's
+## own ITEM USE HEURISTICS section for their heuristics), target_gap_ahead_m:
 ## float (the nearest OTHER kart's strictly-positive progress margin ahead
 ## of this one, by SpineFollower totals -- the exact "nearest kart truly
 ## AHEAD" quantity missile.gd's own LAUNCH-TIME TARGET LOCK computes at
@@ -436,6 +438,35 @@ extends RefCounted
 ##     ("positive = this kart is behind the player") means negative is AHEAD
 ##     of the player, i.e. leading; the brief's own "beaker when leading".
 ##     Strict <, not <=: exactly tied (band_gap_m == 0.0) is not leading.
+##   &"bomb" (CTR R6 Task 5): target_gap_ahead_m <= item.ai_missile_max_
+##     target_gap_m -- IDENTICAL condition and IDENTICAL tuning field to
+##     &"missile" above (the brief's own "reuse target_gap heuristic
+##     bounds"): a bomb is a forward lob, not a homing shot, so "something
+##     is close enough ahead to be worth throwing at" is the same judgment
+##     call a missile launch already makes, and does not earn its own
+##     bomb-specific range field.
+##   &"tnt_stick" (CTR R6 Task 5): band_gap_m < 0.0 -- IDENTICAL condition to
+##     &"beaker" above (the brief's own "TNT dropped when leading, like
+##     beaker; differentiate by held item"): both are dropped-behind hazards
+##     with the same "protect the lead" logic, differing only in what
+##     happens once a kart runs into them (see tnt_stick.gd's own class doc).
+##   &"triple_turbo" (CTR R6 Task 5): absf(curvature_ahead) < ai.slide_exit_
+##     curvature -- IDENTICAL condition to &"turbo" above (the brief's own
+##     "turbo/triple on the longest straight ... same straight-line
+##     heuristic"). The "three presses spaced by ai_item_use_cooldown_s"
+##     half of the brief needs NO extra state in this driver at all: each
+##     dispatched charge (item_slot.gd's own CHARGES doc) resets
+##     AiKartAgent's own cooldown timer to 0.0 the same way any other
+##     use_item dispatch already does (see ai_kart_agent.gd's own OUTPUT
+##     ROUTING/use_item paragraph), which flips item_cooldown_ready false
+##     for the next ai_item_use_cooldown_s -- held_item stays &"triple_turbo"
+##     across all three charges (see item_slot.gd's own CHARGES doc), so
+##     _intending_item_use naturally re-evaluates to false while the
+##     cooldown is closed (clearing the RISING-EDGE memory below along with
+##     it) and back to true, a fresh edge, once it reopens and the straight-
+##     line condition still holds -- the exact same cooldown-gated rising-
+##     edge machinery every other item already uses, spacing three real
+##     presses automatically with no triple_turbo-specific code.
 ## The satisfied-heuristic result is further gated on item_cooldown_ready
 ## and combined into a single armed/not-armed "intent" exactly like SLIDE
 ## (hop) COUPLING's own _intending_slide -- use_item is the RISING EDGE of
@@ -465,10 +496,12 @@ extends RefCounted
 ## (decide() still fails closed to a fully neutral output, use_item
 ## included, if EITHER of those is missing; see FAIL-CLOSED below,
 ## unchanged by this task). Missing item_tuning degrades gracefully
-## instead: every non-missile heuristic (shield/turbo/beaker) needs nothing
-## from it and keeps working normally, and only the missile heuristic --
-## the one that reads item.ai_missile_max_target_gap_m -- fails closed to
-## "never fires" rather than crashing on a null dereference. This mirrors
+## instead: every heuristic that needs nothing from item_tuning (shield/
+## turbo/beaker/tnt_stick/triple_turbo) keeps working normally, and only the
+## two heuristics that read item.ai_missile_max_target_gap_m (missile AND,
+## per CTR R6 Task 5, bomb -- see the class doc's own &"bomb" paragraph for
+## why they share the field) fail closed to "never fires" rather than
+## crashing on a null dereference. This mirrors
 ## ai_kart_agent.gd's own established "optional Callable, defaults to a
 ## safe no-op when not wired" shape (see its other_kart_positions_getter)
 ## rather than AiDriver's OWN existing all-or-nothing FAIL-CLOSED shape one
@@ -659,13 +692,13 @@ func _item_heuristic_satisfied(
 	match held_item:
 		&"shield":
 			return true
-		&"turbo":
+		&"turbo", &"triple_turbo":
 			return absf(curvature_ahead) < _ai_tuning.slide_exit_curvature
-		&"missile":
+		&"missile", &"bomb":
 			if _item_tuning == null:
 				return false
 			return target_gap_ahead_m <= _item_tuning.ai_missile_max_target_gap_m
-		&"beaker":
+		&"beaker", &"tnt_stick":
 			return band_gap_m < 0.0
 		_:
 			return false

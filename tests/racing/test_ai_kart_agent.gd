@@ -510,10 +510,10 @@ func test_held_item_reflects_the_karts_own_item_slot() -> void:
 	)
 
 	# Force the slot straight through &"rolling" to &"held" on a KNOWN item --
-	# rng_value 0.3 lands in item_slot.gd's own [0.25, 0.5) bucket, &"shield"
-	# (ITEM_NAMES = [missile, shield, turbo, beaker]).
+	# rng_value 0.2 lands in item_slot.gd's own [1/7, 2/7) bucket, &"shield"
+	# (ITEM_NAMES = [missile, shield, turbo, beaker, bomb, tnt_stick, triple_turbo]).
 	var slot: Object = kart.call("item_slot")
-	slot.call("start_roll", 0.3)
+	slot.call("start_roll", 0.2)
 	slot.call("tick", _item_tuning.roulette_duration_s)
 	assert_eq(
 		StringName(slot.call("held_item")),
@@ -697,7 +697,7 @@ func test_use_item_routes_through_the_dispatcher_and_resets_the_cooldown() -> vo
 	# ai_driver.gd's own ITEM USE HEURISTICS doc, so this fires on the very
 	# first real physics tick with no cornering/leading setup needed.
 	var slot: Object = kart.call("item_slot")
-	slot.call("start_roll", 0.3)
+	slot.call("start_roll", 0.2)
 	slot.call("tick", _item_tuning.roulette_duration_s)
 	assert_eq(StringName(slot.call("held_item")), &"shield", "fixture sanity")
 

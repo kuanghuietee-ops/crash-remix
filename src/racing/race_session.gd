@@ -294,6 +294,10 @@ const KartSceneType := preload("res://scenes/racing/kart.tscn")
 # no scene needed. See dispatch_item_use()/register_hit().
 const MissileSceneType := preload("res://scenes/racing/missile.tscn")
 const BeakerSceneType := preload("res://scenes/racing/beaker.tscn")
+# CTR R6 Task 5: the two new items that also need a real scene instance --
+# triple_turbo (like turbo/shield) is a pure KartController call, no scene.
+const BombSceneType := preload("res://scenes/racing/bomb.tscn")
+const TntStickSceneType := preload("res://scenes/racing/tnt_stick.tscn")
 # R5 Task 1: see the class doc's COUNTDOWN + START BOOST section.
 const CountdownTimerType := preload("res://src/racing/flow/countdown_timer.gd")
 const StartBoostJudgeType := preload(
@@ -1041,16 +1045,29 @@ func use_item_for(kart: CharacterBody3D) -> StringName:
 
 ## &"none" (nothing was held, or use_item() was called on an empty/rolling
 ## slot -- see item_slot.gd's own use() doc) is a harmless no-op match.
+##
+## CTR R6 Task 5: &"bomb"/&"tnt_stick" spawn a real scene instance, the same
+## shape &"missile"/&"beaker" already use. &"triple_turbo" falls in WITH
+## &"turbo" -- dispatch_item_use() is called once PER use() (see item_slot.
+## gd's own CHARGES doc: use() itself already handles the "which charge is
+## this" bookkeeping and always hands back &"triple_turbo" until the last
+## one), so this match only ever needs to apply ONE turbo_boost_s per call,
+## identically for both names; there is no separate "apply three boosts at
+## once" case anywhere in this file.
 func dispatch_item_use(kart: CharacterBody3D, item_name: StringName) -> void:
 	match item_name:
 		&"missile":
 			_spawn_missile(kart)
 		&"beaker":
 			_spawn_beaker(kart)
-		&"turbo":
+		&"turbo", &"triple_turbo":
 			kart.call("apply_boost", _item_tuning.turbo_boost_s)
 		&"shield":
 			kart.call("set_shielded", _item_tuning.shield_duration_s)
+		&"bomb":
+			_spawn_bomb(kart)
+		&"tnt_stick":
+			_spawn_tnt_stick(kart)
 
 
 func _ensure_hazards_root() -> Node3D:
@@ -1088,6 +1105,38 @@ func _spawn_beaker(launcher: CharacterBody3D) -> void:
 	)
 	beaker.global_transform = Transform3D(launcher.global_transform.basis, drop_point)
 	beaker.call(
+		"configure", self, launcher, _item_tuning, Callable(self, "_item_targets")
+	)
+
+
+## Spawns at the launcher's own position/facing -- no offset, the same
+## choice missile.gd's own SPAWN section already makes and bomb.gd's own
+## class doc mirrors: a lobbed arc clears the launch point within a
+## fraction of a second regardless of where exactly it started. kart_tuning
+## is threaded through as bomb.gd's one extra configure() parameter (gravity
+## for the real ballistic arc -- see that file's own LAUNCH GEOMETRY doc).
+func _spawn_bomb(launcher: CharacterBody3D) -> void:
+	var bomb := BombSceneType.instantiate()
+	_ensure_hazards_root().add_child(bomb)
+	bomb.global_transform = launcher.global_transform
+	bomb.call(
+		"configure", self, launcher, _item_tuning, _kart_tuning, Callable(self, "_item_targets")
+	)
+
+
+## Dropped the same way _spawn_beaker() drops a beaker (one kart length
+## behind the launcher's own facing) -- "dropped like the beaker" per the
+## task brief, see tnt_stick.gd's own class doc for why its grounded phase
+## reuses beaker_arm_delay_s/beaker_hit_radius_m/beaker_lifetime_s directly.
+func _spawn_tnt_stick(launcher: CharacterBody3D) -> void:
+	var stick := TntStickSceneType.instantiate()
+	_ensure_hazards_root().add_child(stick)
+	var launcher_forward := -launcher.global_transform.basis.z
+	var drop_point := (
+		launcher.global_position - launcher_forward * _read_kart_length_m(launcher)
+	)
+	stick.global_transform = Transform3D(launcher.global_transform.basis, drop_point)
+	stick.call(
 		"configure", self, launcher, _item_tuning, Callable(self, "_item_targets")
 	)
 
@@ -1457,12 +1506,38 @@ func _on_box_body_entered(body: Node) -> void:
 	var slot: Object = body.call("item_slot")
 	if slot == null:
 		return
-	slot.call("start_roll", _item_rng.randf())
+	# CTR R6 Task 5: threads this kart's own LIVE position ratio into the
+	# weighted roulette -- see item_slot.gd's own WEIGHTED MAPPING doc and
+	# _position_ratio_for()'s own doc for the (position-1)/(field-1) formula.
+	slot.call("start_roll", _item_rng.randf(), _position_ratio_for(body))
 
 
 ## See the class doc's SOLO TIME TRIAL DOES NOT ROLL section.
 func _items_allowed() -> bool:
 	return spawn_opponents
+
+
+## CTR R6 Task 5: the position ratio ItemSlot.start_roll()'s own WEIGHTED
+## MAPPING blends by -- 0.0 for the race leader, 1.0 for last place, a
+## straight-line (position-1)/(field-1) fraction in between, read off THIS
+## session's own already-live kart_position()/field_size() (the exact same
+## per-tick ranking RaceHUD's own "POS n / m" line already reads, see those
+## two getters' own class-doc LIVE RANKING section) rather than a second,
+## parallel ranking computation. field_size() <= 1 (a solo/no-field session,
+## or a tick before the very first _refresh_rank_snapshot() has ever run)
+## has no meaningful ratio to compute -- returns the ItemSlot.start_roll()
+## sentinel (-1.0, "no live position known") rather than dividing by zero,
+## the graceful-degrade shape this whole file already uses for "not ready
+## yet" reads. In practice this path is unreachable in production: _items_
+## allowed() already gates every real call site (_on_box_body_entered())
+## behind spawn_opponents, so a real box pickup only ever happens once a
+## real multi-kart field exists -- this guard exists so the formula itself
+## can never divide by zero, not because the gate is expected to fail.
+func _position_ratio_for(kart: CharacterBody3D) -> float:
+	var field := field_size()
+	if field <= 1:
+		return -1.0
+	return float(kart_position(kart) - 1) / float(field - 1)
 
 
 func _discover_item_boxes() -> Array[ItemBox]:

@@ -3602,6 +3602,14 @@ const ITEMS_STRICTLY_POSITIVE_FIELDS: Array[StringName] = [
 	&"beaker_hit_radius_m",
 	&"ai_item_use_cooldown_s",
 	&"ai_missile_max_target_gap_m",
+	# CTR R6 Task 5: bomb/TNT/triple-turbo -- same strictly-positive shape,
+	# no ratio-typed exception among them either.
+	&"bomb_speed_mps",
+	&"bomb_blast_radius_m",
+	&"bomb_arm_delay_s",
+	&"tnt_fuse_s",
+	&"tnt_shake_hops",
+	&"triple_turbo_charges",
 ]
 
 
@@ -3707,6 +3715,162 @@ func test_items_tuning_rejects_nonpositive_fields() -> void:
 		)
 		items.set(property_name, authored_value)
 	assert_true(service.call("catalog_is_usable"))
+
+
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5: weighted roulette validation. See catalog_is_usable()'s own
+# comment for the two-endpoint proof (checking ratio 0.0 and 1.0's own
+# summed weights is sufficient to guarantee every ratio in between).
+# ---------------------------------------------------------------------------
+
+
+func test_items_tuning_rejects_a_negative_roulette_weight() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	for item_name: StringName in ItemSlot.ITEM_NAMES:
+		for field_prefix: String in ["weight_front_", "weight_back_"]:
+			var field_name := field_prefix + String(item_name)
+			var authored_value: Variant = items.get(field_name)
+			items.set(field_name, -0.1)
+			assert_false(
+				service.call("catalog_is_usable"),
+				"items.%s must reject a negative weight" % field_name
+			)
+			items.set(field_name, authored_value)
+	assert_true(service.call("catalog_is_usable"), "fixture sanity: every field must be restored clean")
+
+
+## Unlike the strictly-positive fields above, an INDIVIDUAL weight of
+## exactly 0.0 is perfectly valid (an item that never appears at one end of
+## the field) -- only the SUMMED front/back totals must stay positive. This
+## is the one real behavioral difference the SUM-not-per-field validation
+## rule buys over a naive "every weight must be positive" check.
+func test_items_tuning_accepts_a_zero_weight_on_a_single_item() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	items.set("weight_front_missile", 0.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"a single item's weight at exactly 0.0 must still be usable as long as the front SUM stays positive"
+	)
+
+
+func test_items_tuning_rejects_every_front_weight_zeroed_at_once() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	for item_name: StringName in ItemSlot.ITEM_NAMES:
+		items.set("weight_front_" + String(item_name), 0.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a table where NOTHING has any front weight must be rejected -- the front sum is zero"
+	)
+
+
+func test_items_tuning_rejects_every_back_weight_zeroed_at_once() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var items := service.get("catalog").get("items") as Resource
+	assert_not_null(items)
+	if items == null:
+		return
+	for item_name: StringName in ItemSlot.ITEM_NAMES:
+		items.set("weight_back_" + String(item_name), 0.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a table where NOTHING has any back weight must be rejected -- the back sum is zero"
+	)
+
+
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5: the three new items' fields plus every roulette weight,
+# added to the already-shipped items section as ONE cohort (LEGACY_FIELD_
+# GROUPS_BY_SECTION's &"items" entry), mirroring test_old_kart_override_
+# backfills_the_body_tint_field_group's own shape one section up -- an
+# override.tres saved before this task exists would be missing every one of
+# these fields at once, never some subset.
+func test_old_items_override_backfills_the_r6_item_expansion_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var expansion_fields: Array[StringName] = [
+		&"bomb_speed_mps",
+		&"bomb_blast_radius_m",
+		&"bomb_arm_delay_s",
+		&"tnt_fuse_s",
+		&"tnt_shake_hops",
+		&"triple_turbo_charges",
+		&"weight_front_missile",
+		&"weight_back_missile",
+		&"weight_front_shield",
+		&"weight_back_shield",
+		&"weight_front_turbo",
+		&"weight_back_turbo",
+		&"weight_front_beaker",
+		&"weight_back_beaker",
+		&"weight_front_bomb",
+		&"weight_back_bomb",
+		&"weight_front_tnt_stick",
+		&"weight_back_tnt_stick",
+		&"weight_front_triple_turbo",
+		&"weight_back_triple_turbo",
+	]
+	for field: StringName in expansion_fields:
+		assert_true(
+			_exported_property_names(authored.items).has(field),
+			"the R6 item-expansion fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := ItemTuning.new()
+	for field: StringName in expansion_fields:
+		stale.items.set(field, defaults.get(field))
+	stale.items.turbo_boost_s = 9.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in expansion_fields:
+		assert_eq(
+			migrated.items.get(field),
+			authored.items.get(field),
+			"an older phone override must receive the authored items.%s" % field
+		)
+	assert_almost_eq(
+		migrated.items.turbo_boost_s,
+		9.0,
+		0.0001,
+		"migration must preserve existing items edits"
+	)
 
 
 func test_catalog_is_unusable_without_items() -> void:

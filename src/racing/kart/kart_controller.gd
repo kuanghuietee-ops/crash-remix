@@ -59,6 +59,19 @@ extends CharacterBody3D
 ## out() reads straight through), the same "the timer just runs out" shape
 ## invulnerable_after_hit_s already uses as its own independent window.
 
+## CTR R6 Task 5: fires on EVERY real hop_pressed() call below, unconditionally
+## -- including the spin_out-stunned early-return case, since a real physical
+## button press happened regardless of whether the motor/drift FSM acted on
+## it. This is the "clean signal" tnt_stick.gd's own SHAKE-OFF mechanism
+## connects to while attached to this kart (see that file's own class doc):
+## a genuine per-press edge, not a polled counter compared tick-to-tick and
+## not a raw Input-singleton read -- the SAME hop_pressed() entry point both
+## a human's RacingInputAdapter press and an AI kart's own AiKartAgent.
+## _route_decision() hop output already call, so shaking off a TNT stick
+## works identically for the player and every AI kart with no separate
+## wiring either one has to opt into.
+signal hop_pressed_edge
+
 const KartMotorType := preload("res://src/racing/kart/kart_motor.gd")
 const DriftStateMachineType := preload(
 	"res://src/racing/kart/drift_state_machine.gd"
@@ -172,6 +185,7 @@ func set_yaw_degrees(degrees: float) -> void:
 ## it never reaches the drift FSM at all, so it can neither add a vertical
 ## impulse nor latch _hop_held to arm a slide the instant the stun ends.
 func hop_pressed() -> void:
+	hop_pressed_edge.emit()
 	if _motor.is_spinning_out():
 		return
 	_drift.hop_pressed()

@@ -12,6 +12,18 @@ const KART_SCENE_PATH := "res://scenes/racing/kart.tscn"
 const TUNING_PATH := "res://data/tuning/racing/kart.tres"
 const ITEM_TUNING_PATH := "res://data/tuning/racing/items.tres"
 
+## CTR R6 Task 5: a minimal signal-connect target proving KartController.
+## hop_pressed_edge really fires per real hop_pressed() call -- see the
+## signal's own doc on kart_controller.gd. tnt_stick.gd's own tests reuse
+## this exact "duck-typed double exposing the identical signal name" shape
+## one layer further out (against a fake victim, not a real KartController).
+class HopPressedEdgeWatcher:
+	extends RefCounted
+	var call_count: int = 0
+
+	func _on_hop_pressed_edge() -> void:
+		call_count += 1
+
 var _kart_tuning: KartTuning
 var _item_tuning: ItemTuning
 
@@ -585,6 +597,49 @@ func test_hop_pressed_during_spin_out_no_ops_and_does_not_arm_a_slide() -> void:
 		0.05,
 		"a hop press during a spin-out stun must not add a vertical impulse either"
 	)
+
+
+## CTR R6 Task 5: hop_pressed_edge is the "clean signal" tnt_stick.gd's own
+## shake-off mechanism connects to (see kart_controller.gd's own doc on the
+## signal declaration) -- proven directly against the real production
+## script here; tnt_stick.gd's own tests then prove the CONSUMER side
+## (connecting to it, decrementing a shake counter) against a duck-typed
+## double exposing the identical signal name.
+func test_hop_pressed_emits_the_hop_pressed_edge_signal() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var watcher := HopPressedEdgeWatcher.new()
+	kart.connect("hop_pressed_edge", Callable(watcher, "_on_hop_pressed_edge"))
+
+	kart.call("hop_pressed")
+	kart.call("hop_pressed")
+
+	assert_eq(watcher.call_count, 2, "every real hop_pressed() call must fire its own edge")
+
+
+## See the class doc's own signal doc: the edge fires UNCONDITIONALLY, even
+## when the spin-out guard immediately below it turns the rest of the call
+## into a no-op -- a real physical button press happened either way, and
+## tnt_stick.gd's own shake-off must not silently discard mashes that happen
+## to land during a stun.
+func test_hop_pressed_edge_still_fires_during_a_spin_out_stun() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	motor.call("apply_spin_out")
+	assert_true(bool(motor.call("is_spinning_out")), "fixture setup: the motor must be spinning out")
+
+	var watcher := HopPressedEdgeWatcher.new()
+	kart.connect("hop_pressed_edge", Callable(watcher, "_on_hop_pressed_edge"))
+	kart.call("hop_pressed")
+
+	assert_eq(watcher.call_count, 1, "the edge must still fire even though the stun guard no-ops the rest of the call")
 
 
 ## A hop can latch _hop_held=true BEFORE a slide actually starts (steer

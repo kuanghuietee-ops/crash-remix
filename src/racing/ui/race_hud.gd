@@ -33,6 +33,19 @@ extends Control
 ## (ItemSlot.held_item(), while &"held") -- graybox text, no icon yet. See
 ## _refresh_item_display().
 ##
+## LABEL TEXT (CTR R6 Task 5 update): underscores in an ItemSlot.ITEM_NAMES
+## entry (&"tnt_stick", &"triple_turbo" -- the four original R4 names never
+## had any) are rendered as spaces before uppercasing, so "TNT_STICK" reads
+## "TNT STICK", not with a stray underscore -- see _display_item_text().
+## CHARGES (&"triple_turbo" only, see item_slot.gd's own CHARGES doc): while
+## &"held" (never while &"rolling" -- the flicker has no charge count of its
+## own yet), a charge count greater than one appends " xN" to the label,
+## e.g. "TRIPLE TURBO x2" once one of its three charges has already been
+## spent. Exactly one charge remaining omits the suffix entirely (reads
+## just "TRIPLE TURBO", matching every ordinary single-use item's own
+## label) -- the "xN" only ever appears once there is more than one to
+## announce.
+##
 ## COUNTDOWN + BOOST HINT (R5 Task 1). _countdown_label/_boost_hint_label
 ## poll RaceSession.is_race_started()/countdown_phase() every _refresh()
 ## tick, the exact same "poll every tick, toggle .visible directly, no
@@ -254,7 +267,19 @@ func _refresh_item_display() -> void:
 		slot.call("rolling_display_item") if state == &"rolling"
 		else slot.call("held_item")
 	)
-	_item_label.text = "ITEM  " + String(display_item).to_upper()
+	var charges := int(slot.call("charges_remaining")) if state == &"held" else 0
+	_item_label.text = "ITEM  " + _display_item_text(display_item, charges)
+
+
+## See the class doc's own HELD-ITEM DISPLAY / LABEL TEXT and CHARGES
+## sections. charges is 0 (never appends a suffix) for every state besides
+## &"held", and for any ordinary single-charge item even while &"held" --
+## the suffix is reserved for "more than one charge left to announce".
+func _display_item_text(item_name: StringName, charges: int) -> String:
+	var text := String(item_name).replace("_", " ").to_upper()
+	if charges > 1:
+		text += " x%d" % charges
+	return text
 
 
 func _on_race_finished(total_s: float, lap_times: Array) -> void:

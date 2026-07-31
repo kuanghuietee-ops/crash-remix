@@ -1316,6 +1316,144 @@ func test_beaker_does_not_use_when_exactly_tied() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# CTR R6 Task 5: the three new items reuse an EXISTING heuristic verbatim --
+# bomb=missile's, tnt_stick=beaker's, triple_turbo=turbo's. One representative
+# case per reused condition (the shared _item_heuristic_satisfied() branch is
+# already exhaustively proven by the missile/beaker/turbo tests above).
+# ---------------------------------------------------------------------------
+
+
+func test_bomb_uses_at_the_target_gap_threshold_the_same_as_missile() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"bomb",
+		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m,
+	}))
+
+	assert_true(bool(result.get("use_item")), "bomb reuses missile's own <= threshold verbatim")
+
+
+func test_bomb_does_not_use_beyond_the_target_gap_threshold() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"bomb",
+		"target_gap_ahead_m": _item.ai_missile_max_target_gap_m + 1.0,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_bomb_never_uses_without_item_tuning_configured() -> void:
+	var driver := _new_unconfigured_driver()
+	if driver == null:
+		return
+	driver.call("configure", _ai, _kart)
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"bomb",
+		"target_gap_ahead_m": 0.0,
+	}))
+
+	assert_false(
+		bool(result.get("use_item")),
+		"bomb shares missile's own item_tuning fail-closed contract, not a separate field"
+	)
+
+
+func test_tnt_stick_uses_when_leading_the_same_as_beaker() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"tnt_stick",
+		"band_gap_m": -5.0,
+	}))
+
+	assert_true(bool(result.get("use_item")), "tnt_stick reuses beaker's own leading condition verbatim")
+
+
+func test_tnt_stick_does_not_use_when_behind() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"tnt_stick",
+		"band_gap_m": 5.0,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+func test_triple_turbo_uses_below_slide_exit_curvature_the_same_as_turbo() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"triple_turbo",
+		"curvature_ahead": _ai.slide_exit_curvature / 2.0,
+	}))
+
+	assert_true(bool(result.get("use_item")), "triple_turbo reuses turbo's own straight-line condition verbatim")
+
+
+func test_triple_turbo_does_not_use_at_or_above_slide_exit_curvature() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"held_item": &"triple_turbo",
+		"curvature_ahead": _ai.slide_exit_curvature,
+	}))
+
+	assert_false(bool(result.get("use_item")))
+
+
+## Proves the brief's own "three presses spaced by ai_item_use_cooldown_s"
+## needs no triple_turbo-specific state in THIS driver -- see the class
+## doc's own &"triple_turbo" paragraph for the full mechanism. Simulates
+## AiKartAgent's own real cooldown-reset-on-dispatch behavior by hand: the
+## SAME state Dictionary (held_item stays &"triple_turbo" across all three,
+## exactly like item_slot.gd's own CHARGES doc says it does) is re-decided
+## across three cooldown-open/cooldown-closed cycles, and use_item fires
+## exactly once per open window -- three real presses, not one.
+func test_triple_turbo_fires_a_fresh_edge_on_each_of_three_cooldown_gated_windows() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+	var straight_state := _state({
+		"held_item": &"triple_turbo",
+		"curvature_ahead": 0.0,
+		"item_cooldown_ready": true,
+	})
+
+	for charge_index in range(3):
+		var opened: Dictionary = driver.call("decide", straight_state)
+		assert_true(
+			bool(opened.get("use_item")),
+			"charge %d's own cooldown-open tick must fire a fresh edge" % (charge_index + 1)
+		)
+		# item_cooldown_ready flips false the instant the real dispatch
+		# resets AiKartAgent's own timer (see ai_kart_agent.gd's OUTPUT
+		# ROUTING/use_item paragraph) -- simulated here by hand.
+		var closed_state := _merged_state(straight_state, {"item_cooldown_ready": false})
+		var closed: Dictionary = driver.call("decide", closed_state)
+		assert_false(
+			bool(closed.get("use_item")),
+			"the cooldown-closed tick right after a charge must not fire again"
+		)
+
+
 func test_use_item_does_not_fire_when_cooldown_not_ready() -> void:
 	var driver := _new_driver()
 	if driver == null:
