@@ -71,12 +71,28 @@ var _active: bool = true
 var _respawning: bool = false
 var _respawn_elapsed_s: float
 
+# Task 1 (CTR R6, circuit polish): spin + bob on the VISUAL child only --
+# collision (the SphereShape3D configure() above resizes) is never touched
+# by this. _mesh/_mesh_base_position are captured once in _ready(), the same
+# defensive "look the node up once, cache it" shape kart_fx.gd's own NODE
+# LOOKUP doc uses, so spin/bob works regardless of whether configure() with
+# fx_tuning ever gets called at all (fx_tuning is an OPTIONAL trailing
+# param, see configure()'s own doc -- mirrors kart_controller.gd's own
+# item_tuning optional-param precedent).
+var _fx_tuning: FxTuning
+var _mesh: MeshInstance3D
+var _mesh_base_position: Vector3
+var _spin_bob_elapsed_s: float
+
 
 func _ready() -> void:
 	monitoring = true
 	monitorable = false
 	process_mode = Node.PROCESS_MODE_PAUSABLE
 	body_entered.connect(_on_body_entered)
+	_mesh = get_node_or_null("Mesh") as MeshInstance3D
+	if _mesh != null:
+		_mesh_base_position = _mesh.position
 
 
 ## Applies box_pickup_radius_m to this box's own pickup shape -- the tuning
@@ -92,8 +108,17 @@ func _ready() -> void:
 ## fixture. The scene's authored shape type is still read as a hint (a
 ## non-SphereShape3D, or a missing CollisionShape3D entirely -- a bare test
 ## fixture -- is left alone rather than guessed at), just never mutated.
-func configure(item_tuning: ItemTuning) -> void:
+##
+## fx_tuning (Task 1, CTR R6, circuit polish) is OPTIONAL and defaults to
+## null -- mirrors kart_controller.gd's own item_tuning optional-param
+## precedent (configure()'d with no fx_tuning at all is a documented no-op:
+## the Mesh child simply never spins/bobs). Applied unconditionally, before
+## the SphereShape3D early-return below, so a test fixture with no real
+## SphereShape3D collision still gets its spin/bob wired.
+func configure(item_tuning: ItemTuning, fx_tuning: FxTuning = null) -> void:
 	_tuning = item_tuning
+	if fx_tuning != null:
+		_fx_tuning = fx_tuning
 	var collision := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if collision == null or not (collision.shape is SphereShape3D):
 		return
@@ -112,11 +137,33 @@ func is_active() -> bool:
 
 
 func _physics_process(delta_s: float) -> void:
+	_tick_spin_and_bob(delta_s)
 	if not _respawning:
 		return
 	_respawn_elapsed_s += delta_s
 	if _tuning != null and _respawn_elapsed_s >= _tuning.box_respawn_s:
 		_reappear()
+
+
+## Task 1 (CTR R6, circuit polish): spins the VISUAL Mesh child around its
+## own local Y axis at item_box_spin_degrees_per_s and bobs it vertically
+## around its authored base position with a sine wave sized item_box_bob_
+## amplitude_m at item_box_bob_hz -- runs unconditionally whenever fx_tuning
+## is configured, independent of _active/_respawning (a hidden box's spin
+## keeps accumulating in the background so it never pops to a random facing
+## the instant it reappears; visible=false already hides it either way, same
+## as _reappear()/_on_body_entered()'s own visibility toggle). Collision is
+## never touched -- only the Mesh node's own local transform.
+func _tick_spin_and_bob(delta_s: float) -> void:
+	if _fx_tuning == null or _mesh == null:
+		return
+	_spin_bob_elapsed_s += delta_s
+	_mesh.rotation.y += deg_to_rad(_fx_tuning.item_box_spin_degrees_per_s) * delta_s
+	_mesh.position.y = (
+		_mesh_base_position.y
+		+ sin(_spin_bob_elapsed_s * TAU * _fx_tuning.item_box_bob_hz)
+		* _fx_tuning.item_box_bob_amplitude_m
+	)
 
 
 ## monitoring is set via set_deferred(), not a direct assignment: this

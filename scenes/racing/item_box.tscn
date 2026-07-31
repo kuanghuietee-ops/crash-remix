@@ -1,16 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/racing/items/item_box.gd" id="1_box"]
+[ext_resource type="PackedScene" path="res://assets/models/props/SM_crate_standard.glb" id="2_model"]
 
 [sub_resource type="SphereShape3D" id="Shape_box_pickup"]
 radius = 1.6
-
-[sub_resource type="StandardMaterial3D" id="Material_box"]
-albedo_color = Color(0.95, 0.78, 0.15, 1)
-
-[sub_resource type="BoxMesh" id="Mesh_box"]
-material = SubResource("Material_box")
-size = Vector3(0.6, 0.6, 0.6)
 
 [node name="ItemBox" type="Area3D"]
 collision_layer = 1
@@ -21,4 +15,6 @@ script = ExtResource("1_box")
 shape = SubResource("Shape_box_pickup")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
-mesh = SubResource("Mesh_box")
+
+[node name="Model" parent="Mesh" instance=ExtResource("2_model")]
+position = Vector3(0, -0.5, 0)

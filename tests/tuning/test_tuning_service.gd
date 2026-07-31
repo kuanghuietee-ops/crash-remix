@@ -323,20 +323,39 @@ const PHASE0_BASELINE_FIELDS_BY_SECTION := {
 		&"ai_item_use_cooldown_s",
 		&"ai_missile_max_target_gap_m",
 	],
+	# Task 1 (CTR R6, circuit polish): fx is a whole new section, the same
+	# shape as kart/race/ai/items above -- _backfill_missing_sections
+	# migrates a missing section atomically, so every field authored at
+	# introduction joins this baseline (see the comment below).
+	&"fx": [
+		&"spark_amount_stage0",
+		&"spark_amount_per_stage",
+		&"spark_lifetime_s",
+		&"spark_velocity_mps",
+		&"spark_color_stage1",
+		&"spark_color_stage2",
+		&"spark_color_stage3",
+		&"boost_flame_lifetime_s",
+		&"boost_flame_amount",
+		&"item_box_spin_degrees_per_s",
+		&"item_box_bob_amplitude_m",
+		&"item_box_bob_hz",
+	],
 }
 # Tasks 17, 19, 20 and 22 add whole enemy, chase, hog and boss_papu sections,
 # Task 1 (CTR racing mode) adds whole kart and race sections, Task 1 (CTR R3,
-# AI opponents) adds a whole ai section, and R4 Task 2 (CTR item loop) adds a
-# whole items section; _backfill_missing_sections migrates each atomically
-# for every older override. Their initial fields therefore join this
-# baseline; later fields inside those sections still belong in a legacy
-# cohort. Computed as the sha256 of the sorted "section.field" lines for
-# every entry in that dictionary — recompute deliberately (see
+# AI opponents) adds a whole ai section, R4 Task 2 (CTR item loop) adds a
+# whole items section, and Task 1 (CTR R6, circuit polish) adds a whole fx
+# section; _backfill_missing_sections migrates each atomically for every
+# older override. Their initial fields therefore join this baseline; later
+# fields inside those sections still belong in a legacy cohort. Computed as
+# the sha256 of the sorted "section.field" lines for every entry in that
+# dictionary — recompute deliberately (see
 # test_phase_zero_baseline_field_set_is_frozen) if this dictionary itself
 # ever legitimately needs to change, never to make a wrongly-placed new
 # field pass unnoticed.
 const PHASE0_BASELINE_FIELD_SET_SHA256 := (
-	"f2a3f6817b69bfa7cd3390ecaf64c6d507b22a8bb494c485b90f2226cb055bab"
+	"6a1d3df7a184a49ef696e4daaaeb3a5bf0667377ded3d9c28f388d4cd6edadd7"
 )
 
 
@@ -3445,6 +3464,277 @@ func test_catalog_is_unusable_without_items() -> void:
 	if catalog.get("items") == null:
 		return
 	catalog.set("items", null)
+
+	assert_false(service.call("catalog_is_usable", catalog))
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (CTR R6, circuit polish): fx is a whole new section, the same shape
+# as kart/race/ai/items above -- mirrors each of their own registration
+# tests one section up.
+# ---------------------------------------------------------------------------
+
+
+const FX_STRICTLY_POSITIVE_FIELDS: Array[StringName] = [
+	&"spark_amount_stage0",
+	&"spark_amount_per_stage",
+	&"spark_lifetime_s",
+	&"spark_velocity_mps",
+	&"boost_flame_lifetime_s",
+	&"boost_flame_amount",
+	&"item_box_spin_degrees_per_s",
+	&"item_box_bob_amplitude_m",
+	&"item_box_bob_hz",
+]
+
+const FX_SPARK_COLOR_FIELDS: Array[StringName] = [
+	&"spark_color_stage1",
+	&"spark_color_stage2",
+	&"spark_color_stage3",
+]
+
+
+func test_service_catalog_exposes_fx_section() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+
+	assert_not_null(fx, "clone dropped fx — fx tuning is dead-wired")
+	if fx == null:
+		return
+	assert_eq(_global_class_name(fx), "FxTuning")
+	assert_eq(fx.get("spark_amount_stage0"), 12.0)
+	assert_eq(fx.get("spark_amount_per_stage"), 8.0)
+	assert_eq(fx.get("boost_flame_amount"), 20.0)
+	assert_eq(fx.get("item_box_spin_degrees_per_s"), 90.0)
+
+
+func test_fingerprint_moves_when_an_fx_value_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	assert_not_null(fx)
+	if fx == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	fx.set("spark_amount_stage0", float(fx.get("spark_amount_stage0")) + 1.0)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"fx values never reach the tuning fingerprint"
+	)
+
+
+## Color-typed fields (spark_color_stage1/2/3) must reach the fingerprint the
+## same generic way every other exported field does (var_to_str() serializes
+## a Color, see tuning_service.gd's _append_fingerprint_lines) -- pinned
+## separately from the float-field test above because a Color property is a
+## different Variant type and this repo's own input.control_color precedent
+## is the thing this whole field shape is following.
+func test_fingerprint_moves_when_an_fx_spark_color_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	assert_not_null(fx)
+	if fx == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	var color: Color = fx.get("spark_color_stage1")
+	fx.set("spark_color_stage1", Color(color.r, color.g, color.b, 0.5))
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"fx spark color values never reach the tuning fingerprint"
+	)
+
+
+func test_pre_fx_override_backfills_fx() -> void:
+	var service: RefCounted = _new_service()
+	var authored := load(BASE_CATALOG_PATH) as GameplayTuning
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	assert_not_null(authored.get("fx"))
+	if authored.get("fx") == null:
+		return
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	stale.set("fx", null)
+	stale.hog.ride_speed_mps += 0.1
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(
+		service.get("override_rejected"),
+		"a pre-fx phone override must migrate, not reset"
+	)
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	assert_not_null(migrated.get("fx"))
+	assert_eq(
+		migrated.get("fx").get("spark_amount_stage0"),
+		authored.fx.spark_amount_stage0
+	)
+	assert_almost_eq(
+		migrated.hog.ride_speed_mps,
+		float(authored.hog.ride_speed_mps) + 0.1,
+		0.0001,
+		"migration must not discard the edit the phone already had"
+	)
+
+
+func test_fx_tuning_rejects_nonpositive_fields() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	assert_not_null(fx)
+	if fx == null:
+		return
+	for property_name: StringName in FX_STRICTLY_POSITIVE_FIELDS:
+		var authored_value: Variant = fx.get(property_name)
+		fx.set(property_name, 0.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"fx.%s must reject zero" % property_name
+		)
+		fx.set(property_name, -1.0)
+		assert_false(
+			service.call("catalog_is_usable"),
+			"fx.%s must reject a negative value" % property_name
+		)
+		fx.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+## The mobile particle budget ceiling (documented in tuning_service.gd's own
+## fx validation block): the worst case for the drift spark stream is the
+## kart's own top authored boost stage (kart.boost_stack_max), not just the
+## raw stage-0 field in isolation -- spark_amount_stage0 + spark_amount_per_
+## stage * kart.boost_stack_max is the number that actually reaches
+## GPUParticles3D.amount at runtime (see kart_fx.gd).
+func test_fx_spark_amount_ceiling_rejects_a_worst_case_stage_amount_above_64() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	var kart := service.get("catalog").get("kart") as Resource
+	assert_not_null(fx)
+	assert_not_null(kart)
+	if fx == null or kart == null:
+		return
+	var authored_per_stage: float = fx.get("spark_amount_per_stage")
+	var stack_max: float = kart.get("boost_stack_max")
+	assert_gt(stack_max, 0.0, "fixture sanity: boost_stack_max must be positive")
+
+	# The exact per-stage amount that pushes the worst-case total 1.0 above
+	# the ceiling.
+	var overflow_per_stage: float = (
+		(65.0 - float(fx.get("spark_amount_stage0"))) / stack_max
+	)
+	fx.set("spark_amount_per_stage", overflow_per_stage)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"a worst-case stage amount above 64 must be rejected"
+	)
+
+	fx.set("spark_amount_per_stage", authored_per_stage)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"the authored per-stage amount must stay under the ceiling"
+	)
+
+
+func test_fx_boost_flame_amount_ceiling_rejects_values_above_64() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	assert_not_null(fx)
+	if fx == null:
+		return
+	var authored: float = fx.get("boost_flame_amount")
+
+	fx.set("boost_flame_amount", 64.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"exactly the ceiling (64) must remain valid"
+	)
+
+	fx.set("boost_flame_amount", 64.01)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"boost_flame_amount above 64 must be rejected -- the mobile particle budget"
+	)
+
+	fx.set("boost_flame_amount", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
+## Mirrors phase.missed_crate_outline_color.a's own bound: an alpha of 0
+## would make a fired boost stage's sparks fully invisible, and Color's own
+## fields are otherwise unbounded (HDR-capable), so only alpha is checked --
+## same shape input.control_color's own (unbounded) precedent leaves RGB
+## alone.
+func test_fx_spark_color_alpha_is_bounded_to_the_unit_interval() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var fx := service.get("catalog").get("fx") as Resource
+	assert_not_null(fx)
+	if fx == null:
+		return
+	for property_name: StringName in FX_SPARK_COLOR_FIELDS:
+		var authored_color: Color = fx.get(property_name)
+
+		fx.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 0.0))
+		assert_false(
+			service.call("catalog_is_usable"),
+			"fx.%s must reject zero alpha" % property_name
+		)
+
+		fx.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 1.01))
+		assert_false(
+			service.call("catalog_is_usable"),
+			"fx.%s must reject alpha above 1.0" % property_name
+		)
+
+		fx.set(property_name, Color(authored_color.r, authored_color.g, authored_color.b, 1.0))
+		assert_true(
+			service.call("catalog_is_usable"),
+			"fx.%s must accept alpha of exactly 1.0" % property_name
+		)
+
+		fx.set(property_name, authored_color)
+	assert_true(service.call("catalog_is_usable"))
+
+
+func test_catalog_is_unusable_without_fx() -> void:
+	var service: RefCounted = _new_service()
+	var catalog := load(BASE_CATALOG_PATH).duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	assert_not_null(catalog.get("fx"))
+	if catalog.get("fx") == null:
+		return
+	catalog.set("fx", null)
 
 	assert_false(service.call("catalog_is_usable", catalog))
 

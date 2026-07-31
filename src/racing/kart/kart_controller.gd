@@ -229,6 +229,30 @@ func slide_direction() -> int:
 	return _drift.slide_direction()
 
 
+## Task 1 (CTR R6, circuit polish): proxies straight onto the real
+## DriftStateMachine's own boost_stage() -- see drift_state_machine.gd's own
+## doc (0-based, capped at roundi(kart.boost_stack_max), reset to 0 by a
+## fresh slide/a punish/a cancel). Exposed alongside is_sliding() so
+## kart_fx.gd's drift-spark driver can pick this slide's current color/
+## amount without reaching past this controller into the private drift FSM
+## it owns, the same "proxy straight through" shape every other drift/motor
+## query on this controller already uses.
+func boost_stage() -> int:
+	return _drift.boost_stage()
+
+
+## Task 1 (CTR R6, circuit polish): proxies straight onto the real
+## KartMotor's own is_boosting() (accrued boost time remaining > 0, see
+## kart_motor.gd's own doc) -- KartController never exposed this before,
+## even though the motor itself always has. kart_fx.gd's boost-flame driver
+## is the first caller: the flame's own binary emitting gate is is_boosting()
+## specifically, NOT is_sliding()/boost_stage() -- a kart can still be
+## mid-boost well after its slide has ended (add_boost() decays by delta_s
+## every tick regardless of slide state).
+func is_boosting() -> bool:
+	return _motor.is_boosting()
+
+
 func is_invulnerable() -> bool:
 	return _motor.is_invulnerable()
 

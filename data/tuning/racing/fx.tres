@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="FxTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/fx_tuning.gd" id="1_fx"]
+
+[resource]
+script = ExtResource("1_fx")
+spark_amount_stage0 = 12.0
+spark_amount_per_stage = 8.0
+spark_lifetime_s = 0.35
+spark_velocity_mps = 6.0
+spark_color_stage1 = Color(1, 0.82, 0.2, 1)
+spark_color_stage2 = Color(1, 0.48, 0.08, 1)
+spark_color_stage3 = Color(0.85, 0.15, 0.85, 1)
+boost_flame_lifetime_s = 0.25
+boost_flame_amount = 20.0
+item_box_spin_degrees_per_s = 90.0
+item_box_bob_amplitude_m = 0.15
+item_box_bob_hz = 0.8

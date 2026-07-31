@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="GameplayTuning" load_steps=21 format=3]
+[gd_resource type="Resource" script_class="GameplayTuning" load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/tuning/gameplay_tuning.gd" id="1_catalog"]
 [ext_resource type="Resource" path="res://data/tuning/move.tres" id="2_move"]
@@ -20,6 +20,7 @@
 [ext_resource type="Resource" path="res://data/tuning/racing/race.tres" id="18_race"]
 [ext_resource type="Resource" path="res://data/tuning/racing/ai.tres" id="19_ai"]
 [ext_resource type="Resource" path="res://data/tuning/racing/items.tres" id="20_items"]
+[ext_resource type="Resource" path="res://data/tuning/racing/fx.tres" id="21_fx"]
 
 [resource]
 script = ExtResource("1_catalog")
@@ -42,3 +43,4 @@ kart = ExtResource("17_kart")
 race = ExtResource("18_race")
 ai = ExtResource("19_ai")
 items = ExtResource("20_items")
+fx = ExtResource("21_fx")

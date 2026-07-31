@@ -365,6 +365,74 @@ func test_boost_window_open_proxies_the_real_drift_fsm() -> void:
 	)
 
 
+# ---------------------------------------------------------------------------
+# Task 1 (CTR R6, circuit polish): boost_stage()/is_boosting() are thin
+# proxies onto the real DriftStateMachine/KartMotor this controller already
+# owns and ticks every frame -- mirrors slide_direction()/boost_window_
+# open()'s own identical proxy shape one section up. kart_fx.gd (the new
+# FX driver) is their first real caller.
+# ---------------------------------------------------------------------------
+
+
+func test_boost_stage_proxies_the_real_drift_fsm_and_advances_on_a_real_tap() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	await wait_physics_frames(10)
+	assert_true(kart.is_on_floor(), "fixture setup must be grounded before starting a slide")
+
+	assert_eq(
+		int(kart.call("boost_stage")),
+		0,
+		"a kart that never started a slide must report boost stage 0"
+	)
+
+	kart.call("steer", _kart_tuning.slide_min_steer)
+	kart.call("hop_pressed")
+	await wait_physics_frames(1)
+	assert_true(kart.call("is_sliding"), "fixture setup must land inside a slide")
+	assert_eq(int(kart.call("boost_stage")), 0, "a fresh slide must start at stage 0")
+
+	await wait_physics_frames(
+		int(ceil(_kart_tuning.boost_window_open_s * float(Engine.physics_ticks_per_second))) + 2
+	)
+	assert_eq(
+		String(kart.call("boost_tap")),
+		"fired",
+		"fixture setup: the tap must land inside the window and actually fire"
+	)
+
+	assert_eq(
+		int(kart.call("boost_stage")),
+		1,
+		"boost_stage() must reach the real DriftStateMachine and reflect a fired tap"
+	)
+
+
+func test_is_boosting_proxies_the_real_motor_and_reaches_zero_when_boost_decays() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	assert_false(
+		bool(kart.call("is_boosting")),
+		"a fresh kart must not report boosting"
+	)
+
+	kart.call("apply_boost", 0.2)
+	assert_true(
+		bool(kart.call("is_boosting")),
+		"is_boosting() must reach the real motor's accrued boost time immediately"
+	)
+
+	await wait_physics_frames(
+		int(ceil(0.2 * float(Engine.physics_ticks_per_second))) + 3
+	)
+	assert_false(
+		bool(kart.call("is_boosting")),
+		"is_boosting() must report false once the accrued boost time has fully decayed"
+	)
+
+
 func test_reset_speed_zeroes_forward_and_vertical_speed_and_body_velocity() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:

@@ -21,6 +21,7 @@ const SECTION_NAMES: Array[StringName] = [
 	&"race",
 	&"ai",
 	&"items",
+	&"fx",
 ]
 # ResourceSaver omits default-valued fields, so migrate version-defining
 # cohorts atomically instead of treating every zero as a missing value.
@@ -627,6 +628,44 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or items.beaker_hit_radius_m <= 0.0
 		or items.ai_item_use_cooldown_s <= 0.0
 		or items.ai_missile_max_target_gap_m <= 0.0
+	):
+		return false
+
+	var fx := checked.fx
+	# Task 1 (CTR R6, circuit polish): fx is a brand-new whole section, the
+	# same shape as kart/race/ai/items above. Every duration/speed/degrees-
+	# per-second field is simply strictly positive. Particle amount fields
+	# additionally carry a MOBILE PARTICLE BUDGET ceiling of 64 (documented
+	# bound, not just "must be positive") -- the worst case for the drift
+	# spark stream is the top authored boost stage (kart.boost_stack_max,
+	# already validated above), so spark_amount_stage0 + spark_amount_per_
+	# stage * kart.boost_stack_max is the number that actually reaches
+	# GPUParticles3D.amount at runtime (see kart_fx.gd), not just the raw
+	# stage-0 field in isolation. Stage color alphas are bounded to (0.0,
+	# 1.0] the same way phase.missed_crate_outline_color.a already is above
+	# -- an alpha of 0 would make a "fired" boost stage's sparks invisible.
+	const FX_PARTICLE_AMOUNT_CEILING := 64.0
+	if (
+		fx.spark_amount_stage0 <= 0.0
+		or fx.spark_amount_per_stage <= 0.0
+		or fx.spark_lifetime_s <= 0.0
+		or fx.spark_velocity_mps <= 0.0
+		or fx.boost_flame_lifetime_s <= 0.0
+		or fx.boost_flame_amount <= 0.0
+		or fx.boost_flame_amount > FX_PARTICLE_AMOUNT_CEILING
+		or (
+			fx.spark_amount_stage0
+			+ fx.spark_amount_per_stage * kart.boost_stack_max
+		) > FX_PARTICLE_AMOUNT_CEILING
+		or fx.item_box_spin_degrees_per_s <= 0.0
+		or fx.item_box_bob_amplitude_m <= 0.0
+		or fx.item_box_bob_hz <= 0.0
+		or fx.spark_color_stage1.a <= 0.0
+		or fx.spark_color_stage1.a > 1.0
+		or fx.spark_color_stage2.a <= 0.0
+		or fx.spark_color_stage2.a > 1.0
+		or fx.spark_color_stage3.a <= 0.0
+		or fx.spark_color_stage3.a > 1.0
 	):
 		return false
 

@@ -20,3 +20,4 @@ extends Resource
 @export var race: RaceTuning
 @export var ai: AiTuning
 @export var items: ItemTuning
+@export var fx: FxTuning

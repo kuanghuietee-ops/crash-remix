@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/racing/kart/kart_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/props/blob_shadow.tscn" id="2_blob"]
+[ext_resource type="Script" path="res://src/racing/fx/kart_fx.gd" id="3_fx"]
 
 [sub_resource type="BoxShape3D" id="Shape_kart"]
 size = Vector3(1.4, 0.6, 2.0)
@@ -12,6 +13,56 @@ albedo_color = Color(0.85, 0.15, 0.15, 1)
 [sub_resource type="BoxMesh" id="Mesh_kart"]
 material = SubResource("Material_kart")
 size = Vector3(1.4, 0.6, 2.0)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_sparks"]
+resource_local_to_scene = true
+emission_shape = 3
+emission_box_extents = Vector3(0.35, 0.1, 0.1)
+direction = Vector3(0, 0.35, 1)
+spread = 55.0
+initial_velocity_min = 6.0
+initial_velocity_max = 6.0
+gravity = Vector3(0, -6.0, 0)
+angular_velocity_min = -360.0
+angular_velocity_max = 360.0
+scale_min = 0.6
+scale_max = 1.1
+color = Color(1, 0.82, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_sparks"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 1, 1, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_sparks"]
+material = SubResource("Material_sparks")
+size = Vector3(0.05, 0.05, 0.16)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcess_flame"]
+emission_shape = 3
+emission_box_extents = Vector3(0.15, 0.08, 0.05)
+direction = Vector3(0, 0, 1)
+spread = 12.0
+initial_velocity_min = 3.5
+initial_velocity_max = 5.5
+gravity = Vector3(0, 0.4, 0)
+angular_velocity_min = -180.0
+angular_velocity_max = 180.0
+scale_min = 0.7
+scale_max = 1.2
+color = Color(0.35, 0.65, 1, 0.85)
+
+[sub_resource type="StandardMaterial3D" id="Material_flame"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(1, 1, 1, 1)
+emission_enabled = true
+emission = Color(0.4, 0.7, 1, 1)
+emission_energy_multiplier = 1.2
+
+[sub_resource type="BoxMesh" id="Mesh_flame"]
+material = SubResource("Material_flame")
+size = Vector3(0.18, 0.18, 0.32)
 
 [node name="Kart" type="CharacterBody3D"]
 collision_layer = 5
@@ -27,3 +78,34 @@ position = Vector3(0, 0.3, 0)
 mesh = SubResource("Mesh_kart")
 
 [node name="BlobShadow" parent="." instance=ExtResource("2_blob")]
+
+[node name="Fx" type="Node3D" parent="."]
+script = ExtResource("3_fx")
+
+[node name="Sparks" type="GPUParticles3D" parent="Fx"]
+position = Vector3(0, 0.15, 0.95)
+cast_shadow = 0
+emitting = false
+amount = 12
+lifetime = 0.35
+one_shot = false
+explosiveness = 0.0
+randomness = 0.4
+visibility_aabb = AABB(-2, -2, -2, 4, 4, 4)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_sparks")
+draw_pass_1 = SubResource("Mesh_sparks")
+
+[node name="Flame" type="GPUParticles3D" parent="Fx"]
+position = Vector3(0, 0.2, 1.0)
+cast_shadow = 0
+emitting = false
+amount = 20
+lifetime = 0.25
+one_shot = false
+explosiveness = 0.0
+randomness = 0.25
+visibility_aabb = AABB(-2, -2, -2, 4, 4, 4)
+fixed_fps = 30
+process_material = SubResource("ParticleProcess_flame")
+draw_pass_1 = SubResource("Mesh_flame")

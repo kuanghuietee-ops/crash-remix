@@ -366,6 +366,7 @@ var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
 var _ai_tuning: AiTuning
 var _item_tuning: ItemTuning
+var _fx_tuning: FxTuning
 
 var _input_adapter: RacingInputAdapterType = RacingInputAdapterType.new()
 var _validator: LapValidatorType = LapValidatorType.new()
@@ -488,6 +489,13 @@ func configure(catalog: GameplayTuning) -> void:
 	)
 
 	_kart.call("configure", _kart_tuning, _item_tuning)
+	# Task 1 (CTR R6, circuit polish): wires the player kart's own Fx child
+	# (kart.tscn always carries one, see kart_fx.gd's own class doc) with a
+	# reference back to this kart and the fresh catalog.fx -- same "pass the
+	# section this Task added, catalog.fx" shape catalog.kart/catalog.items
+	# already get one line above.
+	_fx_tuning = catalog.fx
+	_kart.get_node("Fx").call("configure", _kart, _fx_tuning)
 	# R5 Task 1: KartController.configure() always ends by reactivating
 	# itself (set_run_active(true), see its own doc) -- immediately undone
 	# here so the player spawns frozen, same as every AI kart (see _spawn_
@@ -900,8 +908,10 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	_race_tuning = catalog.race
 	_input_tuning = catalog.input
 	_item_tuning = catalog.items
+	_fx_tuning = catalog.fx
 	if _kart != null and is_instance_valid(_kart):
 		_kart.call("refresh_tuning", _kart_tuning, _item_tuning)
+		_kart.get_node("Fx").call("refresh_tuning", _fx_tuning)
 	if _camera != null and is_instance_valid(_camera):
 		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
 
@@ -1617,6 +1627,14 @@ func _spawn_ai_karts() -> void:
 		# kart's very first physics-server registration already carries its
 		# real GridSlotN position -- never a one-frame flash at the origin.
 		ai_kart.call("configure", _kart_tuning, _item_tuning)
+		# Task 1 (CTR R6, circuit polish): see the player's own identical
+		# wiring in configure() above -- every AI kart shares the same
+		# kart.tscn packed scene, so it carries the same Fx child. Safe to
+		# call this BEFORE add_child() below (kart_fx.gd's own NODE LOOKUP
+		# doc): configure() looks its particle nodes up lazily via get_node_
+		# or_null() instead of trusting @onready, which would not have fired
+		# yet on this still-detached subtree.
+		ai_kart.get_node("Fx").call("configure", ai_kart, _fx_tuning)
 		# R5 Task 1: see the player's own identical call in configure() for
 		# why this immediately undoes configure()'s own set_run_active(true)
 		# -- every AI kart spawns frozen too, unfrozen plainly at GO (see the

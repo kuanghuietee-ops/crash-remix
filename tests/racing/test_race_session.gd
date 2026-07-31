@@ -92,6 +92,85 @@ func test_boot_wiring_gives_the_session_its_kart_spine_and_gates() -> void:
 	assert_eq(int(race.call("progress_gates")), 0)
 
 
+## Task 1 (CTR R6, circuit polish): configure() wires the FX loop onto BOTH
+## the player's kart and every AI kart -- see configure()'s own catalog.fx
+## line and _spawn_ai_karts()'s identical ai_kart.get_node("Fx").call(
+## "configure", ...) call, both added by this task.
+##
+## White-box read for BOTH karts (not just the AI one): _route_input()'s own
+## per-tick _input_adapter.apply_move(_router.buffer.movement(), _kart) call
+## (see its own doc) re-applies the ROUTER's held movement to the player
+## kart's steer() every single physics tick -- driving a real slide-boost
+## here by calling kart.call("steer", ...) directly gets silently overwritten
+## the very next tick by that same real routing this suite's other tests
+## exercise on purpose, the identical "a live controller keeps fighting a
+## manually-forced input" shape the AI kart's own agent creates one section
+## down. kart_fx.gd's own test_kart_fx.gd already proves the state-MAPPING
+## behavior (stage -> color/amount, emitting flags) exhaustively through the
+## real public API in a fixture with no competing live input driver; this
+## test's only job is proving configure()/_spawn_ai_karts() actually reached
+## both real Fx nodes with a real kart reference and real fx_tuning, which
+## object identity + a real tuning value already proves conclusively.
+func test_configure_wires_fx_onto_both_the_player_and_every_ai_kart() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var fx := kart.get_node_or_null("Fx")
+	assert_not_null(fx, "the player kart's Fx node must exist -- it shares kart.tscn with every AI kart")
+	if fx == null:
+		return
+	assert_eq(
+		fx.get("_kart"),
+		kart,
+		"configure() must configure() the player kart's own Fx node with ITSELF, not leave it null/unwired"
+	)
+	var fx_tuning: FxTuning = fx.get("_tuning")
+	assert_not_null(fx_tuning, "configure() must configure() the player kart's Fx node with real fx_tuning")
+	if fx_tuning == null:
+		return
+	assert_eq(
+		fx_tuning.spark_amount_stage0,
+		_catalog.fx.spark_amount_stage0,
+		"the player kart's own Fx node must have been configured with the real catalog.fx"
+	)
+
+	var opponent_count := int(_catalog.ai.opponent_count)
+	assert_gt(opponent_count, 0, "fixture sanity: at least one AI kart must spawn by default")
+	if opponent_count <= 0:
+		return
+	var ai_kart := race.call("ai_kart", 0) as CharacterBody3D
+	assert_not_null(ai_kart, "an AI kart must exist at slot 0")
+	if ai_kart == null:
+		return
+	var ai_fx := ai_kart.get_node_or_null("Fx")
+	assert_not_null(ai_fx, "an AI kart's own Fx node must exist -- it shares kart.tscn with the player")
+	if ai_fx == null:
+		return
+	# White-box read (mirrors this same file's kart.get("_motor")/kart.get(
+	# "_drift") precedent above): a live AI kart is under its own AiKartAgent's
+	# continuous steering, so forcing a real slide through the public API here
+	# would just get overwritten by the agent's next tick -- the reliable
+	# proof that _spawn_ai_karts() actually wired THIS kart's own Fx node
+	# (not left it unconfigured, which forces every emitter off regardless
+	# of state, see kart_fx.gd's own class doc) is that configure() actually
+	# reached it: object identity for _kart, and a real value for _tuning.
+	assert_eq(
+		ai_fx.get("_kart"),
+		ai_kart,
+		"_spawn_ai_karts() must configure() this AI kart's own Fx node with ITSELF, not left null/unwired"
+	)
+	var ai_fx_tuning: FxTuning = ai_fx.get("_tuning")
+	assert_not_null(ai_fx_tuning, "_spawn_ai_karts() must configure() this AI kart's Fx node with real fx_tuning")
+	if ai_fx_tuning == null:
+		return
+	assert_eq(
+		ai_fx_tuning.spark_amount_stage0,
+		_catalog.fx.spark_amount_stage0,
+		"the AI kart's own Fx node must have been configured with the real catalog.fx"
+	)
+
+
 func test_crossing_every_gate_in_order_for_all_laps_completes_the_race() -> void:
 	var race := _boot_race()
 	if race == null:

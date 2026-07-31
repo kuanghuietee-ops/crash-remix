@@ -11,13 +11,17 @@ extends GutTest
 const BOX_SCRIPT_PATH := "res://src/racing/items/item_box.gd"
 const BOX_SCENE_PATH := "res://scenes/racing/item_box.tscn"
 const TUNING_PATH := "res://data/tuning/racing/items.tres"
+const FX_TUNING_PATH := "res://data/tuning/racing/fx.tres"
 
 var _tuning: ItemTuning
+var _fx_tuning: FxTuning
 
 
 func before_all() -> void:
 	_tuning = load(TUNING_PATH)
 	assert_not_null(_tuning, "items.tres must load -- Task 2 registers it")
+	_fx_tuning = load(FX_TUNING_PATH)
+	assert_not_null(_fx_tuning, "fx.tres must load -- Task 1 (CTR R6) registers it")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +98,114 @@ func test_configure_does_not_leak_the_radius_into_a_different_box_instance() -> 
 		original_radius,
 		0.0001,
 		"configuring one box must not resize a DIFFERENT box's own pickup shape"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (CTR R6, circuit polish): visual spin + bob on the VISUAL Mesh
+# child, driven by fx_tuning -- collision (proven untouched above) is a
+# completely separate code path.
+# ---------------------------------------------------------------------------
+
+
+func test_box_scene_reuses_the_platformer_standard_crate_model() -> void:
+	var box := _new_box(Vector3.ZERO)
+	if box == null:
+		return
+	var model := box.get_node_or_null("Mesh/Model")
+	assert_not_null(
+		model,
+		"the item box must reuse the platformer crate model, not author a new asset"
+	)
+
+
+## fx_tuning is OPTIONAL (defaults to null) -- a box configured with only
+## item_tuning (every OTHER test in this file) must not spin/bob at all,
+## mirroring kart_controller.gd's own item_tuning optional-param precedent.
+func test_mesh_does_not_spin_or_bob_without_fx_tuning() -> void:
+	var box := _new_box(Vector3.ZERO)
+	if box == null:
+		return
+	box.call("configure", _tuning)
+	var mesh := box.get_node("Mesh") as MeshInstance3D
+	var base_rotation_y := mesh.rotation.y
+	var base_position_y := mesh.position.y
+
+	await wait_physics_frames(30)
+
+	assert_almost_eq(mesh.rotation.y, base_rotation_y, 0.0001)
+	assert_almost_eq(mesh.position.y, base_position_y, 0.0001)
+
+
+func test_mesh_spins_around_y_at_item_box_spin_degrees_per_s() -> void:
+	var box := _new_box(Vector3.ZERO)
+	if box == null:
+		return
+	box.call("configure", _tuning, _fx_tuning)
+	var mesh := box.get_node("Mesh") as MeshInstance3D
+	var base_rotation_y := mesh.rotation.y
+
+	var frames := 12
+	await wait_physics_frames(frames)
+
+	var physics_delta_s := 1.0 / float(Engine.physics_ticks_per_second)
+	var expected_delta_radians := (
+		deg_to_rad(_fx_tuning.item_box_spin_degrees_per_s)
+		* physics_delta_s
+		* float(frames)
+	)
+	assert_almost_eq(
+		mesh.rotation.y - base_rotation_y,
+		expected_delta_radians,
+		0.01,
+		"the Mesh child must spin at exactly item_box_spin_degrees_per_s"
+	)
+
+
+func test_mesh_bobs_vertically_around_its_authored_base_position() -> void:
+	var box := _new_box(Vector3.ZERO)
+	if box == null:
+		return
+	box.call("configure", _tuning, _fx_tuning)
+	var mesh := box.get_node("Mesh") as MeshInstance3D
+	var base_position_y := mesh.position.y
+
+	# A quarter period at item_box_bob_hz lands the sine wave at its peak --
+	# the bob amplitude itself, the strongest single-sample proof the motion
+	# is actually driven by item_box_bob_amplitude_m/item_box_bob_hz rather
+	# than some other arbitrary oscillation.
+	var quarter_period_s := 0.25 / _fx_tuning.item_box_bob_hz
+	var frames := int(round(quarter_period_s * float(Engine.physics_ticks_per_second)))
+	assert_gt(frames, 0, "fixture sanity: item_box_bob_hz must yield a reachable quarter period")
+	if frames <= 0:
+		return
+	await wait_physics_frames(frames)
+
+	assert_almost_eq(
+		mesh.position.y - base_position_y,
+		_fx_tuning.item_box_bob_amplitude_m,
+		0.02,
+		"a quarter period in, the bob must sit at its full amplitude above the base"
+	)
+
+
+## Collision must stay completely untouched by spin/bob -- the brief's own
+## "VISUAL child only" requirement, proven directly rather than merely
+## assumed from configure()'s own doc.
+func test_spin_and_bob_never_touch_the_collision_shape() -> void:
+	var box := _new_box(Vector3.ZERO)
+	if box == null:
+		return
+	box.call("configure", _tuning, _fx_tuning)
+	var collision := box.get_node("CollisionShape3D") as CollisionShape3D
+	var base_collision_position := collision.position
+
+	await wait_physics_frames(30)
+
+	assert_eq(
+		collision.position,
+		base_collision_position,
+		"spin/bob must never move the CollisionShape3D -- visual only"
 	)
 
 
