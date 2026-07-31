@@ -160,7 +160,7 @@ start.
    is silently swallowed. If a human tester reports dropped boost taps or
    missed hops on device, this poll-vs-edge gap is the mechanism to check
    first, not the drift FSM's own timing.
-5. **R3 ships AI opponents WITHOUT item use, by design.** The "AI (phase R3)"
+5. ~~**R3 ships AI opponents WITHOUT item use, by design.** The "AI (phase R3)"
    line above ("...item use with cooldowns. 5 karts.") reads as if item use
    ships in this phase, but items themselves do not exist anywhere in the
    codebase until R4 (see "Items (phase R4)" above and Recorded-debt #2 on
@@ -169,7 +169,17 @@ start.
    `steer()`/`set_brake()`/`hop_pressed()`/`hop_released()`/`boost_tap()`/
    `set_speed_scale()`, the same kart-only verbs a human racer has in R1-R3.
    This is an intentional scope split, not a missed line item — the R4 plan
-   must add AI item-use once item boxes/roulette actually exist.
+   must add AI item-use once item boxes/roulette actually exist.~~
+   **RESOLVED, R4 Task 5 (2026-07-30):** items now exist, and `AiDriver`/
+   `AiKartAgent` decide whether/when to use a held one — shield used
+   immediately on pickup, missile/turbo/beaker gated by heuristics keyed off
+   `held_item`/`target_gap_ahead_m`/`item_cooldown_ready` (see `ai_driver.
+   gd`'s own ITEM USE HEURISTICS doc) — and route that decision through the
+   SAME `RaceSession.use_item_for()` -> `dispatch_item_use()` entry point
+   the player's own ITEM press uses, no privileged AI-only path. Both real
+   tracks also now author 6 `ItemBox` instances each (see debt #10 below).
+   See `tests/racing/test_race_session.gd`'s `test_seeded_ai_kart_picks_up_
+   a_box_rolls_and_uses_a_shield_through_real_dispatch`.
 6. **Stuck detector fires on any 3s net-stationary-or-non-progressing AI
    kart — fine in R3, binding on R5.** `AiKartAgent._check_stuck_and_
    respawn()` (ai_kart_agent.gd) respawns any AI kart whose NET SPINE
@@ -288,10 +298,18 @@ start.
     lines of three — `track_graybox_loop.tscn`/`track_sanity_shores.tscn`,
     each under its own `ItemBoxes` container), and every authored box sits
     comfortably clear of both this scene's own local origin AND its
-    `KartSpawn` marker (verified numerically at authoring time — the
-    closest of the 12 real boxes is ~19.75m from `Vector3.ZERO` on the
-    graybox loop, ~424m on sanity shores, both far past the clearance
-    floor). The racing-track lint's own new `track_item_boxes` rule pins
+    `KartSpawn` marker. **Correction (R4 Task 6 doc-integrity fix,
+    2026-07-31): the two clearance figures originally recorded here — ~19.75m
+    graybox / ~424m sanity shores — were wrong, quoted from the wrong
+    source, and the "verified numerically" claim they sat under overstated
+    what had actually been checked.** Recomputed directly from each box's
+    authored `position` against `Vector3.ZERO` (the real minimum over all 12
+    boxes, not an estimate): the closest box is `ItemBoxSouth1`
+    (`track_graybox_loop.tscn`, position `(20, 1, -17)`) at **~26.27m** on
+    the graybox loop, and `ItemBoxBack1` (`track_sanity_shores.tscn`,
+    position `(300, 1, 380.5037)`) at **~484.5m** on sanity shores — both
+    still comfortably clear of the 10.0m floor below. The racing-track
+    lint's own new `track_item_boxes` rule pins
     this so it cannot regress: every authored box must sit at least
     `TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M` (10.0m) from `Vector3.ZERO` in the
     track scene's own coordinate frame — see `scripts/lint_level_

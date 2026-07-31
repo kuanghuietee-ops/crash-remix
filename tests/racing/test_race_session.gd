@@ -2105,3 +2105,371 @@ func _boot_race_with_catalog(catalog: GameplayTuning) -> Node:
 	add_child_autofree(race)
 	race.call("configure", catalog)
 	return race
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 6: RaceHUD's held-item display gains two small RaceSession-level
+# reads -- items_enabled() (a public wrapper on the private _items_allowed()
+# solo gate) and player_item_slot() (the player's own real ItemSlot) -- so
+# the HUD's own duck-typed session.call() polling never has to reach past
+# this session into a private field it does not own.
+# ---------------------------------------------------------------------------
+
+
+func test_items_enabled_is_true_by_default() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	assert_true(
+		bool(race.call("items_enabled")),
+		"an ordinary (spawn_opponents=true) race must report items enabled"
+	)
+
+
+func test_items_enabled_is_false_in_a_solo_session() -> void:
+	assert_true(ResourceLoader.exists(RACE_SCENE_PATH))
+	if not ResourceLoader.exists(RACE_SCENE_PATH):
+		return
+	var packed := load(RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	race.set("spawn_opponents", false)
+	race.call("configure", _catalog)
+	assert_false(
+		bool(race.call("items_enabled")),
+		"a solo (spawn_opponents=false) session must report items disabled -- see _items_allowed()'s own doc"
+	)
+
+
+func test_player_item_slot_exposes_the_real_kart_slot() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	assert_eq(
+		race.call("player_item_slot"),
+		kart.call("item_slot"),
+		"player_item_slot() must be the exact same ItemSlot instance the player's own KartController owns"
+	)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 6: RaceHUD's held-item display -- text/visibility driven off
+# RaceSession.items_enabled()/player_item_slot() every _refresh() tick, the
+# same "poll the session every frame" pattern lap/timer/wrong-way already
+# use (see race_hud.gd's own _refresh()).
+# ---------------------------------------------------------------------------
+
+
+func test_hud_item_label_is_hidden_when_the_player_slot_is_empty() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	assert_not_null(item_label, "fixture setup: race_hud.tscn must author the Item label")
+	if item_label == null:
+		return
+	await wait_process_frames(1)
+	assert_false(
+		item_label.visible,
+		"an empty item slot must not show the held-item label"
+	)
+
+
+func test_hud_item_label_shows_the_roulette_flicker_while_rolling() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.0)
+	assert_eq(slot.call("state"), &"rolling", "fixture setup: the roll must be in progress")
+
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	await wait_process_frames(1)
+
+	assert_true(
+		item_label.visible,
+		"a rolling slot must show the flicker, not stay hidden"
+	)
+	assert_eq(
+		item_label.text,
+		"ITEM  " + String(slot.call("rolling_display_item")).to_upper(),
+		"the flicker text must track ItemSlot.rolling_display_item() every poll"
+	)
+
+
+func test_hud_item_label_shows_the_held_item_name_once_a_roll_lands() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	# rng_value=0.9 maps to beaker -- see item_slot.gd's own FOUR-WAY MAPPING
+	# doc / test_item_slot.gd's identical boundary test.
+	slot.call("start_roll", 0.9)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+	assert_eq(slot.call("state"), &"held", "fixture setup: the roll must have landed")
+	assert_eq(slot.call("held_item"), &"beaker", "fixture setup: rng_value=0.9 must roll beaker")
+
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	await wait_process_frames(1)
+
+	assert_true(item_label.visible, "a held item must show the label")
+	assert_eq(item_label.text, "ITEM  BEAKER")
+
+
+## Solo semantics (R4 Task 6, item 4): items_enabled() must gate the HUD
+## display as an INDEPENDENT check, not merely inherit "hidden" for free
+## from "a solo session never rolls" (test_solo_session_never_rolls_even_
+## after_a_real_synthetic_box_pickup above already proves that half). This
+## test forces the underlying slot into a real &"held" state directly
+## (bypassing the box-pickup gate entirely -- the same white-box ItemSlot
+## access every other item test in this file already uses) so a future
+## regression that somehow let a solo slot roll would still be caught by
+## the HUD's own gate, rather than silently passing because the slot
+## happened to stay empty anyway.
+func test_hud_item_label_stays_hidden_in_a_solo_session_even_with_a_real_held_item() -> void:
+	assert_true(ResourceLoader.exists(RACE_SCENE_PATH))
+	if not ResourceLoader.exists(RACE_SCENE_PATH):
+		return
+	var packed := load(RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	race.set("spawn_opponents", false)
+	race.call("configure", _catalog)
+	assert_false(
+		bool(race.call("items_enabled")),
+		"fixture sanity: solo must read items disabled"
+	)
+
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	slot.call("start_roll", 0.9)
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var frames_needed := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(frames_needed)
+	assert_eq(
+		slot.call("state"),
+		&"held",
+		"fixture setup: a directly-forced roll still lands regardless of solo-ness"
+	)
+
+	var hud := race.get_node("UI/RaceHUD")
+	var item_label := hud.get_node("SafeArea/Stats/Margin/Rows/Item") as Label
+	await wait_process_frames(1)
+
+	assert_false(
+		item_label.visible,
+		"a solo session's HUD must hide the item label even with a real, forced held item"
+	)
+
+
+# ---------------------------------------------------------------------------
+# R4 Task 6 (full combat-loop integration): a seeded 6-kart graybox race
+# where a real box pickup rolls a missile, a real ITEM press dispatches it
+# through the production RaceSession.dispatch_item_use() -> _spawn_missile()
+# path, the missile's own real _physics_process flies it and hits a real
+# target kart, and register_hit()'s own real spin-out + drift-cancel land on
+# that target -- every step through the SAME production wiring the rest of
+# this file already proves piecemeal (box roll, item-press dispatch, missile
+# flight, register_hit's mid-slide cancel), now chained together as ONE
+# story instead of four isolated ones.
+# ---------------------------------------------------------------------------
+
+# item_rng_seed=13 is pinned (empirically, via the same throwaway
+# RandomNumberGenerator probe technique test_seeded_ai_kart_picks_up_a_box_
+# rolls_and_uses_a_shield_through_real_dispatch's own doc describes) to roll
+# &"missile" on the very first randf() call -- see item_slot.gd's own
+# FOUR-WAY MAPPING doc: [0, 0.25) is the missile bucket, and seed 13's first
+# draw lands at ~0.062.
+const MISSILE_TEST_RNG_SEED := 13
+# 12m: comfortably past the arm-distance (missile_arm_delay_s *
+# missile_speed_mps = 0.25 * 26.0 = 6.5m) with real room to spare before the
+# hit-radius check trips, and well inside missile_lifetime_s's own travel
+# budget.
+const MISSILE_TEST_TARGET_DISTANCE_M := 12.0
+# A fixed spine-progress offset used only to separate "strictly ahead" from
+# "strictly behind" the player for the seeded-follower target-lock fixture
+# below -- large enough that no real AI driving during this test's own short
+# setup window could plausibly close it, small enough it carries no
+# particular racing meaning of its own.
+const MISSILE_TEST_FOLLOWER_MARGIN_M := 1000.0
+
+
+func test_seeded_six_kart_race_a_fired_missile_hits_and_spins_out_a_mid_slide_target_through_the_real_path() -> void:
+	var setup := _boot_race_with_synthetic_box(MISSILE_TEST_RNG_SEED)
+	var race: Node = setup.get("race")
+	var box: Area3D = setup.get("box")
+	if race == null or box == null:
+		return
+	assert_eq(
+		int(race.call("ai_kart_count")) + 1,
+		6,
+		"fixture sanity: this must be a real 6-kart race (player + 5 AI)"
+	)
+
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+
+	# Real box pickup (same teleport-then-confirm technique every other real
+	# pickup test in this file uses).
+	kart.set_physics_process(false)
+	kart.global_position = box.global_position
+	await wait_physics_frames(2)
+	assert_eq(
+		slot.call("state"),
+		&"rolling",
+		"fixture setup: the pickup must have started a real roll"
+	)
+	kart.set_physics_process(true)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var roulette_frames := int(ceil(_catalog.items.roulette_duration_s * physics_fps)) + 5
+	await wait_physics_frames(roulette_frames)
+	assert_eq(slot.call("state"), &"held")
+	assert_eq(
+		slot.call("held_item"),
+		&"missile",
+		"item_rng_seed=%d's own first randf() call must roll missile" % MISSILE_TEST_RNG_SEED
+	)
+
+	# --- Arrange a target AI kart mid-slide, at a known, reachable position
+	# directly ahead of the player, with every OTHER kart's own progress
+	# pinned strictly behind the player -- deterministic target-lock and
+	# deterministic missile flight, not a hope that real race driving lines
+	# up in time. See test_placement_reflects_an_ai_kart_seeded_strictly_
+	# ahead_of_the_player's own doc for the _follower.reset() technique
+	# reused here.
+	var player_progress := float(race.call("player_total_progress_m"))
+	var opponent_count := int(_catalog.ai.opponent_count)
+	var target := race.call("ai_kart", 0) as CharacterBody3D
+	var target_agent: Object = race.call("ai_agent", 0)
+	assert_not_null(target)
+	assert_not_null(target_agent)
+	if target == null or target_agent == null:
+		return
+	for other_index in range(1, opponent_count):
+		var other_agent: Object = race.call("ai_agent", other_index)
+		var other_follower: RefCounted = other_agent.get("_follower") if other_agent != null else null
+		if other_follower != null:
+			other_follower.reset(player_progress - MISSILE_TEST_FOLLOWER_MARGIN_M)
+
+	# Stop the target's own AI decision loop before manually arming a slide
+	# on it -- otherwise its own AiDriver keeps calling steer()/hop_pressed()/
+	# hop_released() every tick and fights these manual calls, the same
+	# reason every other white-box drift-arming test in this suite disables
+	# whatever else drives steer/hop first.
+	target_agent.set_physics_process(false)
+	await wait_physics_frames(5)
+	assert_true(
+		target.is_on_floor(),
+		"fixture setup: the target AI kart must be grounded before sliding"
+	)
+	target.call("steer", _kart_tuning.slide_min_steer)
+	target.call("hop_pressed")
+	await wait_physics_frames(2)
+	assert_true(
+		bool(target.call("is_sliding")),
+		"fixture setup: the target AI kart must really be sliding before the hit"
+	)
+
+	# Freeze the target's own physics now that it is mid-slide (latches
+	# is_sliding() exactly there -- nothing left ticking to end it on its
+	# own), then place it at a known, reachable point directly ahead of the
+	# player's own about-to-be-frozen launch pose, and seed its own
+	# SpineFollower total strictly ahead of the player's so the missile's
+	# launch-time target lock (nearest kart with a strictly positive
+	# progress margin) picks it uniquely.
+	target.set_physics_process(false)
+	var launch_position := Vector3(400.0, 0.0, 400.0)
+	var target_position := (
+		launch_position + Vector3(0.0, 0.0, -MISSILE_TEST_TARGET_DISTANCE_M)
+	)
+	target.global_transform = Transform3D(Basis.IDENTITY, target_position)
+	var target_follower: RefCounted = target_agent.get("_follower")
+	assert_not_null(target_follower)
+	if target_follower == null:
+		return
+	target_follower.reset(player_progress + MISSILE_TEST_FOLLOWER_MARGIN_M)
+
+	assert_false(bool(target.call("is_invulnerable")), "fixture sanity: no prior hit")
+	assert_false(bool(target.call("is_spinning_out")), "fixture sanity: no prior hit")
+
+	# Freeze the player's own pose at a known, axis-aligned launch point
+	# facing -Z (the same Transform3D.IDENTITY convention test_dispatch_
+	# item_use_beaker_drops_behind_the_launcher_by_one_kart_length already
+	# uses) so the missile spawns from a known position/facing.
+	kart.set_physics_process(false)
+	kart.global_transform = Transform3D(Basis.IDENTITY, launch_position)
+
+	# Real ITEM press through the real InputRouter -> RaceSession._route_
+	# input() -> KartController.use_item() -> dispatch_item_use() ->
+	# _spawn_missile() path -- the SAME real dispatch test_a_real_item_
+	# press_on_a_held_turbo_reaches_dispatch_and_applies_boost already proves
+	# for turbo, now proven for missile.
+	var router := race.get_node("Input/InputRouter")
+	router.call("push_button", InputIntent.ACTION_ITEM, true, 0.0, InputIntent.SOURCE_TOUCH)
+	await wait_physics_frames(1)
+
+	var hazards := race.get_node_or_null("ItemHazards")
+	assert_not_null(
+		hazards,
+		"a real ITEM press on a held missile must reach dispatch_item_use() and spawn a real missile under the session"
+	)
+	if hazards == null:
+		return
+	assert_eq(hazards.get_child_count(), 1, "exactly one missile must have spawned")
+
+	# Real flight: enough real physics ticks for the missile to actually
+	# travel the fixed distance to the target at missile_speed_mps, arm
+	# (missile_arm_delay_s), and detect the real hit-radius overlap -- not a
+	# synthetic register_hit() call.
+	var flight_s := MISSILE_TEST_TARGET_DISTANCE_M / _catalog.items.missile_speed_mps
+	var flight_frames := int(ceil(flight_s * physics_fps)) + 20
+	await wait_physics_frames(flight_frames)
+
+	assert_eq(
+		hazards.get_child_count(),
+		0,
+		"the missile must have hit its target and despawned by now"
+	)
+	assert_true(
+		bool(target.call("is_spinning_out")),
+		"the real missile flight must have reached register_hit() and applied a real spin_out"
+	)
+	assert_true(
+		bool(target.call("is_invulnerable")),
+		"apply_spin_out() must also have started the target's own invulnerable window"
+	)
+	assert_false(
+		bool(target.call("is_sliding")),
+		(
+			"register_hit()'s real spin_out must cancel the target's own live "
+			+ "slide through the WHOLE missile-flight path, not only when "
+			+ "register_hit() is called directly"
+		)
+	)

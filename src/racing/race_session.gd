@@ -437,6 +437,27 @@ func player_total_progress_m() -> float:
 	return _player_follower.total_progress_m() if _configured else 0.0
 
 
+## R4 Task 6 (RaceHUD held-item display): a thin public wrapper on
+## _items_allowed() (see the class doc's SOLO TIME TRIAL DOES NOT ROLL
+## section) -- RaceHUD's own duck-typed session.call() polling (the same
+## shape it already uses for current_lap()/elapsed_s()/is_wrong_way()) reads
+## this to gate its held-item label the exact same way _on_box_body_entered()
+## already gates rolls, without reaching past this session into a private
+## method it does not own.
+func items_enabled() -> bool:
+	return _items_allowed()
+
+
+## The player's own real ItemSlot -- RaceHUD polls this every _refresh() the
+## same "poll the session every frame" way it already polls current_lap()/
+## elapsed_s(), to drive the held-item label and roulette flicker (see
+## item_slot.gd's own rolling_display_item()/held_item() docs). null before
+## configure() (mirrors player_total_progress_m()'s own "not ready yet"
+## contract one section up) rather than reaching into a not-yet-real kart.
+func player_item_slot() -> Object:
+	return _kart.call("item_slot") if _configured and _kart != null else null
+
+
 ## 1-based finish placement (1 = won), computed once at the player's own
 ## race_complete instant -- see _finish_race(). 0 before the race finishes;
 ## HUD/callers should gate display on is_finished() the same way they

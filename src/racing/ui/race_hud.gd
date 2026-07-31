@@ -23,6 +23,15 @@ extends Control
 ## session.request_retry(); see race_session.gd's retry_requested doc and
 ## game_root.gd's DEBUG_RACING_LEVEL_ID render branch for the real,
 ## GameRoot-owned reload path this routes into instead.
+##
+## HELD-ITEM DISPLAY (R4 Task 6). _item_label mirrors _wrong_way_label's own
+## "poll every _refresh() tick, toggle .visible directly, no signal" shape:
+## hidden for an EMPTY slot, hidden for the whole session when RaceSession.
+## items_enabled() reads false (a solo race -- see that method's own doc),
+## and otherwise showing either the roulette FLICKER (ItemSlot.
+## rolling_display_item(), while &"rolling") or the landed item's own name
+## (ItemSlot.held_item(), while &"held") -- graybox text, no icon yet. See
+## _refresh_item_display().
 
 const TimeFormatType := preload("res://src/core/time_format.gd")
 
@@ -30,6 +39,7 @@ var _session: Object
 
 @onready var _lap_label: Label = $SafeArea/Stats/Margin/Rows/Lap
 @onready var _timer_label: Label = $SafeArea/Stats/Margin/Rows/Timer
+@onready var _item_label: Label = $SafeArea/Stats/Margin/Rows/Item
 @onready var _wrong_way_label: Label = $SafeArea/WrongWay
 @onready var _finish_panel: PanelContainer = $SafeArea/FinishPanel
 @onready var _finish_total_label: Label = (
@@ -55,6 +65,7 @@ var _session: Object
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_wrong_way_label.visible = false
+	_item_label.visible = false
 	_finish_panel.visible = false
 	_new_best_label.visible = false
 	_placement_label.visible = false
@@ -85,6 +96,33 @@ func _refresh() -> void:
 		float(_session.call("elapsed_s"))
 	)
 	_wrong_way_label.visible = bool(_session.call("is_wrong_way"))
+	_refresh_item_display()
+
+
+## See the class doc's HELD-ITEM DISPLAY section. Hidden (no text update --
+## a hidden label showing stale text is harmless, nothing reads .text while
+## !visible) for a solo session (items_enabled() false) or an EMPTY slot;
+## otherwise shows the roulette flicker while &"rolling" or the landed
+## item's own name while &"held" -- ItemSlot never reports anything else
+## (see item_slot.gd's own state() doc), so no third branch is needed.
+func _refresh_item_display() -> void:
+	if not bool(_session.call("items_enabled")):
+		_item_label.visible = false
+		return
+	var slot: Object = _session.call("player_item_slot")
+	if slot == null:
+		_item_label.visible = false
+		return
+	var state: StringName = slot.call("state")
+	if state == &"empty":
+		_item_label.visible = false
+		return
+	_item_label.visible = true
+	var display_item: StringName = (
+		slot.call("rolling_display_item") if state == &"rolling"
+		else slot.call("held_item")
+	)
+	_item_label.text = "ITEM  " + String(display_item).to_upper()
 
 
 func _on_race_finished(total_s: float, lap_times: Array) -> void:
