@@ -977,6 +977,17 @@ func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> v
 # labels -- is proven together. A brand-new profile has no prior racing
 # record (best_total_time_ms/best_lap_time_ms both 0, SaveModel's "never set"
 # sentinel), so any real finish here is unconditionally a new best.
+#
+# R5 Task 3 (spec debt #9 RULING): routes through the SOLO entry
+# (RacingTimeTrialSolo, spawn_opponents == false) rather than the AI-
+# populated RACE entry this test used before this task -- best-time
+# persistence is now the TIME-TRIAL record's own job exclusively (see
+# game_root.gd's own _on_racing_finished doc); a RACE finish never persists
+# at all, regardless of how fast it is (see test_racing_finish_in_a_real_
+# race_never_persists_a_faster_time below for that proof). This test's own
+# ORIGINAL intent -- "a first-ever finish must persist as the new best" --
+# stays exactly as true for solo as it always was; only the entry point
+# changed.
 func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 	var root := _instantiate_main()
 	if root == null:
@@ -988,12 +999,12 @@ func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 	await wait_process_frames(1)
 	var overlay := root.get_node("UI/LevelListOverlay")
 	var racing_button := overlay.get_node(
-		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo"
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
 
-	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
 	if race == null:
 		return
@@ -1061,6 +1072,8 @@ func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 # The counterpart proof: a seeded existing best faster than any real finish
 # can beat must survive the run untouched -- both in the in-memory profile
 # and on disk -- and the HUD must not falsely claim a new best.
+#
+# R5 Task 3: routes through the SOLO entry -- see the doc one test up for why.
 func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 	var seeded_service := SaveService.new()
 	var seeded_profile := SaveModel.fresh()
@@ -1084,12 +1097,12 @@ func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 	await wait_process_frames(1)
 	var overlay := root.get_node("UI/LevelListOverlay")
 	var racing_button := overlay.get_node(
-		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo"
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
 
-	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
 	if race == null:
 		return
@@ -1141,6 +1154,151 @@ func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 		new_best_label.visible,
 		"a run slower than the seeded best must not show NEW BEST"
 	)
+
+
+# ---------------------------------------------------------------------------
+# R5 Task 3 (spec debt #9 RULING): a RACE (AI-populated, spawn_opponents ==
+# true) never persists a best time, no matter how fast it finishes -- only a
+# solo TIME TRIAL does (the two tests above). Routes through the RACE entry
+# (RacingTimeTrial / Content/RaceTimeTrial) this time, deliberately, to prove
+# the OTHER half of the same branch.
+# ---------------------------------------------------------------------------
+
+
+## Seeds an existing best that any real forced finish here will comfortably
+## beat (a huge, unbeatable-by-nobody total_time_ms would prove nothing;
+## this seeds a SLOW one instead, on purpose, so the race's own real elapsed
+## time is a genuine improvement under the OLD, pre-Task-3 comparison -- and
+## must still leave the save completely untouched).
+func test_racing_finish_in_a_real_race_never_persists_a_faster_time() -> void:
+	var seeded_service := SaveService.new()
+	var seeded_profile := SaveModel.fresh()
+	var seeded_racing: Dictionary = seeded_profile["racing"]
+	var seeded_record := {
+		"best_total_time_ms": 999000,
+		"best_lap_time_ms": 333000,
+	}
+	seeded_racing[String(&"graybox_loop")] = seeded_record
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, seeded_profile),
+		OK
+	)
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+	assert_true(
+		bool(race.get("spawn_opponents")),
+		"fixture sanity: the RACE entry must spawn AI opponents (not solo)"
+	)
+
+	race.call("_tick_countdown", 1000.0)
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+	assert_lt(
+		float(race.call("elapsed_s")) * 1000.0,
+		float(seeded_record.get("best_total_time_ms")),
+		"fixture sanity: this real race finish must read faster than the seeded best, or this test proves nothing"
+	)
+
+	var profile: Dictionary = root.get("profile")
+	assert_eq(
+		SaveModel.racing_record(profile, &"graybox_loop"),
+		seeded_record,
+		"a race must never overwrite the time-trial best, even with a genuinely faster real finish"
+	)
+	var stored := SaveService.new().load_profile(TEST_SAVE_DIR)
+	assert_eq(
+		SaveModel.racing_record(stored, &"graybox_loop"),
+		seeded_record,
+		"the on-disk time-trial best must stay untouched by a race finish"
+	)
+
+	var hud := race.get_node("UI/RaceHUD")
+	var new_best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/NewBest"
+	) as Label
+	assert_false(
+		new_best_label.visible,
+		"a race must never claim NEW BEST -- it never wrote one"
+	)
+	var best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/Best"
+	) as Label
+	assert_true(
+		best_label.text.begins_with("TT BEST"),
+		"a race must show the existing time-trial best as a labeled TT BEST reference"
+	)
+
+
+## The counterpart to the test above: no time-trial record exists at all
+## (fresh profile) -- the race's own finish panel must show no TT BEST
+## reference (blank, not a misleading 00:00.000), and still never save.
+func test_racing_finish_in_a_real_race_shows_no_tt_best_reference_when_none_exists() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+
+	race.call("_tick_countdown", 1000.0)
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+
+	var profile: Dictionary = root.get("profile")
+	assert_eq(
+		SaveModel.racing_record(profile, &"graybox_loop"),
+		{"best_total_time_ms": 0, "best_lap_time_ms": 0},
+		"a race must never persist a best time, even a first-ever finish"
+	)
+
+	var hud := race.get_node("UI/RaceHUD")
+	var best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/Best"
+	) as Label
+	assert_eq(
+		best_label.text,
+		"",
+		"no time-trial best exists yet -- the race's own reference line must stay blank, not show 00:00.000"
+	)
+	var new_best_label := hud.get_node(
+		"SafeArea/FinishPanel/Margin/Rows/NewBest"
+	) as Label
+	assert_false(new_best_label.visible)
 
 
 ## Drives a race scene straight to race_complete by calling its own

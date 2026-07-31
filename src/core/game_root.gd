@@ -1559,6 +1559,26 @@ func _on_racing_retry_requested() -> void:
 ## the race node itself (see the race_finished.connect() call above) so this
 ## can read its exported track_id and hand the outcome back down to its HUD
 ## without GameRoot needing to know RaceHUD's own node path.
+##
+## R5 Task 3 (spec debt #9 RULING, ZERO schema change): best total/lap times
+## are the TIME-TRIAL record -- written, and even COMPARED for improvement,
+## ONLY when this session is solo (`spawn_opponents == false` already owns
+## "is this session solo", see race_session.gd's own doc on that exported
+## field; read here via race.get() the same duck-typed way track_id already
+## is). Debt #9 named the two remaining options once R4 items and R5's start
+## systems diverged what a RACE lap-time and a TIME-TRIAL lap-time each
+## measure: split the save key by mode, or stop writing best times from AI
+## races entirely and keep the record TIME-TRIAL-only. This is the second --
+## simpler, no new save-key shape, no migration. A race deliberately never
+## even CALLS SaveModel.improved_racing_record(): doing so and then simply
+## skipping the write would still compute new_best_total/new_best_lap true
+## for a race that ran faster than the saved best, and this exact payload
+## also drives RaceHUD's own NEW BEST marker (present_best_times()) -- so a
+## race would flash "NEW BEST" for a result that was never persisted and
+## vanishes the instant the scene closes. Reading the EXISTING record
+## unmodified and handing it to the HUD as a labeled "TT BEST" reference
+## (see race_hud.gd's own TT BEST class-doc section) is what debt #9's own
+## ruling calls "races still DISPLAY the time-trial best as reference".
 func _on_racing_finished(
 	total_s: float,
 	lap_times: Array,
@@ -1568,49 +1588,55 @@ func _on_racing_finished(
 	if track_id.is_empty():
 		return
 	var previous_record := SaveModel.racing_record(profile, track_id)
-	var updated_record := SaveModel.improved_racing_record(
-		previous_record,
-		total_s,
-		lap_times
-	)
-	if updated_record.is_empty():
-		return
-	var new_best_total := (
-		int(updated_record.get("best_total_time_ms", 0))
-		!= int(previous_record.get("best_total_time_ms", 0))
-	)
-	var new_best_lap := (
-		int(updated_record.get("best_lap_time_ms", 0))
-		!= int(previous_record.get("best_lap_time_ms", 0))
-	)
-	# "persist if better" (task brief): an unimproved run is shown against
-	# the existing best (below) but must not touch the save file at all.
-	if new_best_total or new_best_lap:
-		var updated_profile := profile.duplicate(true)
-		var racing_value: Variant = updated_profile.get("racing")
-		var racing: Dictionary = (
-			(racing_value as Dictionary).duplicate(true)
-			if racing_value is Dictionary
-			else {}
+	var is_solo := not bool(race.get("spawn_opponents"))
+	var updated_record := previous_record
+	var new_best_total := false
+	var new_best_lap := false
+	if is_solo:
+		var candidate_record := SaveModel.improved_racing_record(
+			previous_record,
+			total_s,
+			lap_times
 		)
-		racing[String(track_id)] = updated_record
-		updated_profile["racing"] = racing
-		if not SaveModel.validate(updated_profile):
-			push_error("Racing profile update failed validation.")
-			return
-		var save_error := save_service.store_profile(
-			save_dir,
-			updated_profile
-		)
-		if save_error != OK:
-			last_save_error = save_error
-			push_error(
-				"Racing best time was not saved: "
-				+ error_string(save_error)
+		if not candidate_record.is_empty():
+			updated_record = candidate_record
+			new_best_total = (
+				int(updated_record.get("best_total_time_ms", 0))
+				!= int(previous_record.get("best_total_time_ms", 0))
 			)
-			return
-		last_save_error = OK
-		profile = updated_profile
+			new_best_lap = (
+				int(updated_record.get("best_lap_time_ms", 0))
+				!= int(previous_record.get("best_lap_time_ms", 0))
+			)
+			# "persist if better" (task brief): an unimproved run is shown
+			# against the existing best (below) but must not touch the save
+			# file at all.
+			if new_best_total or new_best_lap:
+				var updated_profile := profile.duplicate(true)
+				var racing_value: Variant = updated_profile.get("racing")
+				var racing: Dictionary = (
+					(racing_value as Dictionary).duplicate(true)
+					if racing_value is Dictionary
+					else {}
+				)
+				racing[String(track_id)] = updated_record
+				updated_profile["racing"] = racing
+				if not SaveModel.validate(updated_profile):
+					push_error("Racing profile update failed validation.")
+					return
+				var save_error := save_service.store_profile(
+					save_dir,
+					updated_profile
+				)
+				if save_error != OK:
+					last_save_error = save_error
+					push_error(
+						"Racing best time was not saved: "
+						+ error_string(save_error)
+					)
+					return
+				last_save_error = OK
+				profile = updated_profile
 	if race.has_method("present_best_times"):
 		race.call("present_best_times", {
 			"best_total_ms": int(

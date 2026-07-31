@@ -239,15 +239,30 @@ extends Node3D
 ## now keeps processing a non-player kart's own crossing while _finished is
 ## already true, IF AND ONLY IF that kart has not itself already been
 ## recorded (finish_order_of(body) < 0) -- see _process_ai_gate_crossing()
-## and that branch's own doc. This can only ever fire for a same-tick
-## artifact like the one just described: an AI kart is frozen the instant
-## _finish_race() runs (same as every kart), so it can never PHYSICALLY
-## reach a gate again on any LATER tick, the identical "can't physically
-## reach a trigger" principle the pre-GO guard above already relies on. The
-## player's own crossings stay unconditionally dropped once _finished either
-## way -- no post-finish lap counting for the player, exactly as before this
-## fix -- and _finish_race()'s own freeze is never retroactively undone or
-## re-entered by this branch (it never calls _finish_race() again).
+## and that branch's own doc.
+##
+## R5 Task 3 correction: an earlier revision of this doc claimed a frozen
+## kart "can never PHYSICALLY reach a gate again on any LATER tick (frozen =
+## zero displacement)", framing this branch as catching only a literal
+## same-instant artifact. That is not what set_run_active(false) actually
+## does -- see KartController._physics_process()/KartMotor.decelerate_to_
+## stop()'s own docs: a kart moving at speed when frozen COASTS toward a
+## stop at brake_mps2 over a real, bounded, MULTI-tick window, not an
+## instant clamp to zero (pre-GO is the one case where this reads as zero
+## displacement, and only because forward_speed_mps is already 0 there --
+## see the class doc's COUNTDOWN + START BOOST section). A coasting AI kart
+## sitting close enough to a gate when the player finishes could in
+## principle still drift across it a few ticks later, not merely the exact
+## same tick. This branch stays correct regardless: nothing in its own
+## guard (_finished true, body != _kart, finish_order_of(body) < 0) is
+## time-window-limited -- it records whichever such crossing arrives,
+## however many ticks of coasting it took to get there -- so the ONLY thing
+## wrong was this doc's own "same-tick only" framing of why, not the code's
+## behavior. The player's own crossings stay unconditionally dropped once
+## _finished either way -- no post-finish lap counting for the player,
+## exactly as before this fix -- and _finish_race()'s own freeze is never
+## retroactively undone or re-entered by this branch (it never calls
+## _finish_race() again).
 ##
 ## finish_order_of()/finish_elapsed_s_of() are exposed now (not deferred to
 ## Task 3) because the RECORDING this task's own brief calls for has nowhere
@@ -750,6 +765,68 @@ func finish_elapsed_s_of(kart: CharacterBody3D) -> float:
 	return float(_finish_elapsed_s.get(kart, 0.0))
 
 
+## R5 Task 3: full results standings -- RaceHUD's own finish panel reads
+## this for a race (see race_hud.gd's own STANDINGS section) instead of the
+## old single placement()/placement_out_of() pair, which stays exactly as it
+## was for solo's own unmodified panel. One Dictionary per kart currently in
+## the race, ORDERED 1..field_size():
+## - position: int, 1-based standings position.
+## - label: String, "YOU" for the player's own kart, "CPU n" (1-based BY
+##   SLOT -- ai_kart(0) is always "CPU 1" no matter where it currently
+##   ranks, see _standings_label()'s own doc) for every AI kart.
+## - finished: bool, whether finish_order_of(kart) >= 0.
+## - elapsed_s: float, finish_elapsed_s_of(kart) for a finished kart, 0.0 for
+##   an unfinished one (mirrors this class's other "0 before it happened"
+##   getters -- callers must gate display on `finished`, same as every other
+##   finish-only stat in this class).
+## - is_player: bool, true for exactly one entry -- the HUD's own "highlight
+##   this row" flag, read straight off rather than re-deriving it from the
+##   label string.
+##
+## ORDERING calls _refresh_rank_snapshot() again right here rather than
+## trusting whatever _current_rank_order was left at by the last per-tick
+## call (see that method's own LIVE RANKING class-doc section) -- every
+## kart's own driving numbers have already stopped changing meaningfully
+## once frozen (_finish_race() freezes player and every AI kart alike), so
+## this is a safe no-op re-derivation in the ordinary case, but a kart that
+## was still coasting (see the class doc's own R5 Task 3 correction on
+## SAME-TICK PHOTO FINISH above -- freezing is not an instant clamp to zero)
+## can cross one more gate and get its own finish_order_of() recorded a few
+## ticks AFTER the last per-tick refresh ran; re-deriving here picks that up
+## rather than serving a stale pre-finish snapshot. Empty before configure()
+## (mirrors this class's other "not ready yet" getters).
+func standings() -> Array:
+	if not _configured:
+		return []
+	_refresh_rank_snapshot()
+	var result: Array = []
+	var position := 1
+	for kart: CharacterBody3D in _current_rank_order:
+		result.append({
+			"position": position,
+			"label": _standings_label(kart),
+			"finished": finish_order_of(kart) >= 0,
+			"elapsed_s": finish_elapsed_s_of(kart),
+			"is_player": kart == _kart,
+		})
+		position += 1
+	return result
+
+
+## See standings()'s own doc -- a kart's own label is derived from its SLOT
+## (its fixed index in _ai_karts, the same "GridSlot1..N in order" identity
+## _spawn_ai_karts() assigns once at configure() time), never from its
+## current live/finish position, so a label never changes as a kart's own
+## standing moves during the race. "CPU" (no number) for a kart this session
+## does not recognize at all -- defensive only, every real caller only ever
+## passes _kart or a kart drawn from _ai_karts itself.
+func _standings_label(kart: CharacterBody3D) -> String:
+	if kart == _kart:
+		return "YOU"
+	var slot_index := _ai_karts.find(kart)
+	return "CPU %d" % (slot_index + 1) if slot_index >= 0 else "CPU"
+
+
 func ai_kart_count() -> int:
 	return _ai_karts.size()
 
@@ -1235,21 +1312,31 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 		# -- dropping it outright (the old, unconditional `if _finished:
 		# return`) silently lost that AI's own race_complete forever:
 		# finish_order_of() would read -1 permanently, misreporting a kart
-		# that genuinely crossed the line as still racing. Once _finished is
-		# true, an AI kart can never PHYSICALLY reach a gate again on any
-		# LATER tick (frozen = zero displacement, the exact same "can't
-		# physically reach a trigger" principle the pre-GO guard above
-		# already relies on) -- so the ONLY crossings that can ever arrive
-		# here while _finished is already true are these same-tick
-		# artifacts, and only for a kart that has not itself already
-		# recorded a finish (an already-finished AI's own further same-tick
-		# crossings, if any, are ordinary and ignored -- nothing new to
-		# record, and _record_finish() would no-op anyway). The player's own
-		# crossings are ALWAYS dropped here regardless of dispatch order --
-		# preserves "no post-finish lap counting for the player" exactly as
-		# before this fix; _finish_race()'s own freeze is not retroactively
-		# undone or re-entered either way, since _finished stays true and
-		# _finish_race() is never called again from this branch.
+		# that genuinely crossed the line as still racing.
+		#
+		# R5 Task 3 correction: an earlier revision of this comment claimed
+		# an AI kart "can never PHYSICALLY reach a gate again on any LATER
+		# tick (frozen = zero displacement)" once _finished is true, framing
+		# the crossings this branch catches as literal same-instant
+		# artifacts only. That overstates what set_run_active(false) does --
+		# see KartMotor.decelerate_to_stop()'s own doc: a kart moving at
+		# speed when frozen COASTS toward a stop at brake_mps2 over a real,
+		# bounded, MULTI-tick window, not an instant clamp to zero, so a
+		# kart parked close enough to a gate could in principle still drift
+		# across it a few ticks after being frozen, not only this identical
+		# tick. That does not make this branch wrong: its own guard below
+		# (_finished true, body != _kart, finish_order_of(body) < 0) carries
+		# no time-window assumption of its own -- it records whichever such
+		# crossing arrives, same tick or a few ticks of coasting later,
+		# always correctly, for a kart that has not itself already been
+		# recorded (an already-finished AI's own further crossings, if any,
+		# are ordinary and ignored -- nothing new to record, and _record_
+		# finish() would no-op anyway). The player's own crossings are
+		# ALWAYS dropped here regardless of dispatch order -- preserves "no
+		# post-finish lap counting for the player" exactly as before this
+		# fix; _finish_race()'s own freeze is not retroactively undone or
+		# re-entered either way, since _finished stays true and _finish_
+		# race() is never called again from this branch.
 		if body != _kart and finish_order_of(body as CharacterBody3D) < 0:
 			_process_ai_gate_crossing(body as CharacterBody3D, gate)
 		return

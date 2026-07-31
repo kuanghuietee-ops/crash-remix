@@ -49,15 +49,43 @@ extends Control
 ## _item_label's own "poll every _refresh() tick, toggle .visible directly,
 ## no signal" shape one more time: visible only during the live body of a
 ## race against a real field -- post-GO (RaceSession.is_race_started()),
-## pre-finish (not RaceSession.is_finished() -- the FINISHED panel takes
-## over from here, see _on_race_finished() below), and only when there is
-## someone to rank against at all (RaceSession.field_size() > 1, the exact
-## same "m > 1" gate placement_out_of()'s own FINISHED panel already uses
-## one section down -- a solo race has nobody to place against either way).
-## Text reads "POS  n / m" off RaceSession.player_position()/field_size(),
-## both live per-tick reads (see race_session.gd's own LIVE RANKING class-
-## doc section), never the FINISHED panel's one-shot placement()/
-## placement_out_of().
+## pre-finish (not RaceSession.is_finished() -- the finish panel takes over
+## from here, see _on_race_finished() below), and only when there is someone
+## to rank against at all (RaceSession.field_size() > 1, the exact same
+## "m > 1" gate the finish panel's own STANDINGS section one below uses to
+## decide race-vs-solo -- a solo race has nobody to place against either
+## way). Text reads "POS  n / m" off RaceSession.player_position()/
+## field_size(), both live per-tick reads (see race_session.gd's own LIVE
+## RANKING class-doc section), never the finish panel's own one-shot
+## standings()/placement()/placement_out_of().
+##
+## STANDINGS (R5 Task 3). _on_race_finished() no longer shows a single
+## "FINISHED n / m" line for a race -- that one-shot summary is superseded
+## by _standings_label, one line per RaceSession.standings() entry (see that
+## method's own doc for the ordering/label/is_player contract), the player's
+## own row marked with a "> " prefix (read off is_player, never re-derived
+## from the label text) so it stands out from the plain-Label rows around it
+## without a second Control node per row. Gated on the exact same
+## placement_out_of() > 1 "is this a race" check placement_out_of() has
+## always used elsewhere in this file -- true for any AI-populated race,
+## false for solo (placement_out_of() == 1 there, always). SOLO IS
+## COMPLETELY UNCHANGED: _finish_splits_label (the old per-lap "LAP n"
+## list) keeps rendering exactly as it always has for a solo finish;
+## _standings_label only ever becomes visible, and _finish_splits_label only
+## ever hides, on the race side of that same branch.
+##
+## TT BEST (R5 Task 3, spec debt #9 RULING). present_best_times() below
+## relabels its own payload -- the SAME shape RaceSession.present_best_times()
+## always handed down, zero schema change -- for a race: "TT BEST  mm:ss.mmm"
+## (best_total_ms only, the TIME-TRIAL record shown purely as a REFERENCE,
+## never a claim about this race's own result), empty text if no time-trial
+## best exists yet at all (best_total_ms == 0, SaveModel's own "0 means never
+## set" sentinel) rather than a misleading "00:00.000". game_root.gd's own
+## _on_racing_finished doc has the save-side half of this ruling: a race
+## never WRITES a best time, so new_best_total/new_best_lap always arrive
+## false for one, which already keeps _new_best_label correctly hidden with
+## no extra gating needed here. Solo keeps the ORIGINAL two-value
+## "BEST .../BEST LAP ..." display, unconditionally, exactly as before.
 ##
 ## GO FLASH (fix round 1, reviewer [LOW-1]): _countdown_label does NOT just
 ## hide the instant is_race_started() flips true -- that used to make the
@@ -87,9 +115,6 @@ var _session: Object
 @onready var _finish_total_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/Total
 )
-@onready var _placement_label: Label = (
-	$SafeArea/FinishPanel/Margin/Rows/Placement
-)
 @onready var _new_best_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/NewBest
 )
@@ -98,6 +123,9 @@ var _session: Object
 )
 @onready var _finish_splits_label: Label = (
 	$SafeArea/FinishPanel/Margin/Rows/Splits
+)
+@onready var _standings_label: Label = (
+	$SafeArea/FinishPanel/Margin/Rows/Standings
 )
 @onready var _retry_button: Button = (
 	$SafeArea/FinishPanel/Margin/Rows/Retry
@@ -113,7 +141,7 @@ func _ready() -> void:
 	_item_label.visible = false
 	_finish_panel.visible = false
 	_new_best_label.visible = false
-	_placement_label.visible = false
+	_standings_label.visible = false
 	_countdown_label.visible = false
 	_boost_hint_label.visible = false
 	_retry_button.pressed.connect(_on_retry_pressed)
@@ -123,7 +151,7 @@ func configure(session: Object) -> void:
 	_session = session
 	_finish_panel.visible = false
 	_new_best_label.visible = false
-	_placement_label.visible = false
+	_standings_label.visible = false
 	_best_label.text = ""
 	_connect_once(_session, &"race_finished", _on_race_finished)
 	_refresh()
@@ -241,20 +269,25 @@ func _on_race_finished(total_s: float, lap_times: Array) -> void:
 	_best_label.text = ""
 	_finish_total_label.text = "TOTAL  " + TimeFormatType.mm_ss_mmm(total_s)
 
-	# Task 5 (CTR R3 integration): "FINISHED n / m" only makes sense once
-	# there is a field to place against -- a solo time trial (m == 1, no AI
-	# opponents; see race_session.gd's placement_out_of()) shows the old
-	# panel completely unchanged, gated here rather than by track/scene so a
-	# test that pins opponent_count to 0 (the established in-test override
-	# pattern) gets the exact same solo behavior as before this task without
-	# RaceSession needing to know or care that HUD exists.
+	# R5 Task 3: the old single "FINISHED n / m" summary is superseded by
+	# the full standings list below for a race -- see this file's own
+	# STANDINGS class-doc section. Gated the same way that line always was
+	# (placement_out_of() > 1, "is this a race" -- see race_session.gd's own
+	# placement_out_of() doc), so a test that pins opponent_count to 0 (the
+	# established in-test override pattern) still gets the exact same solo
+	# behavior as before this task without RaceSession needing to know or
+	# care that HUD exists.
 	var placement_out_of := int(_session.call("placement_out_of"))
-	_placement_label.visible = placement_out_of > 1
-	if placement_out_of > 1:
-		_placement_label.text = "FINISHED  %d / %d" % [
-			int(_session.call("placement")),
-			placement_out_of,
-		]
+	var is_race := placement_out_of > 1
+	_standings_label.visible = is_race
+	_finish_splits_label.visible = not is_race
+	if is_race:
+		var standings_lines: Array[String] = []
+		for entry: Variant in _session.call("standings"):
+			standings_lines.append(_standings_line(entry as Dictionary))
+		_standings_label.text = "\n".join(standings_lines)
+		return
+
 	var lines: Array[String] = []
 	for lap_index: int in range(lap_times.size()):
 		lines.append(
@@ -266,14 +299,32 @@ func _on_race_finished(total_s: float, lap_times: Array) -> void:
 	_finish_splits_label.text = "\n".join(lines)
 
 
+## See this file's own STANDINGS class-doc section -- one line per Race
+## Session.standings() entry. An unfinished kart's own time column shows a
+## dash placeholder rather than a real elapsed_s() reading (0.0 would
+## misleadingly read as an instant finish -- mirrors this file's own
+## TimeFormatType.mm_ss_mmm() convention of never rendering a raw, un-gated
+## "not yet" number).
+func _standings_line(entry: Dictionary) -> String:
+	var marker := "> " if bool(entry.get("is_player", false)) else "  "
+	var position: int = int(entry.get("position", 0))
+	var label: String = String(entry.get("label", ""))
+	var time_str := (
+		TimeFormatType.mm_ss_mmm(float(entry.get("elapsed_s", 0.0)))
+		if bool(entry.get("finished", false))
+		else "--:--.---"
+	)
+	return "%s%d. %s   %s" % [marker, position, label, time_str]
+
+
 ## Called by RaceSession (see its own doc) once GameRoot has compared this
 ## run's total/lap against the saved best and decided whether to persist it.
-## Renders unconditionally -- even a run that did NOT beat the record still
-## shows what the best times still are, only the NEW BEST marker is
-## conditional. Payload times arrive as milliseconds (matching
-## SaveModel's racing record shape) so this stays a pure display step with
-## no independent comparison logic of its own to drift out of sync with
-## GameRoot's.
+## Payload times arrive as milliseconds (matching SaveModel's racing record
+## shape) so this stays a pure display step with no independent comparison
+## logic of its own to drift out of sync with GameRoot's. See this file's
+## own TT BEST class-doc section for the race-vs-solo split below --
+## GameRoot hands down the exact same payload shape either way (zero schema
+## change); only the LABEL this method renders it under differs.
 func present_best_times(payload: Dictionary) -> void:
 	var best_total_s := (
 		float(payload.get("best_total_ms", 0))
@@ -283,10 +334,20 @@ func present_best_times(payload: Dictionary) -> void:
 		float(payload.get("best_lap_ms", 0))
 		/ TimeFormatType.MILLISECONDS_PER_SECOND
 	)
-	_best_label.text = "BEST  %s   BEST LAP  %s" % [
-		TimeFormatType.mm_ss_mmm(best_total_s),
-		TimeFormatType.mm_ss_mmm(best_lap_s),
-	]
+	if int(_session.call("placement_out_of")) > 1:
+		_best_label.text = (
+			"TT BEST  " + TimeFormatType.mm_ss_mmm(best_total_s)
+			if best_total_s > 0.0
+			else ""
+		)
+	else:
+		# Renders unconditionally -- even a run that did NOT beat the record
+		# still shows what the best times still are, only the NEW BEST
+		# marker below is conditional. Solo-only, unchanged by R5 Task 3.
+		_best_label.text = "BEST  %s   BEST LAP  %s" % [
+			TimeFormatType.mm_ss_mmm(best_total_s),
+			TimeFormatType.mm_ss_mmm(best_lap_s),
+		]
 	_new_best_label.visible = (
 		bool(payload.get("new_best_total", false))
 		or bool(payload.get("new_best_lap", false))

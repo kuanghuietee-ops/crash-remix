@@ -234,7 +234,7 @@ start.
    entries (RACE/TIME TRIAL × Graybox/Sanity Shores) instead of the two
    AI-populated-only entries R3 shipped with. See race_session.gd's own
    `spawn_opponents` doc and game_root.gd's `_RACE_SCENES_BY_LEVEL_ID`.
-9. **New (R4 Task 1): RACE and TIME TRIAL share one best-times record per
+9. ~~**New (R4 Task 1): RACE and TIME TRIAL share one best-times record per
    `track_id`, which R4/R5 will make incoherent.** Debt #8's solo variants
    (`race_time_trial_solo.tscn`/`race_sanity_shores_solo.tscn`) instance the
    AI-populated base scene and override only `spawn_opponents` — `track_id`
@@ -256,7 +256,22 @@ start.
    Revisit at R5 (once both R4 items and R5's start systems exist to
    actually diverge the two): either split the save key by mode (e.g.
    `track_id` + a mode suffix) or stop writing best times from AI races
-   (RACE) entirely and keep the personal-best record TIME-TRIAL-only.
+   (RACE) entirely and keep the personal-best record TIME-TRIAL-only.~~
+   **RESOLVED, R5 Task 3 (2026-07-31):** took the second option — a race
+   (`RaceSession.spawn_opponents == true`) never calls `SaveModel.
+   improved_racing_record()` and never writes to `SaveModel.racing[track_id]`
+   at all, no matter how fast its own result reads; only a solo session
+   (`spawn_opponents == false`) compares against and, if better, persists the
+   record. No save-key/schema change — `game_root.gd`'s `_on_racing_finished`
+   branches on `spawn_opponents` at the existing single `SaveModel.racing
+   [track_id]` slot rather than splitting it. A race still reads the existing
+   record and hands it down to `RaceHUD` unmodified, relabeled "TT BEST
+   mm:ss.mmm" (blank if none exists yet) — a reference only, never a claim
+   about that race's own result, and never accompanied by the NEW BEST marker
+   (`new_best_total`/`new_best_lap` are hardcoded false for a race). See
+   `race_session.gd`'s own `spawn_opponents` doc, `game_root.gd`'s
+   `_on_racing_finished` doc, and `race_hud.gd`'s own TT BEST class-doc
+   section.
 10. **New (R4 Task 4 fix round 1 [LOW-b]): the PLAYER kart has the same
     one-frame spawn-transform flash the AI-kart fix (Task 4 item 6) closed
     for `_spawn_ai_karts()`, and it is still open.** `race_time_trial.tscn`/
