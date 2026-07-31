@@ -288,6 +288,19 @@ start.
    fraction_stays_under_twenty_percent_over_a_ten_second_solo_run`,
    `test_ai_kart_agent.gd`), against a 0% baseline with apex/damping driven
    to ~0 — not a second independent finding, the same event.
+
+   **R6 stabilization fix addendum (post-Task-6): the tightened bound above
+   relaxed from `respawn_count <= 1` to `respawn_count <= 2`.** The
+   `respawn_count == 1` bound sat on a physics-timing-marginal edge:
+   independent review runs measured `respawn_count == 2` at the shipped
+   defaults on 2 of 3 cold runs, and Task 4's own sweep table already
+   recorded three rows landing on 2 for configs neighboring the shipped
+   defaults (5.0/24.0/0.35, 6.0/10.0/0.35, 4.0/18.0/0.2). A flaky suite gate
+   is worse than an honest bound, so the assertion was widened rather than
+   chasing determinism that isn't there at these tuning values. The
+   pre-Task-4 state was unbounded, so `<= 2` still guards the wedge-forever
+   regression class; it no longer claims a tighter number than the shipped
+   config can reliably hit.
 8. **Solo time trial is a scene-level flag, not a tuning override (fix-wave
    MEDIUM-5).** `RaceSession.spawn_opponents` (default `true`) owns whether
    a race spawns `AiTuning.opponent_count` AI karts at all;
@@ -501,5 +514,7 @@ new item through the real dispatch path, live FX on a real AI slide, both
 character sources actually mounted, and a real finish/standings split, all
 in one bounded run with zero unhandled push_error/engine-error calls. New
 debts recorded above as #11-#13; #7 (East-turn wedge) gained an R6
-addendum tightening its own bound to `respawn_count <= 1` (zero remains
-accepted-unreached, not further pursued this pass).
+addendum tightening its own bound to `respawn_count <= 1`, since relaxed to
+`respawn_count <= 2` by a post-Task-6 stabilization fix (physics-timing
+marginal, see #7's own addendum; zero remains accepted-unreached, not
+further pursued this pass).
