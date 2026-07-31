@@ -901,6 +901,22 @@ func is_race_started() -> bool:
 	return _race_started
 
 
+## Fix round 1, reviewer [LOW-1]: the HUD's "GO!" flash (see race_hud.gd's
+## own COUNTDOWN + BOOST HINT section) needs SOME real duration to hold that
+## text visible for -- is_race_started() alone flips true the same tick GO
+## fires (unfreezing/boost must land that same tick, see _start_race()'s own
+## doc), so gating visibility on it alone made the flash invisible: hidden
+## the instant it would have shown. Rather than inventing a new "how long to
+## flash GO" tuning field, this exposes the same countdown_step_s every 3/2/1
+## digit was already held on screen for, so the HUD can hold "GO!" for that
+## identical one-phase-long beat (elapsed_s() < countdown_step_s(), see
+## race_hud.gd's own _refresh_countdown_display()) -- a natural reuse, not a
+## new number. 0.0 before configure() (matches this class's other "not ready
+## yet" getters).
+func countdown_step_s() -> float:
+	return _race_tuning.countdown_step_s if _configured else 0.0
+
+
 func _route_input() -> void:
 	# R5 Task 1: see the class doc's own paragraph on this guard -- the ONLY
 	# way this is ever reached with the player's kart inactive is the &"bog"
@@ -985,7 +1001,16 @@ func _discover_gates() -> Array[CheckpointGate]:
 ## observe it via ai_kart_progress_gates()), not because an AI kart can ever
 ## "finish" the race on its own in this task.
 func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
-	if _finished:
+	# Fix round 1, reviewer [LOW-2]: dormant-but-ungated pre-GO -- a frozen
+	# kart can never PHYSICALLY reach a gate before GO (see the class doc's
+	# COUNTDOWN + START BOOST section), so this was never reachable through
+	# real play, only through a caller that reaches this private handler
+	# directly (as this suite's own _force_finish() does -- every one of its
+	# callers already boots through a countdown-skip helper first, so this
+	# adds no behavior change there). Made structural rather than left
+	# implicit: a signal path this session owns should not stay silently
+	# reachable pre-GO just because nothing currently exercises it that way.
+	if _finished or not _race_started:
 		return
 	var validator: LapValidatorType = _gate_validators.get(body)
 	if validator == null:
@@ -1010,6 +1035,11 @@ func _on_gate_body_entered(body: Node, gate: CheckpointGate) -> void:
 ## A body with no item_slot() method (a stray non-kart Area3D/body, or a
 ## bare test fixture) is silently ignored rather than erroring.
 func _on_box_body_entered(body: Node) -> void:
+	# Fix round 1, reviewer [LOW-2]: same structural pre-GO gate as _on_gate_
+	# body_entered() above -- a frozen kart can never physically reach a box
+	# before GO either. See that function's own doc for the full rationale.
+	if not _race_started:
+		return
 	if not _items_allowed():
 		return
 	if body == null or not is_instance_valid(body) or not body.has_method("item_slot"):

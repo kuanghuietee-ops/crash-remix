@@ -202,6 +202,58 @@ func test_wrong_way_never_raises_pre_go_even_under_sustained_backward_velocity()
 
 
 # ---------------------------------------------------------------------------
+# Fix round 1, reviewer [LOW-2]: gate/box signal paths quiescent pre-GO.
+# Neither is REACHABLE through real play before this fix either (a frozen
+# kart can never physically enter a gate/box trigger before GO), but both
+# handlers were left ungated -- a caller reaching them directly (as this
+# suite's own _force_finish()-style helpers do) got no protection from the
+# session itself. Made structural: _on_gate_body_entered()/_on_box_body_
+# entered() now early-return pre-GO, proven here by calling them directly,
+# synthetically, before GO -- exactly the shape a bug (or a stray real
+# overlap somehow reaching one) would have to go through.
+# ---------------------------------------------------------------------------
+
+
+func test_gate_crossing_is_a_no_op_pre_go() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var gate := race.get_node("Track/Gates/Gate0")
+	assert_false(bool(race.call("is_race_started")), "fixture sanity: still pre-GO")
+
+	race.call("_on_gate_body_entered", kart, gate)
+
+	assert_eq(
+		int(race.call("progress_gates")),
+		0,
+		"a synthetic gate crossing pre-GO must not advance the validator at all"
+	)
+	assert_false(bool(race.call("is_finished")))
+
+
+func test_box_pickup_is_a_no_op_pre_go() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var slot: Object = kart.call("item_slot")
+	assert_not_null(slot)
+	if slot == null:
+		return
+	assert_eq(slot.call("state"), &"empty", "fixture sanity: no roll yet")
+	assert_false(bool(race.call("is_race_started")), "fixture sanity: still pre-GO")
+
+	race.call("_on_box_body_entered", kart)
+
+	assert_eq(
+		slot.call("state"),
+		&"empty",
+		"a synthetic box pickup pre-GO must never start a real roll"
+	)
+
+
+# ---------------------------------------------------------------------------
 # The race timer starts AT GO, not at spawn.
 # ---------------------------------------------------------------------------
 
@@ -502,7 +554,7 @@ func test_reconfigure_resets_the_whole_flow_back_to_a_frozen_pre_go_state() -> v
 # ---------------------------------------------------------------------------
 
 
-func test_hud_shows_countdown_and_boost_hint_pre_go_and_hides_them_at_go() -> void:
+func test_hud_shows_countdown_and_boost_hint_pre_go() -> void:
 	var race := _boot_race_no_skip()
 	if race == null:
 		return
@@ -519,14 +571,46 @@ func test_hud_shows_countdown_and_boost_hint_pre_go_and_hides_them_at_go() -> vo
 	assert_eq(countdown_label.text, "3")
 	assert_true(boost_hint_label.visible, "the boost hint must be visible pre-GO")
 
+
+## Fix round 1, reviewer [LOW-1]: the countdown label used to hide the SAME
+## tick is_race_started() flipped true, which made "GO!" unrenderable by
+## construction -- is_race_started() and the real unfreeze/boost effects
+## land on the exact same tick (see race_session.gd's own _start_race()
+## doc), so a HUD gated on that flag alone never had a tick where it was
+## both true AND still worth showing anything for. This pins the fixed
+## behavior: "GO!" renders right at GO and stays up for one more
+## countdown_step_s (the same per-phase beat every 3/2/1 digit already got),
+## then clears. The boost hint is NOT part of this flash -- it hides
+## immediately at GO, unchanged from before this fix.
+func test_hud_shows_go_text_at_go_then_clears_after_one_countdown_step() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var hud := race.get_node("UI/RaceHUD")
+	var countdown_label := hud.get_node("SafeArea/Countdown") as Label
+	var boost_hint_label := hud.get_node("SafeArea/BoostHint") as Label
+	if countdown_label == null or boost_hint_label == null:
+		return
+
 	race.call("_tick_countdown", 1000.0)
+	assert_true(bool(race.call("is_race_started")), "fixture setup: the race must have started")
 	await wait_process_frames(1)
+
+	assert_true(
+		countdown_label.visible,
+		"the GO flash must actually render -- it must not hide the same tick is_race_started() flips true"
+	)
+	assert_eq(countdown_label.text, "GO!")
+	assert_false(
+		boost_hint_label.visible,
+		"the boost hint must still hide immediately at GO -- only the countdown label flashes GO"
+	)
+
+	var step_s: float = _catalog.race.countdown_step_s
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	await wait_physics_frames(int(ceil(step_s * physics_fps)) + 5)
 
 	assert_false(
 		countdown_label.visible,
-		"the countdown must hide once the race has actually started"
-	)
-	assert_false(
-		boost_hint_label.visible,
-		"the boost hint must hide once the race has actually started"
+		"the GO flash must clear once its own one-countdown_step_s window has elapsed"
 	)

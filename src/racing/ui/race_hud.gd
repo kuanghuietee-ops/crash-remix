@@ -36,17 +36,29 @@ extends Control
 ## COUNTDOWN + BOOST HINT (R5 Task 1). _countdown_label/_boost_hint_label
 ## poll RaceSession.is_race_started()/countdown_phase() every _refresh()
 ## tick, the exact same "poll every tick, toggle .visible directly, no
-## signal" shape _wrong_way_label/_item_label already use one section up --
-## both are visible for the WHOLE pre-race countdown and hidden the instant
-## is_race_started() reads true, never shown again afterward (RaceSession
-## itself never re-enters a countdown mid-race, only a fresh configure()/
-## retry does, which re-hides them the same way -- see _refresh() below).
-## countdown_phase() is only ever consulted while NOT started (see the
-## class doc's own "RaceSession stops ticking the countdown past go" note
-## on race_session.gd -- countdown_phase() can keep reporting &"go" forever
-## after the real race starts, which is exactly why this HUD gates on the
-## separate is_race_started() flag rather than ever comparing phase() to
-## &"running").
+## signal" shape _wrong_way_label/_item_label already use one section up.
+## _boost_hint_label is visible for the WHOLE pre-race countdown and hidden
+## the instant is_race_started() reads true, never shown again afterward.
+## countdown_phase() is only ever consulted while NOT started (see the class
+## doc's own "RaceSession stops ticking the countdown past go" note on race_
+## session.gd -- countdown_phase() can keep reporting &"go" forever after the
+## real race starts, which is exactly why this HUD gates on the separate
+## is_race_started() flag rather than ever comparing phase() to &"running").
+##
+## GO FLASH (fix round 1, reviewer [LOW-1]): _countdown_label does NOT just
+## hide the instant is_race_started() flips true -- that used to make the
+## "GO!" text unrenderable by construction, since RaceSession's own unfreeze/
+## boost effects land the SAME tick is_race_started() flips (see race_
+## session.gd's own _start_race() doc), so a HUD gated on that flag alone
+## never had a tick where it was both true AND still worth showing anything
+## for. Instead, once started, this HUD holds "GO!" visible for one more
+## whole countdown_step_s (RaceSession.countdown_step_s(), the SAME per-phase
+## beat every 3/2/1 digit was already shown for -- see that getter's own
+## doc), measured against elapsed_s() itself (which starts counting at
+## exactly this same GO instant, see race_session.gd's own TIMER section) --
+## no new timer of its own, no new tuning field, and pause-correct for free
+## since elapsed_s() already is. _refresh_countdown_display() below is the
+## one place that owns this window.
 
 const TimeFormatType := preload("res://src/core/time_format.gd")
 
@@ -119,25 +131,39 @@ func _refresh() -> void:
 	_refresh_countdown_display()
 
 
-## See the class doc's COUNTDOWN + BOOST HINT section.
+## See the class doc's COUNTDOWN + BOOST HINT / GO FLASH sections.
 func _refresh_countdown_display() -> void:
 	var started := bool(_session.call("is_race_started"))
-	_countdown_label.visible = not started
 	_boost_hint_label.visible = not started
 	if not started:
+		_countdown_label.visible = true
 		_countdown_label.text = _countdown_display_text(
 			StringName(_session.call("countdown_phase"))
 		)
+		return
+	# GO FLASH: still within one countdown_step_s of the race actually
+	# starting -- keep showing "GO!" a beat longer instead of vanishing the
+	# same tick it would have appeared.
+	var still_flashing_go := (
+		float(_session.call("elapsed_s")) < float(_session.call("countdown_step_s"))
+	)
+	_countdown_label.visible = still_flashing_go
+	if still_flashing_go:
+		_countdown_label.text = "GO!"
 
 
+## Only ever called pre-GO (see _refresh_countdown_display() above -- once
+## started, "GO!" is driven by the separate flash window, not by matching
+## phase() == &"go" here, since is_race_started() is already true by the
+## time any poll could observe that phase value -- see countdown_phase()'s
+## own "stops ticking past go" doc on race_session.gd). &"go" is therefore
+## unreachable through this function and deliberately not one of its cases.
 func _countdown_display_text(phase: StringName) -> String:
 	match phase:
 		&"two":
 			return "2"
 		&"one":
 			return "1"
-		&"go":
-			return "GO!"
 		_:
 			return "3"
 
