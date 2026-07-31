@@ -43,7 +43,7 @@ Same as R5's (literals 0/1/-1 in `src/racing/**`; tuning provably live incl. new
 
 ### Task 6: Integration, verification, R6 APK readiness
 
-- [ ] End-to-end seeded race with new items + apex AI on Sanity Shores (bounded real physics, no error spam, race completes); full sweep (GUT/Py/lints/export verifier — fx+items tuning in pack); spec debt bookkeeping (weighted-roulette + new items noted; any new debts recorded); R6 summary report. Orchestrator merges + builds the R6 APK.
+- [x] End-to-end seeded race with new items + apex AI on Sanity Shores (bounded real physics, no error spam, race completes); full sweep (GUT/Py/lints/export verifier — fx+items tuning in pack); spec debt bookkeeping (weighted-roulette + new items noted; any new debts recorded); R6 summary report. Orchestrator merges + builds the R6 APK.
 
 ## Self-Review
 - Spec coverage: A→T1+T2, B→T3, C→T4, D→T5; checkpoint after T3 per spec.

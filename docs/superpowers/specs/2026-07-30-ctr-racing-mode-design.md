@@ -256,6 +256,38 @@ start.
    principle be retuned to avoid the wedge entirely rather than recover
    from it; this is an operator-tunable, on-device follow-up, not a code
    change.
+
+   **R6 Task 4 addendum (2026-07-31): a genuinely tighter bound is now
+   ALSO asserted, but zero respawns remains unreached and is ACCEPTED, not
+   further pursued.** Apex-line steering (curvature-derived lateral offset)
+   plus `steer_damping` (the low-pass filter on steer output, both new this
+   task) were tuned against the East turn specifically, with explicit
+   permission to report BLOCKED rather than lower the bar if a genuine
+   zero-respawn result proved unreachable. It did: a sweep isolating each
+   variable (apex driven to ~0, only `steer_damping` varied at 0.1 and 0.35)
+   reproducibly costs exactly one respawn either way, and driving damping
+   ALSO to ~0 alongside apex reproducibly clears to zero — proving
+   `steer_damping`'s own approach-phase lag, on its own, is sufficient to
+   cost that one respawn, independent of apex tuning. This is the textbook
+   responsiveness/smoothness trade-off of a low-pass filter on a fast-moving
+   target, not an implementation bug, and `steer_damping` is a required
+   feature of this same task (it is what closes the oscillation baseline
+   below) — so it cannot simply be tuned away to chase this one corner.
+   Ruling: the original "healthy progress OR demonstrably recovers" bound
+   stays UNCHANGED (never weakened); a new, honestly-earned tightened bound
+   is ADDED alongside it in the same test —
+   `test_east_turn_never_permanently_wedges_over_twenty_real_seconds` now
+   also asserts `respawn_count <= 1` (was unbounded) at the shipped
+   defaults (`apex_offset_max_m=4.0`, `apex_entry_lookahead_m=18.0`,
+   `steer_damping=0.35`). A real fix to reach true zero would need a
+   different mechanism (damping the apex TARGET rather than the steer
+   OUTPUT, so the target itself doesn't sweep as fast during approach) —
+   out of this task's own scope, left for a future pass if the operator
+   wants it. The same root cause also costs a measured 10% regressing-tick
+   rate over a 10s solo run at this one corner (`test_regressing_tick_
+   fraction_stays_under_twenty_percent_over_a_ten_second_solo_run`,
+   `test_ai_kart_agent.gd`), against a 0% baseline with apex/damping driven
+   to ~0 — not a second independent finding, the same event.
 8. **Solo time trial is a scene-level flag, not a tuning override (fix-wave
    MEDIUM-5).** `RaceSession.spawn_opponents` (default `true`) owns whether
    a race spawns `AiTuning.opponent_count` AI karts at all;
@@ -381,6 +413,58 @@ start.
     transform before it ever enters the tree, or arm collision only after
     that seeding) is still not done.
 
+11. **New (R6 Task 5, design decision, accepted): an AI kart shakes off an
+    attached TNT stick only incidentally, never by deliberate intent.**
+    `tnt_stick.gd`'s shake-off counter decrements on either of a victim's
+    real `hop_pressed_edge`/`boost_tap_edge` signals (see `KartController`'s
+    own signal docs) — for the PLAYER this is a deliberate mashed response
+    to being hit; for an AI kart, `AiDriver`/`AiKartAgent` have no "I am
+    currently a TNT victim, start mashing hop" state or heuristic at all
+    (see `ai_driver.gd`'s own ITEM USE HEURISTICS doc — bomb/tnt_stick/
+    triple_turbo intent all describe when to USE an item, never how to
+    react to being hit by one). An AI kart only shakes a stick off if its
+    own ordinary cornering/sliding behavior happens to fire a hop or
+    boost-tap edge before the fuse (`tnt_fuse_s`) expires — CTR-authentic
+    in spirit (the original game's own CPU racers show no special item-
+    reaction behavior either) and not a bug: a human victim's own escape
+    path is unaffected and reliable (`test_shake_off_through_the_real_
+    adapter_works_while_the_victim_is_sliding`/`..._is_not_sliding`,
+    `tests/racing/test_tnt_stick.gd`). Revisit only if on-device play
+    reveals AI karts eating TNT hits far more often than feels right —
+    would need new per-agent "was I just hit" state, a genuinely new
+    feature, not a tuning knob.
+12. **New (R6 Tasks 2/3, standing gap, unresolved): the whole-frame draw-
+    call/triangle budget stays unverifiable from this headless worktree,
+    and R6 measurably raised the number of draw calls in play.** Task 2's
+    own dressing-density pass roughly doubled the racing-line kit-piece
+    count on Sanity Shores; Task 3 added one draw call per kart for the
+    new stylized mesh (replacing the graybox box, itself already one draw
+    call, so roughly a wash there) plus each mounted character's own draw
+    call(s) (the already-budgeted Crash/lab-assistant hero/enemy assets).
+    Every individual asset passes the per-asset art-budget lint
+    (`scripts/lint_art_budgets.py`, green — see Task 6's own sweep), but
+    that lint has never modeled a whole-FRAME total the way a real device's
+    GPU experiences it, on this track or any other in this repo — a
+    standing gap since before R6, not introduced by it, but worth flagging
+    now that the number of pieces in frame at once went up materially.
+    Operator on-device pass (real phone, real frame-time readout) is the
+    only way to close this; no further headless work can.
+13. **New (R6 Task 3, operator-pending): Crash's own seat height on the
+    kart is an estimate, not a verified fit.** `KartController.mount_
+    character()` positions the mounted character at `SeatMount` (a
+    Marker3D authored at an eyeballed seat-height position on `kart.tscn`
+    — see that file's own SEAT/MOUNT DESIGN doc), never rendered or
+    screenshotted in this headless worktree, so whether Crash's own model
+    actually sits ON the seat (rather than floating above it or clipping
+    into the kart body) is unverified. Flagged for the operator's own
+    on-device look pass, same as the kart mesh's own stand-in-tier note
+    above; may need a small `SeatMount` height nudge once seen riding for
+    real. The lab-assistant AI karts share the same `SeatMount` node and
+    the same open question, though R6 Task 3 also separately notes they
+    ride a rest/bind pose rather than an authored seated one (acceptable
+    per the task brief, a different and already-recorded gap from this
+    one).
+
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
 exact frame refreshes the retiring session (self-heals next edit); racing
@@ -398,3 +482,24 @@ leaderless missile flies straight through geometry until lifetime expiry
 R5 polish-wave notes: `RaceSession.placement()` removed as dead code
 (superseded by `standings()`, whose finished-before-unfinished ranking it
 disagreed with — see race_session.gd's own `standings()` doc).
+
+R6 polish-wave notes (2026-07-31, circuit polish — see
+`2026-07-31-ctr-r6-circuit-polish-design.md` for the full per-workstream
+spec): stage-colored drift-spark/boost-flame FX and a spinning/bobbing item-
+box visual, both tuning-driven (`&"fx"` section, `data/tuning/racing/
+fx.tres`); Sanity Shores dressed to racing density with a start/finish arch
+and per-gate flags; an original stylized kart mesh seating the existing
+Crash model (player) and lab-assistant models (AI, tinted per slot);
+curvature-derived apex racing lines plus steer damping and per-slot
+personality scalars on `AiDriver`/`AiKartAgent`; three new items (bomb,
+TNT stick, triple-turbo charges) and position-weighted roulette
+(`weight_front_<item>`/`weight_back_<item>` pairs, `ItemTuning`) replacing
+the old uniform N-way roll, with AI intent extended to all three. Task 6's
+own end-to-end coverage (`tests/integration/test_race_flow_r6_e2e.gd`)
+chains a real seeded countdown-to-GO, a real weighted box pickup firing a
+new item through the real dispatch path, live FX on a real AI slide, both
+character sources actually mounted, and a real finish/standings split, all
+in one bounded run with zero unhandled push_error/engine-error calls. New
+debts recorded above as #11-#13; #7 (East-turn wedge) gained an R6
+addendum tightening its own bound to `respawn_count <= 1` (zero remains
+accepted-unreached, not further pursued this pass).
