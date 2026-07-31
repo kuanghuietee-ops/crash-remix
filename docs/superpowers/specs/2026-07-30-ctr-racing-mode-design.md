@@ -44,8 +44,13 @@ Authored arcade physics on CharacterBody3D — no rigid-body simulation. Verbs:
   straightening the stick ends the slide (with any earned boost kept if
   that happens at or after the minimum slide duration, forfeited if
   earlier).
-- **Start boost** — countdown "3-2-1": throttle timed into the green window
-  at "GO" fires a launch boost, early = bog.
+- **Start boost** — countdown "3-2-1": throttle already auto-accelerates (see
+  Auto-accelerate above), so this is timed on HOP instead — a hold that
+  begins in the window right before "GO" fires a launch boost; holding HOP
+  continuously from earlier in the countdown and riding it to "GO" bogs
+  instead. [Polish-wave correction, R5 (2026-07-31): this bullet originally
+  said "throttle timed into the green window", which doesn't match the
+  shipped mechanic — see `start_boost_judge.gd`'s own class doc.]
 - **Spin-out** on hazard/item hit: control cut, speed dump, brief
   invulnerability after.
 - Jump pads / boost pads on track.
@@ -167,7 +172,13 @@ start.
    is silently swallowed. If a human tester reports dropped boost taps or
    missed hops on device, this poll-vs-edge gap is the mechanism to check
    first, not the drift FSM's own timing. (R4: the ITEM button shares the same
-   once-per-tick edge sampling and the same swallow window.)
+   once-per-tick edge sampling and the same swallow window. R5, polish-wave
+   addition: the countdown's own pre-GO sampler — `_tick_countdown()`
+   feeding `StartBoostJudge.sample()`, race_session.gd — reads the identical
+   once-per-tick `is_action_pressed()` level state and shares the same
+   swallow window: a HOP press-and-release that both land inside one
+   physics tick's polling window is invisible to the start-boost judge too,
+   not just to `_route_input()`.)
 5. ~~**R3 ships AI opponents WITHOUT item use, by design.** The "AI (phase R3)"
    line above ("...item use with cooldowns. 5 karts.") reads as if item use
    ships in this phase, but items themselves do not exist anywhere in the
@@ -323,7 +334,14 @@ start.
     a same-round patch). CURRENTLY LATENT: `test_neither_real_race_scene_
     authors_any_item_boxes_yet` (test_race_session.gd) confirms neither
     shipped track authors any `ItemBox` yet, so nothing on either real
-    track can trigger this today. Task 5 (item box placement on both
+    track can trigger this today. [Polish-wave correction, R5
+    (2026-07-31): that test no longer exists — Task 5's box authoring below
+    superseded it. The current mitigation is enforced by the
+    `track_item_boxes` authoring-lint rule's own
+    `TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M` (10.0m) check
+    (`scripts/lint_level_authoring.py`), proven by
+    `tests/lint/test_level_authoring_lint.py::
+    test_item_box_near_origin_fires_the_item_box_rule`.] Task 5 (item box placement on both
     tracks) is what turns this from latent to live — that task MUST either
     keep every authored box's `box_pickup_radius_m` clear of wherever each
     track's own `KartSpawn` marker sits (the practical near-term mitigation,
@@ -376,3 +394,7 @@ physics step (deferred monitoring-off; generous, by design for now); a
 leaderless missile flies straight through geometry until lifetime expiry
 (no collision node — graybox-appropriate); fresh checkouts need one
 `godot --headless --editor --quit` before building (class-name cache).
+
+R5 polish-wave notes: `RaceSession.placement()` removed as dead code
+(superseded by `standings()`, whose finished-before-unfinished ranking it
+disagreed with — see race_session.gd's own `standings()` doc).

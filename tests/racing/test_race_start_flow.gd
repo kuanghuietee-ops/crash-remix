@@ -572,6 +572,36 @@ func test_hud_shows_countdown_and_boost_hint_pre_go() -> void:
 	assert_true(boost_hint_label.visible, "the boost hint must be visible pre-GO")
 
 
+## Polish wave [MEDIUM]: the hint text itself must teach the REAL mechanic,
+## not the losing one. StartBoostJudge's own VERDICT section (start_boost_
+## judge.gd) is unambiguous: holding HOP continuously from early in the
+## countdown (e.g. from the "3") rides held_duration_s past start_boost_
+## window_s and reads as &"bog", while a hold that only BEGINS within the
+## last start_boost_window_s before GO reads as &"boost". A hint that says
+## "HOLD HOP" with no timing qualifier instructs exactly the losing input --
+## this asserts the authored copy names both halves of the real mechanic
+## (hold it late, right before GO; holding it early bogs) so a future
+## regression back to "just hold it" cannot ship without this test noticing.
+func test_boost_hint_text_teaches_the_real_late_hold_mechanic() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var hud := race.get_node("UI/RaceHUD")
+	var boost_hint_label := hud.get_node("SafeArea/BoostHint") as Label
+	assert_not_null(boost_hint_label, "fixture setup: race_hud.tscn must author the BoostHint label")
+	if boost_hint_label == null:
+		return
+
+	assert_true(
+		boost_hint_label.text.contains("BEFORE GO"),
+		"the hint must tell the player to hold right BEFORE GO, not from the start of the countdown"
+	)
+	assert_true(
+		boost_hint_label.text.contains("EARLY"),
+		"the hint must warn that holding EARLY is the losing input (it bogs), not the boost input"
+	)
+
+
 ## Fix round 1, reviewer [LOW-1]: the countdown label used to hide the SAME
 ## tick is_race_started() flipped true, which made "GO!" unrenderable by
 ## construction -- is_race_started() and the real unfreeze/boost effects

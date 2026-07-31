@@ -79,11 +79,20 @@ extends Node3D
 ## by calling the body directly -- no per-kart lookup table is needed the
 ## way gate crossings need _gate_validators, since the body IS the kart
 ## whose slot must roll), for player and AI karts identically -- there is
-## no separate "is this the player" branch anywhere in this path. No boxes
-## are authored into either real track yet (Task 5's job): on both current
-## tracks _discover_item_boxes() simply returns an empty array and every
-## piece of this wiring is a clean no-op, exercised only by tests that add
-## a synthetic ItemBox under Track before calling configure().
+## no separate "is this the player" branch anywhere in this path. R4 Task 5
+## authored 6 ItemBox instances on each of the two real tracks (ItemBoxes/
+## ItemBoxNorth1-3 + ItemBoxSouth1-3 under track_graybox_loop.tscn,
+## ItemBoxEast1-3 + ItemBoxBack1-3 under track_sanity_shores.tscn), each kept
+## a real 10m clearance from the track's own local origin -- enforced by the
+## TRACK_ITEM_BOX_RULE authoring lint (scripts/lint_level_authoring.py's own
+## TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M, spec Recorded-debt #10; see
+## tests/lint/test_level_authoring_lint.py::
+## test_item_box_near_origin_fires_the_item_box_rule) rather than by anything
+## this session itself checks. _discover_item_boxes() picks all 6 up on both
+## tracks via the same find_children() scan this section's own opening line
+## describes, so this wiring is live and exercised on every real race, not
+## merely by the synthetic-ItemBox tests that first proved the plumbing
+## before any track authored one.
 ##
 ## SOLO TIME TRIAL DOES NOT ROLL. spawn_opponents (not a new, separate
 ## exported flag) also gates item rolls: _items_allowed() reads it
@@ -269,7 +278,7 @@ extends Node3D
 ## else to live -- Task 3's standings panel is documented to read these two
 ## getters directly rather than reaching into this session's private
 ## dictionaries, the same "public getter, not a private field" shape every
-## other per-kart stat in this class already uses (placement()/lap_times()/
+## other per-kart stat in this class already uses (standings()/lap_times()/
 ## etc.).
 
 const RacingInputAdapterType := preload(
@@ -398,10 +407,6 @@ var _gate_validators: Dictionary = {}
 # getter Callable every AiKartAgent receives at configure() (band_gap_m's
 # own "how far behind/ahead of the player" signal, see ai_kart_agent.gd).
 var _player_follower: SpineFollowerType = SpineFollowerType.new()
-
-# 1-based finish placement, computed once at the player's own race_complete
-# instant (see _finish_race()); 0 before the race finishes.
-var _placement: int = 0
 
 var _configured: bool = false
 var _finished: bool = false
@@ -562,7 +567,6 @@ func configure(catalog: GameplayTuning) -> void:
 	_gate_validators[_kart] = _validator
 	_player_follower.configure(_spine.length_m())
 	_player_follower.reset(_spine.progress_for_position(_kart.global_position))
-	_placement = 0
 
 	_spawn_ai_karts()
 
@@ -630,10 +634,10 @@ func gate_count() -> int:
 
 
 ## How many ItemBox instances were discovered under Track at configure()
-## time -- exposed mainly so a test can prove the box-less-track no-op case
-## explicitly (0 on both current real tracks, see the class doc's ITEM BOX
-## WIRING section) rather than only inferring it from the absence of a
-## crash.
+## time -- exposed mainly so a test can prove the discovered count actually
+## matches what a track authored (6 on both current real tracks, authored in
+## R4 Task 5 -- see the class doc's ITEM BOX WIRING section) rather than only
+## inferring it from the absence of a crash.
 func item_box_count() -> int:
 	return _item_boxes.size()
 
@@ -697,14 +701,6 @@ func player_item_slot() -> Object:
 	return _kart.call("item_slot") if _configured and _kart != null else null
 
 
-## 1-based finish placement (1 = won), computed once at the player's own
-## race_complete instant -- see _finish_race(). 0 before the race finishes;
-## HUD/callers should gate display on is_finished() the same way they
-## already gate every other finish-only stat.
-func placement() -> int:
-	return _placement
-
-
 ## "m" in RaceHUD's "FINISHED n / m" -- the actual number of AI karts that
 ## raced plus the player, NOT a blind read of AiTuning.opponent_count: if a
 ## track is ever missing a GridSlot marker for a configured slot (see
@@ -717,9 +713,9 @@ func placement_out_of() -> int:
 
 ## R5 Task 2: any kart's own LIVE 1-based race position -- see the class
 ## doc's LIVE RANKING section for how _current_rank_order is built. Distinct
-## from placement() one section up: placement() is a single value computed
-## ONCE at the player's own finish for the "FINISHED n / m" panel (Task 3
-## territory, untouched by this task); this is a per-tick READ that keeps
+## from standings() below (Task 3 territory): standings() is the full
+## results list, re-derived on demand for the one-shot "FINISHED n / m"
+## panel at the player's own finish; this is a per-tick READ that keeps
 ## updating for the whole post-GO/pre-finish body of the race. 0 before the
 ## first snapshot exists (mirrors this class's other "not ready yet"
 ## getters) or if the given kart has somehow gone missing from its own
@@ -760,15 +756,22 @@ func finish_order_of(kart: CharacterBody3D) -> int:
 
 ## This kart's own elapsed_s() reading at the exact instant it crossed the
 ## finish line -- 0.0 if it has not finished yet (mirrors this class's other
-## "not yet" getters, e.g. placement()'s own 0-before-finish contract).
+## "not yet" getters, e.g. kart_position()'s own 0-before-first-snapshot
+## contract).
 func finish_elapsed_s_of(kart: CharacterBody3D) -> float:
 	return float(_finish_elapsed_s.get(kart, 0.0))
 
 
 ## R5 Task 3: full results standings -- RaceHUD's own finish panel reads
 ## this for a race (see race_hud.gd's own STANDINGS section) instead of the
-## old single placement()/placement_out_of() pair, which stays exactly as it
-## was for solo's own unmodified panel. One Dictionary per kart currently in
+## old single "FINISHED n / m" placement()/placement_out_of() pair, which
+## stays exactly as it was for solo's own unmodified panel. placement()
+## itself was removed in the R5 polish wave (its naive raw-progress
+## comparison could disagree with this method's own correct finished-before-
+## unfinished ranking -- see _player_standings_position()'s doc in tests/
+## racing/test_race_session.gd for the exact scenario that proved it wrong);
+## placement_out_of() alone survives as the still-live "is this a race"
+## gate. One Dictionary per kart currently in
 ## the race, ORDERED 1..field_size():
 ## - position: int, 1-based standings position.
 ## - label: String, "YOU" for the player's own kart, "CPU n" (1-based BY
@@ -1444,12 +1447,6 @@ func _finish_race(now_elapsed: float) -> void:
 	_kart.call("set_run_active", false)
 	for ai_kart: CharacterBody3D in _ai_karts:
 		ai_kart.call("set_run_active", false)
-
-	var player_total := _player_follower.total_progress_m()
-	_placement = 1
-	for agent: AiKartAgentType in _ai_agents:
-		if float(agent.call("total_progress_m")) > player_total:
-			_placement += 1
 
 	for agent: AiKartAgentType in _ai_agents:
 		agent.set_physics_process(false)

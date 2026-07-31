@@ -57,7 +57,7 @@ extends Control
 ## way). Text reads "POS  n / m" off RaceSession.player_position()/
 ## field_size(), both live per-tick reads (see race_session.gd's own LIVE
 ## RANKING class-doc section), never the finish panel's own one-shot
-## standings()/placement()/placement_out_of().
+## standings()/placement_out_of().
 ##
 ## STANDINGS (R5 Task 3). _on_race_finished() no longer shows a single
 ## "FINISHED n / m" line for a race -- that one-shot summary is superseded

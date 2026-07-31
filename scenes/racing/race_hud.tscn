@@ -121,7 +121,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.3, 0.85, 1, 0.9)
 theme_override_font_sizes/font_size = 22
-text = "HOLD HOP FOR A BOOST START"
+text = "TAP + HOLD HOP JUST BEFORE GO — TOO EARLY BOGS"
 horizontal_alignment = 1
 
 [node name="FinishPanel" type="PanelContainer" parent="SafeArea"]

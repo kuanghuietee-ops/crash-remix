@@ -1019,13 +1019,16 @@ func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 	# own COUNTDOWN + START BOOST class doc). Skipping the countdown FIRST
 	# (the same "call the private countdown driver directly with one
 	# oversized delta_s" technique test_race_session.gd's own _skip_pre_
-	# race_countdown() helper uses) means the wait_physics_frames(10) right
-	# after actually accumulates real elapsed_s() time -- doing the skip
-	# AFTER the wait instead would leave elapsed_s() at exactly 0.0 at the
-	# force-finish below (_force_finish_race() calls the session's own
-	# private gate-crossing handler directly, which still works pre-GO --
-	# nothing gates it on the countdown -- but this test's own best-time
-	# comparison only means anything against a REAL, > 0, finish time).
+	# race_countdown() helper uses) is required for two reasons now: the
+	# wait_physics_frames(10) right after only accumulates real elapsed_s()
+	# time once the race has actually started (doing the skip AFTER the
+	# wait instead would leave elapsed_s() at exactly 0.0 at the force-
+	# finish below); and _force_finish_race() calls the session's own
+	# private gate-crossing handler directly, which is now gated on
+	# _race_started (R5 Task 1 fix round 1 [LOW-2] -- see
+	# _on_gate_body_entered()'s own doc in race_session.gd), so without the
+	# skip its crossings would be silently dropped pre-GO instead of driving
+	# a real, > 0, finish time.
 	race.call("_tick_countdown", 1000.0)
 	await wait_physics_frames(10)
 	_force_finish_race(race)
@@ -1112,13 +1115,16 @@ func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 	# own COUNTDOWN + START BOOST class doc). Skipping the countdown FIRST
 	# (the same "call the private countdown driver directly with one
 	# oversized delta_s" technique test_race_session.gd's own _skip_pre_
-	# race_countdown() helper uses) means the wait_physics_frames(10) right
-	# after actually accumulates real elapsed_s() time -- doing the skip
-	# AFTER the wait instead would leave elapsed_s() at exactly 0.0 at the
-	# force-finish below (_force_finish_race() calls the session's own
-	# private gate-crossing handler directly, which still works pre-GO --
-	# nothing gates it on the countdown -- but this test's own best-time
-	# comparison only means anything against a REAL, > 0, finish time).
+	# race_countdown() helper uses) is required for two reasons now: the
+	# wait_physics_frames(10) right after only accumulates real elapsed_s()
+	# time once the race has actually started (doing the skip AFTER the
+	# wait instead would leave elapsed_s() at exactly 0.0 at the force-
+	# finish below); and _force_finish_race() calls the session's own
+	# private gate-crossing handler directly, which is now gated on
+	# _race_started (R5 Task 1 fix round 1 [LOW-2] -- see
+	# _on_gate_body_entered()'s own doc in race_session.gd), so without the
+	# skip its crossings would be silently dropped pre-GO instead of driving
+	# a real, > 0, finish time.
 	race.call("_tick_countdown", 1000.0)
 	await wait_physics_frames(10)
 	_force_finish_race(race)

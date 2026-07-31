@@ -222,16 +222,19 @@ func test_player_finish_freezes_every_ai_kart() -> void:
 		)
 
 
-func test_placement_is_first_when_every_ai_kart_is_behind_the_player() -> void:
+## Polish wave [LOW-1]: reads the player's own standings() position instead
+## of the removed placement() getter -- see _player_standings_position()'s
+## own doc.
+func test_standings_position_is_first_when_every_ai_kart_is_behind_the_player() -> void:
 	var race := _boot_race()
 	if race == null:
 		return
 	_force_finish(race)
 
 	assert_eq(
-		int(race.call("placement")),
+		_player_standings_position(race),
 		1,
-		"with every AI kart behind the player at the finish, placement must be 1st"
+		"with every AI kart behind the player at the finish, standings position must be 1st"
 	)
 	assert_eq(
 		int(race.call("placement_out_of")),
@@ -240,7 +243,16 @@ func test_placement_is_first_when_every_ai_kart_is_behind_the_player() -> void:
 	)
 
 
-func test_placement_reflects_an_ai_kart_seeded_strictly_ahead_of_the_player() -> void:
+## Polish wave [LOW-1]: this is the exact scenario that proved the removed
+## placement() getter WRONG. placement() compared raw total_progress_m()
+## alone, so a still-driving, never-finished AI kart seeded numerically ahead
+## used to push the player's own reported placement to 2nd. standings()
+## disagrees, correctly: RaceRanking's own tier-1 rule ranks every FINISHED
+## kart ahead of every unfinished one unconditionally (see race_session.gd's
+## own AI FINISH RECORDING class-doc section), regardless of the unfinished
+## kart's raw progress lead. The player finishes here and the AI kart never
+## does, so the player's own standings position must stay 1st.
+func test_standings_position_stays_first_despite_an_unfinished_ai_kart_seeded_ahead() -> void:
 	var race := _boot_race()
 	if race == null:
 		return
@@ -258,9 +270,9 @@ func test_placement_reflects_an_ai_kart_seeded_strictly_ahead_of_the_player() ->
 	_force_finish(race)
 
 	assert_eq(
-		int(race.call("placement")),
-		2,
-		"one AI kart strictly ahead of the player at the finish must push placement to 2nd"
+		_player_standings_position(race),
+		1,
+		"an unfinished AI kart's raw progress lead must NOT outrank the player's own real finish"
 	)
 	assert_eq(
 		int(race.call("placement_out_of")),
@@ -437,6 +449,22 @@ func _force_finish(race: Node) -> void:
 		kart,
 		race.get_node("Track/Gates/Gate0")
 	)
+
+
+## Polish wave [LOW-1]: the removed placement()/placement_out_of() pair's
+## single-value getter is gone (placement() computed a naive raw-progress
+## comparison that disagreed with standings()'s own correct finished-before-
+## unfinished ranking -- see standings()'s own class doc). Every test that
+## used to read placement() now reads the player's own row out of
+## standings() instead -- the real, currently-correct results source race_
+## hud.gd's own finish panel reads.
+func _player_standings_position(race: Node) -> int:
+	var standings: Array = race.call("standings")
+	for entry: Variant in standings:
+		var row := entry as Dictionary
+		if bool(row.get("is_player")):
+			return int(row.get("position"))
+	return 0
 
 
 func _cross_gate(race: Node, kart: CharacterBody3D, gate_index: int) -> void:
