@@ -159,7 +159,8 @@ start.
    plausible on a touch button under a fast tap — produces no edge at all and
    is silently swallowed. If a human tester reports dropped boost taps or
    missed hops on device, this poll-vs-edge gap is the mechanism to check
-   first, not the drift FSM's own timing.
+   first, not the drift FSM's own timing. (R4: the ITEM button shares the same
+   once-per-tick edge sampling and the same swallow window.)
 5. ~~**R3 ships AI opponents WITHOUT item use, by design.** The "AI (phase R3)"
    line above ("...item use with cooldowns. 5 karts.") reads as if item use
    ships in this phase, but items themselves do not exist anywhere in the
@@ -332,3 +333,9 @@ INPUT tuning is not live-refreshed mid-race (kart/race/camera are — input
 applies on retry); the shadow-distance policy lint only walks
 scenes/levels so the racing tracks' values (90 / 120) are unguarded and
 inconsistent with each other.
+
+R4 final-review notes: one item box can feed two karts entering in the same
+physics step (deferred monitoring-off; generous, by design for now); a
+leaderless missile flies straight through geometry until lifetime expiry
+(no collision node — graybox-appropriate); fresh checkouts need one
+`godot --headless --editor --quit` before building (class-name cache).
