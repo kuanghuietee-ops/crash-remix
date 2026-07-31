@@ -41,6 +41,32 @@ func before_all() -> void:
 	assert_not_null(_kart_tuning, "kart.tres must load")
 
 
+## R5 Task 1: karts now spawn frozen and stay frozen through a real 3-2-1
+## countdown before the race starts -- see race_session.gd's own COUNTDOWN +
+## START BOOST class doc. Every test in this file is testing something else
+## entirely (gate sequencing, wrong-way timing, AI integration, item rolls,
+## register_hit precedence...) and needs the race actually RUNNING to
+## exercise it -- none of them are testing the countdown/start-boost
+## machinery itself (that's tests/racing/test_race_start_flow.gd's job, a
+## dedicated file that drives the real countdown/judge/freeze mechanics this
+## task adds). Feeding the session's own private _tick_countdown() one
+## oversized synthetic delta_s, with the real InputRouter's HOP action left
+## unpressed (the default, untouched, idle state every one of these
+## fixtures already starts from), collapses the whole countdown to its GO
+## transition in a single call: the judge samples hop_held=false for that
+## whole span -> verdict &"none" -> _start_race() plainly unfreezes every
+## kart, exactly the "everyone driving immediately" shape every test in this
+## file was already written against, before this task existed. Calling a
+## private method directly by name matches this suite's own established
+## precedent for reaching a private handler on purpose (see _force_finish()'s
+## own doc further down, which does the same for _on_gate_body_entered()).
+const _COUNTDOWN_SKIP_DELTA_S := 1000.0
+
+
+func _skip_pre_race_countdown(race: Node) -> void:
+	race.call("_tick_countdown", _COUNTDOWN_SKIP_DELTA_S)
+
+
 func test_boot_wiring_gives_the_session_its_kart_spine_and_gates() -> void:
 	var race := _boot_race()
 	if race == null:
@@ -801,6 +827,7 @@ func test_spawn_opponents_false_spawns_no_ai_even_with_a_positive_opponent_count
 	add_child_autofree(race)
 	race.set("spawn_opponents", false)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 
 	assert_eq(
 		int(race.call("ai_kart_count")),
@@ -856,6 +883,7 @@ func test_real_solo_scene_overrides_spawn_opponents_to_false() -> void:
 		"the solo scene variant must override spawn_opponents to false"
 	)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	assert_eq(
 		int(race.call("ai_kart_count")),
 		0,
@@ -887,6 +915,7 @@ func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
 		first_instance_ids.append(race.call("ai_kart", slot_index).get_instance_id())
 
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	# queue_free() on the old batch is deferred to end-of-frame -- give it a
 	# couple of physics frames to actually process before checking for
 	# leftovers.
@@ -1436,6 +1465,7 @@ func test_solo_session_never_rolls_even_after_a_real_synthetic_box_pickup() -> v
 	box.position = spawn.position
 	track.add_child(box)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 
 	var kart := race.get_node("Kart") as CharacterBody3D
 	var slot: Object = kart.call("item_slot")
@@ -2040,6 +2070,7 @@ func _boot_race_with_synthetic_box(
 	box.position = local_position if local_position != null else spawn.position
 	track.add_child(box)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	return {"race": race, "box": box}
 
 
@@ -2104,6 +2135,7 @@ func _boot_race_with_catalog(catalog: GameplayTuning) -> Node:
 	var race := packed.instantiate()
 	add_child_autofree(race)
 	race.call("configure", catalog)
+	_skip_pre_race_countdown(race)
 	return race
 
 
@@ -2138,6 +2170,7 @@ func test_items_enabled_is_false_in_a_solo_session() -> void:
 	add_child_autofree(race)
 	race.set("spawn_opponents", false)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	assert_false(
 		bool(race.call("items_enabled")),
 		"a solo (spawn_opponents=false) session must report items disabled -- see _items_allowed()'s own doc"
@@ -2255,6 +2288,7 @@ func test_hud_item_label_stays_hidden_in_a_solo_session_even_with_a_real_held_it
 	add_child_autofree(race)
 	race.set("spawn_opponents", false)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	assert_false(
 		bool(race.call("items_enabled")),
 		"fixture sanity: solo must read items disabled"

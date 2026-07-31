@@ -81,6 +81,42 @@ theme_override_font_sizes/font_size = 30
 text = "WRONG WAY"
 horizontal_alignment = 1
 
+[node name="Countdown" type="Label" parent="SafeArea"]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -140.0
+offset_top = -170.0
+offset_right = 140.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 96
+text = "3"
+horizontal_alignment = 1
+
+[node name="BoostHint" type="Label" parent="SafeArea"]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -58.0
+offset_right = 260.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.3, 0.85, 1, 0.9)
+theme_override_font_sizes/font_size = 22
+text = "HOLD HOP FOR A BOOST START"
+horizontal_alignment = 1
+
 [node name="FinishPanel" type="PanelContainer" parent="SafeArea"]
 visible = false
 layout_mode = 0

@@ -44,6 +44,19 @@ func before_all() -> void:
 	assert_not_null(_kart_tuning, "kart.tres must load")
 
 
+## R5 Task 1: see test_race_session.gd's identical helper for the full
+## rationale -- karts now spawn frozen through a real pre-race countdown
+## (race_session.gd's own COUNTDOWN + START BOOST class doc). This file's
+## whole point is proving REAL, physically-driven motion from the authored
+## spawn transform, so every boot here needs the race actually running,
+## same as everywhere else in this suite.
+const _COUNTDOWN_SKIP_DELTA_S := 1000.0
+
+
+func _skip_pre_race_countdown(race: Node) -> void:
+	race.call("_tick_countdown", _COUNTDOWN_SKIP_DELTA_S)
+
+
 func test_time_trial_kart_makes_real_forward_progress_and_validates_the_start_gate() -> void:
 	await _assert_real_drive_validates_start_gate(RACE_TIME_TRIAL_SCENE_PATH)
 
@@ -79,6 +92,7 @@ func _assert_real_drive_validates_start_gate(scene_path: String) -> void:
 	var race := packed.instantiate()
 	add_child_autofree(race)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 
 	var spine := race.get_node("Track/Spine") as TrackSpine
 	assert_not_null(spine, "session must find the track's spine")
@@ -260,5 +274,6 @@ func _boot_isolated_race(origin: Vector3) -> Node3D:
 	race.position = origin
 	add_child_autofree(race)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	race.set_physics_process(false)
 	return race

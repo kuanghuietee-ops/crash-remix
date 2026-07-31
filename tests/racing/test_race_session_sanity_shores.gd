@@ -26,6 +26,18 @@ func before_all() -> void:
 	assert_not_null(_catalog, "gameplay.tres must load")
 
 
+## R5 Task 1: see test_race_session.gd's identical helper for the full
+## rationale -- karts now spawn frozen through a real pre-race countdown
+## (race_session.gd's own COUNTDOWN + START BOOST class doc), and every test
+## in this file needs the race actually RUNNING to exercise what it's
+## testing, none of it the countdown machinery itself.
+const _COUNTDOWN_SKIP_DELTA_S := 1000.0
+
+
+func _skip_pre_race_countdown(race: Node) -> void:
+	race.call("_tick_countdown", _COUNTDOWN_SKIP_DELTA_S)
+
+
 func test_boot_wiring_gives_the_session_its_kart_spine_and_gates() -> void:
 	var race := _boot_race()
 	if race == null:
@@ -266,6 +278,7 @@ func test_reconfigure_rebuilds_ai_karts_without_leaking_old_instances() -> void:
 		first_instance_ids.append(race.call("ai_kart", slot_index).get_instance_id())
 
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	await wait_physics_frames(2)
 
 	assert_eq(
@@ -393,6 +406,7 @@ func test_real_solo_scene_overrides_spawn_opponents_to_false() -> void:
 		"the solo scene variant must override spawn_opponents to false"
 	)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	assert_eq(
 		int(race.call("ai_kart_count")),
 		0,
@@ -450,4 +464,5 @@ func _boot_race() -> Node:
 	var race := packed.instantiate()
 	add_child_autofree(race)
 	race.call("configure", _catalog)
+	_skip_pre_race_countdown(race)
 	return race

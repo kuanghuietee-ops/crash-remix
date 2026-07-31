@@ -32,6 +32,21 @@ extends Control
 ## rolling_display_item(), while &"rolling") or the landed item's own name
 ## (ItemSlot.held_item(), while &"held") -- graybox text, no icon yet. See
 ## _refresh_item_display().
+##
+## COUNTDOWN + BOOST HINT (R5 Task 1). _countdown_label/_boost_hint_label
+## poll RaceSession.is_race_started()/countdown_phase() every _refresh()
+## tick, the exact same "poll every tick, toggle .visible directly, no
+## signal" shape _wrong_way_label/_item_label already use one section up --
+## both are visible for the WHOLE pre-race countdown and hidden the instant
+## is_race_started() reads true, never shown again afterward (RaceSession
+## itself never re-enters a countdown mid-race, only a fresh configure()/
+## retry does, which re-hides them the same way -- see _refresh() below).
+## countdown_phase() is only ever consulted while NOT started (see the
+## class doc's own "RaceSession stops ticking the countdown past go" note
+## on race_session.gd -- countdown_phase() can keep reporting &"go" forever
+## after the real race starts, which is exactly why this HUD gates on the
+## separate is_race_started() flag rather than ever comparing phase() to
+## &"running").
 
 const TimeFormatType := preload("res://src/core/time_format.gd")
 
@@ -60,6 +75,8 @@ var _session: Object
 @onready var _retry_button: Button = (
 	$SafeArea/FinishPanel/Margin/Rows/Retry
 )
+@onready var _countdown_label: Label = $SafeArea/Countdown
+@onready var _boost_hint_label: Label = $SafeArea/BoostHint
 
 
 func _ready() -> void:
@@ -69,6 +86,8 @@ func _ready() -> void:
 	_finish_panel.visible = false
 	_new_best_label.visible = false
 	_placement_label.visible = false
+	_countdown_label.visible = false
+	_boost_hint_label.visible = false
 	_retry_button.pressed.connect(_on_retry_pressed)
 
 
@@ -97,6 +116,30 @@ func _refresh() -> void:
 	)
 	_wrong_way_label.visible = bool(_session.call("is_wrong_way"))
 	_refresh_item_display()
+	_refresh_countdown_display()
+
+
+## See the class doc's COUNTDOWN + BOOST HINT section.
+func _refresh_countdown_display() -> void:
+	var started := bool(_session.call("is_race_started"))
+	_countdown_label.visible = not started
+	_boost_hint_label.visible = not started
+	if not started:
+		_countdown_label.text = _countdown_display_text(
+			StringName(_session.call("countdown_phase"))
+		)
+
+
+func _countdown_display_text(phase: StringName) -> String:
+	match phase:
+		&"two":
+			return "2"
+		&"one":
+			return "1"
+		&"go":
+			return "GO!"
+		_:
+			return "3"
 
 
 ## See the class doc's HELD-ITEM DISPLAY section. Hidden (no text update --

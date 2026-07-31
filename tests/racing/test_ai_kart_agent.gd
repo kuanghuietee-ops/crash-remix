@@ -1238,6 +1238,20 @@ func _spawn_kart_on_floor(origin: Vector3) -> CharacterBody3D:
 ## silenced (race.set_physics_process(false), the exact technique test_race_
 ## session.gd's own H2 fix-round tests already establish for isolating a
 ## kart's real physics from the session's input routing).
+##
+## R5 Task 1: the real session now spawns its own Kart FROZEN (set_run_
+## active(false)) through a real pre-race countdown -- see race_session.gd's
+## own COUNTDOWN + START BOOST class doc. This helper hands that SAME real
+## Kart node to a fresh, separately-configured AiKartAgent (not one of the
+## session's own AI karts), so without unfreezing it first, AiKartAgent's own
+## RUN-ACTIVE GATE (see ai_kart_agent.gd's class doc) would make every one of
+## this suite's own centerpiece tests a silent no-op forever -- the agent's
+## _physics_process would early-return every single tick, exactly like a
+## kart deliberately frozen at the finish line. The same "call the private
+## countdown driver directly with one oversized delta_s" technique test_race_
+## session.gd's own _skip_pre_race_countdown() helper uses collapses the
+## countdown to its GO transition in one call (HOP left unpressed -> verdict
+## &"none" -> the kart unfreezes plainly, same as before this task existed).
 func _boot_real_race() -> Dictionary:
 	assert_true(ResourceLoader.exists(RACE_SCENE_PATH), "race_time_trial.tscn must exist")
 	if not ResourceLoader.exists(RACE_SCENE_PATH):
@@ -1249,6 +1263,7 @@ func _boot_real_race() -> Dictionary:
 	var race := packed.instantiate()
 	add_child_autofree(race)
 	race.call("configure", _catalog)
+	race.call("_tick_countdown", 1000.0)
 	race.set_physics_process(false)
 
 	var kart := race.get_node("Kart") as CharacterBody3D

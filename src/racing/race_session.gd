@@ -95,6 +95,74 @@ extends Node3D
 ## second lever controlling the exact same "is anyone actually being raced
 ## against" question spawn_opponents already answers, with no scene yet
 ## needing to set the two differently.
+##
+## COUNTDOWN + START BOOST (R5 Task 1). Every kart -- player included --
+## now spawns FROZEN (set_run_active(false), called right after each kart's
+## own configure() re-activates it -- see configure()'s and _spawn_ai_
+## karts()'s own per-kart doc) and stays frozen through a real 3-2-1
+## countdown before the race actually begins. _physics_process branches on
+## _race_started: while false, the ONLY thing that happens is _tick_
+## countdown() (drives the pure CountdownTimer and, for the player only,
+## samples HOP-held into the pure StartBoostJudge) -- nothing else in this
+## session's usual per-tick body runs, which is what makes "frozen pre-GO"
+## true by construction rather than by convention: _route_input() never
+## fires (no move/hop/item ever reaches a kart pre-GO), _update_wrong_way()
+## never fires (the wrong-way flag simply cannot raise pre-GO), and _elapsed_
+## s never accumulates (the race timer starts AT GO, not at spawn -- see
+## elapsed_s()'s own class-doc TIMER section one level up, unchanged: it
+## still just sums delta_s from ticks that actually ran this body's own
+## logic). AI karts need no equivalent gating here at all -- they are frozen
+## the exact same way the finish line already freezes them, and AiKartAgent's
+## own is_run_active() gate (Task 5 binding contract 1, see ai_kart_agent.
+## gd's own RUN-ACTIVE GATE section) is what makes THAT freeze safe for the
+## stuck detector "by construction", proven once there and reused here
+## unmodified -- this task's own coverage drives real physics through a real
+## countdown to prove that reuse actually holds, rather than assuming it.
+##
+## GO: _tick_countdown() calls _start_race() on the exact tick CountdownTimer.
+## tick() returns &"go" (a one-shot edge -- see countdown_timer.gd's own
+## class doc). _start_race() reads StartBoostJudge.verdict() ONCE and
+## applies it:
+## &"boost" -- the player's own kart unfreezes immediately and gets
+## apply_boost(kart_tuning.boost_duration_s) the SAME tick. There is no
+## dedicated "launch boost seconds" tuning field of its own to spend here --
+## inventing one would duplicate KartTuning.boost_duration_s (the item-turbo
+## boost's own duration) for a value with no reason to differ, so the launch
+## boost deliberately REUSES that same field rather than adding a new one.
+## &"bog" -- the player's own kart is NOT unfrozen this tick. Instead
+## _bog_kart/_bog_remaining_s record which kart and for how much longer
+## (RaceTuning.start_bog_penalty_s), and the post-GO _physics_process branch
+## below counts that down every real tick (pause-correct for free, the same
+## "only ticks that actually ran contribute" TIMER contract elapsed_s()
+## already relies on) until it reaches zero, at which point THAT kart's own
+## set_run_active(true) finally fires, once. A dedicated "hold this kart's
+## throttle at zero" mechanism was considered and rejected in favor of
+## reusing set_run_active(false)/(true) exactly as authored (the finish-line
+## freeze already proves this call pair is a real, safe "stop, then resume"
+## primitive) -- simplest correct choice, not a new one.
+## &"none" -- the player's own kart unfreezes plainly, same as every AI kart.
+## AI karts ALWAYS unfreeze plainly at GO regardless of verdict -- the start-
+## boost minigame is a player-skill mechanic in R5 (documented, not an
+## oversight: AiDriver has no HOP-hold heuristic to samples this judge
+## against, and giving AI a free/random verdict would need its own tuned
+## behavior this task's brief does not ask for).
+##
+## _route_input() now early-returns when the PLAYER's own kart reports
+## is_run_active() false -- before this task the only way _route_input()
+## ever ran while the kart was inactive was never (a finished race short-
+## circuits the whole _physics_process before _route_input() is reached, see
+## the branch at the top of that function). The bog delay is new ground: the
+## race has genuinely started (_race_started true) while the bogged kart
+## specifically is still mid-freeze, so _physics_process DOES reach _route_
+## input() during that window. Without this guard, a HOP press during the
+## bog penalty would still reach KartController.hop_pressed() -- which does
+## NOT itself check is_run_active() (see kart_controller.gd's own doc: only
+## is_spinning_out() gates it) -- and could apply a real vertical hop impulse
+## to a kart RaceSession believes is frozen solid, the exact class of bug
+## the countdown's own "zero displacement while frozen" contract exists to
+## prevent. Steer/brake/item routing are harmless no-ops on a decelerating
+## kart either way, but gating the whole function is simpler and more
+## obviously correct than gating each call inside it individually.
 
 const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
@@ -108,6 +176,11 @@ const KartSceneType := preload("res://scenes/racing/kart.tscn")
 # no scene needed. See dispatch_item_use()/register_hit().
 const MissileSceneType := preload("res://scenes/racing/missile.tscn")
 const BeakerSceneType := preload("res://scenes/racing/beaker.tscn")
+# R5 Task 1: see the class doc's COUNTDOWN + START BOOST section.
+const CountdownTimerType := preload("res://src/racing/flow/countdown_timer.gd")
+const StartBoostJudgeType := preload(
+	"res://src/racing/flow/start_boost_judge.gd"
+)
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -232,6 +305,17 @@ var _lap_times: Array[float] = []
 var _wrong_way_elapsed_s: float
 var _wrong_way_flag: bool = false
 
+# R5 Task 1: see the class doc's COUNTDOWN + START BOOST section.
+var _countdown: CountdownTimerType = CountdownTimerType.new()
+var _start_boost_judge: StartBoostJudgeType = StartBoostJudgeType.new()
+var _race_started: bool = false
+# Set only for a &"bog" verdict (always the player's own kart -- see the
+# class doc, AI never bogs) -- the kart whose set_run_active(true) is
+# deferred, and how many more real seconds until it fires. null/0.0 the rest
+# of the time.
+var _bog_kart: CharacterBody3D
+var _bog_remaining_s: float
+
 
 func configure(catalog: GameplayTuning) -> void:
 	# M1 fix-wave: without this, process_mode stays at the INHERIT default
@@ -277,6 +361,12 @@ func configure(catalog: GameplayTuning) -> void:
 	)
 
 	_kart.call("configure", _kart_tuning, _item_tuning)
+	# R5 Task 1: KartController.configure() always ends by reactivating
+	# itself (set_run_active(true), see its own doc) -- immediately undone
+	# here so the player spawns frozen, same as every AI kart (see _spawn_
+	# ai_karts()'s own identical call). See the class doc's COUNTDOWN + START
+	# BOOST section for the whole pre-GO freeze this sets up.
+	_kart.call("set_run_active", false)
 	# Task 5: this same "place the transform, then seed yaw as an
 	# independent step" logic (HIGH-1 fix-wave bug doc below) is now shared
 	# with every AI kart's own grid-slot placement via _seed_kart_transform()
@@ -373,6 +463,19 @@ func configure(catalog: GameplayTuning) -> void:
 	_lap_times.clear()
 	_wrong_way_elapsed_s = 0.0
 	_wrong_way_flag = false
+
+	# R5 Task 1: see the class doc's COUNTDOWN + START BOOST section. A
+	# re-configure()/retry must restart the WHOLE flow, not resume whatever
+	# countdown/bog state a previous call left behind -- every kart was just
+	# frozen fresh above (player) and in _spawn_ai_karts() (AI), so this
+	# reset must land before _configured flips true and _physics_process
+	# starts driving _tick_countdown() again.
+	_race_started = false
+	_bog_kart = null
+	_bog_remaining_s = 0.0
+	_countdown.configure(_race_tuning)
+	_start_boost_judge.configure(_race_tuning)
+
 	_configured = true
 
 	_hud.call("configure", self)
@@ -720,6 +823,23 @@ func _read_kart_length_m(kart: CharacterBody3D) -> float:
 func _physics_process(delta_s: float) -> void:
 	if not _configured or _finished:
 		return
+	# R5 Task 1: pre-GO, this is the ENTIRE tick -- see the class doc's
+	# COUNTDOWN + START BOOST section for why that alone is what makes every
+	# kart provably frozen, the wrong-way flag provably quiescent, and the
+	# race timer provably not-yet-started, all by construction rather than
+	# by a separate guard on each.
+	if not _race_started:
+		_tick_countdown(delta_s)
+		return
+	# A &"bog" verdict left the player's own kart still frozen at GO --
+	# count its penalty down here, every real tick (pause-correct for free,
+	# same as elapsed_s() below), and unfreeze it exactly once when it
+	# expires. See the class doc's own &"bog" paragraph.
+	if _bog_kart != null:
+		_bog_remaining_s -= delta_s
+		if _bog_remaining_s <= 0.0:
+			_bog_kart.call("set_run_active", true)
+			_bog_kart = null
 	# This tick simply never runs while the tree is paused (process_mode =
 	# PAUSABLE, set in configure()), so summing delta_s here naturally
 	# excludes paused time -- see elapsed_s()'s own class-doc TIMER section.
@@ -735,7 +855,59 @@ func _physics_process(delta_s: float) -> void:
 	_update_player_follower(progress, delta_s)
 
 
+## R5 Task 1: drives the pure CountdownTimer/StartBoostJudge one pre-GO tick.
+## Samples the PLAYER's own real HOP-held state every such tick (AI get no
+## start-boost mechanic in R5 -- see the class doc) and fires _start_race()
+## exactly once, on the tick CountdownTimer.tick() reports &"go" (a one-shot
+## edge -- see countdown_timer.gd's own class doc).
+func _tick_countdown(delta_s: float) -> void:
+	var hop_held := _router.buffer.is_action_pressed(InputIntent.ACTION_JUMP)
+	_start_boost_judge.sample(delta_s, hop_held)
+	if _countdown.tick(delta_s) == &"go":
+		_start_race()
+
+
+## R5 Task 1: called exactly once, on the GO tick -- see the class doc's own
+## COUNTDOWN + START BOOST section for what each verdict does and why.
+func _start_race() -> void:
+	_race_started = true
+	# A continuous HOP hold that carries straight through the countdown-to-
+	# race boundary (the &"boost"/&"bog" cases) must not also read as a
+	# brand-new press edge the instant _route_input() starts running post-GO
+	# -- _hop_was_pressed otherwise still sits at its configure()-time false
+	# default, and a still-held HOP would look like a false -> true edge on
+	# the very next tick. Seeding it from the real current state here keeps
+	# the edge detector honest: only an ACTUAL release-then-press after GO
+	# fires hop_pressed() again.
+	_hop_was_pressed = _router.buffer.is_action_pressed(InputIntent.ACTION_JUMP)
+	match _start_boost_judge.verdict():
+		&"bog":
+			_bog_kart = _kart
+			_bog_remaining_s = _race_tuning.start_bog_penalty_s
+		&"boost":
+			_kart.call("set_run_active", true)
+			_kart.call("apply_boost", _kart_tuning.boost_duration_s)
+		_:
+			_kart.call("set_run_active", true)
+	for ai_kart: CharacterBody3D in _ai_karts:
+		ai_kart.call("set_run_active", true)
+
+
+func countdown_phase() -> StringName:
+	return _countdown.phase()
+
+
+func is_race_started() -> bool:
+	return _race_started
+
+
 func _route_input() -> void:
+	# R5 Task 1: see the class doc's own paragraph on this guard -- the ONLY
+	# way this is ever reached with the player's kart inactive is the &"bog"
+	# start-boost penalty (a finished race never reaches _route_input() at
+	# all, see the early return at the top of _physics_process()).
+	if not bool(_kart.call("is_run_active")):
+		return
 	_input_adapter.apply_move(_router.buffer.movement(), _kart)
 	var hop_held := _router.buffer.is_action_pressed(InputIntent.ACTION_JUMP)
 	if hop_held != _hop_was_pressed:
@@ -1049,6 +1221,11 @@ func _spawn_ai_karts() -> void:
 		# kart's very first physics-server registration already carries its
 		# real GridSlotN position -- never a one-frame flash at the origin.
 		ai_kart.call("configure", _kart_tuning, _item_tuning)
+		# R5 Task 1: see the player's own identical call in configure() for
+		# why this immediately undoes configure()'s own set_run_active(true)
+		# -- every AI kart spawns frozen too, unfrozen plainly at GO (see the
+		# class doc's COUNTDOWN + START BOOST section).
+		ai_kart.call("set_run_active", false)
 		_seed_kart_transform_for_parent(ai_kart, marker, _ai_root)
 		_ai_root.add_child(ai_kart)
 

@@ -953,9 +953,16 @@ func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> v
 		kart_after.get("_tuning"),
 		"the new session instance must have been configure()d for real"
 	)
-	assert_true(
+	# R5 Task 1 (deliberate behavior change, not a regression): a fresh/
+	# retried kart now spawns FROZEN, same as every kart on the very first
+	# configure() -- see race_session.gd's own COUNTDOWN + START BOOST class
+	# doc. This assertion used to require the opposite (immediately active)
+	# because that was the whole contract before this task; "retry resets
+	# the whole flow" now specifically includes resetting BACK to a fresh
+	# pre-race countdown, not resuming mid-race.
+	assert_false(
 		bool(kart_after.call("is_run_active")),
-		"a fresh/retried kart must start active, not frozen"
+		"a fresh/retried kart must spawn frozen again, pre-GO -- retry resets the whole countdown flow, not just the race state"
 	)
 	assert_false(bool(race_after.call("is_finished")))
 
@@ -996,6 +1003,19 @@ func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 		"the graybox loop race scene must export its own track id"
 	)
 
+	# R5 Task 1: karts now spawn frozen through a real pre-race countdown,
+	# and the race timer starts AT GO, not at spawn (see race_session.gd's
+	# own COUNTDOWN + START BOOST class doc). Skipping the countdown FIRST
+	# (the same "call the private countdown driver directly with one
+	# oversized delta_s" technique test_race_session.gd's own _skip_pre_
+	# race_countdown() helper uses) means the wait_physics_frames(10) right
+	# after actually accumulates real elapsed_s() time -- doing the skip
+	# AFTER the wait instead would leave elapsed_s() at exactly 0.0 at the
+	# force-finish below (_force_finish_race() calls the session's own
+	# private gate-crossing handler directly, which still works pre-GO --
+	# nothing gates it on the countdown -- but this test's own best-time
+	# comparison only means anything against a REAL, > 0, finish time).
+	race.call("_tick_countdown", 1000.0)
 	await wait_physics_frames(10)
 	_force_finish_race(race)
 	await wait_process_frames(1)
@@ -1074,6 +1094,19 @@ func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 	if race == null:
 		return
 
+	# R5 Task 1: karts now spawn frozen through a real pre-race countdown,
+	# and the race timer starts AT GO, not at spawn (see race_session.gd's
+	# own COUNTDOWN + START BOOST class doc). Skipping the countdown FIRST
+	# (the same "call the private countdown driver directly with one
+	# oversized delta_s" technique test_race_session.gd's own _skip_pre_
+	# race_countdown() helper uses) means the wait_physics_frames(10) right
+	# after actually accumulates real elapsed_s() time -- doing the skip
+	# AFTER the wait instead would leave elapsed_s() at exactly 0.0 at the
+	# force-finish below (_force_finish_race() calls the session's own
+	# private gate-crossing handler directly, which still works pre-GO --
+	# nothing gates it on the countdown -- but this test's own best-time
+	# comparison only means anything against a REAL, > 0, finish time).
+	race.call("_tick_countdown", 1000.0)
 	await wait_physics_frames(10)
 	_force_finish_race(race)
 	await wait_process_frames(1)
