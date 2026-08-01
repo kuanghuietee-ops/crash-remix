@@ -3181,6 +3181,100 @@ func test_old_race_override_backfills_the_cup_points_field_group() -> void:
 	)
 
 
+# CTR R7 Task 6 (stretch, time-trial ghost): ghost_keyframe_interval_s/
+# ghost_max_keyframes were added to the already-shipped race section as ONE
+# cohort (LEGACY_FIELD_GROUPS_BY_SECTION's fourth &"race" entry) -- mirrors
+# test_old_race_override_backfills_the_cup_points_field_group's own shape
+# immediately above: an override.tres saved before this task exists would be
+# missing both at once (every field still reading its script default, since
+# ResourceSaver omits default-valued fields), and migration must restore
+# both together while leaving an unrelated, already-edited field (lap_count)
+# untouched.
+func test_old_race_override_backfills_the_ghost_tuning_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var new_fields: Array[StringName] = [
+		&"ghost_keyframe_interval_s",
+		&"ghost_max_keyframes",
+	]
+	for field: StringName in new_fields:
+		assert_true(
+			_exported_property_names(authored.race).has(field),
+			"the ghost tuning fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := RaceTuning.new()
+	for field: StringName in new_fields:
+		stale.race.set(field, defaults.get(field))
+	stale.race.lap_count = 5.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in new_fields:
+		assert_eq(
+			migrated.race.get(field),
+			authored.race.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.race.lap_count,
+		5.0,
+		0.001,
+		"migration must preserve existing race edits"
+	)
+
+
+# CTR R7 Task 6: ghost_max_keyframes is a float field with INTEGER (count)
+# semantics, the same hazard test_race_lap_count_rejects_values_below_one
+# names for lap_count -- ghost_recorder.gd reads it via
+# int(_race_tuning.ghost_max_keyframes) as its hard sampling ceiling (see
+# ghost_recorder.gd's own class doc), so a panel-authored 0.5 would truncate
+# to a 0-keyframe cap and silently record nothing on every solo run.
+# test_race_tuning_rejects_nonpositive_fields above only proves the <= 0.0
+# case; this proves the stricter < 1.0 rejection lap_count already gets.
+func test_race_ghost_max_keyframes_rejects_values_below_one() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+	assert_not_null(race)
+	if race == null:
+		return
+	var authored: float = race.get("ghost_max_keyframes")
+
+	race.set("ghost_max_keyframes", 0.5)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"ghost_max_keyframes below 1.0 must be rejected -- it truncates to a dead 0-keyframe cap"
+	)
+
+	race.set("ghost_max_keyframes", 1.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"ghost_max_keyframes of exactly 1.0 must remain valid"
+	)
+
+	race.set("ghost_max_keyframes", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
 # CTR R6 Task 3: the six kart-body-tint Color fields were added to the
 # already-shipped kart section as ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's
 # &"kart" entry), mirroring test_old_race_override_backfills_camera_look_

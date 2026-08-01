@@ -316,6 +316,49 @@ extends Node3D
 ## dictionaries, the same "public getter, not a private field" shape every
 ## other per-kart stat in this class already uses (standings()/lap_times()/
 ## etc.).
+##
+## GHOST WIRING (Task 6, CTR R7 -- stretch: time-trial ghost). Two lazily-
+## created children -- _ghost_recorder (RefCounted, GhostRecorder) and
+## _ghost_player (Node3D, GhostPlayer, added under this session the first
+## time _ensure_ghost_player() needs one, the SAME lazy-container shape
+## _ai_root/_hazards_root already establish) -- see each class's own doc
+## for the RECORDING/PLAYBACK/FILE FORMAT details this session never
+## touches directly.
+##
+## SOLO-ONLY, BY CONSTRUCTION. Neither ghost object has any "is this solo"
+## flag of its own. configure() decides once: a solo session (spawn_
+## opponents == false) calls _ghost_player.load_for_track(track_id, _race_
+## tuning) (populating it only when a real ghost file exists for this
+## track); an AI-populated session calls _ghost_player.clear() instead, and
+## never calls _ghost_recorder.start() at GO at all (see _start_race()).
+## GhostPlayer.start_replay() is itself a no-op with no keyframes loaded, so
+## an AI race's own ghost player -- always cleared -- can never show
+## anything, with no second flag needed anywhere in either ghost class.
+##
+## CLOCK REUSE. Both ghost objects are fed this session's own already-
+## computed elapsed_s each tick (_ghost_recorder.sample()/_ghost_player.
+## advance(), called from _physics_process right after _elapsed_s += delta_s
+## above) -- see their own class docs' CLOCK sections for why this can never
+## drift from the real race timer/HUD, and is pause-correct for free the
+## same way everything else driven from that identical clock already is.
+##
+## YAW DERIVATION. Sampling reads the kart's own world-facing yaw from
+## global_transform.basis, NOT the (possibly parent-relative) rotation.y
+## property directly -- the same forward-vector-then-signed_angle_to idiom
+## _seed_kart_transform() already uses for spawn placement, kept consistent
+## here rather than assuming this session's own local space always equals
+## world space.
+##
+## WRITE HOOK. save_ghost() is the ONE public entry point GameRoot ever
+## calls (see game_root.gd's own _on_racing_finished() GHOST PERSISTENCE
+## doc) -- called only when THAT tick's finish was a genuine new best TOTAL
+## time, exactly the existing "is_solo && new_best_total" branch that
+## already decides whether to write racing.<track_id> to the profile at
+## all. This session resolves the real user://ghosts/<track_id>.ghost path
+## itself (GhostPlayer.path_for_track(), the one place that string is
+## spelled out) and never pushes louder than a warning on a failed write --
+## a ghost is a disposable replay aid, never authoritative save data, so a
+## failure here must never look like the RACE itself failed.
 
 const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
@@ -350,6 +393,10 @@ const CrashCharacterSceneType := preload(
 const LabAssistantCharacterSceneType := preload(
 	"res://assets/models/enemies/SK_lab_assistant.glb"
 )
+# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's own GHOST
+# WIRING section below for how these two are actually driven.
+const GhostRecorderType := preload("res://src/racing/flow/ghost_recorder.gd")
+const GhostPlayerType := preload("res://src/racing/flow/ghost_player.gd")
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -450,6 +497,14 @@ var _ai_agents: Array[AiKartAgentType] = []
 # parented under a fresh one (see configure()'s own defensive clear).
 var _hazards_root: Node3D
 
+# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's own GHOST
+# WIRING section. _ghost_recorder is a plain RefCounted, always present;
+# _ghost_player is lazily created + add_child()ed by _ensure_ghost_player()
+# the first time configure() needs one, the same lazy-container shape
+# _ai_root/_hazards_root establish one section up.
+var _ghost_recorder: GhostRecorderType = GhostRecorderType.new()
+var _ghost_player: GhostPlayerType
+
 # Cross-kart-progress "seam ruling" (Task 5 binding contract 2): the ONLY
 # thing gate crossings do per body is advance THAT body's own LapValidator,
 # looked up by identity -- never a raw index or slot assumption. Player and
@@ -518,6 +573,22 @@ func configure(catalog: GameplayTuning) -> void:
 	_input_tuning = catalog.input
 	_ai_tuning = catalog.ai
 	_item_tuning = catalog.items
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's GHOST
+	# WIRING section. _ghost_recorder.configure() always runs (cheap, and
+	# _start_race() below is the thing that actually gates recording to
+	# solo sessions only); _ghost_player is populated ONLY for a solo
+	# session with a real ghost file for this track, cleared otherwise --
+	# that single branch is this session's entire "is this solo" contract
+	# for the ghost feature, nothing further downstream needs its own copy
+	# of that check.
+	_ghost_recorder.configure(_race_tuning)
+	var ghost_player := _ensure_ghost_player()
+	ghost_player.configure_visual(catalog.phase)
+	if spawn_opponents:
+		ghost_player.clear()
+	else:
+		ghost_player.load_for_track(track_id, _race_tuning)
 
 	# R4 Task 3: see the class doc's ITEM RNG section -- re-seeded fresh on
 	# every configure() (including a re-configure/retry) so a fixed non-zero
@@ -998,6 +1069,29 @@ func present_best_times(payload: Dictionary) -> void:
 		_hud.call("present_best_times", payload)
 
 
+## Task 6 (CTR R7, stretch: time-trial ghost): the ONE public entry point
+## GameRoot ever calls for the ghost feature -- see the class doc's own
+## WRITE HOOK section and game_root.gd's _on_racing_finished() GHOST
+## PERSISTENCE doc for exactly when (only a genuine new best TOTAL time on
+## a solo session -- the same condition that already gates the profile's
+## own racing.<track_id> write). A no-op whenever _ghost_recorder recorded
+## nothing at all (an AI race never starts it -- see _start_race() -- so
+## this is also this method's own solo-only guard, no separate flag
+## needed) -- never pushes louder than a warning on a failed write, since a
+## missing/stale ghost must never look like the race itself failed.
+func save_ghost() -> void:
+	if not _ghost_recorder.has_keyframes():
+		return
+	var write_error := _ghost_recorder.save_to_file(
+		GhostPlayerType.path_for_track(track_id)
+	)
+	if write_error != OK:
+		push_warning(
+			"Ghost file was not saved for %s: %s"
+			% [track_id, error_string(write_error)]
+		)
+
+
 ## Live tuning refresh (M2 fix-wave): the racing counterpart to
 ## LevelSession.refresh_tuning() / phase0_game.gd's refresh_tuning() -- see
 ## game_root.gd's _refresh_active_level_tuning(), which now has a racing
@@ -1169,6 +1263,20 @@ func _ensure_hazards_root() -> Node3D:
 	return _hazards_root
 
 
+## Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's GHOST
+## WIRING section. Mirrors _ensure_hazards_root()'s own lazy-create-once
+## shape -- this session is always already inside the live tree by the time
+## configure() runs (GameRoot add_child()s a fresh race scene BEFORE
+## calling configure(), see game_root.gd's own doc), so add_child() here
+## fires GhostPlayer's own _ready() synchronously, before configure() can
+## reach any further call on it.
+func _ensure_ghost_player() -> GhostPlayerType:
+	if _ghost_player == null:
+		_ghost_player = GhostPlayerType.new()
+		add_child(_ghost_player)
+	return _ghost_player
+
+
 ## Spawns at the launcher's own position/facing (no offset -- see missile.
 ## gd's own class doc: this node has no opinion on where it starts, it just
 ## configures the just-instantiated missile with everything it needs to
@@ -1298,6 +1406,24 @@ func _physics_process(delta_s: float) -> void:
 	# excludes paused time -- see elapsed_s()'s own class-doc TIMER section.
 	_elapsed_s += delta_s
 	_route_input()
+	# Task 6 (CTR R7, stretch: time-trial ghost) -- see the class doc's
+	# GHOST WIRING/CLOCK REUSE section. Both calls are no-ops unless this
+	# is genuinely a solo session with recording/replay actually active;
+	# is_recording() is what makes the sample() call itself the ONLY place
+	# "is this session solo" is re-checked per tick (start() is only ever
+	# reached from _start_race() when not spawn_opponents, see its own
+	# doc), so this line needs no spawn_opponents check of its own.
+	if _ghost_recorder.is_recording():
+		var ghost_kart_forward := -_kart.global_transform.basis.z
+		var ghost_kart_yaw_degrees := rad_to_deg(
+			Vector3.FORWARD.signed_angle_to(ghost_kart_forward, Vector3.UP)
+		)
+		_ghost_recorder.sample(
+			_elapsed_s,
+			_kart.global_position,
+			ghost_kart_yaw_degrees
+		)
+	_ghost_player.advance(_elapsed_s)
 	# Fix-wave LOW-6: _update_wrong_way() and _update_player_follower() each
 	# used to call _spine.progress_for_position(_kart.global_position)
 	# independently -- the same projection, computed twice a tick for no
@@ -1347,6 +1473,15 @@ func _start_race() -> void:
 			_kart.call("set_run_active", true)
 	for ai_kart: CharacterBody3D in _ai_karts:
 		ai_kart.call("set_run_active", true)
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): recording only ever begins
+	# for a solo session -- see the class doc's GHOST WIRING section. The
+	# ghost player's own start_replay() is always safe to call regardless
+	# (a no-op with nothing loaded, see its own doc), so no matching
+	# spawn_opponents guard is needed on that side.
+	if not spawn_opponents:
+		_ghost_recorder.start()
+	_ghost_player.start_replay()
 
 
 func countdown_phase() -> StringName:
@@ -1726,6 +1861,17 @@ func _finish_race(now_elapsed: float) -> void:
 
 	for agent: AiKartAgentType in _ai_agents:
 		agent.set_physics_process(false)
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): recording stops here so
+	# save_ghost() (called afterward, by GameRoot, ONLY on a genuine new
+	# best -- see the class doc's WRITE HOOK section) persists exactly the
+	# keyframes captured between GO and this finish, never anything
+	# appended post-race. The ghost's own replay is also force-hidden here
+	# even if it had not yet reached its own last keyframe (e.g. this run
+	# beat the ghost it was racing against) -- see ghost_player.gd's own
+	# stop_replay() doc.
+	_ghost_recorder.stop()
+	_ghost_player.stop_replay()
 
 	race_finished.emit(_final_elapsed_s, _lap_times.duplicate())
 

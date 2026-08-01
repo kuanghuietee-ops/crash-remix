@@ -27,3 +27,5 @@ cup_points_place3 = 5.0
 cup_points_place4 = 4.0
 cup_points_place5 = 3.0
 cup_points_place6 = 2.0
+ghost_keyframe_interval_s = 0.1
+ghost_max_keyframes = 3600.0

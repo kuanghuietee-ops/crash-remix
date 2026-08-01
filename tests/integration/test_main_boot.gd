@@ -14,9 +14,18 @@ const FUTURE_SAVE_FIXTURE := (
 const N_SANITY_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+# Task 6 (CTR R7, stretch: time-trial ghost): the real, fixed directory
+# RaceSession.save_ghost()/GhostPlayer.path_for_track() write/read through
+# (see race_session.gd's own WRITE HOOK doc) -- there is no sandboxed/
+# parameterized save_dir the way SaveService takes one, so this file (one
+# of run_gut.sh's own isolated-process suites, never sharing a process with
+# any other test file) owns the whole directory the same way TEST_SAVE_DIR
+# is already owned below.
+const GHOST_DIR := "user://ghosts"
 const DynamicResolutionType := preload(
 	"res://src/core/dynamic_resolution.gd"
 )
+const GhostPlayerType := preload("res://src/racing/flow/ghost_player.gd")
 # Against the 60 fps budget: 16 ms is nearly out of it, 8 ms is far inside.
 const SLOW_FRAME_S := 0.016
 const FAST_FRAME_S := 0.008
@@ -36,10 +45,12 @@ func before_each() -> void:
 		Input.is_using_accumulated_input()
 	)
 	_remove_tree(TEST_SAVE_DIR)
+	_remove_tree(GHOST_DIR)
 
 
 func after_each() -> void:
 	_remove_tree(TEST_SAVE_DIR)
+	_remove_tree(GHOST_DIR)
 	var phase_state := get_node_or_null("/root/PhaseState")
 	if phase_state != null:
 		phase_state.call("reset_to_authored_set")
@@ -1404,6 +1415,178 @@ func test_racing_finish_in_a_real_race_shows_no_tt_best_reference_when_none_exis
 		"SafeArea/FinishPanel/Margin/Rows/NewBest"
 	) as Label
 	assert_false(new_best_label.visible)
+
+
+# ---------------------------------------------------------------------------
+# Task 6 (CTR R7, stretch: time-trial ghost) GHOST PERSISTENCE -- driven
+# through the exact same real GameRoot entry points as the best-time tests
+# immediately above, proving RaceSession.save_ghost()'s own GameRoot hook
+# (see game_root.gd's _on_racing_finished() GHOST PERSISTENCE doc) fires on
+# the SAME condition the profile write already does: is_solo && new_best_
+# total, nothing broader and nothing narrower.
+# ---------------------------------------------------------------------------
+
+
+## Mirrors test_racing_finish_persists_a_new_best_time_and_marks_the_hud
+## almost exactly (a brand-new profile, first-ever solo finish) -- the one
+## new assertion is that a real .ghost file now exists for the track.
+func test_racing_finish_persists_a_ghost_file_on_a_new_best_total_time() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
+	assert_not_null(race)
+	if race == null:
+		return
+
+	race.call("_tick_countdown", 1000.0)
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+
+	var profile: Dictionary = root.get("profile")
+	assert_gt(
+		int(
+			SaveModel.racing_record(
+				profile,
+				&"graybox_loop"
+			).get("best_total_time_ms")
+		),
+		0,
+		"fixture sanity: this must be a genuine new best, or this test proves nothing"
+	)
+
+	var ghost_path: String = GhostPlayerType.path_for_track(&"graybox_loop")
+	assert_true(
+		FileAccess.file_exists(ghost_path),
+		"a first-ever solo finish must persist a ghost file alongside the new best time"
+	)
+
+
+## The counterpart proof: an unbeatable seeded best survives the run
+## untouched (mirrors test_racing_finish_does_not_overwrite_a_faster_
+## seeded_best_time) -- a run that never improves the TOTAL time must never
+## write a ghost file either, matching the profile's own untouched save.
+func test_racing_finish_does_not_persist_a_ghost_file_when_the_seeded_best_is_faster() -> void:
+	var seeded_service := SaveService.new()
+	var seeded_profile := SaveModel.fresh()
+	var seeded_racing: Dictionary = seeded_profile["racing"]
+	seeded_racing[String(&"graybox_loop")] = {
+		"best_total_time_ms": 1,
+		"best_lap_time_ms": 1,
+	}
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, seeded_profile),
+		OK
+	)
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrialSolo"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
+	assert_not_null(race)
+	if race == null:
+		return
+
+	race.call("_tick_countdown", 1000.0)
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+
+	var ghost_path: String = GhostPlayerType.path_for_track(&"graybox_loop")
+	assert_false(
+		FileAccess.file_exists(ghost_path),
+		"a run slower than the seeded best must not write a ghost file"
+	)
+
+
+## The other half of the same branch (mirrors test_racing_finish_in_a_real_
+## race_never_persists_a_faster_time): a RACE (AI-populated, spawn_
+## opponents == true) never writes a ghost file either, no matter how fast
+## it finishes -- only a solo TIME TRIAL new best does (the two tests
+## above). RaceSession never even start()s _ghost_recorder for a non-solo
+## session (see _start_race()'s own doc), so this also proves the ghost
+## feature's own solo-only contract end to end, not just at the write hook.
+func test_racing_finish_in_a_real_race_never_persists_a_ghost_file() -> void:
+	var seeded_service := SaveService.new()
+	var seeded_profile := SaveModel.fresh()
+	var seeded_racing: Dictionary = seeded_profile["racing"]
+	var seeded_record := {
+		"best_total_time_ms": 999000,
+		"best_lap_time_ms": 333000,
+	}
+	seeded_racing[String(&"graybox_loop")] = seeded_record
+	assert_eq(
+		seeded_service.store_profile(TEST_SAVE_DIR, seeded_profile),
+		OK
+	)
+
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+	assert_true(
+		bool(race.get("spawn_opponents")),
+		"fixture sanity: the RACE entry must spawn AI opponents (not solo)"
+	)
+
+	race.call("_tick_countdown", 1000.0)
+	await wait_physics_frames(10)
+	_force_finish_race(race)
+	await wait_process_frames(1)
+	assert_true(bool(race.call("is_finished")))
+	assert_lt(
+		float(race.call("elapsed_s")) * 1000.0,
+		float(seeded_record.get("best_total_time_ms")),
+		"fixture sanity: this real race finish must read faster than the seeded best, or this test proves nothing"
+	)
+
+	var ghost_path: String = GhostPlayerType.path_for_track(&"graybox_loop")
+	assert_false(
+		FileAccess.file_exists(ghost_path),
+		"a race must never write a ghost file, even with a genuinely faster real finish"
+	)
 
 
 ## Drives a race scene straight to race_complete by calling its own

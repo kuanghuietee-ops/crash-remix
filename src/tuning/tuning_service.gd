@@ -131,6 +131,15 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"cup_points_place5",
 			&"cup_points_place6",
 		],
+		# CTR R7 Task 6 (stretch, time-trial ghost): ghost_keyframe_interval_s/
+		# ghost_max_keyframes added to the already-shipped race section as ONE
+		# cohort, mirroring the cup-points cohort immediately above -- an
+		# override.tres saved before this task exists would be missing both at
+		# once, never some subset.
+		[
+			&"ghost_keyframe_interval_s",
+			&"ghost_max_keyframes",
+		],
 	],
 	# CTR R6 Task 3: kart-body tint fields, added to the EXISTING kart
 	# section (unlike fx's own brand-new-section shape, see fx_tuning.gd's
@@ -722,6 +731,14 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or race.cup_points_place4 <= 0.0
 		or race.cup_points_place5 <= 0.0
 		or race.cup_points_place6 <= 0.0
+		# Task 6 (CTR R7, stretch: time-trial ghost): a zero/negative interval
+		# would make ghost_recorder.gd sample every physics tick forever (or
+		# never advance its own next-sample threshold), and -- the same
+		# integer-semantics hazard lap_count's own doc names -- a
+		# ghost_max_keyframes below 1.0 truncates to a 0-keyframe cap via
+		# int(), silently recording nothing on every solo run.
+		or race.ghost_keyframe_interval_s <= 0.0
+		or race.ghost_max_keyframes < 1.0
 	):
 		return false
 

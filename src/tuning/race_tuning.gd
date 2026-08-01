@@ -55,3 +55,21 @@ extends Resource
 @export var cup_points_place4: float
 @export var cup_points_place5: float
 @export var cup_points_place6: float
+
+# Task 6 (CTR R7, stretch: time-trial ghost): ghost_recorder.gd samples the
+# player kart's own global transform (position + a derived yaw -- see its
+# own class doc) every ghost_keyframe_interval_s of real, pause-correct
+# race-elapsed time (the same _elapsed_s clock RaceSession already ticks
+# from GO, see race_session.gd's own TIMER section) during solo sessions
+# only. A race is minutes long, not hours -- ghost_max_keyframes is a hard
+# ceiling on how many keyframes a single .ghost file can ever hold (float,
+# COUNT semantics, the same "float field, int use" shape lap_count already
+# establishes -- see tuning_service.gd's own lap_count-below-one rejection
+# for why a fractional count is dangerous, not just a zero one), so a
+# pathologically long or stuck solo run cannot grow an unbounded recording
+# or an unbounded .ghost file. 3600.0 at the authored 0.1s interval is
+# exactly six minutes of keyframes -- comfortably above any real solo lap
+# time this game authors.
+@export_category("Ghost")
+@export var ghost_keyframe_interval_s: float
+@export var ghost_max_keyframes: float

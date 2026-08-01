@@ -1706,6 +1706,24 @@ func _on_racing_finished(
 					return
 				last_save_error = OK
 				profile = updated_profile
+				# Task 6 (CTR R7, stretch: time-trial ghost). GHOST
+				# PERSISTENCE: hooks this exact "the profile write just
+				# succeeded" point -- the SAME solo/new-best-gated branch
+				# that decided racing.<track_id> was worth writing at all --
+				# rather than duplicating any of is_solo/new_best_total's
+				# own logic here. Gated specifically on new_best_total, NOT
+				# new_best_lap: a ghost replays a whole race top to bottom
+				# against TOTAL time, so a run that only improved a single
+				# lap split (new_best_lap true, new_best_total false) has
+				# nothing more worth racing against than the ghost already
+				# on disk. RaceSession.save_ghost() (race_session.gd's own
+				# WRITE HOOK doc) owns the real user://ghosts/<track_id>.
+				# ghost path and every corruption/failure concern from here
+				# down; has_method() guards the same way present_best_
+				# times() below already does, for any older/synthetic race
+				# fixture that predates this task.
+				if new_best_total and race.has_method("save_ghost"):
+					race.call("save_ghost")
 	if race.has_method("present_best_times"):
 		race.call("present_best_times", {
 			"best_total_ms": int(
