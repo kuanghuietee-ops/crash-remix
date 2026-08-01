@@ -1709,6 +1709,46 @@ func test_frozen_kart_rejects_a_direct_receive_bump_call() -> void:
 	)
 
 
+## _process_kart_bumps()'s own doc states the mechanic is deliberately
+## independent of hit/hazard state: a bump is a physical shove, not a hit,
+## so is_invulnerable() must never gate it (contrast register_hit()'s own
+## item-damage path, which invulnerability DOES block). Proven directly,
+## not just by the absence of an is_invulnerable() check in the source:
+## kart B's own motor is forced invulnerable for the whole run (white-
+## boxed -- mirrors this file's own _forward_speed_mps re-pin precedent
+## above), and must still receive a real, non-zero lateral bump from kart
+## A's real collision.
+func test_invulnerable_kart_still_receives_a_bump() -> void:
+	var karts := _spawn_kart_pair(Vector3(-3.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+	kart_b.call("set_yaw_degrees", 90.0)
+
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_b)
+	if motor_b == null:
+		return
+	motor_b.set("_invulnerable_remaining_s", 999.0)
+
+	var kart_b_ever_bumped := false
+	for _tick_index: int in range(240):
+		await wait_physics_frames(1)
+		assert_true(
+			bool(kart_b.call("is_invulnerable")),
+			"fixture sanity: kart B must stay invulnerable for the whole run"
+		)
+		if not (motor_b.call("lateral_bump_mps") as Vector3).is_zero_approx():
+			kart_b_ever_bumped = true
+
+	assert_true(
+		kart_b_ever_bumped,
+		"an invulnerable kart must still receive a bump -- invulnerability blocks hits, not shoves"
+	)
+
+
 ## Two _spawn_kart_on_floor() fixtures at different origins, reused as-is --
 ## see that helper's own doc: multiple fixtures spawned in the same test
 ## already share one physics world and collide with each other with no
