@@ -213,7 +213,15 @@ func test_stuck_kart_teleports_onto_the_centerline_facing_the_tangent() -> void:
 	)
 
 	var physics_fps := float(Engine.physics_ticks_per_second)
-	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	# Task 2b (CTR R7, OPERATOR PRIORITY): FASTER UNSTICK halves the tumbling
+	# window's own anchor period (see ai_kart_agent.gd's own class doc
+	# section by that name) -- waiting a full OLD respawn_stuck_after_s here
+	# would span TWO of the new halved windows (this kart stays frozen even
+	# after teleporting, so a second stuck-window would close and respawn it
+	# AGAIN before this wait ends), breaking this test's own single-respawn
+	# assumption below. Wait only ONE new half-period instead, with a small
+	# margin comfortably short of the SECOND half-period's own boundary.
+	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * 0.5 * physics_fps)) + 10
 	await wait_physics_frames(frames_needed)
 
 	var expected_target_progress := progress_before - _ai_tuning.respawn_drop_gap_m
@@ -831,7 +839,12 @@ func test_respawn_offsets_laterally_clear_of_a_seeded_blocking_kart() -> void:
 	)
 
 	var physics_fps := float(Engine.physics_ticks_per_second)
-	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * physics_fps)) + 15
+	# Task 2b (CTR R7, OPERATOR PRIORITY): see test_stuck_kart_teleports_
+	# onto_the_centerline_facing_the_tangent's own comment above for why this
+	# now waits only ONE new halved-window period instead of a full OLD
+	# respawn_stuck_after_s -- this test's own fixed expected_drop_progress
+	# below assumes exactly ONE respawn too.
+	var frames_needed := int(ceil(_ai_tuning.respawn_stuck_after_s * 0.5 * physics_fps)) + 10
 	await wait_physics_frames(frames_needed)
 
 	assert_gt(
@@ -1388,6 +1401,374 @@ func test_regressing_tick_fraction_stays_under_twenty_percent_over_a_ten_second_
 			+ "got %s%% (%d/%d ticks regressed); R3's own cited pre-task baseline "
 			+ "was 7-28%%"
 		) % [regressing_fraction * 100.0, regressing_ticks, total_ticks]
+	)
+
+
+# ---------------------------------------------------------------------------
+# CTR R7 Task 2b (OPERATOR PRIORITY): WRONG-WAY RECOVERY + FASTER UNSTICK.
+# Operator device report on R6: "the AI got bug, keep driving back the wrong
+# way and stuck at the side." See ai_kart_agent.gd's own WRONG-WAY RECOVERY/
+# FASTER UNSTICK class-doc sections for the full design these tests pin.
+# ---------------------------------------------------------------------------
+
+
+## CENTERPIECE (Task 2b point 1). A kart placed FACING BACKWARD on the REAL
+## graybox spine (the operator's own symptom, reproduced directly rather
+## than waited for) must realign under its own recovery steering and resume
+## healthy driving WITHOUT the stuck-respawn safety net ever firing.
+func test_kart_facing_backwards_on_the_real_graybox_spine_realigns_without_a_respawn() -> void:
+	var boot := _boot_real_race()
+	if boot.is_empty():
+		return
+	var kart: CharacterBody3D = boot["kart"]
+	var spine: TrackSpine = boot["spine"]
+
+	# South straight (the SAME known-good point the apex-sign test above
+	# uses) -- comfortably clear of the East turn's own walls, plenty of
+	# room to arc back around without immediately colliding with anything.
+	var start_position := Vector3(0.0, 0.2, -20.0)
+	kart.global_position = start_position
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		3,
+		func() -> float: return 0.0
+	)
+
+	# Face EXACTLY opposite the spine's own tangent here.
+	var tangent: Vector3 = spine.call(
+		"tangent_at_progress", spine.call("progress_for_position", start_position)
+	)
+	var backward_facing_degrees := rad_to_deg(Vector3.FORWARD.signed_angle_to(-tangent, Vector3.UP))
+	kart.call("set_yaw_degrees", backward_facing_degrees)
+
+	# Bounded sim time -- arm delay (recovery_trigger_s) plus real time to
+	# physically arc the kart's own velocity around at kart.tres's own
+	# steer_rate_degrees_per_s, not an instant snap, PLUS a few seconds of
+	# confirmed healthy driving afterward. Deliberately kept short of the
+	# East turn (measured while calibrating this bound: recovery clears
+	# ~0.7s in, then healthy progress climbs cleanly to ~48m by t=3s;
+	# oscillation against the East turn's own inner wall -- a SEPARATE,
+	# already-accepted behavior test_east_turn_never_permanently_wedges_
+	# over_twenty_real_seconds already covers its own respawn tolerance
+	# for -- only begins after ~t=3.9s here) so this test proves ONLY what
+	# Task 2b point 1 asks for (the backward-facing episode itself resolves
+	# without a respawn), not a blanket "never respawns for any reason"
+	# claim this file's own East-turn test already scopes differently.
+	var bounded_seconds := 3.0
+	var batch_frames := 30
+	var batches := int(
+		round(bounded_seconds * float(Engine.physics_ticks_per_second) / float(batch_frames))
+	)
+	for _batch_index in range(batches):
+		await wait_physics_frames(batch_frames)
+
+	assert_eq(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a kart facing backward must realign under its own recovery "
+			+ "steering, never needing the stuck-respawn safety net"
+		)
+	)
+	assert_false(
+		bool(agent.call("is_recovering")),
+		(
+			"recovery must have CLEARED by the end of this bounded window -- "
+			+ "the kart genuinely realigned, not merely still stuck facing "
+			+ "the wrong way"
+		)
+	)
+	assert_gt(
+		float(agent.call("total_progress_m")),
+		3.0,
+		(
+			"a realigned kart must have made real forward progress along "
+			+ "the spine over the remaining ~2.3s, not just spun in place "
+			+ "or barely crossed back over its own starting point -- real "
+			+ "physics solver jitter run-to-run (see this suite's own "
+			+ "East-turn test comments for the same caveat) means this is "
+			+ "deliberately a low floor, not the ~10-48m range calibration "
+			+ "runs actually reached"
+		)
+	)
+
+
+## Surgical hysteresis pin (frozen physics, direct rotation control, the
+## SAME technique test_stuck_kart_teleports_onto_the_centerline_facing_the_
+## tangent/test_lateral_oscillation_with_flat_spine_progress_triggers_
+## respawn_within_two_windows already use) -- proves the exact arm/exit
+## timing against ai.recovery_trigger_s/ai.recovery_heading_error_degrees
+## without depending on real steering physics actually completing a turn.
+func test_recovery_arms_after_sustained_heading_error_and_clears_at_half_threshold() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	# Leg A->B's own tangent is (0,0,-1) -- face EXACTLY opposite (180
+	# degrees), comfortably beyond ai.recovery_heading_error_degrees (120).
+	kart.call("set_yaw_degrees", 180.0)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var almost_trigger_frames := int(floor((_ai_tuning.recovery_trigger_s - 0.1) * physics_fps))
+	await wait_physics_frames(almost_trigger_frames)
+	assert_false(
+		bool(agent.call("is_recovering")),
+		"recovery must not arm before recovery_trigger_s has elapsed"
+	)
+
+	var remaining_frames := int(ceil(0.3 * physics_fps))
+	await wait_physics_frames(remaining_frames)
+	assert_true(
+		bool(agent.call("is_recovering")),
+		"recovery must arm once heading error has been sustained for recovery_trigger_s"
+	)
+
+	# Re-face the kart to match the spine's own tangent exactly -- heading
+	# error 0.0, well below half the trigger threshold.
+	kart.call("set_yaw_degrees", 0.0)
+	await wait_physics_frames(2)
+	assert_false(
+		bool(agent.call("is_recovering")),
+		"recovery must clear once heading error drops below half the trigger threshold"
+	)
+
+
+## Task 2b point 2 (FASTER UNSTICK): a correctly-facing, wedged kart must now
+## be caught within roughly HALF the old respawn_stuck_after_s window, not a
+## full one -- the halved-anchor-period design's own direct payoff. Margin
+## is small (comfortably under the OLD design's own minimum-possible
+## detection latency of one FULL respawn_stuck_after_s) so this genuinely
+## distinguishes the two designs rather than passing either way.
+func test_faster_unstick_detects_a_wedged_kart_within_half_the_old_window() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var half_window_s := _ai_tuning.respawn_stuck_after_s * 0.5
+	var small_margin_s := 0.1
+	var frames_needed := int(ceil((half_window_s + small_margin_s) * physics_fps))
+	await wait_physics_frames(frames_needed)
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a correctly-facing wedged kart must now be caught within "
+			+ "roughly HALF of the old respawn_stuck_after_s window (the "
+			+ "halved-anchor FASTER UNSTICK design), not a full one"
+		)
+	)
+
+
+## Regression safety: a stuck-but-correctly-facing kart (recovery never
+## arms) must still respawn on its very FIRST closing window -- proves the
+## new recovery-retry leniency applies ONLY to the wrong-facing case, not to
+## every stuck kart.
+func test_correctly_facing_stuck_kart_still_respawns_on_the_first_closing_window() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+	# Default spawn orientation already matches leg A->B's own tangent
+	# (0,0,-1) -- no wrong-facing, purely "wedged".
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var half_window_s := _ai_tuning.respawn_stuck_after_s * 0.5
+	var frames_needed := int(ceil(half_window_s * physics_fps)) + 10
+	await wait_physics_frames(frames_needed)
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a correctly-facing (never-recovering) stuck kart must respawn "
+			+ "on its very first closing window -- no recovery-retry "
+			+ "leniency applies"
+		)
+	)
+	assert_false(bool(agent.call("is_recovering")), "fixture sanity: recovery must never have armed")
+
+
+## Task 2b point 2's own BOUNDED RECOVERY RETRIES: a kart that is BOTH
+## wedged (frozen, zero real progress under any steering command) AND
+## wrong-facing (heading error stays pinned at 180 the whole time, since a
+## frozen kart's own yaw can never actually turn) must be given exactly
+## ai.recovery_max_attempts retry windows before the safety net gives up --
+## respawn must NOT fire before that many windows have closed, but MUST fire
+## once they have.
+func test_recovery_max_attempts_bounds_stuck_and_wrong_facing_retries_before_respawning() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+	kart.call("set_yaw_degrees", 180.0)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	var half_window_s := _ai_tuning.respawn_stuck_after_s * 0.5
+	var attempts := int(_ai_tuning.recovery_max_attempts)
+	# recovery_max_attempts retries are GRANTED (re-anchored, not
+	# respawned); the (attempts + 1)-th closing window is the one that
+	# finally respawns -- see ai_kart_agent.gd's own _check_stuck_and_
+	# respawn doc for the exact count.
+	var respawn_time_s := float(attempts + 1) * half_window_s
+	var margin_s := 0.2
+
+	var frames_before := int(floor((respawn_time_s - margin_s) * physics_fps))
+	await wait_physics_frames(frames_before)
+	assert_eq(
+		int(agent.call("respawn_count")),
+		0,
+		"recovery must be given its full recovery_max_attempts retries before the safety net gives up"
+	)
+
+	var frames_after := int(ceil((margin_s + 0.3) * physics_fps))
+	await wait_physics_frames(frames_after)
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		"a kart that stays stuck AND wrong-facing for more than recovery_max_attempts windows must eventually respawn"
+	)
+
+
+## Task 2b fix round 1 (reviewer MEDIUM -- SAFETY-NET STARVATION). The
+## original recovery-clear handler unconditionally re-anchored the stuck
+## window AND zeroed _recovery_attempts the instant heading error dropped
+## below half the trigger threshold -- correct for a kart that genuinely
+## realigned and resumed driving, but exploitable by a kart whose yaw
+## oscillates across the 60/120-degree hysteresis band FASTER than the
+## stuck-window's own halved period: every spurious clear re-anchors the
+## window before it can ever naturally close, so _check_stuck_and_respawn's
+## own stuck-check never even runs -- the safety net is starved
+## indefinitely. Reproduced here with the reviewer's own scripted repro
+## shape: yaw held at 180 degrees (comfortably past ai.recovery_heading_
+## error_degrees) for long enough to arm (recovery_trigger_s), then
+## snapped to 0 degrees (the spine's own tangent -- comfortably below half
+## the trigger threshold) just long enough to clear, repeating on an 0.85s
+## cycle -- SHORTER than the stuck window's own halved period
+## (respawn_stuck_after_s * 0.5 = 1.5s) -- while the kart (frozen physics)
+## never actually moves. Pre-fix, this reproducibly ran the reviewer's own
+## measured 20.4s with 0 respawns and progress pinned at its start value.
+## The fix (see ai_kart_agent.gd's own _update_recovery_state doc): a clear
+## only re-anchors the window/resets attempts if REAL progress was made
+## since recovery armed (>= the same speed x half-period product the stuck
+## check itself uses) -- a spurious clear with zero progress leaves the
+## window/attempts alone, so the window's own natural close (unmodified by
+## the oscillation) still fires within a bounded time.
+func test_yaw_oscillation_faster_than_the_stuck_window_period_still_respawns_within_a_bounded_time() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	# high_phase_s must clear recovery_trigger_s so recovery actually arms
+	# each cycle (matching the reviewer's own repro, not a degenerate
+	# "recovery never arms at all" case); high_phase_s + low_phase_s = the
+	# reviewer's own 0.85s cycle.
+	var high_phase_s := 0.65
+	var low_phase_s := 0.20
+	assert_gt(high_phase_s, _ai_tuning.recovery_trigger_s, "fixture sanity: the high phase must clear recovery_trigger_s so recovery actually arms each cycle")
+	var high_frames := int(round(high_phase_s * physics_fps))
+	var low_frames := int(round(low_phase_s * physics_fps))
+	var total_seconds := 20.4
+	var elapsed_s := 0.0
+	while elapsed_s < total_seconds:
+		kart.call("set_yaw_degrees", 180.0)
+		await wait_physics_frames(high_frames)
+		elapsed_s += float(high_frames) / physics_fps
+		if int(agent.call("respawn_count")) > 0:
+			break
+		kart.call("set_yaw_degrees", 0.0)
+		await wait_physics_frames(low_frames)
+		elapsed_s += float(low_frames) / physics_fps
+		if int(agent.call("respawn_count")) > 0:
+			break
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a kart whose yaw oscillates across the recovery hysteresis "
+			+ "band faster than the stuck-window's own period must still "
+			+ "respawn within a bounded time (%ss) -- the safety net must "
+			+ "never be starved by repeated spurious heading-clears (fix "
+			+ "round 1, reviewer MEDIUM)"
+		) % total_seconds
 	)
 
 

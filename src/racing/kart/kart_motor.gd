@@ -61,6 +61,55 @@ extends RefCounted
 ## any residual downward speed, airborne integrates -gravity_mps2 per
 ## second. This keeps hop fully headless-testable by ticking with
 ## grounded=false and summing vertical_speed_mps() * delta_s in the caller.
+##
+## Launch (launch(scale), Task 1, CTR R7 pads) is JumpPad's own vertical
+## impulse -- the SAME v0 = sqrt(2 * g * hop_height_m) kinematic identity
+## hop() already uses, scaled by jump_pad_velocity_scale (a caller-supplied
+## multiplier, never a raw m/s literal here -- see race_tuning.gd's own doc
+## on that field). A launch of scale=1.0 is therefore identical to a plain
+## hop(); the peak height an integrated launch reaches is scale^2 *
+## hop_height_m (peak height under constant gravity scales with v0
+## squared), not scale * hop_height_m -- see test_kart_motor.gd's own
+## launch-height test for the worked derivation. Unlike hop_pressed() on
+## the controller, launch() carries no grounded/spin-out gate of its own --
+## it is an ENVIRONMENTAL effect applied by RaceSession the same
+## unconditional way apply_boost() already is (a pad fires regardless of
+## whatever the kart's own drift/spin-out state happens to be), not a
+## player input edge.
+##
+## Bump (apply_bump(lateral_velocity_mps), Task 2, CTR R7 kart-to-kart
+## contact) is a SEPARATE, world-space Vector3 velocity term -- unlike
+## every other field on this motor (a scalar chasing a target, or a
+## decaying timer), this one is a full vector, already computed and capped
+## by the CALLER (KartController._process_kart_bumps(), see that method's
+## own doc for the relative-speed/normal/cap math -- this motor does no
+## validation of its own, the same "trust the caller" shape set_speed_
+## scale()'s own doc already documents). apply_bump() REPLACES whatever
+## lateral bump velocity was already stored, rather than accumulating --
+## a kart in contact with more than one other kart at once (a pile-up) can
+## receive more than one apply_bump() call in the same physics tick, one
+## per distinct pair, and last-write-wins there is a deliberate
+## simplification (the newest contact's shove wins over an older one still
+## decaying), not an attempt to model multi-body chained restitution.
+## FIX ROUND 1 (same-tick double-detection): this method used to also see
+## a second call landing the SAME tick for the SAME pair -- both karts'
+## own move_and_slide() independently detecting one real contact and each
+## applying their own impulse for it, compounding instead of replacing a
+## single logical shove. That is now prevented one layer up, before
+## apply_bump() is ever called a second time for the same pair: see
+## KartController's own _bumped_by_tick doc and _process_kart_bumps()'s
+## own fix-round doc. This method itself needed no change for that half of
+## the fix -- it only ever sees whatever the caller already decided to
+## apply -- but see velocity_without_bump() below for the other half.
+## Once stored, it decays every tick in tick()/decelerate_to_stop()
+## via coast_drag_mps2 -- an EXISTING rate field, reused rather than adding
+## a new tuning literal purely for this -- using the identical move_toward
+## (...,Vector3.ZERO,...) shape every other timer on this motor already
+## decays with, and is summed straight into velocity() below (see that
+## method's own comment). configure() deliberately does NOT reset this
+## (contrast _speed_scale, which configure() DOES reset -- see that var's
+## own doc): a live tuning refresh mid-race must not silently erase an
+## in-flight bump any more than it resets forward speed, yaw, or boost.
 
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -76,6 +125,12 @@ var _invulnerable_remaining_s: float
 var _shield_remaining_s: float
 
 var _speed_scale := 1.0
+
+## Task 2 (CTR R7 kart-to-kart contact) -- see this class doc's own Bump
+## paragraph. Defaults to Vector3.ZERO, the GDScript default for an
+## untyped-initialized Vector3 var, matching "a fresh kart carries no
+## bump" with no explicit reset code needed.
+var _lateral_bump_mps: Vector3
 
 
 func configure(kart_tuning: KartTuning) -> void:
@@ -191,6 +246,10 @@ func tick(
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
 	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
+	_lateral_bump_mps = _lateral_bump_mps.move_toward(
+		Vector3.ZERO,
+		_tuning.coast_drag_mps2 * delta_s
+	)
 
 
 ## Decelerates the CURRENT forward speed toward a full stop at brake_mps2,
@@ -223,12 +282,23 @@ func decelerate_to_stop(delta_s: float, grounded: bool) -> void:
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
 	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
+	_lateral_bump_mps = _lateral_bump_mps.move_toward(
+		Vector3.ZERO,
+		_tuning.coast_drag_mps2 * delta_s
+	)
 
 
 func hop() -> void:
 	_vertical_speed_mps = sqrt(
 		ScalarMathType.DOUBLE * _tuning.gravity_mps2 * _tuning.hop_height_m
 	)
+
+
+## JumpPad's own entry point -- see this class doc's own Launch paragraph.
+func launch(scale: float) -> void:
+	_vertical_speed_mps = sqrt(
+		ScalarMathType.DOUBLE * _tuning.gravity_mps2 * _tuning.hop_height_m
+	) * scale
 
 
 func add_boost(seconds: float) -> void:
@@ -254,6 +324,19 @@ func add_boost(seconds: float) -> void:
 ## has.
 func set_speed_scale(ratio: float) -> void:
 	_speed_scale = ratio
+
+
+## KartController's own receive_bump() -- see this class doc's own Bump
+## paragraph for the full replace-not-accumulate rationale. Callers are
+## expected to have already gated (bump_min_relative_speed_mps) and capped
+## (bump_lateral_cap_mps) lateral_velocity_mps themselves; this method
+## trusts it as-is, same as add_boost()'s seconds argument.
+func apply_bump(lateral_velocity_mps: Vector3) -> void:
+	_lateral_bump_mps = lateral_velocity_mps
+
+
+func lateral_bump_mps() -> Vector3:
+	return _lateral_bump_mps
 
 
 ## Zeros forward AND vertical speed -- Task 4's AI stuck-kart respawn
@@ -289,11 +372,28 @@ func vertical_speed_mps() -> float:
 	return _vertical_speed_mps
 
 
-func velocity() -> Vector3:
+## FIX ROUND 1 (CTR R7 Task 2, same-tick double-detection): the pure
+## forward-motion term of velocity() below -- Vector3.FORWARD.rotated(...)
+## * forward_speed -- WITHOUT any in-flight lateral bump summed in.
+## KartController._process_kart_bumps()'s own relative-speed computation
+## MUST read this, not velocity() (see that method's own fix-round doc for
+## why): a kart that already received a bump earlier this EXACT physics
+## tick -- the other side of a same-tick double-detection, where both
+## karts' own move_and_slide() independently detect one real contact --
+## would otherwise have that just-applied lateral bump read straight back
+## through velocity() into the relative-speed calc, inflating it well past
+## the TRUE closing speed and saturating the resulting magnitude at
+## bump_lateral_cap_mps regardless of how slowly the karts were actually
+## closing, tick after tick for as long as the overlap persists.
+func velocity_without_bump() -> Vector3:
 	return (
 		Vector3.FORWARD.rotated(Vector3.UP, deg_to_rad(_yaw_degrees))
 		* _forward_speed_mps
 	)
+
+
+func velocity() -> Vector3:
+	return velocity_without_bump() + _lateral_bump_mps
 
 
 func is_boosting() -> bool:

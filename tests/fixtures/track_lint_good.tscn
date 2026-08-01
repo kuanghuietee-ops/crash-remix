@@ -1,8 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_gate"]
 [ext_resource type="Script" path="res://src/racing/items/item_box.gd" id="3_box"]
+[ext_resource type="Script" path="res://src/racing/track/boost_pad.gd" id="4_boost_pad"]
+[ext_resource type="Script" path="res://src/racing/track/jump_pad.gd" id="5_jump_pad"]
 
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
@@ -112,6 +114,14 @@ script = ExtResource("3_box")
 [node name="ItemBoxB3" type="Area3D" parent="."]
 position = Vector3(10, 1, 23)
 script = ExtResource("3_box")
+
+[node name="BoostPadGood" type="Area3D" parent="."]
+position = Vector3(11, 1, 0)
+script = ExtResource("4_boost_pad")
+
+[node name="JumpPadGood" type="Area3D" parent="."]
+position = Vector3(14, 1, 0)
+script = ExtResource("5_jump_pad")
 
 [node name="GateFlags" type="Node3D" parent="."]
 

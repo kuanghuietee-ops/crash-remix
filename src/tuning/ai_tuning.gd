@@ -94,3 +94,33 @@ extends Resource
 ## same reason steer_damping is: 0.0 would defeat the feature (jitter never
 ## suppresses anything) and 1.0 would suppress every tap unconditionally.
 @export var personality_skill_jitter: float
+
+# CTR R7 Task 2b (OPERATOR PRIORITY): operator device report on R6 -- "the AI
+# got bug, keep driving back the wrong way and stuck at the side." See ai_
+# kart_agent.gd's own WRONG-WAY RECOVERY section for the full sustained-
+# trigger/hysteresis contract these three fields power, and its FASTER
+# UNSTICK section for how recovery_max_attempts bounds the retry loop before
+# the existing stuck-respawn safety net takes over.
+@export_category("Recovery")
+## Heading error (degrees) between the kart's own facing and the spine's
+## tangent at its current progress, beyond which the kart counts as opposing
+## the track's own direction of travel. Bounded to (0.0, 180.0] rather than
+## merely positive (the same tightening corner_speed_floor_ratio's own doc
+## comment above applies to a ratio field with a real physical ceiling):
+## Vector3.angle_to's own output range is [0, 180] degrees, so a value above
+## 180 could never be exceeded -- silently and permanently disabling
+## recovery rather than loosening it.
+@export var recovery_heading_error_degrees: float
+## How long (seconds) the heading error above must stay CONTINUOUSLY beyond
+## recovery_heading_error_degrees before recovery intent arms -- see ai_kart_
+## agent.gd's own WRONG-WAY RECOVERY section for the sustained-trigger/
+## hysteresis contract (exit re-uses this same angle threshold, halved, not
+## a separate time-based hysteresis).
+@export var recovery_trigger_s: float
+## How many consecutive stuck-and-still-wrong-facing detection windows (see
+## ai_kart_agent.gd's own FASTER UNSTICK section) recovery is given before
+## the stuck-respawn safety net gives up and teleports the kart anyway. A
+## stuck kart that IS correctly facing (recovery never armed) still respawns
+## on its very first closing window, exactly as before this field existed --
+## this only bounds the NEW recovery-retry path for the wrong-facing case.
+@export var recovery_max_attempts: float

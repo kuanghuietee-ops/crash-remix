@@ -240,6 +240,118 @@ extends Node
 ## forward progress advances its own total_progress_m() exactly as it
 ## should, hop or no hop.
 ##
+## WRONG-WAY RECOVERY (Task 2b, CTR R7 -- OPERATOR PRIORITY: device report on
+## R6, "the AI got bug, keep driving back the wrong way and stuck at the
+## side. Make the AI smarter and harder."). This agent owns a real
+## wall-clock timer (_recovery_heading_error_elapsed_s) and a persisted
+## armed/cleared bit (_recovery_active), updated once per tick in
+## _update_recovery_state() -- BEFORE the stuck-window check below, so a
+## closing window always reads THIS tick's own current recovery state, never
+## a one-tick-stale value. AiDriver has no delta_s and no notion of
+## wall-clock time (see its own ITEM USE COOLDOWN doc for the established
+## precedent this mirrors), so the SUSTAINED-trigger timing lives here, the
+## same way the item-use cooldown timer does; AiDriver only ever consumes
+## the resulting bit via the state Dictionary's own recovery_active key.
+##
+## HEADING ERROR is the unsigned angle (degrees, flattened to XZ -- vertical
+## pitch from a hop arc has no bearing on which way along the track the kart
+## is pointed) between the kart's own current forward and TrackSpine.
+## tangent_at_progress() at the kart's own current (raw, unwrapped-follower)
+## progress -- see _heading_error_degrees(). A degenerate zero-length
+## flattened forward or tangent (e.g. a kart pitched dead vertical mid-hop)
+## reads as 0.0 error rather than crashing on Vector3.angle_to's own
+## undefined-for-zero-vectors case -- "cannot tell, don't arm on a guess".
+##
+## SUSTAINED TRIGGER + HYSTERESIS. Heading error above ai.recovery_heading_
+## error_degrees accumulates _recovery_heading_error_elapsed_s every tick;
+## once that reaches ai.recovery_trigger_s, _recovery_active arms. Once
+## armed, it stays armed regardless of momentary fluctuation until heading
+## error drops BELOW HALF ai.recovery_heading_error_degrees (ScalarMathType.
+## HALF, per this file's own no-bare-literal derivation one section up) --
+## the same hysteresis-band shape ai_driver.gd's own SLIDE (hop) COUPLING
+## uses (a lower exit threshold than the arm threshold, so a kart hovering
+## right at the boundary cannot chatter the bit on and off every tick).
+## Clearing also resets the elapsed ARM timer (_recovery_heading_error_
+## elapsed_s) to zero, so re-arming from a fresh clear always needs its own
+## full recovery_trigger_s of sustained heading error again.
+##
+## Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION) -- clearing does
+## NOT touch the stuck window or _recovery_attempts. An earlier version of
+## this design DID unconditionally re-anchor the window and zero attempts
+## on every clear (to stop a recovery episode's own necessary backward
+## dip -- see BRAKE, FORCED TRUE WHILE RECOVERING in ai_driver.gd's own
+## class doc -- from poisoning a window that closed moments after a
+## genuine realignment); that in turn let a kart whose yaw oscillates
+## across the hysteresis band faster than the stuck window's own period
+## re-anchor the window on every spurious clear, so it could never
+## naturally close at all -- the safety net starved indefinitely. See
+## _update_recovery_state()'s own doc for the actual fix: this agent marks
+## _recovery_was_active_this_window true every tick recovery is active and
+## leaves the window's own reset cadence COMPLETELY UNTOUCHED by arm/clear
+## events, so it always closes on schedule regardless of oscillation --
+## still granting a genuinely-recovering kart the SAME retry-leniency
+## (see BOUNDED RECOVERY RETRIES below), just decided by "was recovery
+## active at any point in this window", not "did clearing itself happen
+## recently enough to still be sitting in this exact tick's memory".
+##
+## STEERING WHILE ACTIVE. This agent's own _assemble_state() substitutes a
+## much NEARER lookahead_point while _recovery_active is true -- own progress
+## + ai.lookahead_min_m (reused as "a short forward distance", no new
+## literal -- see _assemble_state()'s own comment) instead of the normal
+## speed-scaled lookahead -- and sets state.recovery_active true so AiDriver
+## takes its own dedicated full-authority steering path (see ai_driver.gd's
+## class doc WRONG-WAY RECOVERY section for exactly what that suppresses:
+## lateral/apex targeting, steer damping, the slide floor, and slide intent
+## itself).
+##
+## FASTER UNSTICK (Task 2b point 2). The OLD tumbling stuck window's
+## worst-case detection latency was ALMOST 2x respawn_stuck_after_s: a kart
+## that becomes wedged the instant AFTER a window's own anchor reset has to
+## wait through nearly one full window before the anchor even reflects the
+## wedge, then a SECOND full window before the next close checks it. Fixed
+## here by HALVING THE ANCHOR PERIOD rather than adding a sliding ring
+## buffer -- _check_stuck_and_respawn checks every `respawn_stuck_after_s *
+## ScalarMathType.HALF` seconds instead of every full respawn_stuck_after_s,
+## against a stuck-speed threshold scaled down by the SAME half-period (
+## respawn_stuck_speed_mps * half_period_s) -- SAME PRODUCT BOUND, just
+## evaluated twice as often: the implied minimum average speed
+## (threshold_m / period_s = respawn_stuck_speed_mps) is IDENTICAL to
+## before, only the CHECK FREQUENCY doubles. This halves the worst-case
+## detection latency from ~2x respawn_stuck_after_s down to ~1x it, with no
+## new tuning field and no ring-buffer bookkeeping -- the simpler of the two
+## designs the task brief offered ("halved anchor with same product bound"),
+## chosen over a sliding window of progress samples because it reuses the
+## EXACT SAME tumbling-window mechanism (anchor + elapsed, re-anchor on
+## close) fix-wave HIGH-1 already established, just retuned, rather than
+## introducing a second, structurally different detection mechanism
+## alongside it.
+##
+## BOUNDED RECOVERY RETRIES. A window that closes stuck (net progress below
+## the half-period threshold) no longer respawns UNCONDITIONALLY: if
+## _recovery_was_active_this_window is ALSO true (recovery was actively
+## steering to fix a wrong-facing kart at SOME point during the window now
+## closing -- see the fix-round-1 doc above for why this, not the
+## instantaneous _recovery_active, is the correct signal) AND _recovery_
+## attempts is still below ai.recovery_max_attempts, this window's closure
+## is treated as ONE recovery attempt -- incremented, the window re-
+## anchored and given another half-period to work, and the flag cleared
+## (so the NEXT window starts with a clean slate, not carrying forward
+## "recovery was active" from an episode already accounted for), rather
+## than teleporting the kart away mid-recovery. Once _recovery_attempts
+## reaches ai.recovery_max_attempts, the NEXT closing-while-stuck-and-
+## recovery-touched window respawns like any other -- so a kart that stays
+## both stuck AND wrong-facing for more than (recovery_max_attempts + 1)
+## half-periods still gets the safety net, never an infinite retry loop.
+## A window that closes stuck WITHOUT recovery ever having been active
+## during it (the ORIGINAL "wall-stuck, correctly facing" case fix-wave
+## HIGH-1 already handled) is completely UNCHANGED: it respawns on its
+## very first closing window, exactly as before this task -- the retry
+## leniency applies ONLY to windows recovery actually touched.
+##
+## is_recovering() exposes _recovery_active for the identical "observe the
+## safety net precisely, don't infer it from noisy progress deltas" reason
+## respawn_count()/total_progress_m() are already exposed.
+##
 ## STUCK RESPAWN, once a window closes below the stuck threshold: teleport
 ## to spine.point_at_progress(follower.total_progress_m() -
 ## respawn_drop_gap_m), Y raised by RaceTuning.respawn_drop_height_m (the
@@ -347,6 +459,18 @@ var _stuck_window_anchor_total_progress_m: float
 var _stuck_window_elapsed_s: float
 var _respawn_count: int
 var _hop_release_pending: bool
+# Task 2b (CTR R7, OPERATOR PRIORITY) -- see the class doc's own WRONG-WAY
+# RECOVERY/FASTER UNSTICK sections.
+var _recovery_active: bool
+var _recovery_heading_error_elapsed_s: float
+var _recovery_attempts: int
+# Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION) -- true whenever
+# recovery was active at ANY point during the stuck window currently
+# accumulating (set every tick _recovery_active is true, cleared only
+# where the stuck window itself resets -- see _check_stuck_and_respawn's
+# own doc for why this, not the instantaneous _recovery_active, is what
+# gates a window's retry-leniency).
+var _recovery_was_active_this_window: bool
 # Task 5: real wall-clock timer this agent owns for AiDriver's own
 # item_cooldown_ready input -- see the class doc's ITEM WIRING section for
 # why the timer lives here and not in the (delta_s-less) driver.
@@ -452,6 +576,12 @@ func configure(
 	_stuck_window_elapsed_s = 0.0
 	_respawn_count = 0
 	_hop_release_pending = false
+	# Task 2b (CTR R7, OPERATOR PRIORITY) -- a fresh driver starts with no
+	# recovery state armed, same as every other edge/timer field here.
+	_recovery_active = false
+	_recovery_heading_error_elapsed_s = 0.0
+	_recovery_attempts = 0
+	_recovery_was_active_this_window = false
 	# Task 5: already-ready at configure() time -- see the class doc's ITEM
 	# WIRING section for why this seeds from the cooldown duration itself
 	# (no new literal) rather than starting the very first pickup out on an
@@ -480,6 +610,14 @@ func respawn_count() -> int:
 	return _respawn_count
 
 
+## Whether wrong-way recovery is currently armed -- exposed for the same
+## "observe the safety net precisely" reason respawn_count()/total_
+## progress_m() are already exposed. See the class doc's own WRONG-WAY
+## RECOVERY section. false before a successful configure().
+func is_recovering() -> bool:
+	return _recovery_active if _configured else false
+
+
 func _physics_process(delta_s: float) -> void:
 	if not _configured:
 		return
@@ -491,6 +629,14 @@ func _physics_process(delta_s: float) -> void:
 	if not _was_run_active:
 		_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 		_stuck_window_elapsed_s = 0.0
+		# Task 2b (CTR R7, OPERATOR PRIORITY): a kart coming off a freeze
+		# deserves the same fresh start the stuck window itself gets one line
+		# up -- no stale pre-freeze recovery arming/attempt count carried
+		# forward.
+		_recovery_active = false
+		_recovery_heading_error_elapsed_s = 0.0
+		_recovery_attempts = 0
+		_recovery_was_active_this_window = false
 		_was_run_active = true
 
 	if _hop_release_pending:
@@ -505,11 +651,18 @@ func _physics_process(delta_s: float) -> void:
 	# frozen anyway since decide() never runs past this point.
 	_item_cooldown_elapsed_s += delta_s
 
+	var kart_pos: Vector3 = _kart.global_position
+	var raw_progress := _spine.progress_for_position(kart_pos)
+	# Task 2b (CTR R7, OPERATOR PRIORITY): updates _recovery_active from THIS
+	# tick's own live heading error -- must run BEFORE the stuck-window check
+	# below, so a closing window always reads the current, not one-tick-
+	# stale, recovery state. See the class doc's own WRONG-WAY RECOVERY
+	# section.
+	_update_recovery_state(delta_s, raw_progress)
+
 	if _check_stuck_and_respawn(delta_s):
 		return
 
-	var kart_pos: Vector3 = _kart.global_position
-	var raw_progress := _spine.progress_for_position(kart_pos)
 	_follower.update(raw_progress, _max_follower_step_m(delta_s))
 	var progress: float = _follower.lap_progress_m()
 
@@ -522,7 +675,21 @@ func _assemble_state(kart_pos: Vector3, progress: float) -> Dictionary:
 	var lookahead_m := _ai_tuning.lookahead_min_m + speed_mps * _ai_tuning.lookahead_speed_gain_s
 
 	var forward: Vector3 = -_kart.global_transform.basis.z
-	var lookahead_point := _spine.point_at_progress(progress + lookahead_m)
+	# Task 2b (CTR R7, OPERATOR PRIORITY): while recovering, aim at a much
+	# NEARER point on the spine -- own progress + ai.lookahead_min_m itself
+	# (no new literal; reuses the existing lookahead floor as "a short
+	# forward distance", per the class doc's own WRONG-WAY RECOVERY section)
+	# instead of the normal speed-scaled lookahead, which for a kart facing
+	# backward can sit many meters behind the kart's own nose and produce a
+	# near-180-degree pursuit angle that is numerically valid but a poor
+	# target to spin the kart around toward. curvature_ahead below keeps
+	# using the NORMAL lookahead_m regardless -- AiDriver's own recovery path
+	# never reads it (see its class doc's WRONG-WAY RECOVERY section), so
+	# there is no reason to distort the cornering/brake formula's own input
+	# while recovering.
+	var lookahead_point := _spine.point_at_progress(
+		progress + (_ai_tuning.lookahead_min_m if _recovery_active else lookahead_m)
+	)
 	var curvature_ahead := _spine.curvature_at_progress(progress, lookahead_m)
 
 	var tangent_now := _spine.tangent_at_progress(progress)
@@ -555,6 +722,9 @@ func _assemble_state(kart_pos: Vector3, progress: float) -> Dictionary:
 		"held_item": _held_item(),
 		"target_gap_ahead_m": _target_gap_ahead_m(),
 		"item_cooldown_ready": _item_cooldown_ready(),
+		# Task 2b (CTR R7, OPERATOR PRIORITY) -- see ai_driver.gd's own class
+		# doc WRONG-WAY RECOVERY section for what this switches on.
+		"recovery_active": _recovery_active,
 	}
 
 
@@ -639,32 +809,162 @@ func _max_follower_step_m(delta_s: float) -> float:
 
 ## See the class doc's STUCK DETECTION section for why this is a tumbling
 ## NET SPINE PROGRESS window rather than a net-displacement or instantaneous-
-## velocity check. Reads follower.total_progress_m() as it stood at the END
-## of the PREVIOUS tick's update (this tick's own follower.update() has not
-## run yet -- see _physics_process's own ordering) -- a one-tick staleness
-## that is immaterial against a multi-second window. Returns true (and has
-## already respawned) exactly on the tick a closing window reads as stuck;
-## the caller must skip the rest of that tick's normal drive logic, since
-## _respawn() has just invalidated the kart's position/the follower's own
-## total out from under it.
+## velocity check, and its FASTER UNSTICK section (Task 2b, CTR R7 --
+## OPERATOR PRIORITY) for why the anchor PERIOD below is respawn_stuck_
+## after_s HALVED (ScalarMathType.HALF, no new tuning field) rather than the
+## full duration -- same product bound (stuck_threshold_m / period_s is
+## still exactly respawn_stuck_speed_mps), checked twice as often, halving
+## the old worst-case ~2x-window detection latency. Reads follower.total_
+## progress_m() as it stood at the END of the PREVIOUS tick's update (this
+## tick's own follower.update() has not run yet -- see _physics_process's
+## own ordering) -- a one-tick staleness that is immaterial against a
+## multi-second window. Returns true (and has already respawned) exactly on
+## the tick a closing window reads as stuck AND recovery has exhausted its
+## own bounded retries (or was never armed); the caller must skip the rest
+## of that tick's normal drive logic, since _respawn() has just invalidated
+## the kart's position/the follower's own total out from under it.
 func _check_stuck_and_respawn(delta_s: float) -> bool:
 	_stuck_window_elapsed_s += delta_s
-	if _stuck_window_elapsed_s < _ai_tuning.respawn_stuck_after_s:
+	var window_period_s := _stuck_window_period_s()
+	if _stuck_window_elapsed_s < window_period_s:
 		return false
 
 	var net_progress_m: float = (
 		float(_follower.total_progress_m()) - _stuck_window_anchor_total_progress_m
 	)
-	var stuck_threshold_m := (
-		_ai_tuning.respawn_stuck_speed_mps * _ai_tuning.respawn_stuck_after_s
-	)
+	var stuck_threshold_m := _stuck_progress_threshold_m(window_period_s)
 	if net_progress_m < stuck_threshold_m:
+		# Task 2b (CTR R7, OPERATOR PRIORITY): BOUNDED RECOVERY RETRIES -- see
+		# the class doc's own section by that name. A window closing stuck
+		# WHILE recovery was active AT ANY POINT during it gets up to
+		# recovery_max_attempts retries (re-anchored, not respawned) before
+		# falling through to the unconditional respawn below; a window
+		# closing stuck WITHOUT recovery ever having been active during it
+		# (the original "wall-stuck, correctly facing" case) is completely
+		# unchanged -- it respawns on this very first check, exactly as
+		# before this task.
+		#
+		# Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION):
+		# _recovery_was_active_this_window, NOT the instantaneous _recovery_
+		# active, is what gates this -- see that field's own doc and _update_
+		# recovery_state()'s doc for why checking only "is recovery active
+		# RIGHT NOW" was exploitable (recovery can clear moments before this
+		# exact tick even after being active for most of the window) and why
+		# resetting the window on every heading-clear (the original,
+		# replaced design) was ALSO exploitable the other way (a kart whose
+		# yaw oscillates across the hysteresis band faster than window_
+		# period_s never lets the window close at all). This flag is set
+		# once per tick recovery is active (see _update_recovery_state) and
+		# cleared only here and in the "not stuck" branch below -- i.e.
+		# exactly when the window itself resets -- so it accurately answers
+		# "was this window's own dip touched by a recovery episode" without
+		# depending on exact arm/clear timing relative to this tick.
+		if _recovery_was_active_this_window and _recovery_attempts < int(_ai_tuning.recovery_max_attempts):
+			_recovery_attempts += 1
+			_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
+			_stuck_window_elapsed_s = 0.0
+			_recovery_was_active_this_window = false
+			return false
 		_respawn()
 		return true
 
+	_recovery_attempts = 0
 	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
+	_recovery_was_active_this_window = false
 	return false
+
+
+## The stuck-window's own halved anchor period -- see the class doc's
+## FASTER UNSTICK section. Factored out so _check_stuck_and_respawn's own
+## two call sites (period and the threshold derived from it) never risk
+## drifting apart.
+func _stuck_window_period_s() -> float:
+	return _ai_tuning.respawn_stuck_after_s * ScalarMathType.HALF
+
+
+## The minimum net progress (m) that period_s seconds at ai.respawn_stuck_
+## speed_mps represents -- the "stuck" bar _check_stuck_and_respawn checks
+## net progress against.
+func _stuck_progress_threshold_m(period_s: float) -> float:
+	return _ai_tuning.respawn_stuck_speed_mps * period_s
+
+
+## See the class doc's WRONG-WAY RECOVERY section for the full sustained-
+## trigger/hysteresis contract this implements. Must run every tick (not
+## only while already armed) so the elapsed-time accumulation itself is
+## real wall-clock time, matching every other timer this agent owns (item
+## cooldown, the stuck window).
+##
+## Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION). The original
+## version of this function unconditionally re-anchored the stuck window
+## and zeroed _recovery_attempts on EVERY heading-based clear -- correct
+## for a kart that genuinely realigned, but exploitable by a kart whose own
+## yaw oscillates across the 60/120-degree hysteresis band FASTER than the
+## stuck window's own halved period (_stuck_window_period_s()): every
+## spurious clear re-anchored the window before it could ever naturally
+## close, so _check_stuck_and_respawn's own stuck-check never even ran --
+## the safety net was starved indefinitely (reviewer's own scripted repro:
+## an 0.85s arm/clear cycle, 20.4s, 0 respawns, progress pinned; see
+## test_ai_kart_agent.gd's own test_yaw_oscillation_faster_than_the_stuck_
+## window_period_still_respawns_within_a_bounded_time, which pins this
+## exact scenario). A first attempted fix (gating the reset on "real
+## progress made since recovery armed") turned out to be WRONG in a
+## different way: the hysteresis EXIT is a pure heading check, so a
+## genuine recovery typically clears within a fraction of a second of
+## arming, long before enough real distance has accumulated to clear any
+## meaningful progress bar measured AT the clear instant -- that gate
+## reintroduced the ORIGINAL false-positive bug for the very case it most
+## needed to protect (see git history / this task's own report for the
+## measured trace).
+##
+## THE ACTUAL FIX: this function no longer touches the stuck window OR
+## _recovery_attempts AT ALL, on either arm or clear -- it owns ONLY the
+## heading-based arm/clear state machine (_recovery_active) and, while
+## active, marks _recovery_was_active_this_window true. The stuck window's
+## own reset cadence is therefore COMPLETELY DECOUPLED from recovery arm/
+## clear events: it always closes on its own unmodified schedule (see
+## _check_stuck_and_respawn), which both (a) bounds the starvation case (an
+## oscillating kart can no longer prevent the window from ever closing) and
+## (b) still correctly grants a genuinely-recovering kart leniency (the
+## window that happens to close WHILE OR SHORTLY AFTER a recovery episode
+## ran sees _recovery_was_active_this_window true and gets a retry rather
+## than an immediate respawn, giving the kart a full additional window
+## period to build up real, unambiguous progress before being judged again).
+func _update_recovery_state(delta_s: float, raw_progress: float) -> void:
+	var heading_error_degrees := _heading_error_degrees(raw_progress)
+	if _recovery_active:
+		_recovery_was_active_this_window = true
+		if heading_error_degrees < _ai_tuning.recovery_heading_error_degrees * ScalarMathType.HALF:
+			_recovery_active = false
+			_recovery_heading_error_elapsed_s = 0.0
+		return
+
+	if heading_error_degrees > _ai_tuning.recovery_heading_error_degrees:
+		_recovery_heading_error_elapsed_s += delta_s
+		if _recovery_heading_error_elapsed_s >= _ai_tuning.recovery_trigger_s:
+			_recovery_active = true
+			_recovery_was_active_this_window = true
+	else:
+		_recovery_heading_error_elapsed_s = 0.0
+
+
+## Unsigned heading error (degrees, flattened to XZ) between the kart's own
+## current facing and the spine's tangent at its current (raw, unwrapped)
+## progress -- see the class doc's own WRONG-WAY RECOVERY section for why
+## this is unsigned (recovery only cares HOW wrong the facing is, not which
+## way, the same way ai_driver.gd's own CORNERING/BRAKE formula reads
+## curvature_ahead through absf()) and why a degenerate zero-length
+## flattened vector reads as 0.0 rather than crashing on Vector3.angle_to's
+## own undefined-for-zero-vectors case.
+func _heading_error_degrees(raw_progress: float) -> float:
+	var tangent := _spine.tangent_at_progress(raw_progress)
+	var forward: Vector3 = -_kart.global_transform.basis.z
+	var flat_tangent := Vector3(tangent.x, 0.0, tangent.z)
+	var flat_forward := Vector3(forward.x, 0.0, forward.z)
+	if flat_tangent.is_zero_approx() or flat_forward.is_zero_approx():
+		return 0.0
+	return rad_to_deg(flat_forward.angle_to(flat_tangent))
 
 
 ## See the class doc's LATERAL SLOT CENTERING section.
@@ -706,6 +1006,14 @@ func _respawn() -> void:
 	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
 	_hop_release_pending = false
+	# Task 2b (CTR R7, OPERATOR PRIORITY): a kart just dropped onto a fresh
+	# line, facing the tangent, has no business remembering an armed
+	# recovery/attempt count from wherever it got stuck -- same "fresh slate"
+	# reset every other per-episode field on this line already gets.
+	_recovery_active = false
+	_recovery_heading_error_elapsed_s = 0.0
+	_recovery_attempts = 0
+	_recovery_was_active_this_window = false
 
 
 ## See the class doc's RESPAWN-ONTO-PLAYER AVOIDANCE section. Returns the

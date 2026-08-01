@@ -153,6 +153,34 @@ var _brake_input: bool
 var _run_active: bool = true
 var _item_use_count: int = 0
 
+## Task 2 (CTR R7 kart-to-kart contact) -- mirrors respawn_count()'s/item_
+## use_count()'s own "plain running counter, exposed for test
+## observability" shape. Incremented once per real bump _process_kart_
+## bumps() actually applies to THIS kart (i.e. once per collision that
+## clears the min-relative-speed gate) -- never for a collision that failed
+## the gate, and never twice for the same collision-index.
+var _bump_count: int = 0
+
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): {other kart's
+## own get_instance_id(): the Engine.get_physics_frames() tick this exact
+## pair last exchanged a bump}, written unconditionally by every
+## receive_bump() call -- both a self-applied share AND a cross-instance
+## share (see that method's own doc) -- and consulted at the very top of
+## _process_kart_bumps()'s own per-collision loop (see that method's own
+## fix-round doc for the full scenario this closes). Godot's own physics-
+## tick counter, not a new tuning literal -- lint_gameplay_numbers.py's own
+## scan is over src/gameplay/** and src/racing/** GDScript source, and
+## Engine.get_physics_frames() is a method call, not a numeric literal, so
+## it needs no tuning-resource field the way an actual gameplay NUMBER
+## would. A plain Dictionary, not an Array or a per-tick reset: the number
+## of distinct karts a controller ever shares the track with is small and
+## fixed for the whole race, so this stays bounded by kart count, never by
+## elapsed ticks -- each entry is simply overwritten in place tick after
+## tick, needing no explicit cleanup (a stale entry from many ticks ago
+## just fails the "== current_tick" comparison below on its own, the same
+## implicit-decay shape every timer field on the motor already relies on).
+var _bumped_by_tick: Dictionary = {}
+
 ## CTR R6 Task 3: character-mount + body-tint node refs. NODE LOOKUP, NOT
 ## @onready -- mirrors kart_fx.gd's own class-doc precedent exactly (see that
 ## file's "NODE LOOKUP, NOT @onready" section): RaceSession._spawn_ai_karts()
@@ -266,6 +294,14 @@ func apply_boost(seconds: float) -> void:
 	_motor.add_boost(seconds)
 
 
+## JumpPad's own entry point (Task 1, CTR R7 pads) -- mirrors apply_boost()
+## immediately above exactly: a thin, unconditional pass-through onto the
+## motor, no grounded/spin-out gate of its own (see KartMotor.launch()'s own
+## doc for why -- this is an environmental effect, not player input).
+func launch(scale: float) -> void:
+	_motor.launch(scale)
+
+
 ## R4 Task 3: replaces the Task-2 no-op stub (which always returned
 ## &"none") with the real hand-off onto this controller's own ItemSlot --
 ## delegates straight to ItemSlot.use() (returns-and-clears: &"none" unless
@@ -283,6 +319,11 @@ func use_item() -> StringName:
 
 func item_use_count() -> int:
 	return _item_use_count
+
+
+## See _bump_count's own doc.
+func bump_count() -> int:
+	return _bump_count
 
 
 ## Exposes the real, already-configured-and-ticked ItemSlot this controller
@@ -308,6 +349,41 @@ func apply_spin_out() -> void:
 
 func speed_mps() -> float:
 	return _motor.speed_mps()
+
+
+## CTR R7 Task 2 (kart-to-kart contact): the motor's own COMMANDED velocity
+## this tick (Vector3.FORWARD.rotated(...) * forward_speed + any lateral
+## bump already in flight -- see kart_motor.gd's own velocity() doc),
+## BEFORE move_and_slide() gets a chance to resolve/clamp it against
+## whatever this kart is touching. _process_kart_bumps()'s own relative-
+## speed computation calls this on BOTH karts (self directly via _motor,
+## the collider via this exact duck-typed proxy) rather than reading either
+## kart's own already-move_and_slide()-resolved CharacterBody3D.velocity --
+## a REAL bug caught by this task's own frozen-kart test: a kart fully
+## BLOCKED by an immovable obstacle has its resolved velocity zeroed by the
+## engine's own collision response the SAME tick it first makes contact, so
+## reading THAT would make the relative-speed gate see ~0 at the exact
+## moment it most needs to see the real closing speed that caused the hit.
+## This getter is never touched by move_and_slide() at all (it lives on
+## the pure-logic motor, a plain RefCounted with no physics involvement),
+## so it stays an honest read of "how fast this kart was actually trying to
+## go" regardless of what the collision resolver did to the body's own
+## velocity property this tick.
+func commanded_velocity_mps() -> Vector3:
+	return _motor.velocity()
+
+
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): proxies
+## KartMotor.velocity_without_bump() -- see that method's own doc for the
+## full rationale -- exactly the way commanded_velocity_mps() above proxies
+## velocity() itself. _process_kart_bumps()'s own relative-speed
+## computation now calls THIS on both karts (self directly via _motor, the
+## collider via this exact duck-typed proxy, mirroring commanded_velocity_
+## mps()'s own self/collider split above) instead of commanded_velocity_
+## mps(), so an already-applied lateral bump from earlier in the SAME
+## physics tick never gets read back into the calc a second time.
+func commanded_velocity_without_bump_mps() -> Vector3:
+	return _motor.velocity_without_bump()
 
 
 func is_sliding() -> bool:
@@ -476,6 +552,157 @@ func _physics_process(delta_s: float) -> void:
 	# velocity() this tick keeps the two consistent by construction.
 	rotation.y = deg_to_rad(_motor.yaw_degrees())
 	move_and_slide()
+	# CTR R7 Task 2 (kart-to-kart contact): gated on _run_active, same as the
+	# drift/motor tick above -- see _process_kart_bumps()'s own doc for why a
+	# frozen kart must never be the DETECTING side (it must GIVE no bump),
+	# even though move_and_slide() just above still ran unconditionally for
+	# it (the decelerate_to_stop() branch still needs real collision
+	# response against walls/other karts, just not this mechanic on top).
+	if _run_active:
+		_process_kart_bumps()
+
+
+# ---------------------------------------------------------------------------
+# CTR R7 Task 2: kart-to-kart contact. move_and_slide() above already
+# resolves ordinary physical collision (karts cannot interpenetrate); this
+# adds a GAMEPLAY shove on top -- a symmetric lateral separation impulse
+# applied to BOTH karts, so a bump reads as "get pushed apart", not just
+# "stop".
+# ---------------------------------------------------------------------------
+
+
+## The cross-instance entry point the plan's own CAREFUL note calls out.
+## _process_kart_bumps() below detects a collision from THIS kart's own
+## move_and_slide() and must apply the symmetric response to BOTH karts --
+## calling this SAME method on itself for its own share, and on the OTHER
+## kart's own KartController instance (duck-checked via has_method(
+## "receive_bump"), see that method's own caller) for its share. This is
+## necessary, not merely convenient: kart-vs-kart collision detection via
+## move_and_slide() is NOT guaranteed symmetric within a single tick -- a
+## stationary/frozen kart hit by a moving one may never independently
+## detect the same contact from its own move_and_slide() call (its own
+## motion, if any, is not what caused the overlap), so the side that DOES
+## detect it must be able to push both.
+##
+## Frozen (see set_run_active()) karts neither give NOR receive a bump: a
+## kart already inactive is skipped by _process_kart_bumps()'s own call
+## site in _physics_process() (gated on _run_active) on the GIVING side,
+## and this method itself no-ops when the RECEIVING kart is inactive,
+## regardless of who called it. A still-active kart that plows into a
+## frozen one still gets its OWN self push -- only the frozen kart's own
+## reaction is suppressed; move_and_slide()'s own physical collision
+## response already prevents interpenetration either way, with or without
+## this method firing.
+##
+## Deliberately independent of hit/hazard state: a bump is a physical
+## shove, not a hit -- register_hit()'s own item-damage path is untouched
+## by this method entirely, and is_invulnerable()/is_spinning_out() never
+## gate it either (an invulnerability window blocks getting HIT again, not
+## getting physically shoved -- these are different mechanics that happen
+## to share a kart).
+##
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): source_
+## instance_id is the CALLING kart's own get_instance_id() -- required, not
+## optional/defaulted, matching how every other multi-argument entry point
+## on this controller already requires its full argument list (see
+## configure()'s own doc precedent: omitting a gating param must be a real
+## call error, not a silent default). Every call -- the self-applied share
+## below in _process_kart_bumps() included -- unconditionally records
+## {source_instance_id: now} into _bumped_by_tick BEFORE the _run_active
+## guard, so a frozen kart still tracks who last touched it even though it
+## rejects the actual motor impulse; _process_kart_bumps()'s own fix-round
+## doc explains what THAT dictionary is for and why it must be written
+## here, on the RECEIVING side, rather than only on the detecting side.
+func receive_bump(lateral_velocity_mps: Vector3, source_instance_id: int) -> void:
+	_bumped_by_tick[source_instance_id] = Engine.get_physics_frames()
+	if not _run_active:
+		return
+	_motor.apply_bump(lateral_velocity_mps)
+
+
+## Called once per physics tick, immediately after move_and_slide() above,
+## only while THIS kart is _run_active (see the call site's own comment).
+## Walks every REAL collision move_and_slide() just resolved this tick
+## (get_slide_collision_count()/get_slide_collision(i), the same idiom
+## src/gameplay/run/level_session.gd's own _process_player_crate_
+## collisions() already uses for its own move_and_slide()-adjacent scan),
+## duck-checks each collider as a kart (has_method("receive_bump") -- the
+## same has_method() shape race_session.gd's own pad/box wiring already
+## uses to distinguish a real kart from a stray body or a bare test
+## fixture, e.g. _on_boost_pad_body_entered()'s own doc), and for each real
+## kart contact: computes the relative CLOSING speed from both karts' own
+## COMMANDED velocity WITHOUT any in-flight bump (commanded_velocity_
+## without_bump_mps() -- see that method's own doc, and FIX ROUND 1 below
+## for why NOT commanded_velocity_mps(); flattened to XZ, since vertical/
+## gravity differences have no business feeding a horizontal "kart
+## contact" shove), gates it against bump_min_relative_speed_mps (a graze
+## at walking pace fires nothing), and -- above that gate -- computes a
+## lateral impulse along the contact normal (flattened to XZ, away from
+## the collider) sized at relative speed * bump_impulse_scale, capped at
+## bump_lateral_cap_mps. Applies it to itself directly and to the collider
+## via receive_bump() (the OTHER kart gets the exact opposite direction --
+## away from THIS kart -- at the same magnitude, the "symmetric
+## separation" the plan calls for).
+##
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): move_and_
+## slide() collision detection is NOT guaranteed to fire on only ONE side
+## of a pair within a single physics tick (see receive_bump()'s own class-
+## doc precedent on this) -- BOTH karts can independently detect the SAME
+## real contact from their own move_and_slide() call this same tick.
+## Without the two fixes below, whichever kart processes second would read
+## the first kart's own just-applied bump straight back through velocity()
+## into its relative-speed calc (inflating it, saturating the magnitude at
+## bump_lateral_cap_mps regardless of TRUE closing speed) and then apply
+## an entirely separate SECOND impulse pair for what is physically one
+## contact event, repeating every tick the overlap persists. Fixed in two
+## independent places: (1) commanded_velocity_without_bump_mps() above,
+## used here instead of commanded_velocity_mps(), so an already-applied
+## bump from earlier this exact tick never feeds back into the magnitude
+## it helped compute; (2) the _bumped_by_tick guard immediately below --
+## the FIRST kart to process a pair this tick writes an entry into BOTH
+## its own dictionary (via the self-applied receive_bump() call) and the
+## OTHER kart's dictionary (via the cross-instance call, keyed by ITS OWN
+## instance id as the source) the moment it processes the contact; the
+## SECOND kart to independently detect the identical contact this same
+## tick then finds its own dictionary already holds an entry for this
+## exact other-kart-id at this exact tick, and skips reprocessing it
+## entirely -- one real contact now produces at most one impulse pair per
+## physics tick, no matter which side detects it first.
+func _process_kart_bumps() -> void:
+	var current_tick := Engine.get_physics_frames()
+	for collision_index: int in range(get_slide_collision_count()):
+		var collision := get_slide_collision(collision_index)
+		var collider := collision.get_collider()
+		if collider == null or not is_instance_valid(collider):
+			continue
+		if not (collider is CharacterBody3D) or not collider.has_method("receive_bump"):
+			continue
+		var other := collider as CharacterBody3D
+		var other_id := other.get_instance_id()
+		if _bumped_by_tick.get(other_id) == current_tick:
+			continue
+		var self_commanded: Vector3 = _motor.velocity_without_bump()
+		var other_commanded: Vector3 = other.call("commanded_velocity_without_bump_mps")
+		var relative_velocity_flat := Vector3(
+			self_commanded.x - other_commanded.x,
+			0.0,
+			self_commanded.z - other_commanded.z
+		)
+		var relative_speed := relative_velocity_flat.length()
+		if relative_speed < _tuning.bump_min_relative_speed_mps:
+			continue
+		var normal := collision.get_normal()
+		var direction_flat := Vector3(normal.x, 0.0, normal.z)
+		if direction_flat.is_zero_approx():
+			continue
+		direction_flat = direction_flat.normalized()
+		var magnitude := minf(
+			relative_speed * _tuning.bump_impulse_scale,
+			_tuning.bump_lateral_cap_mps
+		)
+		_bump_count += 1
+		receive_bump(direction_flat * magnitude, other_id)
+		other.call("receive_bump", -direction_flat * magnitude, get_instance_id())
 
 
 # ---------------------------------------------------------------------------

@@ -526,6 +526,79 @@ extends RefCounted
 ## output (steer 0.0, brake false, hop false, boost_tap false, speed_scale
 ## 1.0) instead of crashing on a null tuning dereference -- the same
 ## fail-closed shape as spine_follower.gd's invalid-configure() path.
+##
+## WRONG-WAY RECOVERY (Task 2b, CTR R7 -- OPERATOR PRIORITY: "the AI got bug,
+## keep driving back the wrong way and stuck at the side"). state.recovery_
+## active: bool (default false) is the single new input this task adds --
+## OWNED AND TIMED BY AiKartAgent, not this driver: detecting "the kart's own
+## facing opposes the spine's own tangent, sustained for ai.recovery_
+## trigger_s" needs a real wall-clock timer this driver has no delta_s to
+## run (the exact same split ITEM USE COOLDOWN above already establishes for
+## item_cooldown_ready -- "this class is pure logic with no notion of
+## wall-clock time; the Node glue owns every real timer"). See ai_kart_
+## agent.gd's own WRONG-WAY RECOVERY section for the full sustained-trigger/
+## hysteresis state machine that sets this bit each tick.
+##
+## When recovery_active is true, _steer_for takes a DEDICATED full-authority
+## path instead of the ordinary pursuit+lateral+apex+damping+slide-floor
+## pipeline above:
+##   angle = signed_angle_to(flat_forward, flat_to_target)   -- same
+##     flattened-to-XZ angle the ordinary pursuit_term is built from, toward
+##     the SAME lookahead_point input key (AiKartAgent substitutes a much
+##     NEARER point while recovering -- own progress + a short forward
+##     distance -- see its own doc for why and for the "no new literal, reuse
+##     lookahead_min_m" reasoning)
+##   steer = signf(-angle) if lookahead_distance_m > 0.0 else 0.0
+## "Full-authority" is read literally here: bang-bang, not proportional --
+## the moment the target is even slightly off-axis, steer saturates to
+## +/-1.0 immediately, spinning the kart around as fast as the motor's own
+## steer_rate_degrees_per_s allows rather than easing into the turn the way
+## the ordinary pursuit_term (angle * steer_gain, clamped) would. A kart
+## already pointed exactly at the target (angle == 0.0, e.g. once heading
+## error has fallen back near zero) needs no correction -- signf(0.0) is
+## 0.0, so this degrades to "hold straight" rather than chattering at a
+## saturated value with nothing to correct.
+##
+## BRAKE, FORCED TRUE WHILE RECOVERING (not part of the plan text's own
+## "suppress slide intent, steer full-authority" phrasing, but load-bearing
+## in practice -- see decide() below's own comment at the brake override):
+## a full-speed, full-lock steer traces a WIDE arc (turning radius grows
+## with speed), which can fail to fit the road while the kart spins back
+## around; forcing brake true keeps speed -- and therefore the arc -- tight
+## for as long as recovery stays armed. The ordinary curvature-vs-target-
+## speed brake formula is left computed but simply overridden, not skipped,
+## so no separate code path needs maintaining for this one case.
+##
+## SUPPRESSED, UNCONDITIONALLY, WHILE RECOVERING: lateral_error_m/slot_
+## lateral_target_m (no apex blend, no lane-offset pursuit -- the kart is
+## trying to face the right way at all, not hold a racing line), curvature_
+## ahead's own hysteresis update (_intending_slide is force-cleared to false
+## every recovery tick rather than evaluated against slide_trigger_
+## curvature/slide_exit_curvature -- "suppress slide intent" per the task
+## brief) and, as a direct consequence in decide() below, hop (hop's own
+## formula reads `_intending_slide and not _was_intending_slide`, so a
+## permanently-false _intending_slide can never fire it) and the slide floor
+## (never applied -- steer_for returns early, before the floor's own call
+## site). boost_tap is unaffected as CODE (its own gate already requires
+## is_sliding, which recovery never arms), so no separate suppression is
+## needed there. STEER DAMPING is also bypassed OUTBOUND (the bang-bang
+## value is never blended toward a prior tick), but recovery's own output
+## still WRITES _prev_steer_output/_has_prev_steer_output before returning --
+## see the class doc's STEER DAMPING section's own "always smooths toward
+## what the kart was ACTUALLY commanded last tick" invariant: the first
+## ordinary tick after recovery clears must damp FROM the recovery-time
+## bang-bang value, not from a stale pre-recovery value or a phantom-zero
+## cold start.
+##
+## RESIDUE-FREE ON EXIT. Because _intending_slide is force-cleared every
+## recovery tick rather than merely left alone, _was_intending_slide also
+## reads false by the time recovery clears (decide()'s own `_was_intending_
+## slide = _intending_slide` line runs every tick, recovery or not) -- so a
+## still-sharp corner that happened to coincide with a recovery episode arms
+## intent and fires hop FRESH on the very first ordinary tick afterward,
+## exactly as if no recovery had happened, rather than silently missing its
+## own hop edge because some earlier recovery tick had already "used up" the
+## _was_intending_slide transition.
 
 var _ai_tuning: AiTuning
 var _kart_tuning: KartTuning
@@ -625,6 +698,10 @@ func decide(state: Dictionary) -> Dictionary:
 	var held_item: StringName = state.get("held_item", &"none")
 	var target_gap_ahead_m: float = state.get("target_gap_ahead_m", INF)
 	var item_cooldown_ready: bool = state.get("item_cooldown_ready", false)
+	# Task 2b (CTR R7, OPERATOR PRIORITY) -- see the class doc's own WRONG-WAY
+	# RECOVERY section. Owned/timed by AiKartAgent; this driver only consumes
+	# the bit.
+	var recovery_active: bool = state.get("recovery_active", false)
 
 	# Task 4 (CTR R6): PERSONALITY's own tick counter -- incremented once per
 	# decide() call, BEFORE it is read below, so the very first post-
@@ -634,7 +711,13 @@ func decide(state: Dictionary) -> Dictionary:
 	_tick_index += 1
 
 	var steer := _steer_for(
-		position, forward, lookahead_point, lateral_error_m, slot_lateral_target_m, curvature_ahead
+		position,
+		forward,
+		lookahead_point,
+		lateral_error_m,
+		slot_lateral_target_m,
+		curvature_ahead,
+		recovery_active
 	)
 
 	var hop := _intending_slide and not _was_intending_slide and not is_sliding
@@ -652,6 +735,15 @@ func decide(state: Dictionary) -> Dictionary:
 		+ float(_slot_index) * _ai_tuning.personality_aggression_step
 	)
 	var brake := speed_mps > target_speed * effective_brake_margin_ratio
+	# Task 2b (CTR R7, OPERATOR PRIORITY): recovery ALSO forces brake true --
+	# see the class doc's WRONG-WAY RECOVERY section for why. Full-speed,
+	# full-lock steering traces a WIDE arc (turning radius grows with
+	# speed); braking down first keeps that arc tight enough to actually fit
+	# the road while spinning the kart back around, rather than the ordinary
+	# curvature-vs-target-speed brake formula above (which has no idea a
+	# recovery U-turn, not a normal corner, is what's actually happening).
+	if recovery_active:
+		brake = true
 
 	# Task 4 (CTR R6): PERSONALITY's own SKILL JITTER confidence gate -- see
 	# the class doc's BOOST TAP and PERSONALITY sections.
@@ -766,13 +858,31 @@ func _steer_for(
 	lookahead_point: Vector3,
 	lateral_error_m: float,
 	slot_lateral_target_m: float,
-	curvature_ahead: float
+	curvature_ahead: float,
+	recovery_active: bool
 ) -> float:
 	var flat_forward := Vector3(forward.x, 0.0, forward.z)
 	var flat_to_target := Vector3(
 		lookahead_point.x - position.x, 0.0, lookahead_point.z - position.z
 	)
 	var lookahead_distance_m := flat_to_target.length()
+
+	# See the class doc's WRONG-WAY RECOVERY section: a dedicated, early-
+	# returning full-authority path -- bypasses lateral/apex/damping/the
+	# slide floor entirely, and force-clears _intending_slide (suppressing
+	# hop) rather than evaluating curvature_ahead's own hysteresis this tick.
+	if recovery_active:
+		_intending_slide = false
+		var recovery_steer := 0.0
+		if lookahead_distance_m > 0.0:
+			var recovery_angle := flat_forward.signed_angle_to(flat_to_target, Vector3.UP)
+			recovery_steer = signf(-recovery_angle)
+		# STEER DAMPING's own "always smooths toward what the kart was
+		# ACTUALLY commanded last tick" invariant applies even here -- see
+		# the class doc's own RESIDUE-FREE ON EXIT paragraph.
+		_prev_steer_output = recovery_steer
+		_has_prev_steer_output = true
+		return recovery_steer
 
 	var raw_steer := 0.0
 	if lookahead_distance_m > 0.0:

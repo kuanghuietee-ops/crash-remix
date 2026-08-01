@@ -21,7 +21,7 @@ extends Control
 ## real scene tree root) out from under itself, and the fresh race scene
 ## nobody calls configure() on ever plays again. RETRY now only calls
 ## session.request_retry(); see race_session.gd's retry_requested doc and
-## game_root.gd's DEBUG_RACING_LEVEL_ID render branch for the real,
+## game_root.gd's _render_state() racing render branch for the real,
 ## GameRoot-owned reload path this routes into instead.
 ##
 ## HELD-ITEM DISPLAY (R4 Task 6). _item_label mirrors _wrong_way_label's own

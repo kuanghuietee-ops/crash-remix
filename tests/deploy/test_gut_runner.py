@@ -15,6 +15,7 @@ ISOLATED_SUITES = [
     "res://tests/integration/test_main_boot.gd",
     "res://tests/integration/test_island_slice.gd",
     "res://tests/integration/test_warp_room.gd",
+    "res://tests/integration/test_cup_flow_e2e.gd",
 ]
 COMMON_GODOT_ARGS = [
     "--headless",
@@ -105,12 +106,12 @@ class GutRunnerTests(unittest.TestCase):
             result, invocations = self._run_fake_godot(temporary_path)
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertEqual(len(invocations), 4)
+            self.assertEqual(len(invocations), 5)
 
             user_roots = [
                 Path(str(invocation["user_root"])) for invocation in invocations
             ]
-            self.assertEqual(len(set(user_roots)), 4)
+            self.assertEqual(len(set(user_roots)), 5)
             for invocation, user_root in zip(invocations, user_roots):
                 self.assertTrue(invocation["user_root_existed"])
                 self.assertEqual(user_root.parent, Path("/tmp"))
@@ -146,7 +147,7 @@ class GutRunnerTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 1)
-            self.assertEqual(len(invocations), 4)
+            self.assertEqual(len(invocations), 5)
             for invocation, suite in zip(invocations[1:], ISOLATED_SUITES):
                 self.assertEqual(
                     invocation["args"],

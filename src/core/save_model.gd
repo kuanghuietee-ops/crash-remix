@@ -1,7 +1,13 @@
 class_name SaveModel
 extends RefCounted
 
-const SCHEMA_VERSION: int = 2
+const SCHEMA_VERSION: int = 3
+# Task 5 (CTR R7, the Cup): the one reserved key inside the "racing" section
+# that does NOT hold a per-track best-time record -- see fresh()/validate()/
+# _migrate_v2_to_v3()'s own docs for why "cups" lives INSIDE "racing" (not as
+# its own new top-level section) and how the validation/normalization loops
+# below skip it wherever they walk "racing" expecting per-track records.
+const _RACING_CUPS_KEY := "cups"
 const _RELIC_TIERS: Array[String] = [
 	"none",
 	"sapphire",
@@ -19,7 +25,13 @@ static func fresh() -> Dictionary:
 		"boss_defeated": {
 			"papu_papu": false,
 		},
-		"racing": {},
+		# Task 5 (CTR R7, the Cup): "cups" is required inside "racing" from
+		# v3 onward -- the same "not left optional-if-missing" strictness
+		# Task 9's own "racing" top-level section carries (see validate()'s
+		# own doc on that section), so a legacy profile can only ever pass
+		# validate() after actually migrating through _migrate_v2_to_v3
+		# below, which backfills exactly this shape.
+		"racing": {_RACING_CUPS_KEY: {}},
 	}
 
 
@@ -60,7 +72,31 @@ static func validate(data: Dictionary) -> bool:
 	if not racing_value is Dictionary:
 		return false
 	var racing: Dictionary = racing_value
+
+	# Task 5 (CTR R7, the Cup): "cups" is a RESERVED key inside "racing" --
+	# checked and validated on its own here, BEFORE the per-track loop below
+	# ever sees it, and excluded from that loop's own per-track record shape
+	# check (a cups dict has no best_total_time_ms/best_lap_time_ms and would
+	# fail _validate_racing_record() if the loop tried to validate it as one).
+	# Required with the same strictness "racing" itself carries one section
+	# up -- see fresh()'s own doc -- so a legacy profile only ever passes this
+	# check after actually migrating through _migrate_v2_to_v3.
+	var cups_value: Variant = racing.get(_RACING_CUPS_KEY)
+	if not cups_value is Dictionary:
+		return false
+	var cups: Dictionary = cups_value
+	for cup_id: Variant in cups:
+		if typeof(cup_id) != TYPE_STRING and typeof(cup_id) != TYPE_STRING_NAME:
+			return false
+		var cup_record_value: Variant = cups[cup_id]
+		if not cup_record_value is Dictionary:
+			return false
+		if not _validate_cup_record(cup_record_value):
+			return false
+
 	for track_id: Variant in racing:
+		if String(track_id) == _RACING_CUPS_KEY:
+			continue
 		if typeof(track_id) != TYPE_STRING and typeof(track_id) != TYPE_STRING_NAME:
 			return false
 		var racing_record_value: Variant = racing[track_id]
@@ -216,6 +252,65 @@ static func improved_racing_record(
 	return updated if _validate_racing_record(updated) else {}
 
 
+## Task 5 (CTR R7, the Cup): cup's own counterpart to racing_record()/
+## level_record() above -- same "supply fresh defaults, never mutate the
+## caller's profile" shape, but reaches one level deeper: through "racing",
+## then into its reserved "cups" key (see validate()'s own doc on why "cups"
+## lives there instead of as a new top-level section), keyed by cup id (a
+## StringName, e.g. &"island_cup" -- CupSession's own CUP_ID constant).
+static func cup_record(data: Dictionary, cup_id: StringName) -> Dictionary:
+	var record := _fresh_cup_record()
+	var racing_value: Variant = data.get("racing")
+	if not racing_value is Dictionary:
+		return record
+	var racing: Dictionary = racing_value
+	var cups_value: Variant = racing.get(_RACING_CUPS_KEY)
+	if not cups_value is Dictionary:
+		return record
+
+	var cups: Dictionary = cups_value
+	var existing_value: Variant = cups.get(String(cup_id))
+	if existing_value == null:
+		existing_value = cups.get(cup_id)
+	if existing_value is Dictionary:
+		var existing: Dictionary = (
+			existing_value as Dictionary
+		).duplicate(true)
+		for key: Variant in existing:
+			record[key] = existing[key]
+	return record
+
+
+## Cup's counterpart to improved_racing_record() above -- same "validate
+## input, compute a candidate, validate output" shape, but LOWER-is-better
+## (a finishing placement, 1 = first) instead of faster-is-better times, and
+## a single field instead of two independent ones. 0 is the "never set"
+## sentinel _fresh_cup_record() establishes (the same convention best_relic_
+## time_ms/best_total_time_ms/best_lap_time_ms already use throughout this
+## file) -- any real placement (placement >= 1) always beats it, so a cup's
+## first-ever result always writes, exactly like a level's first relic time
+## or a track's first best time. A worse-or-equal placement changes nothing
+## and is reported back unchanged (never {}) so a caller can compare the
+## returned record's own best_placement against the one it passed in to
+## decide whether anything actually improved, the same pattern game_root.gd's
+## own _on_racing_finished already uses for best_total_time_ms/best_lap_
+## time_ms.
+static func improved_cup_record(record: Dictionary, placement: int) -> Dictionary:
+	if not _validate_cup_record(record) or placement < 1:
+		return {}
+	var updated := record.duplicate(true)
+	var existing_placement := int(updated.get("best_placement", 0))
+	if existing_placement == 0 or placement < existing_placement:
+		updated["best_placement"] = placement
+	return updated if _validate_cup_record(updated) else {}
+
+
+static func _fresh_cup_record() -> Dictionary:
+	return {
+		"best_placement": 0,
+	}
+
+
 static func _fresh_level_record() -> Dictionary:
 	return {
 		"completed": false,
@@ -243,6 +338,8 @@ static func _migration_step(
 			return _migrate_v0_to_v1(data)
 		1:
 			return _migrate_v1_to_v2(data)
+		2:
+			return _migrate_v2_to_v3(data)
 		_:
 			return {}
 
@@ -270,6 +367,39 @@ static func _migrate_v1_to_v2(data: Dictionary) -> Dictionary:
 	return migrated
 
 
+## Task 5 (CTR R7, the Cup): the same rigor _migrate_v1_to_v2 above carries --
+## every save through v2 has a "racing" dict (possibly empty) but NO "cups"
+## key inside it at all, since the Cup did not exist yet. This backfills
+## exactly the empty {} fresh() now authors under that key, before the
+## version number itself moves, the same "backfill the structural gap, THEN
+## bump schema_version" order _migrate_v1_to_v2 already established. A v1
+## profile chains through BOTH migration steps in one migrate() call (see
+## that function's own while-loop) -- _migrate_v1_to_v2 runs first and
+## guarantees "racing" is always a Dictionary by the time this step reads
+## it, so the `is Dictionary` fallback below only ever matters for a
+## hypothetical malformed v2 input, never a genuine v1->v3 chain. Existing
+## per-track best-time entries already inside "racing" are left completely
+## untouched -- this only ever ADDS the one new reserved key, mirroring
+## _migrate_v1_to_v2's own "backfill one thing, touch nothing else" shape.
+## See test_save_model.gd's test_migrate_v2_to_v3_backfills_empty_cups_
+## without_touching_existing_racing_bests and test_save_service.gd's own
+## v1->v3 and v2->v3 chain round-trip proofs for the scratch-verification
+## CLAUDE.md's save-migration rigor rule demands.
+static func _migrate_v2_to_v3(data: Dictionary) -> Dictionary:
+	var migrated := data.duplicate(true)
+	var racing_value: Variant = migrated.get("racing")
+	var racing: Dictionary = (
+		(racing_value as Dictionary).duplicate(true)
+		if racing_value is Dictionary
+		else {}
+	)
+	if not racing.get(_RACING_CUPS_KEY) is Dictionary:
+		racing[_RACING_CUPS_KEY] = {}
+	migrated["racing"] = racing
+	migrated["schema_version"] = 3
+	return migrated
+
+
 static func _normalize_known_integer_fields(data: Dictionary) -> void:
 	data["schema_version"] = int(data["schema_version"])
 	data["lifetime_wumpa"] = int(data["lifetime_wumpa"])
@@ -287,6 +417,14 @@ static func _normalize_known_integer_fields(data: Dictionary) -> void:
 			record["last_missed_crate_ids"] = normalized_ids
 	var racing: Dictionary = data["racing"]
 	for track_id: Variant in racing:
+		# Task 5 (CTR R7, the Cup): "cups" is not a per-track record -- see
+		# validate()'s own doc on this same reserved key. Indexing it as one
+		# here (best_total_time_ms/best_lap_time_ms) would read a missing key
+		# off a real Dictionary, which is a Godot runtime error, not a silent
+		# no-op -- skipped the same way validate()'s own per-track loop skips
+		# it, and normalized separately immediately below instead.
+		if String(track_id) == _RACING_CUPS_KEY:
+			continue
 		var racing_entry: Dictionary = racing[track_id]
 		racing_entry["best_total_time_ms"] = int(
 			racing_entry["best_total_time_ms"]
@@ -294,6 +432,15 @@ static func _normalize_known_integer_fields(data: Dictionary) -> void:
 		racing_entry["best_lap_time_ms"] = int(
 			racing_entry["best_lap_time_ms"]
 		)
+	var cups_value: Variant = racing.get(_RACING_CUPS_KEY)
+	if cups_value is Dictionary:
+		var cups: Dictionary = cups_value
+		for cup_id: Variant in cups:
+			var cup_record: Dictionary = cups[cup_id]
+			if cup_record.has("best_placement"):
+				cup_record["best_placement"] = int(
+					cup_record["best_placement"]
+				)
 
 
 static func _validate_level_record(record: Dictionary) -> bool:
@@ -336,6 +483,19 @@ static func _validate_racing_record(record: Dictionary) -> bool:
 	if not _is_non_negative_integer(record.get("best_lap_time_ms")):
 		return false
 	return true
+
+
+## Task 5 (CTR R7, the Cup): best_placement follows the same "0 means never
+## set" convention every other best-* field in this file already uses (see
+## _validate_racing_record()/_validate_level_record()'s own best_relic_
+## time_ms/best_total_time_ms/best_lap_time_ms checks, all plain _is_non_
+## negative_integer() with no lower bound beyond zero) -- NOT a stricter
+## ">= 1" floor. A real placement is always written as >= 1 by construction
+## (improved_cup_record() only ever raises placement, never lowers it to 0),
+## so this stays consistent with the rest of the file rather than inventing
+## a one-off rule for this one field.
+static func _validate_cup_record(record: Dictionary) -> bool:
+	return _is_non_negative_integer(record.get("best_placement"))
 
 
 ## The smallest finite, non-negative value in lap_times_s, or -1.0 if none

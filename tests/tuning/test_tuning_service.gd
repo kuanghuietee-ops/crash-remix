@@ -3055,6 +3055,226 @@ func test_old_race_override_backfills_camera_look_height_m() -> void:
 	)
 
 
+# CTR R7 Task 1 (discharges spec debt #2): pad_boost_s/pad_refire_cooldown_s/
+# jump_pad_velocity_scale were added to the already-shipped race section as
+# ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's second &"race" entry) --
+# mirrors test_old_race_override_backfills_camera_look_height_m's own single-
+# field shape immediately above and test_old_ai_override_backfills_the_apex_
+# damping_personality_field_group's own multi-field cohort shape further
+# down: an override.tres saved before this task exists would be missing all
+# three at once (every field still reading its script default, since
+# ResourceSaver omits default-valued fields), and migration must restore all
+# three together while leaving an unrelated, already-edited field
+# (lap_count) untouched.
+func test_old_race_override_backfills_the_pad_tuning_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var new_fields: Array[StringName] = [
+		&"pad_boost_s",
+		&"pad_refire_cooldown_s",
+		&"jump_pad_velocity_scale",
+	]
+	for field: StringName in new_fields:
+		assert_true(
+			_exported_property_names(authored.race).has(field),
+			"the pad tuning fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := RaceTuning.new()
+	for field: StringName in new_fields:
+		stale.race.set(field, defaults.get(field))
+	stale.race.lap_count = 5.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in new_fields:
+		assert_eq(
+			migrated.race.get(field),
+			authored.race.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.race.lap_count,
+		5.0,
+		0.001,
+		"migration must preserve existing race edits"
+	)
+
+
+# CTR R7 Task 5 (the Cup): cup_points_place1..6 were added to the already-
+# shipped race section as ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's third
+# &"race" entry) -- mirrors test_old_race_override_backfills_the_pad_tuning_
+# field_group's own shape immediately above: an override.tres saved before
+# this task exists would be missing all six at once (every field still
+# reading its script default, since ResourceSaver omits default-valued
+# fields), and migration must restore all six together while leaving an
+# unrelated, already-edited field (lap_count) untouched.
+func test_old_race_override_backfills_the_cup_points_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var new_fields: Array[StringName] = [
+		&"cup_points_place1",
+		&"cup_points_place2",
+		&"cup_points_place3",
+		&"cup_points_place4",
+		&"cup_points_place5",
+		&"cup_points_place6",
+	]
+	for field: StringName in new_fields:
+		assert_true(
+			_exported_property_names(authored.race).has(field),
+			"the cup points fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := RaceTuning.new()
+	for field: StringName in new_fields:
+		stale.race.set(field, defaults.get(field))
+	stale.race.lap_count = 5.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in new_fields:
+		assert_eq(
+			migrated.race.get(field),
+			authored.race.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.race.lap_count,
+		5.0,
+		0.001,
+		"migration must preserve existing race edits"
+	)
+
+
+# CTR R7 Task 6 (stretch, time-trial ghost): ghost_keyframe_interval_s/
+# ghost_max_keyframes were added to the already-shipped race section as ONE
+# cohort (LEGACY_FIELD_GROUPS_BY_SECTION's fourth &"race" entry) -- mirrors
+# test_old_race_override_backfills_the_cup_points_field_group's own shape
+# immediately above: an override.tres saved before this task exists would be
+# missing both at once (every field still reading its script default, since
+# ResourceSaver omits default-valued fields), and migration must restore
+# both together while leaving an unrelated, already-edited field (lap_count)
+# untouched.
+func test_old_race_override_backfills_the_ghost_tuning_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var new_fields: Array[StringName] = [
+		&"ghost_keyframe_interval_s",
+		&"ghost_max_keyframes",
+	]
+	for field: StringName in new_fields:
+		assert_true(
+			_exported_property_names(authored.race).has(field),
+			"the ghost tuning fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := RaceTuning.new()
+	for field: StringName in new_fields:
+		stale.race.set(field, defaults.get(field))
+	stale.race.lap_count = 5.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in new_fields:
+		assert_eq(
+			migrated.race.get(field),
+			authored.race.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.race.lap_count,
+		5.0,
+		0.001,
+		"migration must preserve existing race edits"
+	)
+
+
+# CTR R7 Task 6: ghost_max_keyframes is a float field with INTEGER (count)
+# semantics, the same hazard test_race_lap_count_rejects_values_below_one
+# names for lap_count -- ghost_recorder.gd reads it via
+# int(_race_tuning.ghost_max_keyframes) as its hard sampling ceiling (see
+# ghost_recorder.gd's own class doc), so a panel-authored 0.5 would truncate
+# to a 0-keyframe cap and silently record nothing on every solo run.
+# test_race_tuning_rejects_nonpositive_fields above only proves the <= 0.0
+# case; this proves the stricter < 1.0 rejection lap_count already gets.
+func test_race_ghost_max_keyframes_rejects_values_below_one() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var race := service.get("catalog").get("race") as Resource
+	assert_not_null(race)
+	if race == null:
+		return
+	var authored: float = race.get("ghost_max_keyframes")
+
+	race.set("ghost_max_keyframes", 0.5)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"ghost_max_keyframes below 1.0 must be rejected -- it truncates to a dead 0-keyframe cap"
+	)
+
+	race.set("ghost_max_keyframes", 1.0)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"ghost_max_keyframes of exactly 1.0 must remain valid"
+	)
+
+	race.set("ghost_max_keyframes", authored)
+	assert_true(service.call("catalog_is_usable"))
+
+
 # CTR R6 Task 3: the six kart-body-tint Color fields were added to the
 # already-shipped kart section as ONE cohort (LEGACY_FIELD_GROUPS_BY_SECTION's
 # &"kart" entry), mirroring test_old_race_override_backfills_camera_look_
@@ -3115,6 +3335,77 @@ func test_old_kart_override_backfills_the_body_tint_field_group() -> void:
 		30.0,
 		0.001,
 		"migration must preserve existing kart edits"
+	)
+
+
+# CTR R7 Task 2: bump_impulse_scale/bump_min_relative_speed_mps/bump_
+# lateral_cap_mps were added to the already-shipped kart section as their
+# OWN cohort (LEGACY_FIELD_GROUPS_BY_SECTION's &"kart" entry, second array
+# -- a SEPARATE group from the body-tint cohort immediately above, not
+# folded into it), mirroring test_old_ai_override_backfills_the_recovery_
+# field_group_independently_of_the_apex_cohort's own shape further down:
+# an override.tres saved after CTR R6 Task 3 but before this task would
+# already have the body-tint fields (real, edited values) and be missing
+# only these three, and migration must restore all three together while
+# leaving BOTH an unrelated already-edited field (top_speed_mps) AND the
+# already-migrated tint cohort untouched.
+func test_old_kart_override_backfills_the_bump_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var bump_fields: Array[StringName] = [
+		&"bump_impulse_scale",
+		&"bump_min_relative_speed_mps",
+		&"bump_lateral_cap_mps",
+	]
+	for field: StringName in bump_fields:
+		assert_true(
+			_exported_property_names(authored.kart).has(field),
+			"the bump fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := KartTuning.new()
+	for field: StringName in bump_fields:
+		stale.kart.set(field, defaults.get(field))
+	# An edited tint (the OLDER, already-migrated cohort) plus an unrelated
+	# edited field -- both must survive this migration untouched.
+	stale.kart.kart_tint_player = Color(0.1, 0.2, 0.3, 1.0)
+	stale.kart.top_speed_mps = 30.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in bump_fields:
+		assert_eq(
+			migrated.kart.get(field),
+			authored.kart.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.kart.top_speed_mps,
+		30.0,
+		0.001,
+		"migration must preserve existing kart edits"
+	)
+	assert_eq(
+		migrated.kart.kart_tint_player,
+		Color(0.1, 0.2, 0.3, 1.0),
+		"migration must preserve the already-migrated tint cohort untouched"
 	)
 
 
@@ -3244,7 +3535,20 @@ const AI_STRICTLY_POSITIVE_FIELDS_EXCLUDING_FLAGS: Array[StringName] = [
 	&"apex_offset_max_m",
 	&"apex_entry_lookahead_m",
 	&"personality_aggression_step",
+	# CTR R7 Task 2b (OPERATOR PRIORITY): recovery_trigger_s (a duration) and
+	# recovery_max_attempts (a count) -- same "strictly positive, no upper
+	# bound" shape as respawn_stuck_after_s/respawn_drop_gap_m above.
+	# recovery_heading_error_degrees is NOT here -- it has a real upper bound
+	# (180 degrees) and gets its own dedicated bounded test below, the same
+	# way corner_speed_floor_ratio is excluded from this list.
+	&"recovery_trigger_s",
+	&"recovery_max_attempts",
 ]
+# CTR R7 Task 2b (OPERATOR PRIORITY): bounded to (0.0, 180.0] -- see ai_
+# tuning.gd's own recovery_heading_error_degrees doc comment: Vector3.
+# angle_to's own output range is [0, 180] degrees, so a value above 180
+# could never be exceeded (silently disabling recovery, not loosening it).
+const AI_RECOVERY_HEADING_ERROR_DEGREES_MAX := 180.0
 # Bounded to (0.0, 1.0] -- see AiTuning.corner_speed_floor_ratio's doc
 # comment: it clamps the low end of a multiplier whose high end is fixed at
 # 1.0, so exactly 1.0 must remain valid.
@@ -3282,8 +3586,16 @@ func test_service_catalog_exposes_ai_section() -> void:
 	assert_eq(ai.get("apex_offset_max_m"), 4.0)
 	assert_eq(ai.get("apex_entry_lookahead_m"), 18.0)
 	assert_eq(ai.get("steer_damping"), 0.35)
-	assert_eq(ai.get("personality_aggression_step"), 0.15)
+	# CTR R7 Task 2b (OPERATOR PRIORITY): difficulty pass -- personality_
+	# aggression_step 0.15 -> 0.2 (see task-2b-report.md's own before/after
+	# pace table for the measured justification).
+	assert_eq(ai.get("personality_aggression_step"), 0.2)
 	assert_eq(ai.get("personality_skill_jitter"), 0.08)
+	# CTR R7 Task 2b (OPERATOR PRIORITY): the three new recovery fields, per
+	# the plan's own authored defaults.
+	assert_eq(ai.get("recovery_heading_error_degrees"), 120.0)
+	assert_eq(ai.get("recovery_trigger_s"), 0.6)
+	assert_eq(ai.get("recovery_max_attempts"), 2.0)
 
 
 func test_fingerprint_moves_when_an_ai_value_changes() -> void:
@@ -3328,6 +3640,29 @@ func test_fingerprint_moves_when_apex_offset_max_m_changes() -> void:
 		service.call("fingerprint"),
 		before,
 		"apex_offset_max_m never reaches the tuning fingerprint"
+	)
+
+
+# CTR R7 Task 2b (OPERATOR PRIORITY): a dedicated fingerprint check on the
+# new recovery_trigger_s field -- mirrors the apex_offset_max_m test above
+# (a new field could in principle be missed by a typo'd @export even though
+# the ai section generically reaches the fingerprint).
+func test_fingerprint_moves_when_recovery_trigger_s_changes() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var before: String = service.call("fingerprint")
+
+	ai.set("recovery_trigger_s", float(ai.get("recovery_trigger_s")) + 0.1)
+
+	assert_ne(
+		service.call("fingerprint"),
+		before,
+		"recovery_trigger_s never reaches the tuning fingerprint"
 	)
 
 
@@ -3391,6 +3726,70 @@ func test_old_ai_override_backfills_the_apex_damping_personality_field_group() -
 		3.3,
 		0.0001,
 		"migration must preserve existing ai edits"
+	)
+
+
+## CTR R7 Task 2b (OPERATOR PRIORITY): recovery_heading_error_degrees/
+## recovery_trigger_s/recovery_max_attempts were added to the already-shipped
+## ai section as their OWN cohort -- mirrors test_old_ai_override_backfills_
+## the_apex_damping_personality_field_group's own shape immediately above,
+## but proves the two cohorts migrate INDEPENDENTLY: an override.tres saved
+## after CTR R6 Task 4 (apex/damping/personality already real, edited
+## values) but before this task would be missing only the three recovery
+## fields -- migration must backfill those three while leaving the OLDER
+## cohort's own already-migrated edit untouched, not re-stamping it back to
+## the authored default.
+func test_old_ai_override_backfills_the_recovery_field_group_independently_of_the_apex_cohort() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var recovery_fields: Array[StringName] = [
+		&"recovery_heading_error_degrees",
+		&"recovery_trigger_s",
+		&"recovery_max_attempts",
+	]
+	for field: StringName in recovery_fields:
+		assert_true(
+			_exported_property_names(authored.ai).has(field),
+			"the recovery fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := AiTuning.new()
+	for field: StringName in recovery_fields:
+		stale.ai.set(field, defaults.get(field))
+	# The OLDER apex/damping/personality cohort already carries a real,
+	# migrated edit on this stale override -- the point of this test.
+	stale.ai.apex_offset_max_m = 7.7
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in recovery_fields:
+		assert_eq(
+			migrated.ai.get(field),
+			authored.ai.get(field),
+			"an override saved before this task must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.ai.apex_offset_max_m,
+		7.7,
+		0.0001,
+		"migrating the NEW recovery cohort must not disturb the OLDER apex cohort's own already-migrated edit"
 	)
 
 
@@ -3504,6 +3903,41 @@ func test_ai_corner_speed_floor_ratio_is_bounded_to_unit_interval_inclusive() ->
 			"ai.%s must accept exactly 1.0" % property_name
 		)
 		ai.set(property_name, authored_value)
+	assert_true(service.call("catalog_is_usable"))
+
+
+## CTR R7 Task 2b (OPERATOR PRIORITY): recovery_heading_error_degrees is
+## bounded to (0.0, 180.0] -- mirrors test_ai_corner_speed_floor_ratio_is_
+## bounded_to_unit_interval_inclusive's own shape (a field whose high end IS
+## a legal value, unlike the rubber-band-style exclusive ratios below) just
+## against the real 180-degree ceiling instead of 1.0.
+func test_ai_recovery_heading_error_degrees_is_bounded_to_the_valid_angle_range() -> void:
+	var service: RefCounted = _loaded_service()
+	if service == null:
+		return
+	var ai := service.get("catalog").get("ai") as Resource
+	assert_not_null(ai)
+	if ai == null:
+		return
+	var authored_value: Variant = ai.get("recovery_heading_error_degrees")
+
+	ai.set("recovery_heading_error_degrees", AI_RECOVERY_HEADING_ERROR_DEGREES_MAX + 0.01)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"ai.recovery_heading_error_degrees must reject values above 180.0"
+	)
+	ai.set("recovery_heading_error_degrees", AI_RECOVERY_HEADING_ERROR_DEGREES_MAX)
+	assert_true(
+		service.call("catalog_is_usable"),
+		"ai.recovery_heading_error_degrees must accept exactly 180.0"
+	)
+	ai.set("recovery_heading_error_degrees", 0.0)
+	assert_false(
+		service.call("catalog_is_usable"),
+		"ai.recovery_heading_error_degrees must reject zero"
+	)
+
+	ai.set("recovery_heading_error_degrees", authored_value)
 	assert_true(service.call("catalog_is_usable"))
 
 

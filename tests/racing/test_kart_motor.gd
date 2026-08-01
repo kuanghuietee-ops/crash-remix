@@ -10,6 +10,7 @@ extends GutTest
 const MOTOR_SCRIPT_PATH := "res://src/racing/kart/kart_motor.gd"
 const TUNING_PATH := "res://data/tuning/racing/kart.tres"
 const ITEM_TUNING_PATH := "res://data/tuning/racing/items.tres"
+const RACE_TUNING_PATH := "res://data/tuning/racing/race.tres"
 
 var _kart: KartTuning
 var _item_tuning: ItemTuning
@@ -747,6 +748,207 @@ func test_hop_reaches_authored_height_under_gravity_within_tolerance() -> void:
 		_kart.hop_height_m,
 		0.01,
 		"the hop's integrated peak height must match hop_height_m"
+	)
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (CTR R7 pads): launch(scale) -- JumpPad's own entry point. Same
+# v0 = sqrt(2 * g * hop_height_m) kinematic identity as hop(), scaled by a
+# caller-supplied multiplier -- mirrors the two hop tests immediately above
+# exactly, plus a scale=1.0 equivalence check and the derived peak-height-
+# scales-with-scale-SQUARED identity (see kart_motor.gd's own Launch doc).
+# ---------------------------------------------------------------------------
+
+
+func test_launch_speed_matches_the_scaled_kinematic_identity() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var scale := 1.6
+
+	motor.call("launch", scale)
+
+	var expected_speed := sqrt(
+		2.0 * _kart.gravity_mps2 * _kart.hop_height_m
+	) * scale
+	assert_almost_eq(
+		float(motor.call("vertical_speed_mps")),
+		expected_speed,
+		0.0001
+	)
+
+
+func test_launch_at_scale_one_matches_a_plain_hop() -> void:
+	var hop_motor := _new_motor()
+	var launch_motor := _new_motor()
+	if hop_motor == null or launch_motor == null:
+		return
+
+	hop_motor.call("hop")
+	launch_motor.call("launch", 1.0)
+
+	assert_almost_eq(
+		float(launch_motor.call("vertical_speed_mps")),
+		float(hop_motor.call("vertical_speed_mps")),
+		0.0001,
+		"launch(1.0) must be identical to a plain hop()"
+	)
+
+
+## Peak height under constant gravity scales with v0 SQUARED, not v0 itself
+## -- a launch at scale=jump_pad_velocity_scale therefore reaches
+## scale^2 * hop_height_m at its apex, not scale * hop_height_m. Derivation:
+## peak_height = v0^2 / (2*g); v0 = scale * sqrt(2*g*h); so
+## peak_height = scale^2 * 2*g*h / (2*g) = scale^2 * h. Proven the same
+## real-integration way test_hop_reaches_authored_height_under_gravity_
+## within_tolerance proves the unscaled case, at RaceTuning's own authored
+## jump_pad_velocity_scale (2.2) against kart.tres's own hop_height_m.
+func test_launch_reaches_scale_squared_times_hop_height_under_gravity() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var race_tuning: RaceTuning = load(RACE_TUNING_PATH)
+	assert_not_null(race_tuning, "race.tres must load -- CTR R7 Task 1 registers jump_pad_velocity_scale")
+	if race_tuning == null:
+		return
+	var scale := race_tuning.jump_pad_velocity_scale
+
+	motor.call("launch", scale)
+
+	var height_m := 0.0
+	var peak_height_m := 0.0
+	var step_s := 0.001
+	# 2s comfortably covers a scale=2.2 launch's much longer hang time than
+	# a plain hop's own ~0.45s (see test_hop_reaches_authored_height_under_
+	# gravity_within_tolerance's own comment) -- continuing to integrate
+	# past the apex is harmless, peak_height_m only ever tracks the max.
+	for _step_index: int in range(2000):
+		var speed_before := float(motor.call("vertical_speed_mps"))
+		height_m += speed_before * step_s
+		peak_height_m = maxf(peak_height_m, height_m)
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+
+	assert_almost_eq(
+		peak_height_m,
+		scale * scale * _kart.hop_height_m,
+		0.05,
+		"a launch's integrated peak height must match scale^2 * hop_height_m"
+	)
+
+
+# ---------------------------------------------------------------------------
+# CTR R7 Task 2 (kart-to-kart contact): apply_bump()'s decaying lateral
+# velocity, summed into velocity() -- see kart_controller.gd's own
+# _process_kart_bumps()/receive_bump() doc for how a real collision computes
+# the vector this motor is handed. These tests exercise the pure-logic decay
+# mechanic in isolation, the same poll-model way every other motor timer
+# here already is (configure once, apply/tick, read state back).
+# ---------------------------------------------------------------------------
+
+
+func test_a_fresh_motor_carries_no_lateral_bump() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_true(
+		lateral.is_zero_approx(),
+		"a fresh motor must start with no lateral bump velocity"
+	)
+
+
+func test_apply_bump_is_summed_into_velocity() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(2.0, 0.0, -3.0)
+	motor.call("apply_bump", bump)
+
+	# Forward speed is still zero (nothing has ticked yet), so velocity()
+	# right after apply_bump() must read exactly the bump vector -- proving
+	# it is SUMMED into the forward term, not replacing it outright.
+	var velocity: Vector3 = motor.call("velocity")
+	assert_almost_eq(velocity.x, bump.x, 0.0001)
+	assert_almost_eq(velocity.z, bump.z, 0.0001)
+
+
+func test_apply_bump_decays_by_exactly_coast_drag_per_tick() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	# Decay is documented to reuse coast_drag_mps2 -- an EXISTING rate field,
+	# not a new tuning literal -- via the identical move_toward(...,0.0,...)
+	# shape every other motor timer already decays with. One tick at the
+	# authored rate must reduce the stored magnitude by EXACTLY coast_drag_
+	# mps2 * delta_s, pinning the specific field reused rather than just
+	# "decays somehow".
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	var step_s := 0.05
+	motor.call("tick", step_s, 0.0, false, false, false, 0)
+
+	var after: Vector3 = motor.call("lateral_bump_mps")
+	assert_almost_eq(
+		after.length(),
+		bump.length() - _kart.coast_drag_mps2 * step_s,
+		0.0001,
+		"lateral bump decay rate must be exactly coast_drag_mps2"
+	)
+
+
+func test_apply_bump_decays_to_exactly_zero_within_a_bounded_time() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	var step_s := 0.05
+	# move_toward() can never overshoot past zero, so ceil(magnitude /
+	# (rate*step)) + 1 ticks is a hard upper bound, not a tuned guess.
+	var ticks := int(ceil(bump.length() / (_kart.coast_drag_mps2 * step_s))) + 1
+	for _tick_index: int in range(ticks):
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_true(
+		lateral.is_zero_approx(),
+		"a decaying bump must reach exactly zero within a bounded number of ticks"
+	)
+
+
+func test_apply_bump_replaces_rather_than_stacks() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("apply_bump", Vector3(1.0, 0.0, 0.0))
+	motor.call("apply_bump", Vector3(0.0, 0.0, 1.0))
+
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_almost_eq(
+		lateral.x,
+		0.0,
+		0.0001,
+		"a fresh apply_bump() call must REPLACE the previous one, not accumulate"
+	)
+	assert_almost_eq(lateral.z, 1.0, 0.0001)
+
+
+func test_decelerate_to_stop_also_decays_the_lateral_bump() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	motor.call("decelerate_to_stop", 0.05, false)
+
+	var after: Vector3 = motor.call("lateral_bump_mps")
+	assert_lt(
+		after.length(),
+		bump.length(),
+		"a frozen kart's own decelerate_to_stop() must still decay a residual bump"
 	)
 
 

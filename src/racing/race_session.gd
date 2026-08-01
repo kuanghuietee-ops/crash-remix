@@ -94,6 +94,42 @@ extends Node3D
 ## merely by the synthetic-ItemBox tests that first proved the plumbing
 ## before any track authored one.
 ##
+## PAD WIRING (Task 1, CTR R7 -- discharges spec debt #2) mirrors the ITEM
+## BOX WIRING shape immediately above almost exactly: BoostPad/JumpPad
+## instances are discovered by TYPE under Track (_discover_boost_pads()/
+## _discover_jump_pads(), the same find_children("*", "Area3D", true,
+## false) scan _discover_gates()/_discover_item_boxes() already use) and
+## this session connects to each one's native body_entered signal itself.
+## Two real differences from item boxes: (1) a PER-PAD bound handler is
+## used (pad.body_entered.connect(_on_boost_pad_body_entered.bind(pad)),
+## the same Callable-equality-guards-against-a-duplicate-connection shape
+## the gate loop above already uses) rather than one shared unbound
+## handler, because -- unlike item-box routing, which only ever needs the
+## ENTERING BODY -- firing a pad also needs to know WHICH pad fired, to
+## call that pad's own try_consume() cooldown gate; and (2) each handler
+## reads _race_tuning.pad_boost_s/jump_pad_velocity_scale itself and calls
+## the entering body's own apply_boost()/launch() directly -- there is no
+## per-kart routing table to look up (mirrors _on_box_body_entered's own
+## "the body passed in by body_entered already IS the kart" shape, not
+## _gate_validators' identity-lookup shape).
+##
+## Gated on _race_started (see _on_gate_body_entered's/_on_box_body_
+## entered's own "Fix round 1, reviewer [LOW-2]" doc: a frozen kart can
+## never physically reach a pad before GO either) -- both pad handlers
+## early-return pre-GO, proven directly the same synthetic-call way
+## test_race_start_flow.gd's own test_gate_crossing_is_a_no_op_pre_go/
+## test_box_pickup_is_a_no_op_pre_go already prove it for gates/boxes.
+##
+## pad.try_consume(body) is called BEFORE the kart method, and its own
+## return value gates whether this session calls apply_boost()/launch() at
+## all -- see boost_pad.gd's own try_consume() doc for why this is a
+## single atomic "check AND claim" call rather than a separate check-then-
+## mark pair. Neither track currently authors any pads (Task 3/4 do) --
+## _discover_boost_pads()/_discover_jump_pads() simply return empty arrays
+## on a pad-less Track, the identical "no boxes authored yet" degrade
+## _discover_item_boxes() already handled the same way before R4 Task 5
+## authored any.
+##
 ## SOLO TIME TRIAL DOES NOT ROLL. spawn_opponents (not a new, separate
 ## exported flag) also gates item rolls: _items_allowed() reads it
 ## directly, so a solo race (spawn_opponents = false, see that field's own
@@ -280,6 +316,49 @@ extends Node3D
 ## dictionaries, the same "public getter, not a private field" shape every
 ## other per-kart stat in this class already uses (standings()/lap_times()/
 ## etc.).
+##
+## GHOST WIRING (Task 6, CTR R7 -- stretch: time-trial ghost). Two lazily-
+## created children -- _ghost_recorder (RefCounted, GhostRecorder) and
+## _ghost_player (Node3D, GhostPlayer, added under this session the first
+## time _ensure_ghost_player() needs one, the SAME lazy-container shape
+## _ai_root/_hazards_root already establish) -- see each class's own doc
+## for the RECORDING/PLAYBACK/FILE FORMAT details this session never
+## touches directly.
+##
+## SOLO-ONLY, BY CONSTRUCTION. Neither ghost object has any "is this solo"
+## flag of its own. configure() decides once: a solo session (spawn_
+## opponents == false) calls _ghost_player.load_for_track(track_id, _race_
+## tuning) (populating it only when a real ghost file exists for this
+## track); an AI-populated session calls _ghost_player.clear() instead, and
+## never calls _ghost_recorder.start() at GO at all (see _start_race()).
+## GhostPlayer.start_replay() is itself a no-op with no keyframes loaded, so
+## an AI race's own ghost player -- always cleared -- can never show
+## anything, with no second flag needed anywhere in either ghost class.
+##
+## CLOCK REUSE. Both ghost objects are fed this session's own already-
+## computed elapsed_s each tick (_ghost_recorder.sample()/_ghost_player.
+## advance(), called from _physics_process right after _elapsed_s += delta_s
+## above) -- see their own class docs' CLOCK sections for why this can never
+## drift from the real race timer/HUD, and is pause-correct for free the
+## same way everything else driven from that identical clock already is.
+##
+## YAW DERIVATION. Sampling reads the kart's own world-facing yaw from
+## global_transform.basis, NOT the (possibly parent-relative) rotation.y
+## property directly -- the same forward-vector-then-signed_angle_to idiom
+## _seed_kart_transform() already uses for spawn placement, kept consistent
+## here rather than assuming this session's own local space always equals
+## world space.
+##
+## WRITE HOOK. save_ghost() is the ONE public entry point GameRoot ever
+## calls (see game_root.gd's own _on_racing_finished() GHOST PERSISTENCE
+## doc) -- called only when THAT tick's finish was a genuine new best TOTAL
+## time, exactly the existing "is_solo && new_best_total" branch that
+## already decides whether to write racing.<track_id> to the profile at
+## all. This session resolves the real user://ghosts/<track_id>.ghost path
+## itself (GhostPlayer.path_for_track(), the one place that string is
+## spelled out) and never pushes louder than a warning on a failed write --
+## a ghost is a disposable replay aid, never authoritative save data, so a
+## failure here must never look like the RACE itself failed.
 
 const RacingInputAdapterType := preload(
 	"res://src/racing/input/racing_input_adapter.gd"
@@ -314,6 +393,10 @@ const CrashCharacterSceneType := preload(
 const LabAssistantCharacterSceneType := preload(
 	"res://assets/models/enemies/SK_lab_assistant.glb"
 )
+# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's own GHOST
+# WIRING section below for how these two are actually driven.
+const GhostRecorderType := preload("res://src/racing/flow/ghost_recorder.gd")
+const GhostPlayerType := preload("res://src/racing/flow/ghost_player.gd")
 
 signal race_finished(total_s: float, lap_times: Array)
 ## Fix round (H1 review): RaceHUD's RETRY button used to call
@@ -322,19 +405,23 @@ signal race_finished(total_s: float, lap_times: Array)
 ## that replaces it never gets configure() called by anyone, since the only
 ## thing that ever called configure() was GameRoot, and GameRoot is now
 ## gone. RaceHUD now only calls request_retry(), which emits this; GameRoot
-## connects to it (see game_root.gd's DEBUG_RACING_LEVEL_ID render branch)
-## and re-drives the exact same _select_level() round-trip the platformer's
-## own working Pause -> Retry path already uses (quit the level, re-enter
-## it), which re-renders and re-configure()s a fresh race scene while
-## GameRoot itself stays alive the whole time.
+## connects to it (see game_root.gd's _render_state() racing render
+## branch, Task 4 CTR R7: keyed off _race_scenes_by_level_id, built from
+## RacingTrackRegistryType.TRACKS) and re-drives the exact same
+## _select_level() round-trip the platformer's own working Pause -> Retry
+## path already uses (quit the level, re-enter it), which re-renders and
+## re-configure()s a fresh race scene while GameRoot itself stays alive
+## the whole time.
 signal retry_requested
 
 ## Task 9 (CTR racing mode, R2): identifies which track this session's best
 ## times are saved under (SaveModel.racing_record()/improved_racing_record()
 ## are keyed by this, not by the debug level id GameRoot dispatches on --
-## see game_root.gd's own DEBUG_RACING_LEVEL_ID doc for why those two ids
-## are kept separate). Set per scene: race_time_trial.tscn authors
-## &"graybox_loop", race_sanity_shores.tscn authors &"sanity_shores". Left
+## see RacingTrackRegistry's own class doc (src/racing/track/track_
+## registry.gd) for why those two ids are kept separate). Set per scene:
+## race_time_trial.tscn authors &"graybox_loop", race_sanity_shores.tscn
+## authors &"sanity_shores", race_temple_twilight.tscn authors
+## &"temple_twilight" (Task 4, CTR R7). Left
 ## empty ("") on any instance that never sets it (e.g. a bare test fixture),
 ## which GameRoot treats as "nothing to save" rather than guessing.
 @export var track_id: StringName = &""
@@ -376,6 +463,11 @@ var _gates: Array[CheckpointGate] = []
 var _item_boxes: Array[ItemBox] = []
 var _item_rng := RandomNumberGenerator.new()
 
+# Task 1 (CTR R7, discharges spec debt #2): see the class doc's PAD WIRING
+# section.
+var _boost_pads: Array[BoostPad] = []
+var _jump_pads: Array[JumpPad] = []
+
 var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
@@ -404,6 +496,14 @@ var _ai_agents: Array[AiKartAgentType] = []
 # configure()/retry never leaves a PREVIOUS race's still-flying hazards
 # parented under a fresh one (see configure()'s own defensive clear).
 var _hazards_root: Node3D
+
+# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's own GHOST
+# WIRING section. _ghost_recorder is a plain RefCounted, always present;
+# _ghost_player is lazily created + add_child()ed by _ensure_ghost_player()
+# the first time configure() needs one, the same lazy-container shape
+# _ai_root/_hazards_root establish one section up.
+var _ghost_recorder: GhostRecorderType = GhostRecorderType.new()
+var _ghost_player: GhostPlayerType
 
 # Cross-kart-progress "seam ruling" (Task 5 binding contract 2): the ONLY
 # thing gate crossings do per body is advance THAT body's own LapValidator,
@@ -473,6 +573,22 @@ func configure(catalog: GameplayTuning) -> void:
 	_input_tuning = catalog.input
 	_ai_tuning = catalog.ai
 	_item_tuning = catalog.items
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's GHOST
+	# WIRING section. _ghost_recorder.configure() always runs (cheap, and
+	# _start_race() below is the thing that actually gates recording to
+	# solo sessions only); _ghost_player is populated ONLY for a solo
+	# session with a real ghost file for this track, cleared otherwise --
+	# that single branch is this session's entire "is this solo" contract
+	# for the ghost feature, nothing further downstream needs its own copy
+	# of that check.
+	_ghost_recorder.configure(_race_tuning)
+	var ghost_player := _ensure_ghost_player()
+	ghost_player.configure_visual(catalog.phase)
+	if spawn_opponents:
+		ghost_player.clear()
+	else:
+		ghost_player.load_for_track(track_id, _race_tuning)
 
 	# R4 Task 3: see the class doc's ITEM RNG section -- re-seeded fresh on
 	# every configure() (including a re-configure/retry) so a fixed non-zero
@@ -597,6 +713,23 @@ func configure(catalog: GameplayTuning) -> void:
 		if not box.body_entered.is_connected(_on_box_body_entered):
 			box.body_entered.connect(_on_box_body_entered)
 
+	# Task 1 (CTR R7, discharges spec debt #2): see the class doc's PAD
+	# WIRING section. A PER-PAD bound handler is required here (unlike the
+	# item-box loop just above) -- see that section's own doc for why.
+	_boost_pads = _discover_boost_pads()
+	for boost_pad: BoostPad in _boost_pads:
+		boost_pad.call("configure", _race_tuning)
+		var boost_handler := _on_boost_pad_body_entered.bind(boost_pad)
+		if not boost_pad.body_entered.is_connected(boost_handler):
+			boost_pad.body_entered.connect(boost_handler)
+
+	_jump_pads = _discover_jump_pads()
+	for jump_pad: JumpPad in _jump_pads:
+		jump_pad.call("configure", _race_tuning)
+		var jump_handler := _on_jump_pad_body_entered.bind(jump_pad)
+		if not jump_pad.body_entered.is_connected(jump_handler):
+			jump_pad.body_entered.connect(jump_handler)
+
 	# Task 5: player's own SpineFollower (binding contract 3) and the
 	# body->validator routing table (binding contract 2's "gates route by
 	# body identity") must both be ready before _spawn_ai_karts() below --
@@ -682,6 +815,20 @@ func gate_count() -> int:
 ## inferring it from the absence of a crash.
 func item_box_count() -> int:
 	return _item_boxes.size()
+
+
+## How many BoostPad/JumpPad instances were discovered under Track at
+## configure() time -- exposed the same "prove discovery, not just absence
+## of a crash" reason item_box_count() is (see its own doc immediately
+## above). Both real tracks currently author zero (Task 3/4 add some) --
+## these simply read 0 on either until then, the same pad-less degrade the
+## class doc's own PAD WIRING section documents.
+func boost_pad_count() -> int:
+	return _boost_pads.size()
+
+
+func jump_pad_count() -> int:
+	return _jump_pads.size()
 
 
 ## Gates validated toward the lap currently in progress -- a thin
@@ -922,6 +1069,29 @@ func present_best_times(payload: Dictionary) -> void:
 		_hud.call("present_best_times", payload)
 
 
+## Task 6 (CTR R7, stretch: time-trial ghost): the ONE public entry point
+## GameRoot ever calls for the ghost feature -- see the class doc's own
+## WRITE HOOK section and game_root.gd's _on_racing_finished() GHOST
+## PERSISTENCE doc for exactly when (only a genuine new best TOTAL time on
+## a solo session -- the same condition that already gates the profile's
+## own racing.<track_id> write). A no-op whenever _ghost_recorder recorded
+## nothing at all (an AI race never starts it -- see _start_race() -- so
+## this is also this method's own solo-only guard, no separate flag
+## needed) -- never pushes louder than a warning on a failed write, since a
+## missing/stale ghost must never look like the race itself failed.
+func save_ghost() -> void:
+	if not _ghost_recorder.has_keyframes():
+		return
+	var write_error := _ghost_recorder.save_to_file(
+		GhostPlayerType.path_for_track(track_id)
+	)
+	if write_error != OK:
+		push_warning(
+			"Ghost file was not saved for %s: %s"
+			% [track_id, error_string(write_error)]
+		)
+
+
 ## Live tuning refresh (M2 fix-wave): the racing counterpart to
 ## LevelSession.refresh_tuning() / phase0_game.gd's refresh_tuning() -- see
 ## game_root.gd's _refresh_active_level_tuning(), which now has a racing
@@ -970,6 +1140,21 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	for box: ItemBox in _item_boxes:
 		if is_instance_valid(box):
 			box.call("configure", _item_tuning, _fx_tuning)
+	# Task 1 (CTR R7, discharges spec debt #2): same "provably live" reason
+	# as the box loop immediately above -- pad_boost_s/pad_refire_cooldown_s/
+	# jump_pad_velocity_scale live on _race_tuning, just reassigned a few
+	# lines up, so every discovered pad's own cached _tuning reference must
+	# be refreshed too or it keeps reading the PRE-refresh RaceTuning
+	# forever. BoostPad/JumpPad.configure() is likewise idempotent (it only
+	# ever touches _tuning, never _elapsed_s or the cooldown Dictionary --
+	# see either script's own configure() doc), so re-running it here mid-
+	# race never resets an in-flight cooldown.
+	for boost_pad: BoostPad in _boost_pads:
+		if is_instance_valid(boost_pad):
+			boost_pad.call("configure", _race_tuning)
+	for jump_pad: JumpPad in _jump_pads:
+		if is_instance_valid(jump_pad):
+			jump_pad.call("configure", _race_tuning)
 
 
 ## R4 Task 4 (item 1, hit-routing foundation): the ONE place any hit source
@@ -1076,6 +1261,20 @@ func _ensure_hazards_root() -> Node3D:
 		_hazards_root.name = "ItemHazards"
 		add_child(_hazards_root)
 	return _hazards_root
+
+
+## Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's GHOST
+## WIRING section. Mirrors _ensure_hazards_root()'s own lazy-create-once
+## shape -- this session is always already inside the live tree by the time
+## configure() runs (GameRoot add_child()s a fresh race scene BEFORE
+## calling configure(), see game_root.gd's own doc), so add_child() here
+## fires GhostPlayer's own _ready() synchronously, before configure() can
+## reach any further call on it.
+func _ensure_ghost_player() -> GhostPlayerType:
+	if _ghost_player == null:
+		_ghost_player = GhostPlayerType.new()
+		add_child(_ghost_player)
+	return _ghost_player
 
 
 ## Spawns at the launcher's own position/facing (no offset -- see missile.
@@ -1207,6 +1406,24 @@ func _physics_process(delta_s: float) -> void:
 	# excludes paused time -- see elapsed_s()'s own class-doc TIMER section.
 	_elapsed_s += delta_s
 	_route_input()
+	# Task 6 (CTR R7, stretch: time-trial ghost) -- see the class doc's
+	# GHOST WIRING/CLOCK REUSE section. Both calls are no-ops unless this
+	# is genuinely a solo session with recording/replay actually active;
+	# is_recording() is what makes the sample() call itself the ONLY place
+	# "is this session solo" is re-checked per tick (start() is only ever
+	# reached from _start_race() when not spawn_opponents, see its own
+	# doc), so this line needs no spawn_opponents check of its own.
+	if _ghost_recorder.is_recording():
+		var ghost_kart_forward := -_kart.global_transform.basis.z
+		var ghost_kart_yaw_degrees := rad_to_deg(
+			Vector3.FORWARD.signed_angle_to(ghost_kart_forward, Vector3.UP)
+		)
+		_ghost_recorder.sample(
+			_elapsed_s,
+			_kart.global_position,
+			ghost_kart_yaw_degrees
+		)
+	_ghost_player.advance(_elapsed_s)
 	# Fix-wave LOW-6: _update_wrong_way() and _update_player_follower() each
 	# used to call _spine.progress_for_position(_kart.global_position)
 	# independently -- the same projection, computed twice a tick for no
@@ -1256,6 +1473,15 @@ func _start_race() -> void:
 			_kart.call("set_run_active", true)
 	for ai_kart: CharacterBody3D in _ai_karts:
 		ai_kart.call("set_run_active", true)
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): recording only ever begins
+	# for a solo session -- see the class doc's GHOST WIRING section. The
+	# ghost player's own start_replay() is always safe to call regardless
+	# (a no-op with nothing loaded, see its own doc), so no matching
+	# spawn_opponents guard is needed on that side.
+	if not spawn_opponents:
+		_ghost_recorder.start()
+	_ghost_player.start_replay()
 
 
 func countdown_phase() -> StringName:
@@ -1548,6 +1774,54 @@ func _discover_item_boxes() -> Array[ItemBox]:
 	return result
 
 
+func _discover_boost_pads() -> Array[BoostPad]:
+	var result: Array[BoostPad] = []
+	for candidate: Node in _track.find_children("*", "Area3D", true, false):
+		if candidate is BoostPad:
+			result.append(candidate as BoostPad)
+	return result
+
+
+func _discover_jump_pads() -> Array[JumpPad]:
+	var result: Array[JumpPad] = []
+	for candidate: Node in _track.find_children("*", "Area3D", true, false):
+		if candidate is JumpPad:
+			result.append(candidate as JumpPad)
+	return result
+
+
+## See the class doc's PAD WIRING section. `pad` is THIS specific pad (bound
+## at connect time, see configure()'s own pad-wiring loop) -- try_consume()
+## is called on IT, never a different pad the same kart might also be
+## sitting in, so each pad's own cooldown stays independent of every other
+## one. A body with no apply_boost() method (a stray non-kart Area3D/body,
+## or a bare test fixture) is silently ignored rather than erroring, the
+## same shape _on_box_body_entered()'s own item_slot() check already uses.
+func _on_boost_pad_body_entered(body: Node, pad: BoostPad) -> void:
+	# Fix round 1, reviewer [LOW-2]-style pre-GO gate -- same structural
+	# reason as _on_gate_body_entered()/_on_box_body_entered() above: a
+	# frozen kart can never physically reach a pad before GO either.
+	if not _race_started:
+		return
+	if body == null or not is_instance_valid(body) or not body.has_method("apply_boost"):
+		return
+	if not pad.try_consume(body):
+		return
+	body.call("apply_boost", _race_tuning.pad_boost_s)
+
+
+## See _on_boost_pad_body_entered()'s own doc immediately above -- identical
+## shape, launch() in place of apply_boost().
+func _on_jump_pad_body_entered(body: Node, pad: JumpPad) -> void:
+	if not _race_started:
+		return
+	if body == null or not is_instance_valid(body) or not body.has_method("launch"):
+		return
+	if not pad.try_consume(body):
+		return
+	body.call("launch", _race_tuning.jump_pad_velocity_scale)
+
+
 ## Binding contract 3: player finish placement = 1 + the number of AI karts
 ## whose own SpineFollower total_progress_m() exceeds the player's, sampled
 ## at this exact finish instant -- seam-safe by construction since both
@@ -1587,6 +1861,17 @@ func _finish_race(now_elapsed: float) -> void:
 
 	for agent: AiKartAgentType in _ai_agents:
 		agent.set_physics_process(false)
+
+	# Task 6 (CTR R7, stretch: time-trial ghost): recording stops here so
+	# save_ghost() (called afterward, by GameRoot, ONLY on a genuine new
+	# best -- see the class doc's WRITE HOOK section) persists exactly the
+	# keyframes captured between GO and this finish, never anything
+	# appended post-race. The ghost's own replay is also force-hidden here
+	# even if it had not yet reached its own last keyframe (e.g. this run
+	# beat the ghost it was racing against) -- see ghost_player.gd's own
+	# stop_replay() doc.
+	_ghost_recorder.stop()
+	_ghost_player.stop_replay()
 
 	race_finished.emit(_final_elapsed_s, _lap_times.duplicate())
 

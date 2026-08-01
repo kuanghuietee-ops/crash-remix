@@ -1,0 +1,15 @@
+{
+  "schema_version": 3,
+  "levels": {},
+  "lifetime_wumpa": 5,
+  "boss_defeated": {
+    "papu_papu": false
+  },
+  "racing": {
+    "cups": {
+      "island_cup": {
+        "best_placement": -1
+      }
+    }
+  }
+}

@@ -108,6 +108,38 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"camera_look_height_m",
 		],
+		# CTR R7 Task 1 (discharges spec debt #2): pad_boost_s/pad_refire_
+		# cooldown_s/jump_pad_velocity_scale added to the already-shipped
+		# race section as ONE cohort -- mirrors camera_look_height_m's own
+		# single-field entry immediately above and kart's own body-tint
+		# entry below (an override.tres saved before this task exists
+		# would be missing all three at once, never some subset).
+		[
+			&"pad_boost_s",
+			&"pad_refire_cooldown_s",
+			&"jump_pad_velocity_scale",
+		],
+		# CTR R7 Task 5 (the Cup): cup_points_place1..6 added to the already-
+		# shipped race section as ONE cohort, mirroring the pad cohort
+		# immediately above -- an override.tres saved before this task exists
+		# would be missing all six at once, never some subset.
+		[
+			&"cup_points_place1",
+			&"cup_points_place2",
+			&"cup_points_place3",
+			&"cup_points_place4",
+			&"cup_points_place5",
+			&"cup_points_place6",
+		],
+		# CTR R7 Task 6 (stretch, time-trial ghost): ghost_keyframe_interval_s/
+		# ghost_max_keyframes added to the already-shipped race section as ONE
+		# cohort, mirroring the cup-points cohort immediately above -- an
+		# override.tres saved before this task exists would be missing both at
+		# once, never some subset.
+		[
+			&"ghost_keyframe_interval_s",
+			&"ghost_max_keyframes",
+		],
 	],
 	# CTR R6 Task 3: kart-body tint fields, added to the EXISTING kart
 	# section (unlike fx's own brand-new-section shape, see fx_tuning.gd's
@@ -123,6 +155,22 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"kart_tint_slot_4",
 			&"kart_tint_slot_5",
 		],
+		# CTR R7 Task 2: kart-to-kart contact fields, added to the already-
+		# shipped kart section as their OWN cohort -- a SEPARATE array entry
+		# from the body-tint cohort above, not folded into it, because the
+		# two shipped in different tasks (mirrors ai's own recovery cohort
+		# above, added separately from its own earlier apex/damping/
+		# personality cohort for the identical reason): an override.tres
+		# saved after CTR R6 Task 3 but before this task would already have
+		# the body-tint fields (real, edited values) and be missing only
+		# these three -- migrating them as one combined group would
+		# silently re-stamp the OLDER cohort's already-migrated values back
+		# to authored defaults instead of leaving them untouched.
+		[
+			&"bump_impulse_scale",
+			&"bump_min_relative_speed_mps",
+			&"bump_lateral_cap_mps",
+		],
 	],
 	# CTR R6 Task 4: apex/damping/personality fields, added to the already-
 	# shipped ai section as ONE cohort -- mirrors kart's own body-tint entry
@@ -135,6 +183,21 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"steer_damping",
 			&"personality_aggression_step",
 			&"personality_skill_jitter",
+		],
+		# CTR R7 Task 2b (OPERATOR PRIORITY): recovery fields, added to the
+		# already-shipped ai section as their OWN cohort -- a SEPARATE array
+		# entry from the apex/damping/personality cohort above, not folded
+		# into it, because the two shipped in different tasks: an
+		# override.tres saved after CTR R6 Task 4 but before this task would
+		# already have the apex/damping/personality fields (real, edited
+		# values) and be missing only these three -- migrating them as one
+		# combined group would silently re-stamp the OLDER cohort's already-
+		# migrated values back to authored defaults instead of leaving them
+		# untouched.
+		[
+			&"recovery_heading_error_degrees",
+			&"recovery_trigger_s",
+			&"recovery_max_attempts",
 		],
 	],
 	# CTR R6 Task 5: three new items (bomb, TNT stick, triple turbo) plus
@@ -598,6 +661,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or kart.spin_out_speed_keep_ratio <= 0.0
 		or kart.spin_out_speed_keep_ratio > 1.0
 		or kart.invulnerable_after_hit_s <= 0.0
+		# CTR R7 Task 2 (kart-to-kart contact): every field strictly
+		# positive, same default rule as the rest of this section -- none of
+		# the three is a normalized ratio (bump_impulse_scale is a plain
+		# multiplier, not bounded to [0,1]), so no additional upper-bound
+		# clause is needed the way steer_speed_falloff/boost_window_shrink_
+		# factor/spin_out_speed_keep_ratio above each carry one.
+		or kart.bump_impulse_scale <= 0.0
+		or kart.bump_min_relative_speed_mps <= 0.0
+		or kart.bump_lateral_cap_mps <= 0.0
 		# CTR R6 Task 3: the same alpha-only Color bound fx.spark_color_
 		# stage1/2/3 already use below (RGB is unbounded/HDR-capable, only
 		# alpha has real meaning here -- a zero-alpha tint would make
@@ -641,6 +713,32 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# would aim the camera at or below the kart's own origin instead
 		# of a point above it.
 		or race.camera_look_height_m <= 0.0
+		# Task 1 (CTR R7, pads): all three are strictly positive -- a
+		# zero/negative pad_boost_s or jump_pad_velocity_scale would make
+		# a pad actively HARMFUL (a boost pad that slows a kart down, a
+		# jump pad that yanks it into the floor), and a zero/negative
+		# pad_refire_cooldown_s would let a single pass through a pad
+		# refire every physics tick it stays overlapped.
+		or race.pad_boost_s <= 0.0
+		or race.pad_refire_cooldown_s <= 0.0
+		or race.jump_pad_velocity_scale <= 0.0
+		# Task 5 (CTR R7, the Cup): a zero/negative placement value would let
+		# CupSession award no points (or NEGATIVE points) for a finishing
+		# position, silently breaking the whole standings comparison.
+		or race.cup_points_place1 <= 0.0
+		or race.cup_points_place2 <= 0.0
+		or race.cup_points_place3 <= 0.0
+		or race.cup_points_place4 <= 0.0
+		or race.cup_points_place5 <= 0.0
+		or race.cup_points_place6 <= 0.0
+		# Task 6 (CTR R7, stretch: time-trial ghost): a zero/negative interval
+		# would make ghost_recorder.gd sample every physics tick forever (or
+		# never advance its own next-sample threshold), and -- the same
+		# integer-semantics hazard lap_count's own doc names -- a
+		# ghost_max_keyframes below 1.0 truncates to a 0-keyframe cap via
+		# int(), silently recording nothing on every solo run.
+		or race.ghost_keyframe_interval_s <= 0.0
+		or race.ghost_max_keyframes < 1.0
 	):
 		return false
 
@@ -690,6 +788,18 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or ai.personality_aggression_step <= 0.0
 		or ai.personality_skill_jitter <= 0.0
 		or ai.personality_skill_jitter >= 1.0
+		# CTR R7 Task 2b (OPERATOR PRIORITY): recovery_trigger_s/recovery_
+		# max_attempts are plain duration/count fields, same "strictly
+		# positive, no upper bound" shape as respawn_stuck_after_s/
+		# respawn_drop_gap_m above. recovery_heading_error_degrees is
+		# tightened to (0.0, 180.0] -- see ai_tuning.gd's own doc comment:
+		# Vector3.angle_to's own output range is [0, 180] degrees, so a
+		# value above 180 could never be exceeded (silently disabling
+		# recovery, not loosening it).
+		or ai.recovery_heading_error_degrees <= 0.0
+		or ai.recovery_heading_error_degrees > 180.0
+		or ai.recovery_trigger_s <= 0.0
+		or ai.recovery_max_attempts <= 0.0
 	):
 		return false
 

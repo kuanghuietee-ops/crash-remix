@@ -140,11 +140,26 @@ start.
    `KartMotor.is_spinning_out()` for the whole `spin_out_duration_s` stun, at
    the controller (`kart_controller.gd`), not the drift FSM. See
    `tests/racing/test_kart_controller.gd`'s R4 Task 1 section.
-2. Boost pads / jump pads are listed under "Kart feel" above as a kart verb,
+2. ~~Boost pads / jump pads are listed under "Kart feel" above as a kart verb,
    but no such mechanic exists anywhere in `src/racing/` or `scenes/racing/`
    — Task 8's boost-pad line was deliberately skipped (no track-side trigger,
    no kart-side response). R3+ candidate; needs its own tuning fields and a
-   track-authoring rule (author-lint) once built, not just a scene prop.
+   track-authoring rule (author-lint) once built, not just a scene prop.~~
+   **RESOLVED, R7 Task 1 (2026-08-01, commit `146e3f8`):** `BoostPad`/
+   `JumpPad` (`src/racing/track/boost_pad.gd`/`jump_pad.gd` +
+   `scenes/racing/boost_pad.tscn`/`jump_pad.tscn`) are real Area3D track
+   props with their own `RaceTuning` fields (`pad_boost_s=1.0`,
+   `pad_refire_cooldown_s=1.5`, `jump_pad_velocity_scale=2.2`) and a
+   dedicated author-lint rule (on-road + clear of gates/boxes/origin, the
+   `track_pads` rule in `scripts/lint_level_authoring.py`) — exactly the
+   candidate shape this debt called for. `RaceSession` discovers and wires
+   both pad kinds (`_discover_boost_pads`/`_discover_jump_pads`,
+   `_on_boost_pad_body_entered`/`_on_jump_pad_body_entered`), per-kart
+   refire cooldown included. Temple Twilight (R7 Task 3) authors both a
+   boost strip and a jump-pad corner cut as signature features (see this
+   doc's own R7 notes below); Sanity Shores and the graybox loop each got
+   1-2 boost-strip retrofits (R7 Task 4). See `docs/superpowers/sdd/
+   2026-08-01-ctr-r7-second-circuit/task-1-report.md` for the full design.
 3. One `RaceTuning` field is authored and validated (registered,
    fingerprinted, panel-editable, rejected if non-positive) but read by
    nothing in `src/racing/`: `checkpoint_tolerance_m`. It exists for a
@@ -477,6 +492,79 @@ start.
     ride a rest/bind pose rather than an authored seated one (acceptable
     per the task brief, a different and already-recorded gap from this
     one).
+14. **New (R7 Task 5, flagged not fixed): the Cup interstitial/podium's
+    Continue/Close buttons are not on `RaceSession`'s own touch-exclusion
+    list.** Only the race's own Retry button is added, at `configure()`
+    time, before the overlay concept exists — on a real touch device a tap
+    on Continue/Close could theoretically also reach the race's own touch
+    controls underneath. Debug-menu-gated prototype UI pre-Gate-F; left
+    open to keep Task 5's own scope proportionate, worth revisiting once
+    the Cup gets real art/UI polish (`task-5-report.md` §8).
+15. **New (R7 Task 4, flagged not fixed): the graybox loop's raw `Spine`
+    marker polyline has an unlisted ring-closing gap.** `_project_onto_
+    polyline` (`scripts/lint_level_authoring.py`) only ever pairs `zip(
+    points, points[1:])`, so it never sees an explicit `SouthWest→SouthMid`
+    wrap-around segment closing the ring — a point placed near `x∈(-40,0)`
+    on the west approach to `SouthStraight` silently clamps onto the wrong,
+    curved `WestTurnB→SouthWest` neighbor and reads a misleading tangent
+    (measured: `offset_across_m=1.294`, `rotation_degrees.y=-75°` instead of
+    the physically correct `-90°`). Not a live bug — Task 4's own pad
+    placement avoided the zone entirely — but any future graybox pad/box
+    authored near that gap must double-check its own tangent numerically
+    rather than trust `offset_across_m` passing (`task-4-report.md` §5).
+16. **New (R7 Task 6, confirmed by code read, R7 Task 7): a failed ghost-
+    file rename can orphan a `.tmp` file forever.** `GhostRecorder.save_
+    to_file()` (`src/racing/flow/ghost_recorder.gd`) mirrors SaveService's
+    temp-file-then-rename atomic-write pattern and does clean up the temp
+    file if the WRITE itself fails, but if the final `DirAccess.rename_
+    absolute()` call fails (permissions, cross-device, disk full mid-
+    rename) the function simply returns that error — the already-written
+    `<path>.tmp` is left on disk, never removed, never retried. Low
+    severity (a ghost is disposable, outside the profile save, and this
+    path pushes no error the player would see) but a real, confirmed gap:
+    `save_to_file()`'s own doc only ever exercises the write-failure
+    cleanup branch, not a rename-failure one.
+17. **New (R7 Task 3, corrected diagnosis, R7 Task 7): Temple Twilight's
+    tightest corner is NOT where its one measured per-kart wedge cost
+    actually lands.** The naive read of the track's own layout names
+    `CourtyardHairpin` (R=24, a full 180°, the tightest radius on the whole
+    circuit) — and by extension the `CourtyardEntry` straight immediately
+    after it — as the likely "start-bunch pinch": six karts still grouped
+    off the grid, funneled through the tightest hairpin on the track,
+    right at the top of the lap. Task 3's own per-checkpoint diagnostic
+    (§5 of its report) already measured the opposite: every AI kart shows
+    `respawn_count=0` all the way through t=15s, by which point cumulative
+    progress (≈224-229m) has already cleared `CourtyardHairpin` AND
+    `CourtyardEntry` and entered `CourtyardBendA`. The one respawn per kart
+    that does occur happens later, at t=15-20s (cum≈262-300m), squarely
+    inside the direction-reversing courtyard esse
+    (`CourtyardBendA→CourtyardMid→CourtyardBendB`) — a steering-transient
+    cost from the reversal, not a raw-radius wedge, and not the start-bunch
+    hairpin at all. Recorded here so a future pass tuning this track does
+    not "fix" `CourtyardHairpin`/`CourtyardEntry` on the strength of how
+    the map looks rather than what was actually measured.
+18. **New (R7 Task 2 fix round 1, dead-ish since, confirmed R7 Task 7):
+    `KartController.commanded_velocity_mps()` has no remaining production
+    call site.** Added in Task 2 as the bump-detection relative-speed
+    getter, then superseded in fix round 1 by `commanded_velocity_without_
+    bump_mps()` (added specifically to exclude an in-flight bump impulse
+    from the same calculation, see that round's own same-tick-double-
+    detection fix). `commanded_velocity_mps()` (`kart_controller.gd:372`)
+    is still defined and still referenced from doc comments explaining why
+    the *other* method exists, but nothing calls it anymore — dead code
+    left standing rather than removed, safe to delete in a future pass
+    once its own doc-comment cross-references are updated alongside it.
+19. **New (R7 Task 4, stale by omission, confirmed R7 Task 7): one comment
+    still names the `DEBUG_RACING_LEVEL_ID` const Task 4 removed.**
+    Task 4's own fix-up reworded the doc comment in `game_root.gd` that
+    used to point at it, but missed `tests/racing/test_race_session.gd`'s
+    own `test_request_retry_emits_the_retry_requested_signal()` comment
+    (line 420: "...game_root.gd's DEBUG_RACING_LEVEL_ID branch"), which
+    still names the removed const in the present tense as if it still
+    routes retry — the real mechanism is now `_race_scenes_by_level_id`/
+    `_on_racing_track_requested()` (`RacingTrackRegistry`). Comment-only,
+    no behavior implication; left as a one-line text fix for a future pass
+    per this task's own bookkeeping-not-fixing scope.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
@@ -518,3 +606,35 @@ addendum tightening its own bound to `respawn_count <= 1`, since relaxed to
 `respawn_count <= 2` by a post-Task-6 stabilization fix (physics-timing
 marginal, see #7's own addendum; zero remains accepted-unreached, not
 further pursued this pass).
+
+R7 polish-wave notes (2026-08-01, second circuit — see
+`2026-08-01-ctr-r7-second-circuit-design.md` for the full per-workstream
+spec): boost/jump pads (discharges debt #2, see above), authored kart-to-
+kart contact (symmetric, capped, speed-gated lateral bump impulse), a
+second full real track (Temple Twilight — night temple circuit, two tight
+hairpins bracketing a direction-reversing courtyard esse, a broad cliff
+sweep, a boost-strip main straight, and a jump-pad corner cut whose
+trajectory clears its gap with a numerically-proven ≥62% margin even at
+the AI's own guaranteed floor speed), pad retrofits on both existing
+tracks, a track/menu registry replacing four hand-duplicated per-track
+signal/const blocks, and the Cup (`CupSession`, a 2-race Sanity Shores →
+Temple Twilight championship with tuning-driven placement points, AI
+lineup/tint continuity free by construction from the shared grid-slot
+scheme, and save v2→v3 for `racing.cups` with the same v1→v2-grade
+migration rigor — scratch-verified v1→v3 full chain, v2→v3 with existing
+bests preserved, and corrupt-cups fail-closed recovery). **The stretch
+time-trial ghost SHIPPED, not deferred**: `GhostRecorder`/`GhostPlayer`
+(record/persist/replay, solo-only, best-time-gated, translucent no-
+collision visual) landed complete in Task 6 with its own full test roster,
+never invoked the plan's own "if it strains, defer" escape hatch. Task 7's
+own end-to-end coverage
+(`tests/integration/test_cup_flow_e2e.gd::test_full_r7_cup_run_through_a_
+real_countdown_fires_a_real_pad_and_exchanges_a_real_bump`) chains a real
+3-2-1-GO countdown (not skipped) for race 1, a real boost-pad overlap
+reaching the real KartMotor, a real kart-to-kart bump exchange between two
+real AI karts (non-zero `bump_count()` on the real post-move_and_slide
+contact path), both races teleport-finishing through the real registered
+scenes, the between-race interstitial and final podium, and a real save
+write verified against a fresh disk load — all in one run with zero
+unhandled push_error/engine-error calls. New debts recorded above as
+#14-#19.

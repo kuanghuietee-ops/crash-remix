@@ -253,6 +253,59 @@ func test_box_pickup_is_a_no_op_pre_go() -> void:
 	)
 
 
+## Task 1 (CTR R7, discharges spec debt #2): pad signal paths quiescent
+## pre-GO -- see the two tests immediately above's own doc for the full
+## rationale (a frozen kart can never physically reach a pad before GO
+## either, but the session's own connected handler is still gated
+## structurally). The pad instance itself is never configure()'d or added
+## to the track -- irrelevant here, since the pre-GO early-return in
+## _on_boost_pad_body_entered()/_on_jump_pad_body_entered() fires BEFORE
+## either handler ever touches the pad at all (see race_session.gd's own
+## PAD WIRING doc).
+func test_boost_pad_crossing_is_a_no_op_pre_go() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	var pad: Area3D = load("res://src/racing/track/boost_pad.gd").new()
+	add_child_autofree(pad)
+	assert_false(bool(race.call("is_race_started")), "fixture sanity: still pre-GO")
+
+	race.call("_on_boost_pad_body_entered", kart, pad)
+
+	assert_false(
+		bool(motor.call("is_boosting")),
+		"a synthetic boost pad crossing pre-GO must never apply boost"
+	)
+
+
+func test_jump_pad_crossing_is_a_no_op_pre_go() -> void:
+	var race := _boot_race_no_skip()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	var pad: Area3D = load("res://src/racing/track/jump_pad.gd").new()
+	add_child_autofree(pad)
+	assert_false(bool(race.call("is_race_started")), "fixture sanity: still pre-GO")
+
+	race.call("_on_jump_pad_body_entered", kart, pad)
+
+	assert_almost_eq(
+		float(motor.call("vertical_speed_mps")),
+		0.0,
+		0.01,
+		"a synthetic jump pad crossing pre-GO must never launch the kart"
+	)
+
+
 # ---------------------------------------------------------------------------
 # The race timer starts AT GO, not at spawn.
 # ---------------------------------------------------------------------------

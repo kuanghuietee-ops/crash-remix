@@ -367,6 +367,13 @@ func test_legacy_profile_migrates_through_the_real_load_path() -> void:
 # racing section entirely (schema_version 1, no "racing" key at all) --
 # loading it through the real service must migrate it to the current schema
 # and hand back an empty-but-valid racing section, not fail closed.
+#
+# Task 5 (CTR R7, the Cup): SCHEMA_VERSION 2 -> 3 -- this fixture now chains
+# through BOTH _migrate_v1_to_v2 AND _migrate_v2_to_v3 (see save_model.gd's
+# own migrate() while-loop), so "racing" lands as {"cups": {}}, not {}. See
+# test_pre_racing_v1_profile_migrates_through_the_full_v1_to_v3_chain below
+# for the dedicated platformer-data-survives-and-cups-lands-empty proof
+# CLAUDE.md's "same rigor as v1->v2" instruction calls for.
 func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
 	var service := SaveService.new()
 	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))
@@ -375,7 +382,7 @@ func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
 
 	assert_true(SaveModel.validate(loaded))
 	assert_eq(loaded.get("schema_version"), SaveModel.SCHEMA_VERSION)
-	assert_eq(loaded.get("racing"), {})
+	assert_eq(loaded.get("racing"), {"cups": {}})
 	assert_eq(
 		SaveModel.racing_record(loaded, &"graybox_loop"),
 		{
@@ -385,6 +392,140 @@ func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
 	)
 	assert_false(service.recovered_from_backup)
 	assert_false(service.refused_future_version)
+
+
+# ---------------------------------------------------------------------------
+# Task 5 (CTR R7, the Cup): save v3, driven through the REAL SaveService.
+# load_profile() path (not SaveModel.migrate() in isolation -- that half is
+# test_save_model.gd's job), with the same rigor test_legacy_profile_
+# migrates_through_the_real_load_path and test_pre_racing_v1_profile_
+# migrates_with_empty_racing_section above already established for v0->v1
+# and v1->v2.
+# ---------------------------------------------------------------------------
+
+
+## The FULL v1->v3 chain (both migration steps in one real load), on a
+## fixture that carries real platformer progress predating racing entirely
+## (VALID_FIXTURE, same fixture the test above uses) -- proves platformer
+## data survives the whole trip AND racing.cups lands empty, exactly the two
+## things CLAUDE.md's "the v1 file must still load through BOTH migrations"
+## instruction calls for.
+func test_pre_racing_v1_profile_migrates_through_the_full_v1_to_v3_chain() -> void:
+	var service := SaveService.new()
+	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(loaded.get("schema_version"), 3)
+	assert_eq(loaded.get("lifetime_wumpa"), 17)
+	assert_true(
+		SaveModel.level_record(
+			loaded,
+			&"wr1_n_sanity_beach"
+		).get("completed"),
+		"pre-racing platformer progress must survive the full v1->v3 chain"
+	)
+	assert_true(
+		SaveModel.level_record(
+			loaded,
+			&"wr1_n_sanity_beach"
+		).get("flawless"),
+	)
+	assert_eq(
+		loaded.get("racing"),
+		{"cups": {}},
+		"a v1 profile predates racing AND the cup -- both must land empty"
+	)
+	assert_eq(
+		SaveModel.cup_record(loaded, &"island_cup"),
+		{"best_placement": 0}
+	)
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
+
+
+## A v2 profile that already carries a real per-track best time (post-R2,
+## pre-Cup) -- the v2->v3 step alone, proving the existing racing best
+## SURVIVES migration untouched while cups backfills empty alongside it.
+func test_v2_profile_with_racing_bests_migrates_to_v3_and_gains_empty_cups() -> void:
+	var service := SaveService.new()
+	_write_fixture(
+		"res://tests/fixtures/saves/profile_v2_with_racing.json",
+		_save_path("profile.json")
+	)
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(loaded.get("schema_version"), 3)
+	assert_eq(
+		SaveModel.racing_record(loaded, &"sanity_shores"),
+		{
+			"best_total_time_ms": 92500,
+			"best_lap_time_ms": 30100,
+		},
+		"an existing v2 racing best must survive the v2->v3 migration untouched"
+	)
+	assert_eq(
+		SaveModel.cup_record(loaded, &"island_cup"),
+		{"best_placement": 0},
+		"a v2 profile has never played a cup -- cups must backfill empty"
+	)
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
+
+
+## Corrupt cups -> fail-closed to fresh(), the established path (see
+## test_double_corruption_preserves_primary_evidence_and_starts_fresh above
+## for the same shape on a syntactically-broken file): a v3 primary whose
+## "cups" section is malformed fails SaveModel.validate() inside SaveService.
+## _read_candidate(), so it is treated exactly like unparseable JSON --
+## _INVALID, evidence preserved, fall through to a good backup if one exists
+## or SaveModel.fresh() if not. No new SaveService code was needed for this;
+## it is a direct consequence of validate() correctly rejecting the
+## malformed shape (see test_save_model.gd's own test_corrupt_cups_fails_
+## validation_and_migration_closed for that half in isolation).
+func test_corrupt_cups_recovers_previous_good_backup() -> void:
+	var service := SaveService.new()
+	var good := SaveModel.fresh()
+	good["racing"]["cups"]["island_cup"] = {"best_placement": 2}
+	var second := SaveModel.fresh()
+	second["lifetime_wumpa"] = 99
+	# Two stores, same shape test_corrupt_primary_recovers_previous_good_
+	# backup above uses: store_profile() only writes a .bak from whatever the
+	# PREVIOUS primary already held (see save_service.gd's own store_profile()
+	# doc), so a single store leaves no backup at all -- the second store is
+	# what turns `good` into the backup this test recovers from.
+	assert_eq(service.store_profile(TEST_SAVE_DIR, good), OK)
+	assert_eq(service.store_profile(TEST_SAVE_DIR, second), OK)
+	assert_true(FileAccess.file_exists(_save_path("profile.json.bak")))
+	_write_fixture(
+		"res://tests/fixtures/saves/profile_v3_corrupt_cups.json",
+		_save_path("profile.json")
+	)
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_eq(loaded, good)
+	assert_true(service.recovered_from_backup)
+
+
+func test_corrupt_cups_without_a_good_backup_fails_closed_to_fresh() -> void:
+	var service := SaveService.new()
+	_write_fixture(
+		"res://tests/fixtures/saves/profile_v3_corrupt_cups.json",
+		_save_path("profile.json")
+	)
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_eq(loaded, SaveModel.fresh())
+	assert_true(
+		FileAccess.file_exists(_save_path("profile.json.corrupt")),
+		"the malformed cups primary must be preserved as evidence, not silently discarded"
+	)
+	assert_false(service.recovered_from_backup)
 
 
 func _save_path(file_name: String) -> String:
