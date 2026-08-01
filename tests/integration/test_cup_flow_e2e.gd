@@ -345,6 +345,19 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	# proof uses) and left driving real physics must exchange a real,
 	# non-zero bump_count() through the real post-move_and_slide contact
 	# path.
+	#
+	# Fix round 1 (review [MEDIUM]): a 60-frame wait was flaky (~29%
+	# failure across 7 standalone runs) -- right at GO both AI karts
+	# accelerate from rest in the SAME direction, so the relative closing
+	# speed that actually produces a bump only crosses
+	# bump_min_relative_speed_mps once the pair's own overlap window and
+	# speed-ramp window happen to coincide, which a mere 1s (60 frames)
+	# does not reliably reach (measured: 60f/180f -> 1 bump, marginal;
+	# 600f -> 63-64 bumps, reliably well clear of the gate). Widened to
+	# 600 frames -- test-only, no product change; the two karts' own
+	# accelerate-from-rest-together behavior is real AiDriver output, not
+	# a fixture artifact, so giving it enough real time to close is the
+	# honest fix, not a lowered bar.
 	# ------------------------------------------------------------------
 	var opponent_count := int(race1.call("ai_kart_count"))
 	assert_gt(opponent_count, 1, "fixture sanity: at least two AI karts must be racing")
@@ -356,7 +369,7 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 		var midpoint := (kart_a.global_position + kart_b.global_position) * 0.5
 		kart_a.global_position = midpoint + Vector3(0.3, 0.0, 0.0)
 		kart_b.global_position = midpoint - Vector3(0.3, 0.0, 0.0)
-		await wait_physics_frames(60)
+		await wait_physics_frames(600)
 		var total_bumps := int(kart_a.call("bump_count")) + int(kart_b.call("bump_count"))
 		assert_gt(
 			total_bumps,
