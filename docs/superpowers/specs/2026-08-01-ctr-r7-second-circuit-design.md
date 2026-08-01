@@ -60,6 +60,14 @@ ghost = silently no ghost — never blocks a run; a small version header for for
 compat). If the phase strains, defer with a recorded debt — the Cup ships
 first.
 
+**Status (Task 6, 2026-08-01): SHIPPED, not deferred.** The phase did not
+strain — `GhostRecorder`/`GhostPlayer` landed complete with a full test
+roster (round-trip, every corruption shape resolving to silent no-ghost,
+best-time-gated persistence, interpolation math, no-collision proof,
+solo-only contract) in the same task. See `docs/superpowers/sdd/
+2026-08-01-ctr-r7-second-circuit/task-6-report.md` and this project's own
+racing-spec Recorded Debts section (R7 polish-wave notes).
+
 ## Phases
 
 T1 pads mechanics+lint → T2 kart contact → T3 Temple Twilight → T4 pad
