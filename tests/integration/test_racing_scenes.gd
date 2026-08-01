@@ -22,6 +22,16 @@ const SANITY_SHORES_RACE_SCENE_PATH := (
 	"res://scenes/racing/race_sanity_shores.tscn"
 )
 
+# Task 3 (CTR R7, second circuit): the third real, kit-dressed circuit --
+# same scene-open smoke shape as the pairs above, pointed at the new
+# Temple Twilight track/race scenes and its 12 gates.
+const TEMPLE_TWILIGHT_TRACK_SCENE_PATH := (
+	"res://scenes/racing/track_temple_twilight.tscn"
+)
+const TEMPLE_TWILIGHT_RACE_SCENE_PATH := (
+	"res://scenes/racing/race_temple_twilight.tscn"
+)
+
 
 func test_track_graybox_loop_scene_opens_with_spine_gates_and_spawn() -> void:
 	assert_true(ResourceLoader.exists(TRACK_SCENE_PATH))
@@ -146,5 +156,68 @@ func test_race_sanity_shores_scene_boots_end_to_end_without_engine_errors() -> v
 	assert_eq(
 		race.get("track_id"),
 		&"sanity_shores",
+		"Task 9: the save layer keys best times off this exported id"
+	)
+
+
+func test_track_temple_twilight_scene_opens_with_spine_gates_and_spawn() -> void:
+	assert_true(ResourceLoader.exists(TEMPLE_TWILIGHT_TRACK_SCENE_PATH))
+	if not ResourceLoader.exists(TEMPLE_TWILIGHT_TRACK_SCENE_PATH):
+		return
+	var packed := load(TEMPLE_TWILIGHT_TRACK_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null:
+		return
+	var track := packed.instantiate()
+	add_child_autofree(track)
+	await wait_process_frames(1)
+
+	assert_not_null(track.get_node_or_null("Spine"))
+	assert_not_null(track.get_node_or_null("KartSpawn"))
+	assert_not_null(track.get_node_or_null("StartLine"))
+	assert_not_null(track.get_node_or_null("Arch"))
+	assert_not_null(track.get_node_or_null("GateFlags"))
+	assert_not_null(track.get_node_or_null("EnvironmentArt"))
+	var gates := track.get_node_or_null("Gates")
+	assert_not_null(gates)
+	if gates != null:
+		assert_eq(gates.get_child_count(), 12)
+	var spine := track.get_node_or_null("Spine") as Path3D
+	assert_not_null(spine)
+	if spine != null and spine.curve != null:
+		assert_gt(
+			spine.curve.point_count,
+			12,
+			"the closed spine must bake from all authored markers"
+		)
+
+
+func test_race_temple_twilight_scene_boots_end_to_end_without_engine_errors() -> void:
+	assert_true(ResourceLoader.exists(TEMPLE_TWILIGHT_RACE_SCENE_PATH))
+	if not ResourceLoader.exists(TEMPLE_TWILIGHT_RACE_SCENE_PATH):
+		return
+	var catalog: GameplayTuning = load(CATALOG_PATH)
+	assert_not_null(catalog)
+	var packed := load(TEMPLE_TWILIGHT_RACE_SCENE_PATH) as PackedScene
+	assert_not_null(packed)
+	if packed == null or catalog == null:
+		return
+	var race := packed.instantiate()
+	add_child_autofree(race)
+	race.call("configure", catalog)
+	await wait_physics_frames(4)
+
+	var kart := race.get_node_or_null("Kart")
+	var camera := race.get_node_or_null("CameraRig/Camera3D") as Camera3D
+	assert_not_null(kart)
+	assert_not_null(camera)
+	if camera != null:
+		assert_true(camera.current, "the kart camera must be the active viewport camera")
+	assert_false(bool(race.call("is_finished")))
+	assert_eq(int(race.call("gate_count")), 12)
+	assert_eq(int(race.call("lap_count")), int(catalog.race.lap_count))
+	assert_eq(
+		race.get("track_id"),
+		&"temple_twilight",
 		"Task 9: the save layer keys best times off this exported id"
 	)

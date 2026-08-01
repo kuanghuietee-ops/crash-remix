@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/racing/race_temple_twilight.tscn" id="1_base"]
+
+[node name="RaceTempleTwilightSolo" instance=ExtResource("1_base")]
+spawn_opponents = false
