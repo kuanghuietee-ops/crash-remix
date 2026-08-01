@@ -837,6 +837,122 @@ func test_launch_reaches_scale_squared_times_hop_height_under_gravity() -> void:
 
 
 # ---------------------------------------------------------------------------
+# CTR R7 Task 2 (kart-to-kart contact): apply_bump()'s decaying lateral
+# velocity, summed into velocity() -- see kart_controller.gd's own
+# _process_kart_bumps()/receive_bump() doc for how a real collision computes
+# the vector this motor is handed. These tests exercise the pure-logic decay
+# mechanic in isolation, the same poll-model way every other motor timer
+# here already is (configure once, apply/tick, read state back).
+# ---------------------------------------------------------------------------
+
+
+func test_a_fresh_motor_carries_no_lateral_bump() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_true(
+		lateral.is_zero_approx(),
+		"a fresh motor must start with no lateral bump velocity"
+	)
+
+
+func test_apply_bump_is_summed_into_velocity() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(2.0, 0.0, -3.0)
+	motor.call("apply_bump", bump)
+
+	# Forward speed is still zero (nothing has ticked yet), so velocity()
+	# right after apply_bump() must read exactly the bump vector -- proving
+	# it is SUMMED into the forward term, not replacing it outright.
+	var velocity: Vector3 = motor.call("velocity")
+	assert_almost_eq(velocity.x, bump.x, 0.0001)
+	assert_almost_eq(velocity.z, bump.z, 0.0001)
+
+
+func test_apply_bump_decays_by_exactly_coast_drag_per_tick() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	# Decay is documented to reuse coast_drag_mps2 -- an EXISTING rate field,
+	# not a new tuning literal -- via the identical move_toward(...,0.0,...)
+	# shape every other motor timer already decays with. One tick at the
+	# authored rate must reduce the stored magnitude by EXACTLY coast_drag_
+	# mps2 * delta_s, pinning the specific field reused rather than just
+	# "decays somehow".
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	var step_s := 0.05
+	motor.call("tick", step_s, 0.0, false, false, false, 0)
+
+	var after: Vector3 = motor.call("lateral_bump_mps")
+	assert_almost_eq(
+		after.length(),
+		bump.length() - _kart.coast_drag_mps2 * step_s,
+		0.0001,
+		"lateral bump decay rate must be exactly coast_drag_mps2"
+	)
+
+
+func test_apply_bump_decays_to_exactly_zero_within_a_bounded_time() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	var step_s := 0.05
+	# move_toward() can never overshoot past zero, so ceil(magnitude /
+	# (rate*step)) + 1 ticks is a hard upper bound, not a tuned guess.
+	var ticks := int(ceil(bump.length() / (_kart.coast_drag_mps2 * step_s))) + 1
+	for _tick_index: int in range(ticks):
+		motor.call("tick", step_s, 0.0, false, false, false, 0)
+
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_true(
+		lateral.is_zero_approx(),
+		"a decaying bump must reach exactly zero within a bounded number of ticks"
+	)
+
+
+func test_apply_bump_replaces_rather_than_stacks() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	motor.call("apply_bump", Vector3(1.0, 0.0, 0.0))
+	motor.call("apply_bump", Vector3(0.0, 0.0, 1.0))
+
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_almost_eq(
+		lateral.x,
+		0.0,
+		0.0001,
+		"a fresh apply_bump() call must REPLACE the previous one, not accumulate"
+	)
+	assert_almost_eq(lateral.z, 1.0, 0.0001)
+
+
+func test_decelerate_to_stop_also_decays_the_lateral_bump() -> void:
+	var motor := _new_motor()
+	if motor == null:
+		return
+	var bump := Vector3(_kart.bump_lateral_cap_mps, 0.0, 0.0)
+	motor.call("apply_bump", bump)
+
+	motor.call("decelerate_to_stop", 0.05, false)
+
+	var after: Vector3 = motor.call("lateral_bump_mps")
+	assert_lt(
+		after.length(),
+		bump.length(),
+		"a frozen kart's own decelerate_to_stop() must still decay a residual bump"
+	)
+
+
+# ---------------------------------------------------------------------------
 # Helpers.
 # ---------------------------------------------------------------------------
 

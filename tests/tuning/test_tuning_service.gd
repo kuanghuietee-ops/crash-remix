@@ -3181,6 +3181,77 @@ func test_old_kart_override_backfills_the_body_tint_field_group() -> void:
 	)
 
 
+# CTR R7 Task 2: bump_impulse_scale/bump_min_relative_speed_mps/bump_
+# lateral_cap_mps were added to the already-shipped kart section as their
+# OWN cohort (LEGACY_FIELD_GROUPS_BY_SECTION's &"kart" entry, second array
+# -- a SEPARATE group from the body-tint cohort immediately above, not
+# folded into it), mirroring test_old_ai_override_backfills_the_recovery_
+# field_group_independently_of_the_apex_cohort's own shape further down:
+# an override.tres saved after CTR R6 Task 3 but before this task would
+# already have the body-tint fields (real, edited values) and be missing
+# only these three, and migration must restore all three together while
+# leaving BOTH an unrelated already-edited field (top_speed_mps) AND the
+# already-migrated tint cohort untouched.
+func test_old_kart_override_backfills_the_bump_field_group() -> void:
+	var service: RefCounted = _new_service()
+	var authored: GameplayTuning = load(BASE_CATALOG_PATH)
+	assert_not_null(service)
+	assert_not_null(authored)
+	if service == null or authored == null:
+		return
+	var bump_fields: Array[StringName] = [
+		&"bump_impulse_scale",
+		&"bump_min_relative_speed_mps",
+		&"bump_lateral_cap_mps",
+	]
+	for field: StringName in bump_fields:
+		assert_true(
+			_exported_property_names(authored.kart).has(field),
+			"the bump fields must exist before migration can be proved"
+		)
+	var stale := authored.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	) as GameplayTuning
+	var defaults := KartTuning.new()
+	for field: StringName in bump_fields:
+		stale.kart.set(field, defaults.get(field))
+	# An edited tint (the OLDER, already-migrated cohort) plus an unrelated
+	# edited field -- both must survive this migration untouched.
+	stale.kart.kart_tint_player = Color(0.1, 0.2, 0.3, 1.0)
+	stale.kart.top_speed_mps = 30.0
+	assert_eq(ResourceSaver.save(stale, TEST_OVERRIDE_PATH), OK)
+
+	assert_eq(
+		service.call(
+			"load_from_paths",
+			BASE_CATALOG_PATH,
+			TEST_OVERRIDE_PATH
+		),
+		OK
+	)
+
+	assert_false(service.get("override_rejected"))
+	assert_true(service.get("override_active"))
+	var migrated := service.get("catalog") as GameplayTuning
+	for field: StringName in bump_fields:
+		assert_eq(
+			migrated.kart.get(field),
+			authored.kart.get(field),
+			"an older phone override must receive the authored %s" % field
+		)
+	assert_almost_eq(
+		migrated.kart.top_speed_mps,
+		30.0,
+		0.001,
+		"migration must preserve existing kart edits"
+	)
+	assert_eq(
+		migrated.kart.kart_tint_player,
+		Color(0.1, 0.2, 0.3, 1.0),
+		"migration must preserve the already-migrated tint cohort untouched"
+	)
+
+
 func test_race_tuning_rejects_nonpositive_fields() -> void:
 	var service: RefCounted = _loaded_service()
 	if service == null:

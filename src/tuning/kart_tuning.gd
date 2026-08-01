@@ -34,6 +34,24 @@ extends Resource
 @export var spin_out_speed_keep_ratio: float
 @export var invulnerable_after_hit_s: float
 
+## CTR R7 Task 2 (kart-to-kart contact): see kart_controller.gd's own
+## _process_kart_bumps()/receive_bump() doc for the full mechanic this
+## powers, and kart_motor.gd's own apply_bump()/velocity() doc for where
+## the resulting impulse actually lives. Below bump_min_relative_speed_mps
+## of relative closing speed between two touching karts, NO impulse fires
+## at all (a graze at walking pace should not fling either kart sideways) --
+## at or above it, the lateral separation impulse magnitude is relative
+## speed * bump_impulse_scale, capped at bump_lateral_cap_mps so an
+## arbitrarily hard high-speed collision can never exceed a bounded sideways
+## kick. Deliberately independent of every Hazard-section field above: a
+## bump is a physical shove, not a hit -- it never touches spin_out/
+## invulnerability, and invulnerability never gates it either (see the
+## controller's own doc for why).
+@export_category("Contact")
+@export var bump_impulse_scale: float
+@export var bump_min_relative_speed_mps: float
+@export var bump_lateral_cap_mps: float
+
 ## CTR R6 Task 3: kart-body tint colours, applied via KartController.
 ## apply_body_tint() -- see that method's own doc. The kart mesh's own
 ## "BODY" palette cell (scripts/blender/build_kart.py) is painted a light,

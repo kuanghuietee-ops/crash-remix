@@ -76,6 +76,30 @@ extends RefCounted
 ## unconditional way apply_boost() already is (a pad fires regardless of
 ## whatever the kart's own drift/spin-out state happens to be), not a
 ## player input edge.
+##
+## Bump (apply_bump(lateral_velocity_mps), Task 2, CTR R7 kart-to-kart
+## contact) is a SEPARATE, world-space Vector3 velocity term -- unlike
+## every other field on this motor (a scalar chasing a target, or a
+## decaying timer), this one is a full vector, already computed and capped
+## by the CALLER (KartController._process_kart_bumps(), see that method's
+## own doc for the relative-speed/normal/cap math -- this motor does no
+## validation of its own, the same "trust the caller" shape set_speed_
+## scale()'s own doc already documents). apply_bump() REPLACES whatever
+## lateral bump velocity was already stored, rather than accumulating --
+## kart-vs-kart collision detection can independently fire from BOTH
+## karts' own move_and_slide() within the same physics tick (see the
+## controller's own CONTACT doc), and a second call landing the same tick
+## carries an almost-identical value for the same real contact event, so
+## last-write-wins is correct and cannot runaway-stack past the caller's
+## own cap. Once stored, it decays every tick in tick()/decelerate_to_stop()
+## via coast_drag_mps2 -- an EXISTING rate field, reused rather than adding
+## a new tuning literal purely for this -- using the identical move_toward
+## (...,Vector3.ZERO,...) shape every other timer on this motor already
+## decays with, and is summed straight into velocity() below (see that
+## method's own comment). configure() deliberately does NOT reset this
+## (contrast _speed_scale, which configure() DOES reset -- see that var's
+## own doc): a live tuning refresh mid-race must not silently erase an
+## in-flight bump any more than it resets forward speed, yaw, or boost.
 
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -91,6 +115,12 @@ var _invulnerable_remaining_s: float
 var _shield_remaining_s: float
 
 var _speed_scale := 1.0
+
+## Task 2 (CTR R7 kart-to-kart contact) -- see this class doc's own Bump
+## paragraph. Defaults to Vector3.ZERO, the GDScript default for an
+## untyped-initialized Vector3 var, matching "a fresh kart carries no
+## bump" with no explicit reset code needed.
+var _lateral_bump_mps: Vector3
 
 
 func configure(kart_tuning: KartTuning) -> void:
@@ -206,6 +236,10 @@ func tick(
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
 	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
+	_lateral_bump_mps = _lateral_bump_mps.move_toward(
+		Vector3.ZERO,
+		_tuning.coast_drag_mps2 * delta_s
+	)
 
 
 ## Decelerates the CURRENT forward speed toward a full stop at brake_mps2,
@@ -238,6 +272,10 @@ func decelerate_to_stop(delta_s: float, grounded: bool) -> void:
 	_spin_out_remaining_s = maxf(_spin_out_remaining_s - delta_s, 0.0)
 	_invulnerable_remaining_s = maxf(_invulnerable_remaining_s - delta_s, 0.0)
 	_shield_remaining_s = maxf(_shield_remaining_s - delta_s, 0.0)
+	_lateral_bump_mps = _lateral_bump_mps.move_toward(
+		Vector3.ZERO,
+		_tuning.coast_drag_mps2 * delta_s
+	)
 
 
 func hop() -> void:
@@ -278,6 +316,19 @@ func set_speed_scale(ratio: float) -> void:
 	_speed_scale = ratio
 
 
+## KartController's own receive_bump() -- see this class doc's own Bump
+## paragraph for the full replace-not-accumulate rationale. Callers are
+## expected to have already gated (bump_min_relative_speed_mps) and capped
+## (bump_lateral_cap_mps) lateral_velocity_mps themselves; this method
+## trusts it as-is, same as add_boost()'s seconds argument.
+func apply_bump(lateral_velocity_mps: Vector3) -> void:
+	_lateral_bump_mps = lateral_velocity_mps
+
+
+func lateral_bump_mps() -> Vector3:
+	return _lateral_bump_mps
+
+
 ## Zeros forward AND vertical speed -- Task 4's AI stuck-kart respawn
 ## teleport (see kart_controller.gd's own reset_speed() proxy doc for the
 ## full rationale). Yaw and every timer (boost/spin-out/invulnerability) are
@@ -315,7 +366,7 @@ func velocity() -> Vector3:
 	return (
 		Vector3.FORWARD.rotated(Vector3.UP, deg_to_rad(_yaw_degrees))
 		* _forward_speed_mps
-	)
+	) + _lateral_bump_mps
 
 
 func is_boosting() -> bool:

@@ -1460,6 +1460,268 @@ func test_refresh_tuning_reaches_the_real_item_slot() -> void:
 	)
 
 
+## ---------------------------------------------------------------------------
+## CTR R7 Task 2: kart-to-kart contact. Real move_and_slide() collisions
+## between two real kart.tscn instances sharing one physics world -- see
+## _spawn_kart_pair()'s own doc for why two _spawn_kart_on_floor() fixtures
+## at different origins already collide with each other with no extra
+## wiring. Direction convention pinned by kart_motor.gd's own sign-
+## conversion doc: yaw=-90 faces +X, yaw=+90 faces -X (Vector3.FORWARD.
+## rotated(UP, +angle) sweeps toward -X).
+## ---------------------------------------------------------------------------
+
+
+## Two karts approaching head-on along world X (yaw=-90/+90, see this
+## section's own doc), starting far enough apart that BOTH must cross real
+## distance under their own auto-throttle before the collision -- proves
+## the mechanic end to end (real move_and_slide() collision -> duck-checked
+## collider -> receive_bump() crossing into the OTHER kart's own
+## KartController instance), not just that the pure-logic motor decay
+## works in isolation (test_kart_motor.gd already covers that). Samples
+## EVERY tick rather than a single snapshot at the end, because the bump is
+## a decaying impulse (see kart_motor.gd's own apply_bump() doc) that can
+## legitimately have decayed back toward zero again by any single later
+## instant -- a snapshot at a fixed tick count would be flaky by
+## construction.
+func test_two_karts_colliding_at_speed_separate_laterally_and_symmetrically() -> void:
+	var karts := _spawn_kart_pair(Vector3(-3.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+	kart_b.call("set_yaw_degrees", 90.0)
+
+	var motor_a: RefCounted = kart_a.get("_motor")
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_a)
+	assert_not_null(motor_b)
+	if motor_a == null or motor_b == null:
+		return
+
+	var max_bump_a := 0.0
+	var max_bump_b := 0.0
+	var opposite_direction_observed := false
+	var comparable_magnitude_observed := false
+	for _tick_index: int in range(240):
+		await wait_physics_frames(1)
+		var bump_a: Vector3 = motor_a.call("lateral_bump_mps")
+		var bump_b: Vector3 = motor_b.call("lateral_bump_mps")
+		max_bump_a = maxf(max_bump_a, bump_a.length())
+		max_bump_b = maxf(max_bump_b, bump_b.length())
+		if not bump_a.is_zero_approx() and not bump_b.is_zero_approx():
+			if bump_a.dot(bump_b) < 0.0:
+				opposite_direction_observed = true
+			if absf(bump_a.length() - bump_b.length()) < 0.75:
+				comparable_magnitude_observed = true
+
+	assert_gt(max_bump_a, 0.0, "kart A must have received a real lateral bump from the collision")
+	assert_gt(max_bump_b, 0.0, "kart B must have received a real lateral bump from the collision")
+	assert_true(
+		opposite_direction_observed,
+		"the two karts' bumps must point away from each other, not the same way"
+	)
+	assert_true(
+		comparable_magnitude_observed,
+		"both karts must receive a comparable magnitude -- a SYMMETRIC separation"
+	)
+	assert_lte(
+		max_bump_a,
+		_kart_tuning.bump_lateral_cap_mps + 0.01,
+		"kart A's bump must never exceed the authored cap"
+	)
+	assert_lte(
+		max_bump_b,
+		_kart_tuning.bump_lateral_cap_mps + 0.01,
+		"kart B's bump must never exceed the authored cap"
+	)
+
+
+## An absurdly high approach speed (white-boxed, far beyond anything
+## reachable under authored top_speed_mps/boost) deliberately makes
+## relative_speed * bump_impulse_scale blow WAY past bump_lateral_cap_mps --
+## a capped observation here proves the cap actually clamps, not merely
+## that ordinary racing speeds never happen to reach it.
+func test_bump_magnitude_is_capped_even_at_extreme_relative_speed() -> void:
+	var karts := _spawn_kart_pair(Vector3(-0.8, 0.0, 0.0), Vector3(0.8, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+
+	var motor_a: RefCounted = kart_a.get("_motor")
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_a)
+	if motor_a == null:
+		return
+	motor_a.set("_forward_speed_mps", _kart_tuning.top_speed_mps * 50.0)
+
+	var max_bump_a := 0.0
+	var max_bump_b := 0.0
+	for _tick_index: int in range(60):
+		await wait_physics_frames(1)
+		max_bump_a = maxf(max_bump_a, (motor_a.call("lateral_bump_mps") as Vector3).length())
+		max_bump_b = maxf(max_bump_b, (motor_b.call("lateral_bump_mps") as Vector3).length())
+
+	assert_gt(max_bump_a, 0.0, "fixture sanity: an extreme-speed collision must still register a bump")
+	assert_lte(
+		max_bump_a,
+		_kart_tuning.bump_lateral_cap_mps + 0.01,
+		"kart A's bump must be capped even at an extreme relative speed"
+	)
+	assert_lte(
+		max_bump_b,
+		_kart_tuning.bump_lateral_cap_mps + 0.01,
+		"kart B's bump must be capped even at an extreme relative speed"
+	)
+
+
+## The same proven head-on approach geometry as test_two_karts_colliding_
+## at_speed_separate_laterally_and_symmetrically above (real contact is
+## already confirmed to occur there), but with BOTH karts' own forward
+## speed re-pinned to a small creep value before each wait (white-boxed --
+## a plain accel-from-rest approach cannot hold a low relative speed long
+## enough to actually reach contact, since auto-throttle keeps climbing
+## toward top_speed_mps regardless of how slowly either kart started).
+##
+## GUT's own wait_physics_frames(1) (see addons/gut/awaiter.gd's own
+## _on_tree_physics_frame()/_end_wait(): it waits until elapsed_frames >
+## requested, i.e. STRICTLY more than 1) actually elapses TWO physics
+## ticks per call, not one -- confirmed by direct measurement while
+## building this test (a single re-pin followed by exactly 2*accel_mps2*
+## one tick's delta_s of unclamped climb). creep_speed_mps is therefore
+## picked so even the WORST case -- two full unclamped accel ticks between
+## re-pins, on BOTH karts -- keeps the combined relative closing speed
+## under bump_min_relative_speed_mps with real margin:
+## 2 * (creep_speed_mps + 2 * accel_mps2 / physics_ticks_per_second) must
+## stay comfortably below 1.5.
+func test_below_min_relative_speed_produces_no_impulse() -> void:
+	var karts := _spawn_kart_pair(Vector3(-1.5, 0.0, 0.0), Vector3(1.5, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+	kart_b.call("set_yaw_degrees", 90.0)
+
+	var motor_a: RefCounted = kart_a.get("_motor")
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_a)
+	assert_not_null(motor_b)
+	if motor_a == null or motor_b == null:
+		return
+
+	var creep_speed_mps := 0.05
+	var worst_case_per_kart_mps := creep_speed_mps + (
+		2.0 * _kart_tuning.accel_mps2 / float(Engine.physics_ticks_per_second)
+	)
+	assert_lt(
+		2.0 * worst_case_per_kart_mps,
+		_kart_tuning.bump_min_relative_speed_mps,
+		"fixture sanity: the worst-case creep speed must stay under the authored gate"
+	)
+
+	var contact_observed := false
+	for _tick_index: int in range(300):
+		motor_a.set("_forward_speed_mps", creep_speed_mps)
+		motor_b.set("_forward_speed_mps", creep_speed_mps)
+		await wait_physics_frames(1)
+		if kart_a.get_slide_collision_count() > 0:
+			contact_observed = true
+		var bump_a: Vector3 = motor_a.call("lateral_bump_mps")
+		var bump_b: Vector3 = motor_b.call("lateral_bump_mps")
+		assert_true(
+			bump_a.is_zero_approx(),
+			"a slow-creep contact must stay below bump_min_relative_speed_mps"
+		)
+		assert_true(
+			bump_b.is_zero_approx(),
+			"a slow-creep contact must stay below bump_min_relative_speed_mps"
+		)
+
+	assert_true(
+		contact_observed,
+		"fixture sanity: the two karts must actually have touched during the run"
+	)
+
+
+## Kart A stays active and drives toward kart B, which is frozen (set_run_
+## active(false)) and parked stationary in A's path -- the realistic shape
+## of the mechanic's own constraint (a kart parked at the finish line must
+## not react to incoming traffic). Proves BOTH halves of "neither give nor
+## receive" in one real physics run: B's own _process_kart_bumps() never
+## runs while frozen (B GIVES nothing, structurally -- see kart_controller.
+## gd's own doc), and A's own detection DOES try to hand B a bump via
+## receive_bump(), which B's own guard must reject (B RECEIVES nothing) --
+## while A itself, still active, is free to keep reacting normally
+## (asserted via the fixture-sanity check below, so this test cannot pass
+## vacuously by nothing ever touching at all).
+func test_frozen_kart_neither_gives_nor_receives_a_bump() -> void:
+	var karts := _spawn_kart_pair(Vector3(-3.0, 0.0, 0.0), Vector3(3.0, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+	kart_b.call("set_run_active", false)
+
+	var motor_a: RefCounted = kart_a.get("_motor")
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_a)
+	assert_not_null(motor_b)
+	if motor_a == null or motor_b == null:
+		return
+
+	var kart_a_ever_bumped := false
+	for _tick_index: int in range(180):
+		await wait_physics_frames(1)
+		var bump_b: Vector3 = motor_b.call("lateral_bump_mps")
+		assert_true(bump_b.is_zero_approx(), "a frozen kart must never receive a bump")
+		if not (motor_a.call("lateral_bump_mps") as Vector3).is_zero_approx():
+			kart_a_ever_bumped = true
+
+	assert_true(
+		kart_a_ever_bumped,
+		"fixture sanity: the still-active kart must have actually made contact with the frozen one"
+	)
+
+
+## Direct unit check on receive_bump()'s own guard clause (see that
+## method's own doc) -- no physics simulation, no approach geometry,
+## isolates exactly the one line of logic the physics-based test above
+## exercises only indirectly.
+func test_frozen_kart_rejects_a_direct_receive_bump_call() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	kart.call("set_run_active", false)
+	kart.call("receive_bump", Vector3(5.0, 0.0, 0.0))
+
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	var lateral: Vector3 = motor.call("lateral_bump_mps")
+	assert_true(
+		lateral.is_zero_approx(),
+		"a frozen kart must reject an incoming receive_bump() call, regardless of who calls it"
+	)
+
+
+## Two _spawn_kart_on_floor() fixtures at different origins, reused as-is --
+## see that helper's own doc: multiple fixtures spawned in the same test
+## already share one physics world and collide with each other with no
+## extra wiring, which is exactly what these tests need (a real two-kart
+## contact, not a mocked one).
+func _spawn_kart_pair(origin_a: Vector3, origin_b: Vector3) -> Array:
+	var kart_a := _spawn_kart_on_floor(origin_a)
+	var kart_b := _spawn_kart_on_floor(origin_b)
+	if kart_a == null or kart_b == null:
+		return []
+	return [kart_a, kart_b]
+
+
 ## origin offsets the whole floor+kart fixture so multiple fixtures spawned
 ## in the same test (e.g. a same-direction-vs-counter-steer A/B comparison)
 ## don't share a global position and collide with each other. item_tuning

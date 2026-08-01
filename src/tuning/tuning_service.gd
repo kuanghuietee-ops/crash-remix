@@ -134,6 +134,22 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"kart_tint_slot_4",
 			&"kart_tint_slot_5",
 		],
+		# CTR R7 Task 2: kart-to-kart contact fields, added to the already-
+		# shipped kart section as their OWN cohort -- a SEPARATE array entry
+		# from the body-tint cohort above, not folded into it, because the
+		# two shipped in different tasks (mirrors ai's own recovery cohort
+		# above, added separately from its own earlier apex/damping/
+		# personality cohort for the identical reason): an override.tres
+		# saved after CTR R6 Task 3 but before this task would already have
+		# the body-tint fields (real, edited values) and be missing only
+		# these three -- migrating them as one combined group would
+		# silently re-stamp the OLDER cohort's already-migrated values back
+		# to authored defaults instead of leaving them untouched.
+		[
+			&"bump_impulse_scale",
+			&"bump_min_relative_speed_mps",
+			&"bump_lateral_cap_mps",
+		],
 	],
 	# CTR R6 Task 4: apex/damping/personality fields, added to the already-
 	# shipped ai section as ONE cohort -- mirrors kart's own body-tint entry
@@ -624,6 +640,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or kart.spin_out_speed_keep_ratio <= 0.0
 		or kart.spin_out_speed_keep_ratio > 1.0
 		or kart.invulnerable_after_hit_s <= 0.0
+		# CTR R7 Task 2 (kart-to-kart contact): every field strictly
+		# positive, same default rule as the rest of this section -- none of
+		# the three is a normalized ratio (bump_impulse_scale is a plain
+		# multiplier, not bounded to [0,1]), so no additional upper-bound
+		# clause is needed the way steer_speed_falloff/boost_window_shrink_
+		# factor/spin_out_speed_keep_ratio above each carry one.
+		or kart.bump_impulse_scale <= 0.0
+		or kart.bump_min_relative_speed_mps <= 0.0
+		or kart.bump_lateral_cap_mps <= 0.0
 		# CTR R6 Task 3: the same alpha-only Color bound fx.spark_color_
 		# stage1/2/3 already use below (RGB is unbounded/HDR-capable, only
 		# alpha has real meaning here -- a zero-alpha tint would make
