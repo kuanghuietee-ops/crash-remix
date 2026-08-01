@@ -9,7 +9,7 @@
 [sub_resource type="BoxShape3D" id="Shape_gate"]
 size = Vector3(16, 4, 2)
 
-[node name="TrackLintGood" type="Node3D"]
+[node name="TrackLintPadsOffRoadBad" type="Node3D"]
 
 [node name="Spine" type="Path3D" parent="."]
 script = ExtResource("1_spine")
@@ -116,7 +116,7 @@ position = Vector3(10, 1, 23)
 script = ExtResource("3_box")
 
 [node name="BoostPadGood" type="Area3D" parent="."]
-position = Vector3(11, 1, 0)
+position = Vector3(11, 1, -8)
 script = ExtResource("4_boost_pad")
 
 [node name="JumpPadGood" type="Area3D" parent="."]

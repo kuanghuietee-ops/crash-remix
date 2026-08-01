@@ -1,0 +1,32 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/racing/track/boost_pad.gd" id="1_pad"]
+
+[sub_resource type="StandardMaterial3D" id="Material_boost_pad"]
+shading_mode = 0
+albedo_color = Color(1, 0.55, 0.08, 1)
+emission_enabled = true
+emission = Color(1, 0.55, 0.08, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="QuadMesh" id="Mesh_boost_pad"]
+material = SubResource("Material_boost_pad")
+size = Vector2(4, 3)
+
+[sub_resource type="BoxShape3D" id="Shape_boost_pad"]
+size = Vector3(4, 0.4, 3)
+
+[node name="BoostPad" type="Area3D"]
+collision_layer = 1
+collision_mask = 4
+script = ExtResource("1_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.2, 0)
+shape = SubResource("Shape_boost_pad")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.05, 0)
+rotation_degrees = Vector3(-90, 0, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_boost_pad")

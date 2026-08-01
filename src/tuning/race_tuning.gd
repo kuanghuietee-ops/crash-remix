@@ -25,3 +25,16 @@ extends Resource
 # equal a good look-at height above the kart) so each stays independently
 # tunable.
 @export var camera_look_height_m: float
+
+# Task 1 (CTR R7, discharges spec debt #2): track-authored BoostPad/JumpPad
+# Area3D triggers (src/racing/track/boost_pad.gd, jump_pad.gd) read these
+# three -- see race_session.gd's own PAD WIRING doc for how they reach a
+# kart. pad_boost_s/pad_refire_cooldown_s feed BoostPad.configure() (the
+# same "seconds" shape KartController.apply_boost() already takes);
+# jump_pad_velocity_scale feeds JumpPad.configure() (KartMotor.launch()'s
+# own scale multiplier on the hop kinematic identity -- see that method's
+# doc for why a SCALE, not a raw m/s value, is the right shape here).
+@export_category("Pads")
+@export var pad_boost_s: float
+@export var pad_refire_cooldown_s: float
+@export var jump_pad_velocity_scale: float

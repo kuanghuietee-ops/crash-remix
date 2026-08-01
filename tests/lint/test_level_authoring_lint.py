@@ -25,6 +25,7 @@ from scripts.lint_level_authoring import (
     TRACK_GATE_WIDTH_RULE,
     TRACK_GRID_SLOTS_RULE,
     TRACK_ITEM_BOX_RULE,
+    TRACK_PAD_RULE,
     TRACK_SPAWN_RULE,
     TRACK_SPINE_RING_RULE,
     WUMPA_TOTAL_RULE,
@@ -1019,6 +1020,81 @@ class RacingTrackAuthoringLintTests(unittest.TestCase):
         )
         self.assertIn("ItemBoxA1", findings[0].detail)
         self.assertIn("scene's own origin", findings[0].detail)
+
+    # -----------------------------------------------------------------
+    # Task 1 (CTR R7, discharges spec debt #2): boost/jump pads must sit
+    # on-road and stay clear of gates, item boxes, and this scene's own
+    # origin. track_lint_good.tscn now also carries BoostPadGood/
+    # JumpPadGood (both clean); each _bad fixture below moves ONLY
+    # BoostPadGood, isolating exactly one TRACK_PAD_RULE sub-check the
+    # same way every _bad fixture above isolates its own single mutation.
+    # -----------------------------------------------------------------
+
+    def test_pad_off_the_road_fires_the_pad_rule(self) -> None:
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_pads_off_road_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_PAD_RULE],
+        )
+        self.assertIn("BoostPadGood", findings[0].detail)
+        self.assertIn("off the spine centerline", findings[0].detail)
+
+    def test_pad_near_a_gate_fires_the_pad_rule(self) -> None:
+        # BoostPadGood sits ON-road, well clear of the origin and every
+        # item box, but only 1m from Gate3 -- isolates the gate-clearance
+        # check from the off-road/origin/box cases.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_pads_gate_clearance_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_PAD_RULE],
+        )
+        self.assertIn("BoostPadGood", findings[0].detail)
+        self.assertIn("Gate3", findings[0].detail)
+        self.assertIn("checkpoint gate", findings[0].detail)
+
+    def test_pad_near_an_item_box_fires_the_pad_rule(self) -> None:
+        # BoostPadGood sits ON-road, well clear of the origin and every
+        # gate, but only 9.8m from ItemBoxA3 -- isolates the box-clearance
+        # check from the off-road/origin/gate cases.
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_pads_box_clearance_bad.tscn"
+        )
+
+        self.assertEqual(
+            [finding.rule for finding in findings],
+            [TRACK_PAD_RULE],
+        )
+        self.assertIn("BoostPadGood", findings[0].detail)
+        self.assertIn("ItemBoxA3", findings[0].detail)
+        self.assertIn("item box", findings[0].detail)
+
+    def test_pad_near_the_origin_fires_the_pad_rule(self) -> None:
+        # This fixture's track_lint_good.tscn geometry authors gate 0
+        # exactly at this scene's own local origin (see track_lint_good.
+        # tscn's own Gates/Gate0), so a pad close enough to trip the
+        # origin-clearance check is -- in THIS specific fixture -- also
+        # close enough to trip the gate-clearance check against gate 0:
+        # both findings are genuinely, geometrically expected here, not a
+        # rule bug (a real track's own gate 0 need not sit at local
+        # origin at all, so this coupling is fixture-specific, not
+        # universal).
+        findings = find_authoring_violations(
+            FIXTURE_ROOT / "track_lint_pads_origin_bad.tscn"
+        )
+
+        self.assertEqual(
+            {finding.rule for finding in findings},
+            {TRACK_PAD_RULE},
+        )
+        details = " ".join(finding.detail for finding in findings)
+        self.assertIn("BoostPadGood", details)
+        self.assertIn("scene's own origin", details)
 
     def test_dressing_too_close_to_the_road_fires_the_clearance_rule(
         self,

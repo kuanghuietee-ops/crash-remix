@@ -445,6 +445,37 @@ func test_is_boosting_proxies_the_real_motor_and_reaches_zero_when_boost_decays(
 	)
 
 
+## Task 1 (CTR R7 pads): JumpPad's own entry point -- a thin, unconditional
+## pass-through onto the real motor's launch(), mirrors apply_boost()'s own
+## reach-the-motor proof (test_is_boosting_proxies_the_real_motor_and_
+## reaches_zero_when_boost_decays immediately above) but for vertical_speed_
+## mps instead of boost time. The scaled kinematic math itself is test_kart_
+## motor.gd's own job (test_launch_speed_matches_the_scaled_kinematic_
+## identity) -- this proves only that the controller actually forwards.
+func test_launch_reaches_the_real_motor_vertical_speed() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var motor: RefCounted = kart.get("_motor")
+	assert_not_null(motor)
+	if motor == null:
+		return
+	assert_almost_eq(
+		float(motor.call("vertical_speed_mps")),
+		0.0,
+		0.01,
+		"fixture sanity: a settled kart must have no residual vertical speed"
+	)
+
+	kart.call("launch", 2.2)
+
+	assert_gt(
+		float(motor.call("vertical_speed_mps")),
+		0.0,
+		"launch() must reach the real motor and give it upward vertical speed immediately"
+	)
+
+
 func test_reset_speed_zeroes_forward_and_vertical_speed_and_body_velocity() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:

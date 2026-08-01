@@ -94,6 +94,42 @@ extends Node3D
 ## merely by the synthetic-ItemBox tests that first proved the plumbing
 ## before any track authored one.
 ##
+## PAD WIRING (Task 1, CTR R7 -- discharges spec debt #2) mirrors the ITEM
+## BOX WIRING shape immediately above almost exactly: BoostPad/JumpPad
+## instances are discovered by TYPE under Track (_discover_boost_pads()/
+## _discover_jump_pads(), the same find_children("*", "Area3D", true,
+## false) scan _discover_gates()/_discover_item_boxes() already use) and
+## this session connects to each one's native body_entered signal itself.
+## Two real differences from item boxes: (1) a PER-PAD bound handler is
+## used (pad.body_entered.connect(_on_boost_pad_body_entered.bind(pad)),
+## the same Callable-equality-guards-against-a-duplicate-connection shape
+## the gate loop above already uses) rather than one shared unbound
+## handler, because -- unlike item-box routing, which only ever needs the
+## ENTERING BODY -- firing a pad also needs to know WHICH pad fired, to
+## call that pad's own try_consume() cooldown gate; and (2) each handler
+## reads _race_tuning.pad_boost_s/jump_pad_velocity_scale itself and calls
+## the entering body's own apply_boost()/launch() directly -- there is no
+## per-kart routing table to look up (mirrors _on_box_body_entered's own
+## "the body passed in by body_entered already IS the kart" shape, not
+## _gate_validators' identity-lookup shape).
+##
+## Gated on _race_started (see _on_gate_body_entered's/_on_box_body_
+## entered's own "Fix round 1, reviewer [LOW-2]" doc: a frozen kart can
+## never physically reach a pad before GO either) -- both pad handlers
+## early-return pre-GO, proven directly the same synthetic-call way
+## test_race_start_flow.gd's own test_gate_crossing_is_a_no_op_pre_go/
+## test_box_pickup_is_a_no_op_pre_go already prove it for gates/boxes.
+##
+## pad.try_consume(body) is called BEFORE the kart method, and its own
+## return value gates whether this session calls apply_boost()/launch() at
+## all -- see boost_pad.gd's own try_consume() doc for why this is a
+## single atomic "check AND claim" call rather than a separate check-then-
+## mark pair. Neither track currently authors any pads (Task 3/4 do) --
+## _discover_boost_pads()/_discover_jump_pads() simply return empty arrays
+## on a pad-less Track, the identical "no boxes authored yet" degrade
+## _discover_item_boxes() already handled the same way before R4 Task 5
+## authored any.
+##
 ## SOLO TIME TRIAL DOES NOT ROLL. spawn_opponents (not a new, separate
 ## exported flag) also gates item rolls: _items_allowed() reads it
 ## directly, so a solo race (spawn_opponents = false, see that field's own
@@ -376,6 +412,11 @@ var _gates: Array[CheckpointGate] = []
 var _item_boxes: Array[ItemBox] = []
 var _item_rng := RandomNumberGenerator.new()
 
+# Task 1 (CTR R7, discharges spec debt #2): see the class doc's PAD WIRING
+# section.
+var _boost_pads: Array[BoostPad] = []
+var _jump_pads: Array[JumpPad] = []
+
 var _kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
@@ -597,6 +638,23 @@ func configure(catalog: GameplayTuning) -> void:
 		if not box.body_entered.is_connected(_on_box_body_entered):
 			box.body_entered.connect(_on_box_body_entered)
 
+	# Task 1 (CTR R7, discharges spec debt #2): see the class doc's PAD
+	# WIRING section. A PER-PAD bound handler is required here (unlike the
+	# item-box loop just above) -- see that section's own doc for why.
+	_boost_pads = _discover_boost_pads()
+	for boost_pad: BoostPad in _boost_pads:
+		boost_pad.call("configure", _race_tuning)
+		var boost_handler := _on_boost_pad_body_entered.bind(boost_pad)
+		if not boost_pad.body_entered.is_connected(boost_handler):
+			boost_pad.body_entered.connect(boost_handler)
+
+	_jump_pads = _discover_jump_pads()
+	for jump_pad: JumpPad in _jump_pads:
+		jump_pad.call("configure", _race_tuning)
+		var jump_handler := _on_jump_pad_body_entered.bind(jump_pad)
+		if not jump_pad.body_entered.is_connected(jump_handler):
+			jump_pad.body_entered.connect(jump_handler)
+
 	# Task 5: player's own SpineFollower (binding contract 3) and the
 	# body->validator routing table (binding contract 2's "gates route by
 	# body identity") must both be ready before _spawn_ai_karts() below --
@@ -682,6 +740,20 @@ func gate_count() -> int:
 ## inferring it from the absence of a crash.
 func item_box_count() -> int:
 	return _item_boxes.size()
+
+
+## How many BoostPad/JumpPad instances were discovered under Track at
+## configure() time -- exposed the same "prove discovery, not just absence
+## of a crash" reason item_box_count() is (see its own doc immediately
+## above). Both real tracks currently author zero (Task 3/4 add some) --
+## these simply read 0 on either until then, the same pad-less degrade the
+## class doc's own PAD WIRING section documents.
+func boost_pad_count() -> int:
+	return _boost_pads.size()
+
+
+func jump_pad_count() -> int:
+	return _jump_pads.size()
 
 
 ## Gates validated toward the lap currently in progress -- a thin
@@ -970,6 +1042,21 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	for box: ItemBox in _item_boxes:
 		if is_instance_valid(box):
 			box.call("configure", _item_tuning, _fx_tuning)
+	# Task 1 (CTR R7, discharges spec debt #2): same "provably live" reason
+	# as the box loop immediately above -- pad_boost_s/pad_refire_cooldown_s/
+	# jump_pad_velocity_scale live on _race_tuning, just reassigned a few
+	# lines up, so every discovered pad's own cached _tuning reference must
+	# be refreshed too or it keeps reading the PRE-refresh RaceTuning
+	# forever. BoostPad/JumpPad.configure() is likewise idempotent (it only
+	# ever touches _tuning, never _elapsed_s or the cooldown Dictionary --
+	# see either script's own configure() doc), so re-running it here mid-
+	# race never resets an in-flight cooldown.
+	for boost_pad: BoostPad in _boost_pads:
+		if is_instance_valid(boost_pad):
+			boost_pad.call("configure", _race_tuning)
+	for jump_pad: JumpPad in _jump_pads:
+		if is_instance_valid(jump_pad):
+			jump_pad.call("configure", _race_tuning)
 
 
 ## R4 Task 4 (item 1, hit-routing foundation): the ONE place any hit source
@@ -1546,6 +1633,54 @@ func _discover_item_boxes() -> Array[ItemBox]:
 		if candidate is ItemBox:
 			result.append(candidate as ItemBox)
 	return result
+
+
+func _discover_boost_pads() -> Array[BoostPad]:
+	var result: Array[BoostPad] = []
+	for candidate: Node in _track.find_children("*", "Area3D", true, false):
+		if candidate is BoostPad:
+			result.append(candidate as BoostPad)
+	return result
+
+
+func _discover_jump_pads() -> Array[JumpPad]:
+	var result: Array[JumpPad] = []
+	for candidate: Node in _track.find_children("*", "Area3D", true, false):
+		if candidate is JumpPad:
+			result.append(candidate as JumpPad)
+	return result
+
+
+## See the class doc's PAD WIRING section. `pad` is THIS specific pad (bound
+## at connect time, see configure()'s own pad-wiring loop) -- try_consume()
+## is called on IT, never a different pad the same kart might also be
+## sitting in, so each pad's own cooldown stays independent of every other
+## one. A body with no apply_boost() method (a stray non-kart Area3D/body,
+## or a bare test fixture) is silently ignored rather than erroring, the
+## same shape _on_box_body_entered()'s own item_slot() check already uses.
+func _on_boost_pad_body_entered(body: Node, pad: BoostPad) -> void:
+	# Fix round 1, reviewer [LOW-2]-style pre-GO gate -- same structural
+	# reason as _on_gate_body_entered()/_on_box_body_entered() above: a
+	# frozen kart can never physically reach a pad before GO either.
+	if not _race_started:
+		return
+	if body == null or not is_instance_valid(body) or not body.has_method("apply_boost"):
+		return
+	if not pad.try_consume(body):
+		return
+	body.call("apply_boost", _race_tuning.pad_boost_s)
+
+
+## See _on_boost_pad_body_entered()'s own doc immediately above -- identical
+## shape, launch() in place of apply_boost().
+func _on_jump_pad_body_entered(body: Node, pad: JumpPad) -> void:
+	if not _race_started:
+		return
+	if body == null or not is_instance_valid(body) or not body.has_method("launch"):
+		return
+	if not pad.try_consume(body):
+		return
+	body.call("launch", _race_tuning.jump_pad_velocity_scale)
 
 
 ## Binding contract 3: player finish placement = 1 + the number of AI karts

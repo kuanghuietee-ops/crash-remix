@@ -61,6 +61,21 @@ extends RefCounted
 ## any residual downward speed, airborne integrates -gravity_mps2 per
 ## second. This keeps hop fully headless-testable by ticking with
 ## grounded=false and summing vertical_speed_mps() * delta_s in the caller.
+##
+## Launch (launch(scale), Task 1, CTR R7 pads) is JumpPad's own vertical
+## impulse -- the SAME v0 = sqrt(2 * g * hop_height_m) kinematic identity
+## hop() already uses, scaled by jump_pad_velocity_scale (a caller-supplied
+## multiplier, never a raw m/s literal here -- see race_tuning.gd's own doc
+## on that field). A launch of scale=1.0 is therefore identical to a plain
+## hop(); the peak height an integrated launch reaches is scale^2 *
+## hop_height_m (peak height under constant gravity scales with v0
+## squared), not scale * hop_height_m -- see test_kart_motor.gd's own
+## launch-height test for the worked derivation. Unlike hop_pressed() on
+## the controller, launch() carries no grounded/spin-out gate of its own --
+## it is an ENVIRONMENTAL effect applied by RaceSession the same
+## unconditional way apply_boost() already is (a pad fires regardless of
+## whatever the kart's own drift/spin-out state happens to be), not a
+## player input edge.
 
 const ScalarMathType := preload("res://src/core/scalar_math.gd")
 
@@ -229,6 +244,13 @@ func hop() -> void:
 	_vertical_speed_mps = sqrt(
 		ScalarMathType.DOUBLE * _tuning.gravity_mps2 * _tuning.hop_height_m
 	)
+
+
+## JumpPad's own entry point -- see this class doc's own Launch paragraph.
+func launch(scale: float) -> void:
+	_vertical_speed_mps = sqrt(
+		ScalarMathType.DOUBLE * _tuning.gravity_mps2 * _tuning.hop_height_m
+	) * scale
 
 
 func add_boost(seconds: float) -> void:

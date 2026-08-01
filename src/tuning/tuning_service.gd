@@ -108,6 +108,17 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 		[
 			&"camera_look_height_m",
 		],
+		# CTR R7 Task 1 (discharges spec debt #2): pad_boost_s/pad_refire_
+		# cooldown_s/jump_pad_velocity_scale added to the already-shipped
+		# race section as ONE cohort -- mirrors camera_look_height_m's own
+		# single-field entry immediately above and kart's own body-tint
+		# entry below (an override.tres saved before this task exists
+		# would be missing all three at once, never some subset).
+		[
+			&"pad_boost_s",
+			&"pad_refire_cooldown_s",
+			&"jump_pad_velocity_scale",
+		],
 	],
 	# CTR R6 Task 3: kart-body tint fields, added to the EXISTING kart
 	# section (unlike fx's own brand-new-section shape, see fx_tuning.gd's
@@ -641,6 +652,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		# would aim the camera at or below the kart's own origin instead
 		# of a point above it.
 		or race.camera_look_height_m <= 0.0
+		# Task 1 (CTR R7, pads): all three are strictly positive -- a
+		# zero/negative pad_boost_s or jump_pad_velocity_scale would make
+		# a pad actively HARMFUL (a boost pad that slows a kart down, a
+		# jump pad that yanks it into the floor), and a zero/negative
+		# pad_refire_cooldown_s would let a single pass through a pad
+		# refire every physics tick it stays overlapped.
+		or race.pad_boost_s <= 0.0
+		or race.pad_refire_cooldown_s <= 0.0
+		or race.jump_pad_velocity_scale <= 0.0
 	):
 		return false
 

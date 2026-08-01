@@ -83,6 +83,10 @@ TRACK_ITEM_BOX_RULE = "track_item_boxes"
 TRACK_DRESSING_CLEARANCE_RULE = "track_dressing_clearance"
 TRACK_GATE_FLAG_RULE = "track_gate_flags"
 TRACK_ARCH_RULE = "track_start_finish_arch"
+# Task 1 (CTR R7, discharges spec debt #2): boost/jump pads must sit
+# on-road and stay clear of gates, item boxes, and this scene's own origin
+# -- see TRACK_PAD_CLEARANCE_M's own doc below.
+TRACK_PAD_RULE = "track_pads"
 
 BREAKABLE_CRATE_SCRIPT = (
     "res://src/gameplay/crates/breakable_crate.gd"
@@ -212,6 +216,28 @@ TRACK_ITEM_BOX_MIN_COUNT = 6
 # identity" wiring holds. Keep this comment in sync if a future race scene
 # ever offsets its Track child.
 TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M = 10.0
+# Task 1 (CTR R7, discharges spec debt #2): BoostPad/JumpPad, discovered by
+# script match exactly like ItemBox above (race_session.gd's own
+# _discover_boost_pads()/_discover_jump_pads() use the identical type/
+# script scan under Track, see that file's own PAD WIRING doc) -- a pad can
+# legally sit anywhere in the flattened tree, not just at a fixed root-level
+# name. Both scripts share ONE rule (TRACK_PAD_RULE): a boost pad and a jump
+# pad are authored under the identical on-road/clearance constraints, and
+# splitting them into two rules would just double the boilerplate below for
+# no real gain.
+BOOST_PAD_SCRIPT = "res://src/racing/track/boost_pad.gd"
+JUMP_PAD_SCRIPT = "res://src/racing/track/jump_pad.gd"
+# A pad must clear this scene's own local origin (the same one-frame-flash
+# false-trigger risk TRACK_ITEM_BOX_ORIGIN_CLEARANCE_M's own doc names for
+# item boxes -- see that constant's doc immediately above for the full
+# rationale, unchanged here) AND every checkpoint gate AND every item box
+# by this same radius: a pad firing on top of (or immediately behind) a
+# gate/box would double up two distinct trigger volumes on the same patch
+# of road, and a boost/launch effect landing exactly at a gate crossing or
+# an item roll is exactly the kind of overlapping-trigger authoring mistake
+# this radius exists to catch, the same spirit as the origin check, just
+# generalized to every other trigger already authored on the same track.
+TRACK_PAD_CLEARANCE_M = 10.0
 # Task 2 (CTR R6, circuit polish): racing-line dressing (EnvironmentArt scatter
 # props -- kit palms/rocks/foliage) must clear the road by more than the bare
 # TRACK_ROAD_WIDTH_M/2 half-width every ON-road check above uses, because
@@ -519,6 +545,9 @@ def _track_findings(
     )
     findings.extend(
         _track_item_box_findings(scene_name, nodes, points, cumulative)
+    )
+    findings.extend(
+        _track_pad_findings(scene_name, nodes, gates, points, cumulative)
     )
     findings.extend(
         _track_dressing_findings(scene_name, nodes, points, cumulative)
@@ -1061,6 +1090,132 @@ def _track_item_box_findings(
                     TRACK_ITEM_BOX_RULE,
                     (
                         f"{box.path} is {offset_across_m:.3f}m off the spine "
+                        f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
+                        f"wide (max {half_width_m:.3f}m each side)"
+                    ),
+                )
+            )
+    return findings
+
+
+def _track_pad_findings(
+    scene_name: str,
+    nodes: list[FlatNode],
+    gates: list[FlatNode],
+    points: list[Vector3],
+    cumulative: list[float],
+) -> list[AuthoringViolation]:
+    """Task 1 (CTR R7, discharges spec debt #2): boost/jump pads sit
+    on-road and stay clear of every gate, every item box, and this scene's
+    own origin (TRACK_PAD_CLEARANCE_M's own doc above).
+
+    No minimum-count check, unlike TRACK_ITEM_BOX_RULE's own TRACK_ITEM_
+    BOX_MIN_COUNT -- pads are a signature feature placed sparingly (the R7
+    design brief's own "a boost strip on the main straight, one jump-pad
+    corner cut" shape, plus 1-2 retrofitted onto each existing track), not
+    a fixed-count-per-lap loop like item boxes; a pad-less track (both
+    current real tracks, until Task 3/4) is exactly as valid as one with a
+    dozen, so an empty `pads` list here returns no findings at all rather
+    than a "found 0" complaint.
+
+    On-road reuses _track_item_box_findings's own per-node independent-
+    projection shape (project onto the whole polyline, take the LOCAL
+    tangent at that projected point) for the identical reason: pads scatter
+    all the way around the loop, not clustered near one gate, so each needs
+    its own local road direction.
+    """
+    boxes = [node for node in nodes if node.script_path == ITEM_BOX_SCRIPT]
+    pads = [
+        node
+        for node in nodes
+        if node.script_path in (BOOST_PAD_SCRIPT, JUMP_PAD_SCRIPT)
+    ]
+    if not pads:
+        return []
+
+    half_width_m = TRACK_ROAD_WIDTH_M / 2.0
+    findings: list[AuthoringViolation] = []
+    for pad in pads:
+        origin_distance_m = _length(pad.world_position)
+        if origin_distance_m < TRACK_PAD_CLEARANCE_M and not math.isclose(
+            origin_distance_m,
+            TRACK_PAD_CLEARANCE_M,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_PAD_RULE,
+                    (
+                        f"{pad.path} is {origin_distance_m:.3f}m from this "
+                        "scene's own origin; must stay at least "
+                        f"{TRACK_PAD_CLEARANCE_M:.3f}m clear (same one-frame "
+                        "spawn-flash false-trigger risk TRACK_ITEM_BOX_RULE "
+                        "already guards against)"
+                    ),
+                )
+            )
+
+        for gate in gates:
+            gate_distance_m = _length(
+                _subtract(pad.world_position, gate.world_position)
+            )
+            if gate_distance_m < TRACK_PAD_CLEARANCE_M and not math.isclose(
+                gate_distance_m,
+                TRACK_PAD_CLEARANCE_M,
+            ):
+                findings.append(
+                    AuthoringViolation(
+                        scene_name,
+                        TRACK_PAD_RULE,
+                        (
+                            f"{pad.path} is {gate_distance_m:.3f}m from "
+                            f"{gate.path}; a pad must stay at least "
+                            f"{TRACK_PAD_CLEARANCE_M:.3f}m clear of every "
+                            "checkpoint gate"
+                        ),
+                    )
+                )
+
+        for box in boxes:
+            box_distance_m = _length(
+                _subtract(pad.world_position, box.world_position)
+            )
+            if box_distance_m < TRACK_PAD_CLEARANCE_M and not math.isclose(
+                box_distance_m,
+                TRACK_PAD_CLEARANCE_M,
+            ):
+                findings.append(
+                    AuthoringViolation(
+                        scene_name,
+                        TRACK_PAD_RULE,
+                        (
+                            f"{pad.path} is {box_distance_m:.3f}m from "
+                            f"{box.path}; a pad must stay at least "
+                            f"{TRACK_PAD_CLEARANCE_M:.3f}m clear of every "
+                            "item box"
+                        ),
+                    )
+                )
+
+        progress = _project_onto_polyline(pad.world_position, points, cumulative)
+        tangent = _polyline_direction_at_distance(points, cumulative, progress)
+        if _is_zero(tangent):
+            continue
+        across = (-tangent[2], 0.0, tangent[0])
+        centerline_point = _sample_polyline(points, cumulative, progress)
+        offset_across_m = _dot(
+            _subtract(pad.world_position, centerline_point), across
+        )
+        if abs(offset_across_m) > half_width_m and not math.isclose(
+            abs(offset_across_m),
+            half_width_m,
+        ):
+            findings.append(
+                AuthoringViolation(
+                    scene_name,
+                    TRACK_PAD_RULE,
+                    (
+                        f"{pad.path} is {offset_across_m:.3f}m off the spine "
                         f"centerline; the road is only {TRACK_ROAD_WIDTH_M:.3f}m "
                         f"wide (max {half_width_m:.3f}m each side)"
                     ),

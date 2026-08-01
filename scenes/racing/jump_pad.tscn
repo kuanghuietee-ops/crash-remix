@@ -1,0 +1,32 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/racing/track/jump_pad.gd" id="1_pad"]
+
+[sub_resource type="StandardMaterial3D" id="Material_jump_pad"]
+shading_mode = 0
+albedo_color = Color(0.1, 0.85, 0.95, 1)
+emission_enabled = true
+emission = Color(0.1, 0.85, 0.95, 1)
+emission_energy_multiplier = 1.8
+
+[sub_resource type="QuadMesh" id="Mesh_jump_pad"]
+material = SubResource("Material_jump_pad")
+size = Vector2(3, 3)
+
+[sub_resource type="BoxShape3D" id="Shape_jump_pad"]
+size = Vector3(3, 0.4, 3)
+
+[node name="JumpPad" type="Area3D"]
+collision_layer = 1
+collision_mask = 4
+script = ExtResource("1_pad")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.2, 0)
+shape = SubResource("Shape_jump_pad")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.05, 0)
+rotation_degrees = Vector3(-90, 0, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_jump_pad")

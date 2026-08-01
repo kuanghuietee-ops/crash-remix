@@ -266,6 +266,14 @@ func apply_boost(seconds: float) -> void:
 	_motor.add_boost(seconds)
 
 
+## JumpPad's own entry point (Task 1, CTR R7 pads) -- mirrors apply_boost()
+## immediately above exactly: a thin, unconditional pass-through onto the
+## motor, no grounded/spin-out gate of its own (see KartMotor.launch()'s own
+## doc for why -- this is an environmental effect, not player input).
+func launch(scale: float) -> void:
+	_motor.launch(scale)
+
+
 ## R4 Task 3: replaces the Task-2 no-op stub (which always returned
 ## &"none") with the real hand-off onto this controller's own ItemSlot --
 ## delegates straight to ItemSlot.use() (returns-and-clears: &"none" unless
