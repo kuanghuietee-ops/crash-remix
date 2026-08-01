@@ -86,12 +86,22 @@ extends RefCounted
 ## validation of its own, the same "trust the caller" shape set_speed_
 ## scale()'s own doc already documents). apply_bump() REPLACES whatever
 ## lateral bump velocity was already stored, rather than accumulating --
-## kart-vs-kart collision detection can independently fire from BOTH
-## karts' own move_and_slide() within the same physics tick (see the
-## controller's own CONTACT doc), and a second call landing the same tick
-## carries an almost-identical value for the same real contact event, so
-## last-write-wins is correct and cannot runaway-stack past the caller's
-## own cap. Once stored, it decays every tick in tick()/decelerate_to_stop()
+## a kart in contact with more than one other kart at once (a pile-up) can
+## receive more than one apply_bump() call in the same physics tick, one
+## per distinct pair, and last-write-wins there is a deliberate
+## simplification (the newest contact's shove wins over an older one still
+## decaying), not an attempt to model multi-body chained restitution.
+## FIX ROUND 1 (same-tick double-detection): this method used to also see
+## a second call landing the SAME tick for the SAME pair -- both karts'
+## own move_and_slide() independently detecting one real contact and each
+## applying their own impulse for it, compounding instead of replacing a
+## single logical shove. That is now prevented one layer up, before
+## apply_bump() is ever called a second time for the same pair: see
+## KartController's own _bumped_by_tick doc and _process_kart_bumps()'s
+## own fix-round doc. This method itself needed no change for that half of
+## the fix -- it only ever sees whatever the caller already decided to
+## apply -- but see velocity_without_bump() below for the other half.
+## Once stored, it decays every tick in tick()/decelerate_to_stop()
 ## via coast_drag_mps2 -- an EXISTING rate field, reused rather than adding
 ## a new tuning literal purely for this -- using the identical move_toward
 ## (...,Vector3.ZERO,...) shape every other timer on this motor already
@@ -362,11 +372,28 @@ func vertical_speed_mps() -> float:
 	return _vertical_speed_mps
 
 
-func velocity() -> Vector3:
+## FIX ROUND 1 (CTR R7 Task 2, same-tick double-detection): the pure
+## forward-motion term of velocity() below -- Vector3.FORWARD.rotated(...)
+## * forward_speed -- WITHOUT any in-flight lateral bump summed in.
+## KartController._process_kart_bumps()'s own relative-speed computation
+## MUST read this, not velocity() (see that method's own fix-round doc for
+## why): a kart that already received a bump earlier this EXACT physics
+## tick -- the other side of a same-tick double-detection, where both
+## karts' own move_and_slide() independently detect one real contact --
+## would otherwise have that just-applied lateral bump read straight back
+## through velocity() into the relative-speed calc, inflating it well past
+## the TRUE closing speed and saturating the resulting magnitude at
+## bump_lateral_cap_mps regardless of how slowly the karts were actually
+## closing, tick after tick for as long as the overlap persists.
+func velocity_without_bump() -> Vector3:
 	return (
 		Vector3.FORWARD.rotated(Vector3.UP, deg_to_rad(_yaw_degrees))
 		* _forward_speed_mps
-	) + _lateral_bump_mps
+	)
+
+
+func velocity() -> Vector3:
+	return velocity_without_bump() + _lateral_bump_mps
 
 
 func is_boosting() -> bool:

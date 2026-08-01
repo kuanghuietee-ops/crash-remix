@@ -161,6 +161,26 @@ var _item_use_count: int = 0
 ## the gate, and never twice for the same collision-index.
 var _bump_count: int = 0
 
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): {other kart's
+## own get_instance_id(): the Engine.get_physics_frames() tick this exact
+## pair last exchanged a bump}, written unconditionally by every
+## receive_bump() call -- both a self-applied share AND a cross-instance
+## share (see that method's own doc) -- and consulted at the very top of
+## _process_kart_bumps()'s own per-collision loop (see that method's own
+## fix-round doc for the full scenario this closes). Godot's own physics-
+## tick counter, not a new tuning literal -- lint_gameplay_numbers.py's own
+## scan is over src/gameplay/** and src/racing/** GDScript source, and
+## Engine.get_physics_frames() is a method call, not a numeric literal, so
+## it needs no tuning-resource field the way an actual gameplay NUMBER
+## would. A plain Dictionary, not an Array or a per-tick reset: the number
+## of distinct karts a controller ever shares the track with is small and
+## fixed for the whole race, so this stays bounded by kart count, never by
+## elapsed ticks -- each entry is simply overwritten in place tick after
+## tick, needing no explicit cleanup (a stale entry from many ticks ago
+## just fails the "== current_tick" comparison below on its own, the same
+## implicit-decay shape every timer field on the motor already relies on).
+var _bumped_by_tick: Dictionary = {}
+
 ## CTR R6 Task 3: character-mount + body-tint node refs. NODE LOOKUP, NOT
 ## @onready -- mirrors kart_fx.gd's own class-doc precedent exactly (see that
 ## file's "NODE LOOKUP, NOT @onready" section): RaceSession._spawn_ai_karts()
@@ -351,6 +371,19 @@ func speed_mps() -> float:
 ## velocity property this tick.
 func commanded_velocity_mps() -> Vector3:
 	return _motor.velocity()
+
+
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): proxies
+## KartMotor.velocity_without_bump() -- see that method's own doc for the
+## full rationale -- exactly the way commanded_velocity_mps() above proxies
+## velocity() itself. _process_kart_bumps()'s own relative-speed
+## computation now calls THIS on both karts (self directly via _motor, the
+## collider via this exact duck-typed proxy, mirroring commanded_velocity_
+## mps()'s own self/collider split above) instead of commanded_velocity_
+## mps(), so an already-applied lateral bump from earlier in the SAME
+## physics tick never gets read back into the calc a second time.
+func commanded_velocity_without_bump_mps() -> Vector3:
+	return _motor.velocity_without_bump()
 
 
 func is_sliding() -> bool:
@@ -567,7 +600,21 @@ func _physics_process(delta_s: float) -> void:
 ## gate it either (an invulnerability window blocks getting HIT again, not
 ## getting physically shoved -- these are different mechanics that happen
 ## to share a kart).
-func receive_bump(lateral_velocity_mps: Vector3) -> void:
+##
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): source_
+## instance_id is the CALLING kart's own get_instance_id() -- required, not
+## optional/defaulted, matching how every other multi-argument entry point
+## on this controller already requires its full argument list (see
+## configure()'s own doc precedent: omitting a gating param must be a real
+## call error, not a silent default). Every call -- the self-applied share
+## below in _process_kart_bumps() included -- unconditionally records
+## {source_instance_id: now} into _bumped_by_tick BEFORE the _run_active
+## guard, so a frozen kart still tracks who last touched it even though it
+## rejects the actual motor impulse; _process_kart_bumps()'s own fix-round
+## doc explains what THAT dictionary is for and why it must be written
+## here, on the RECEIVING side, rather than only on the detecting side.
+func receive_bump(lateral_velocity_mps: Vector3, source_instance_id: int) -> void:
+	_bumped_by_tick[source_instance_id] = Engine.get_physics_frames()
 	if not _run_active:
 		return
 	_motor.apply_bump(lateral_velocity_mps)
@@ -584,9 +631,9 @@ func receive_bump(lateral_velocity_mps: Vector3) -> void:
 ## uses to distinguish a real kart from a stray body or a bare test
 ## fixture, e.g. _on_boost_pad_body_entered()'s own doc), and for each real
 ## kart contact: computes the relative CLOSING speed from both karts' own
-## COMMANDED velocity (commanded_velocity_mps() -- see that method's own
-## doc for why this must NOT be the post-move_and_slide() resolved
-## CharacterBody3D.velocity property; flattened to XZ, since vertical/
+## COMMANDED velocity WITHOUT any in-flight bump (commanded_velocity_
+## without_bump_mps() -- see that method's own doc, and FIX ROUND 1 below
+## for why NOT commanded_velocity_mps(); flattened to XZ, since vertical/
 ## gravity differences have no business feeding a horizontal "kart
 ## contact" shove), gates it against bump_min_relative_speed_mps (a graze
 ## at walking pace fires nothing), and -- above that gate -- computes a
@@ -596,7 +643,33 @@ func receive_bump(lateral_velocity_mps: Vector3) -> void:
 ## via receive_bump() (the OTHER kart gets the exact opposite direction --
 ## away from THIS kart -- at the same magnitude, the "symmetric
 ## separation" the plan calls for).
+##
+## FIX ROUND 1 (Task 2 review, same-tick double-detection): move_and_
+## slide() collision detection is NOT guaranteed to fire on only ONE side
+## of a pair within a single physics tick (see receive_bump()'s own class-
+## doc precedent on this) -- BOTH karts can independently detect the SAME
+## real contact from their own move_and_slide() call this same tick.
+## Without the two fixes below, whichever kart processes second would read
+## the first kart's own just-applied bump straight back through velocity()
+## into its relative-speed calc (inflating it, saturating the magnitude at
+## bump_lateral_cap_mps regardless of TRUE closing speed) and then apply
+## an entirely separate SECOND impulse pair for what is physically one
+## contact event, repeating every tick the overlap persists. Fixed in two
+## independent places: (1) commanded_velocity_without_bump_mps() above,
+## used here instead of commanded_velocity_mps(), so an already-applied
+## bump from earlier this exact tick never feeds back into the magnitude
+## it helped compute; (2) the _bumped_by_tick guard immediately below --
+## the FIRST kart to process a pair this tick writes an entry into BOTH
+## its own dictionary (via the self-applied receive_bump() call) and the
+## OTHER kart's dictionary (via the cross-instance call, keyed by ITS OWN
+## instance id as the source) the moment it processes the contact; the
+## SECOND kart to independently detect the identical contact this same
+## tick then finds its own dictionary already holds an entry for this
+## exact other-kart-id at this exact tick, and skips reprocessing it
+## entirely -- one real contact now produces at most one impulse pair per
+## physics tick, no matter which side detects it first.
 func _process_kart_bumps() -> void:
+	var current_tick := Engine.get_physics_frames()
 	for collision_index: int in range(get_slide_collision_count()):
 		var collision := get_slide_collision(collision_index)
 		var collider := collision.get_collider()
@@ -605,8 +678,11 @@ func _process_kart_bumps() -> void:
 		if not (collider is CharacterBody3D) or not collider.has_method("receive_bump"):
 			continue
 		var other := collider as CharacterBody3D
-		var self_commanded: Vector3 = _motor.velocity()
-		var other_commanded: Vector3 = other.call("commanded_velocity_mps")
+		var other_id := other.get_instance_id()
+		if _bumped_by_tick.get(other_id) == current_tick:
+			continue
+		var self_commanded: Vector3 = _motor.velocity_without_bump()
+		var other_commanded: Vector3 = other.call("commanded_velocity_without_bump_mps")
 		var relative_velocity_flat := Vector3(
 			self_commanded.x - other_commanded.x,
 			0.0,
@@ -625,8 +701,8 @@ func _process_kart_bumps() -> void:
 			_tuning.bump_lateral_cap_mps
 		)
 		_bump_count += 1
-		receive_bump(direction_flat * magnitude)
-		other.call("receive_bump", -direction_flat * magnitude)
+		receive_bump(direction_flat * magnitude, other_id)
+		other.call("receive_bump", -direction_flat * magnitude, get_instance_id())
 
 
 # ---------------------------------------------------------------------------

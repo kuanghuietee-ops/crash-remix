@@ -1690,13 +1690,18 @@ func test_frozen_kart_neither_gives_nor_receives_a_bump() -> void:
 ## Direct unit check on receive_bump()'s own guard clause (see that
 ## method's own doc) -- no physics simulation, no approach geometry,
 ## isolates exactly the one line of logic the physics-based test above
-## exercises only indirectly.
+## exercises only indirectly. source_instance_id is a required argument
+## (FIX ROUND 1 -- see receive_bump()'s own doc for why it is not
+## defaulted); this direct unit call has no real "other kart" instance to
+## pass, so it uses 0 (never a real Godot instance id) as an inert
+## placeholder -- the dedup dictionary write it produces is irrelevant
+## here since this test never calls _process_kart_bumps() to consult it.
 func test_frozen_kart_rejects_a_direct_receive_bump_call() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:
 		return
 	kart.call("set_run_active", false)
-	kart.call("receive_bump", Vector3(5.0, 0.0, 0.0))
+	kart.call("receive_bump", Vector3(5.0, 0.0, 0.0), 0)
 
 	var motor: RefCounted = kart.get("_motor")
 	assert_not_null(motor)
@@ -1746,6 +1751,120 @@ func test_invulnerable_kart_still_receives_a_bump() -> void:
 	assert_true(
 		kart_b_ever_bumped,
 		"an invulnerable kart must still receive a bump -- invulnerability blocks hits, not shoves"
+	)
+
+
+## FIX ROUND 1 (Task 2 review, same-tick double-detection). Both karts held
+## at a fixed, MODERATE forward speed (white-boxed re-pin every iteration --
+## mirrors test_below_min_relative_speed_produces_no_impulse's own creep-
+## speed technique above), starting close enough together (same ±1.5m
+## geometry that test already proves produces real, repeated contact) to
+## stay overlapped/touching for many consecutive physics ticks -- the exact
+## "sustained overlap" shape the review flagged. Two independent
+## regressions are asserted every sample:
+##
+## (1) PROPORTIONAL, NOT SATURATED: the true combined closing speed here is
+## small and known (2 * creep_speed_mps, give or take drift -- see the
+## fixture-sanity assert below), so a CORRECT impulse must land well under
+## the cap. The old bug -- reading an already-applied bump back through
+## velocity() instead of the bump-free commanded_velocity_without_bump_mps()
+## -- would compound tick after tick under sustained overlap and pin the
+## observed magnitude at bump_lateral_cap_mps regardless of this slow true
+## speed; asserting max_observed stays under 0.75 * the cap gives real
+## margin above the correct expected range and real margin below a
+## saturated one.
+##
+## (2) ONE PAIR PER TICK: bump_count() deltas (see that method's own doc)
+## are summed across BOTH karts and compared against the number of REAL
+## physics ticks elapsed between samples -- read directly via Engine.get_
+## physics_frames(), not assumed from loop-iteration count, because GUT's
+## own wait_physics_frames(1) (see test_below_min_relative_speed_produces_
+## no_impulse's own doc) elapses more than one real tick per call. A
+## correct implementation increments the COMBINED total by at most 1 per
+## real tick (only the first detector counts, per _bumped_by_tick's own
+## dedup); the old same-tick double-detection bug would let both karts'
+## own independent detection increment their own count for the identical
+## contact, doubling that rate.
+func test_sustained_overlap_stays_proportional_and_dedups_to_one_pair_per_tick() -> void:
+	var karts := _spawn_kart_pair(Vector3(-1.5, 0.0, 0.0), Vector3(1.5, 0.0, 0.0))
+	if karts.is_empty():
+		return
+	var kart_a: CharacterBody3D = karts[0]
+	var kart_b: CharacterBody3D = karts[1]
+	kart_a.call("set_yaw_degrees", -90.0)
+	kart_b.call("set_yaw_degrees", 90.0)
+
+	var motor_a: RefCounted = kart_a.get("_motor")
+	var motor_b: RefCounted = kart_b.get("_motor")
+	assert_not_null(motor_a)
+	assert_not_null(motor_b)
+	if motor_a == null or motor_b == null:
+		return
+
+	var creep_speed_mps := 1.2
+	# Fixture sanity: even accounting for the worst-case drift between
+	# re-pins (2 full unclamped accel ticks per kart, the same bound test_
+	# below_min_relative_speed_produces_no_impulse's own doc derives), the
+	# TRUE combined closing speed here must clear the gate with real margin
+	# -- proving any observed impulse is a real, gated response, not noise.
+	var worst_case_per_kart_mps := creep_speed_mps + (
+		2.0 * _kart_tuning.accel_mps2 / float(Engine.physics_ticks_per_second)
+	)
+	assert_gt(
+		2.0 * creep_speed_mps,
+		_kart_tuning.bump_min_relative_speed_mps,
+		"fixture sanity: the chosen creep speed must clear the gate with margin"
+	)
+	assert_lt(
+		2.0 * worst_case_per_kart_mps * _kart_tuning.bump_impulse_scale,
+		_kart_tuning.bump_lateral_cap_mps * 0.75,
+		"fixture sanity: even worst-case drift must stay well clear of the cap under correct behavior"
+	)
+
+	var max_observed_magnitude := 0.0
+	var prev_tick := Engine.get_physics_frames()
+	var prev_bump_count_a := int(kart_a.call("bump_count"))
+	var prev_bump_count_b := int(kart_b.call("bump_count"))
+	for _tick_index: int in range(200):
+		motor_a.set("_forward_speed_mps", creep_speed_mps)
+		motor_b.set("_forward_speed_mps", creep_speed_mps)
+		await wait_physics_frames(1)
+
+		var now_tick := Engine.get_physics_frames()
+		var real_ticks_elapsed := now_tick - prev_tick
+		prev_tick = now_tick
+
+		var bump_count_a := int(kart_a.call("bump_count"))
+		var bump_count_b := int(kart_b.call("bump_count"))
+		var combined_delta := (
+			(bump_count_a - prev_bump_count_a) + (bump_count_b - prev_bump_count_b)
+		)
+		assert_lte(
+			combined_delta,
+			real_ticks_elapsed,
+			"at most one impulse pair may fire per REAL physics tick, not per contact"
+		)
+		prev_bump_count_a = bump_count_a
+		prev_bump_count_b = bump_count_b
+
+		max_observed_magnitude = maxf(
+			max_observed_magnitude,
+			(motor_a.call("lateral_bump_mps") as Vector3).length()
+		)
+		max_observed_magnitude = maxf(
+			max_observed_magnitude,
+			(motor_b.call("lateral_bump_mps") as Vector3).length()
+		)
+
+	assert_gt(
+		max_observed_magnitude,
+		0.0,
+		"fixture sanity: the sustained-overlap scenario must actually produce real contact"
+	)
+	assert_lt(
+		max_observed_magnitude,
+		_kart_tuning.bump_lateral_cap_mps * 0.75,
+		"a slow, sustained contact must stay proportional to the TRUE closing speed, not saturate at the cap"
 	)
 
 
