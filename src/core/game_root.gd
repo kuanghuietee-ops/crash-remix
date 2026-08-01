@@ -48,6 +48,14 @@ const LOOK_DEV_SCENE := preload("res://scenes/debug/look_dev.tscn")
 const RacingTrackRegistryType := preload(
 	"res://src/racing/track/track_registry.gd"
 )
+# Task 5 (CTR R7, the Cup): see cup_session.gd's own OWNERSHIP class doc for
+# why GameRoot is the one node that holds this across a race-scene swap, and
+# cup_standings_overlay.gd's own class doc for the one screen this task uses
+# for both the between-race interstitial and the final podium.
+const CupSessionType := preload("res://src/racing/flow/cup_session.gd")
+const CUP_STANDINGS_OVERLAY_SCENE := preload(
+	"res://scenes/racing/cup_standings_overlay.tscn"
+)
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -135,6 +143,24 @@ var _results_screen: Control
 var _pause_overlay: Control
 var _level_list_overlay: Control
 var _boot_error_overlay: Control
+# Task 5 (CTR R7, the Cup): non-null only while a cup is actually in
+# progress -- see cup_session.gd's own OWNERSHIP doc. Cleared whenever the
+# player navigates to anything OTHER than the cup's own next race (see
+# _abandon_active_cup()), so a stray finish on an ordinarily-launched race
+# can never be mistaken for cup progress.
+var _cup_session: CupSessionType
+var _cup_standings_overlay: Control
+# Task 5 (CTR R7, the Cup): which of _cup_session's own race indices the
+# CURRENTLY LOADED race scene corresponds to, or -1 when no cup race is in
+# flight -- set only by _advance_cup(), the one place a cup race is ever
+# launched. Deliberately NOT re-derived from CupSession.next_race_index()
+# anywhere a race's own finish is scored: next_race_index() answers "which
+# race has CupSession never recorded a result for", which is the WRONG
+# question for a RETRY of a race that already has one -- next_race_index()
+# would already point PAST it. This field is the one place that tracks "what
+# is actually in flight right now", independent of what CupSession has or
+# hasn't recorded yet.
+var _cup_active_race_index: int = -1
 var _level_list_open: bool = false
 var _owns_tree_pause: bool = false
 var _threaded_level_path: String = ""
@@ -636,11 +662,19 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	_level_list_overlay = (
 		LEVEL_LIST_OVERLAY_SCENE.instantiate() as Control
 	)
+	# Task 5 (CTR R7, the Cup): a GameRoot-owned overlay, installed once here
+	# alongside every other persistent screen -- see cup_standings_overlay.
+	# gd's own OWNERSHIP doc for why it must NOT be a child of any race
+	# scene.
+	_cup_standings_overlay = (
+		CUP_STANDINGS_OVERLAY_SCENE.instantiate() as Control
+	)
 	for screen: Control in [
 		_hud,
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
+		_cup_standings_overlay,
 	]:
 		_ui.add_child(screen)
 		var safe_area := screen.get_node_or_null("SafeArea")
@@ -709,6 +743,13 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		&"racing_track_requested",
 		_on_racing_track_requested
 	)
+	# Task 5 (CTR R7, the Cup): see level_list_overlay.gd's own cup_requested
+	# doc for why this is its own dedicated signal rather than another
+	# racing_track_requested row.
+	_level_list_overlay.connect(
+		&"cup_requested",
+		_on_cup_requested
+	)
 	_level_list_overlay.connect(
 		&"closed",
 		_on_level_list_closed
@@ -716,6 +757,14 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	_level_list_overlay.call(
 		"configure",
 		debug_tools_enabled
+	)
+	_cup_standings_overlay.connect(
+		&"continue_requested",
+		_on_cup_continue_requested
+	)
+	_cup_standings_overlay.connect(
+		&"closed",
+		_on_cup_standings_closed
 	)
 	_loading_overlay = Label.new()
 	_loading_overlay.name = &"LoadingOverlay"
@@ -744,6 +793,10 @@ func _sync_tree_pause() -> void:
 func _render_state(previous_state: int = flow.state) -> void:
 	if flow.state == GameFlow.State.PAUSED:
 		_level_list_open = false
+		# Task 5 (CTR R7, the Cup): pausing out of a race must not leave the
+		# cup interstitial/podium visibly stuck on top of the Pause overlay --
+		# see _hide_cup_standings_overlay()'s own doc.
+		_hide_cup_standings_overlay()
 		_sync_ui_visibility()
 		return
 	if previous_state == GameFlow.State.PAUSED:
@@ -755,6 +808,18 @@ func _render_state(previous_state: int = flow.state) -> void:
 	_sync_ui_visibility()
 	_cancel_pending_level_load()
 	_clear_content()
+	# Task 5 (CTR R7, the Cup): EVERY path that rebuilds Content -- a fresh
+	# level, a retry (LEVEL -> WARP_ROOM -> LEVEL, same flow.state so the
+	# PAUSED branch above never runs), the cup's own CONTINUE advance -- must
+	# not leave a PREVIOUS race's cup screen visibly stuck on top of whatever
+	# renders next. Retrying the race the interstitial/podium is currently
+	# showing for is exactly the case this catches that _on_cup_continue_
+	# requested()/_on_cup_standings_closed()'s own explicit hides do not:
+	# those only run when the PLAYER dismisses the screen through it, not
+	# when they retry out from under it instead (see cup_session.gd's own
+	# RETRY SEMANTICS doc -- the active CupSession itself is untouched here,
+	# only this transient screen hides).
+	_hide_cup_standings_overlay()
 
 	if not _PLACEHOLDER_NAMES.has(flow.state):
 		return
@@ -813,6 +878,19 @@ func _render_state(previous_state: int = flow.state) -> void:
 		_begin_threaded_level_load(flow.active_level_id)
 		return
 	_show_state_placeholder()
+
+
+## Task 5 (CTR R7, the Cup): the one place that hides _cup_standings_overlay
+## defensively (null/freed-safe, see every call site above) -- the CupSession
+## it was showing data FOR is never touched here (see each call site's own
+## doc for why); this only ever hides the transient screen, never abandons
+## the cup itself.
+func _hide_cup_standings_overlay() -> void:
+	if (
+		_cup_standings_overlay != null
+		and is_instance_valid(_cup_standings_overlay)
+	):
+		_cup_standings_overlay.visible = false
 
 
 func threaded_level_path() -> String:
@@ -1640,6 +1718,201 @@ func _on_racing_finished(
 			"new_best_lap": new_best_lap,
 		})
 
+	# Task 5 (CTR R7, the Cup): see cup_session.gd's own OWNERSHIP class doc
+	# for the whole design this reads from. This race scored into the active
+	# cup ONLY if a cup is active AND this is genuinely the track _cup_active_
+	# race_index says is currently in flight -- an ordinarily-launched
+	# "RACE — SANITY SHORES" finish must never be mistaken for cup progress
+	# just because the track ids happen to match (see _abandon_active_cup(),
+	# called from every non-cup racing/level entry point, for the other half
+	# of that guarantee). Matched against _cup_active_race_index -- NOT
+	# CupSession.next_race_index() -- so a RETRY of an already-recorded race
+	# is still recognized as scoring THAT race again (see _cup_active_race_
+	# index's own field doc for why next_race_index() is the wrong question
+	# here).
+	if (
+		_cup_session != null
+		and _cup_active_race_index >= 0
+		and (
+			_cup_session.track_id_for_race(_cup_active_race_index)
+			== track_id
+		)
+	):
+		_cup_session.record_race_result(
+			_cup_active_race_index,
+			race.call("standings")
+		)
+		_handle_cup_race_recorded()
+
+
+## Task 5 (CTR R7, the Cup): the interstitial (between race 1 and race 2) or
+## the final podium (after race 2), whichever record_race_result() just
+## produced -- CupSession.is_complete() is the one thing that tells the two
+## apart (see cup_standings_overlay.gd's own present() doc for what each
+## rendering looks like). The just-finished race's own display name (for the
+## interstitial's title) is read straight off RacingTrackRegistry, keyed by
+## _cup_active_race_index -- the race that ACTUALLY just finished, not
+## whatever CupSession.next_race_index() reads now that it has already been
+## recorded (see that field's own doc).
+func _handle_cup_race_recorded() -> void:
+	if _cup_session == null:
+		return
+	var is_final := _cup_session.is_complete()
+	if is_final:
+		_persist_cup_result_if_improved()
+	_cup_standings_overlay.call(
+		"present",
+		_cup_session.standings(),
+		is_final,
+		_track_display_name(
+			_cup_session.track_id_for_race(_cup_active_race_index)
+		)
+	)
+
+
+## Task 5 (CTR R7, the Cup): save v3 -- writes racing.cups.island_cup.
+## best_placement ONLY on genuine improvement (SaveModel.improved_cup_
+## record()'s own "write only improvements, first result always writes"
+## contract), the exact same "compare, then write only if it actually
+## changed" shape _on_racing_finished's own best-time block above already
+## uses for racing.<track_id>. The player's own final cup placement is read
+## off CupSession.standings() -- the one row with is_player true.
+func _persist_cup_result_if_improved() -> void:
+	var player_placement := 0
+	for row: Variant in _cup_session.standings():
+		if bool((row as Dictionary).get("is_player", false)):
+			player_placement = int((row as Dictionary).get("position", 0))
+			break
+	if player_placement <= 0:
+		return
+
+	var previous_record := SaveModel.cup_record(
+		profile,
+		CupSessionType.CUP_ID
+	)
+	var updated_record := SaveModel.improved_cup_record(
+		previous_record,
+		player_placement
+	)
+	if (
+		updated_record.is_empty()
+		or int(updated_record.get("best_placement", 0))
+		== int(previous_record.get("best_placement", 0))
+	):
+		return
+
+	var updated_profile := profile.duplicate(true)
+	var racing_value: Variant = updated_profile.get("racing")
+	var racing: Dictionary = (
+		(racing_value as Dictionary).duplicate(true)
+		if racing_value is Dictionary
+		else {}
+	)
+	var cups_value: Variant = racing.get("cups")
+	var cups: Dictionary = (
+		(cups_value as Dictionary).duplicate(true)
+		if cups_value is Dictionary
+		else {}
+	)
+	cups[String(CupSessionType.CUP_ID)] = updated_record
+	racing["cups"] = cups
+	updated_profile["racing"] = racing
+	if not SaveModel.validate(updated_profile):
+		push_error("Cup profile update failed validation.")
+		return
+	var save_error := save_service.store_profile(save_dir, updated_profile)
+	if save_error != OK:
+		last_save_error = save_error
+		push_error(
+			"Cup best placement was not saved: " + error_string(save_error)
+		)
+		return
+	last_save_error = OK
+	profile = updated_profile
+
+
+func _track_display_name(track_id: StringName) -> String:
+	for track in RacingTrackRegistryType.TRACKS:
+		if track.track_id == track_id:
+			return String(track.display_name)
+	return String(track_id)
+
+
+## Task 5 (CTR R7, the Cup): the CUP menu entry (level_list_overlay.gd's own
+## cup_requested signal) -- creates a fresh CupSession and starts race 1,
+## the same real _select_level() round-trip every ordinary racing menu pick
+## already uses (see _advance_cup() below).
+func _on_cup_requested() -> void:
+	if not OS.is_debug_build():
+		return
+	_cup_session = CupSessionType.new()
+	_cup_session.configure(tuning_service.catalog.race)
+	_advance_cup()
+
+
+## The cup interstitial's own CONTINUE button.
+func _on_cup_continue_requested() -> void:
+	_hide_cup_standings_overlay()
+	_advance_cup()
+
+
+## The final podium's own CLOSE button -- the cup is over either way (this
+## is only ever shown once CupSession.is_complete() is true, see _handle_
+## cup_race_recorded()'s own doc), so this simply dismisses the overlay and
+## releases the finished CupSession; whatever race 2's own ordinary finish
+## panel is still showing underneath (ordinary Retry included) stays exactly
+## as it was.
+func _on_cup_standings_closed() -> void:
+	_hide_cup_standings_overlay()
+	_cup_session = null
+	_cup_active_race_index = -1
+
+
+## Loads the active CupSession's own next unplayed race through the SAME
+## registered race scene an ordinary "RACE — <track>" menu pick already
+## launches (RacingTrackRegistryType.TRACKS, matched by track_id -- never a
+## cup-specific scene of its own, see cup_session.gd's own class doc for why
+## the Cup reuses these rows verbatim). A no-op if the cup is already
+## complete or absent -- defensive only, since both real call sites
+## (_on_cup_requested/_on_cup_continue_requested) only ever call this when
+## there IS a next race. THE one place _cup_active_race_index is ever set
+## (see that field's own doc) -- a subsequent retry of this same race
+## re-selects the level through a completely different path (_retry_current_
+## level(), never this function) and so leaves it untouched, which is
+## exactly the point.
+func _advance_cup() -> void:
+	if _cup_session == null:
+		return
+	var race_index := _cup_session.next_race_index()
+	if race_index < 0:
+		return
+	var track_id := _cup_session.track_id_for_race(race_index)
+	for track in RacingTrackRegistryType.TRACKS:
+		if track.track_id == track_id:
+			_cup_active_race_index = race_index
+			_select_level(track.level_id)
+			return
+
+
+## Task 5 (CTR R7, the Cup): called from every menu/level entry point that
+## is NOT "continue the active cup" -- picking any ordinary racing/platformer
+## level, or opening the toybox/look-dev debug entries, abandons whatever cup
+## is in progress. Without this, finishing an ORDINARILY-launched "RACE —
+## SANITY SHORES" after a still-active, never-finished cup happened to be
+## waiting on that exact same track would be silently scored as cup progress
+## (see _on_racing_finished()'s own track_id-match guard, which alone cannot
+## tell "the player picked the ordinary menu entry" apart from "the player
+## continued the cup"). Retrying the CURRENT race (either retry path,
+## _retry_current_level()) deliberately does NOT call this -- see cup_
+## session.gd's own RETRY SEMANTICS doc for why a mid-cup retry must leave
+## the active cup completely untouched.
+func _abandon_active_cup() -> void:
+	if _cup_session == null:
+		return
+	_cup_session = null
+	_cup_active_race_index = -1
+	_hide_cup_standings_overlay()
+
 
 ## Shared by both retry paths above -- see each caller's doc for why they
 ## can share this unchanged. Retrying round-trips WARP_ROOM as a same-frame
@@ -1670,16 +1943,19 @@ func _on_pause_quit_requested() -> void:
 
 
 func _on_level_requested(level_id: StringName) -> void:
+	_abandon_active_cup()
 	_select_level(level_id)
 
 
 func _on_toybox_requested() -> void:
 	if OS.is_debug_build():
+		_abandon_active_cup()
 		_select_level(DEBUG_TOYBOX_LEVEL_ID)
 
 
 func _on_look_dev_requested() -> void:
 	if OS.is_debug_build():
+		_abandon_active_cup()
 		_select_level(DEBUG_LOOK_DEV_LEVEL_ID)
 
 
@@ -1688,12 +1964,18 @@ func _on_look_dev_requested() -> void:
 ## own copy-paste) with one lookup into RacingTrackRegistryType.TRACKS by
 ## track_id, same debug-build gate and _select_level() call every one of
 ## the old handlers made.
+##
+## Task 5 (CTR R7, the Cup): abandons any active cup first -- see _abandon_
+## active_cup()'s own doc for why an ordinary racing-menu pick must never be
+## mistaken for continuing a cup, even when it happens to land on the exact
+## track the cup was still waiting on.
 func _on_racing_track_requested(
 	track_id: StringName,
 	is_solo: bool
 ) -> void:
 	if not OS.is_debug_build():
 		return
+	_abandon_active_cup()
 	for track in RacingTrackRegistryType.TRACKS:
 		if track.track_id != track_id:
 			continue
@@ -1714,6 +1996,7 @@ func _on_level_list_closed() -> void:
 func _on_warp_room_flow_event(event: Dictionary) -> void:
 	if flow.state != GameFlow.State.WARP_ROOM:
 		return
+	_abandon_active_cup()
 	_select_level(
 		StringName(event.get("level_id", &"")),
 		StringName(

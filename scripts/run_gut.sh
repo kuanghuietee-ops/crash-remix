@@ -11,6 +11,7 @@ isolated_suites=(
     "res://tests/integration/test_main_boot.gd"
     "res://tests/integration/test_island_slice.gd"
     "res://tests/integration/test_warp_room.gd"
+    "res://tests/integration/test_cup_flow_e2e.gd"
 )
 
 cleanup() {

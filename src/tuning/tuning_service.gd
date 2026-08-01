@@ -119,6 +119,18 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"pad_refire_cooldown_s",
 			&"jump_pad_velocity_scale",
 		],
+		# CTR R7 Task 5 (the Cup): cup_points_place1..6 added to the already-
+		# shipped race section as ONE cohort, mirroring the pad cohort
+		# immediately above -- an override.tres saved before this task exists
+		# would be missing all six at once, never some subset.
+		[
+			&"cup_points_place1",
+			&"cup_points_place2",
+			&"cup_points_place3",
+			&"cup_points_place4",
+			&"cup_points_place5",
+			&"cup_points_place6",
+		],
 	],
 	# CTR R6 Task 3: kart-body tint fields, added to the EXISTING kart
 	# section (unlike fx's own brand-new-section shape, see fx_tuning.gd's
@@ -701,6 +713,15 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or race.pad_boost_s <= 0.0
 		or race.pad_refire_cooldown_s <= 0.0
 		or race.jump_pad_velocity_scale <= 0.0
+		# Task 5 (CTR R7, the Cup): a zero/negative placement value would let
+		# CupSession award no points (or NEGATIVE points) for a finishing
+		# position, silently breaking the whole standings comparison.
+		or race.cup_points_place1 <= 0.0
+		or race.cup_points_place2 <= 0.0
+		or race.cup_points_place3 <= 0.0
+		or race.cup_points_place4 <= 0.0
+		or race.cup_points_place5 <= 0.0
+		or race.cup_points_place6 <= 0.0
 	):
 		return false
 

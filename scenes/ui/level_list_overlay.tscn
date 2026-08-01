@@ -48,7 +48,7 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="SafeArea/Center"]
-custom_minimum_size = Vector2(660, 610)
+custom_minimum_size = Vector2(660, 702)
 layout_mode = 2
 theme_override_styles/panel = SubResource("Panel_list")
 
@@ -134,6 +134,12 @@ custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "TIME TRIAL — TEMPLE TWILIGHT  [DEBUG]"
+
+[node name="RacingCup" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "CUP — ISLAND CIRCUIT  [DEBUG]"
 
 [node name="Close" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 68)

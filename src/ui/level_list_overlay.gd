@@ -18,6 +18,12 @@ signal look_dev_requested
 # safe -- no test asserts on a signal NAME, only on each real button's
 # NODE PATH and the Content child it produces, both unchanged below.
 signal racing_track_requested(track_id: StringName, is_solo: bool)
+# Task 5 (CTR R7, the Cup): a dedicated signal, not another racing_track_
+# requested row -- the Cup is not a (track_id, is_solo) pick from
+# RacingTrackRegistry, it is its own multi-race flow (see cup_session.gd's
+# own class doc) that GameRoot starts differently from an ordinary race/time
+# trial launch.
+signal cup_requested
 signal closed
 
 # Task 4 (CTR R7): one row per racing button -- which node, which track
@@ -77,6 +83,12 @@ func _ready() -> void:
 			func() -> void:
 				racing_track_requested.emit(row.track_id, row.is_solo)
 		)
+	# Task 5 (CTR R7, the Cup): same real-click-through-signal shape as every
+	# racing button above, its own dedicated node/signal rather than a
+	# _RACING_BUTTONS row (see cup_requested's own doc for why).
+	$SafeArea/Center/Panel/Margin/Rows/RacingCup.pressed.connect(
+		func() -> void: cup_requested.emit()
+	)
 	$SafeArea/Center/Panel/Margin/Rows/Close.pressed.connect(
 		func() -> void: closed.emit()
 	)
@@ -97,6 +109,10 @@ func configure(debug_tools_enabled: bool) -> void:
 	# work once racing has more than a prototype to show.
 	for row in _RACING_BUTTONS:
 		_racing_button(row.node_name).visible = debug_tools_enabled
+	# Task 5 (CTR R7, the Cup): same debug-only gate as every racing row
+	# above -- the Cup is still a debug-menu prototype entry, same as every
+	# other racing launch point in this file.
+	$SafeArea/Center/Panel/Margin/Rows/RacingCup.visible = debug_tools_enabled
 
 
 func _racing_button(node_name: StringName) -> Button:

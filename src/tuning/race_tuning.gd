@@ -38,3 +38,20 @@ extends Resource
 @export var pad_boost_s: float
 @export var pad_refire_cooldown_s: float
 @export var jump_pad_velocity_scale: float
+
+# Task 5 (CTR R7, the Cup): points CupSession (src/racing/flow/cup_session.gd)
+# awards for each of a race's 6 finishing placements -- 1st through 6th,
+# matching the fixed field size a cup race always has (player + AiTuning.
+# opponent_count == 5). Godot tuning fields are scalars by established
+# precedent (no per-place array/table field exists anywhere else in this
+# catalog), so this is 6 individually-registered fields rather than one
+# Array[float] field -- see tuning_service.gd's own LEGACY_FIELD_GROUPS_BY_
+# SECTION &"race" cohort for how all six migrate together as one unit.
+# Defaults: 8/6/5/4/3/2, a standard top-6 kart-racer points table.
+@export_category("Cup")
+@export var cup_points_place1: float
+@export var cup_points_place2: float
+@export var cup_points_place3: float
+@export var cup_points_place4: float
+@export var cup_points_place5: float
+@export var cup_points_place6: float

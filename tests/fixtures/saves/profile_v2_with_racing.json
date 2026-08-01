@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "levels": {
+    "wr1_n_sanity_beach": {
+      "completed": true,
+      "gem": false,
+      "relic_tier": "none",
+      "best_relic_time_ms": 0,
+      "flawless": true
+    }
+  },
+  "lifetime_wumpa": 42,
+  "boss_defeated": {
+    "papu_papu": false
+  },
+  "racing": {
+    "sanity_shores": {
+      "best_total_time_ms": 92500,
+      "best_lap_time_ms": 30100
+    }
+  }
+}
