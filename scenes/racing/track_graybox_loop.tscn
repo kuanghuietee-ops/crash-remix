@@ -1,4 +1,4 @@
-[gd_scene load_steps=34 format=3]
+[gd_scene load_steps=35 format=3]
 
 [ext_resource type="Script" path="res://src/racing/track/track_spine.gd" id="1_spine"]
 [ext_resource type="Script" path="res://src/racing/track/checkpoint_gate.gd" id="2_gate"]
@@ -6,6 +6,7 @@
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/torch_post_a.res" id="4_torch_post_a"]
 [ext_resource type="Texture2D" path="res://assets/textures/T_beach_kit_atlas.png" id="5_T_beach_kit_atlas"]
 [ext_resource type="Mesh" path="res://assets/models/kits/mesh/pillar_carved_a.res" id="6_pillar_carved_a"]
+[ext_resource type="PackedScene" path="res://scenes/racing/boost_pad.tscn" id="7_boost_pad"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial_track"]
 sky_top_color = Color(0.16, 0.38, 0.62, 1)
@@ -785,3 +786,9 @@ position = Vector3(20, 1, -20)
 
 [node name="ItemBoxSouth3" parent="ItemBoxes" instance=ExtResource("3_item_box")]
 position = Vector3(20, 1, -23)
+
+[node name="Pads" type="Node3D" parent="."]
+
+[node name="BoostStripSouth" parent="Pads" instance=ExtResource("7_boost_pad")]
+position = Vector3(35, 0.05, -20)
+rotation_degrees = Vector3(0, -90, 0)

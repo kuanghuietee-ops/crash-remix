@@ -35,26 +35,31 @@ func _skip_pre_race_countdown(race: Node) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Discovery: the real graybox loop authors zero pads (Task 3/4 add some) --
-# _discover_boost_pads()/_discover_jump_pads() must degrade cleanly, and a
-# synthetic pad under Track must be picked up the same way a synthetic
-# ItemBox already is.
+# Discovery: pre-Task-4, the real graybox loop authored zero pads --
+# _discover_boost_pads()/_discover_jump_pads() had to degrade cleanly, and a
+# synthetic pad under Track had to be picked up the same way a synthetic
+# ItemBox already is (still true, still proven below). Task 4 (CTR R7)
+# retrofitted ONE boost strip onto the real graybox loop's own main straight
+# (no jump pad -- spec keeps jump pads Temple-Twilight-only), so the "zero"
+# expectation this test's own name/docstring used to pin is updated here,
+# not weakened: the discovery mechanism is proven the same way, just against
+# the new real count instead of a placeholder zero.
 # ---------------------------------------------------------------------------
 
 
-func test_the_real_graybox_loop_authors_zero_pads() -> void:
+func test_the_real_graybox_loop_authors_one_boost_pad_and_zero_jump_pads() -> void:
 	var race := _boot_race()
 	if race == null:
 		return
 	assert_eq(
 		int(race.call("boost_pad_count")),
-		0,
-		"no track authors boost pads yet -- Task 3/4 add some"
+		1,
+		"Task 4 (CTR R7) retrofitted one boost strip onto the graybox loop's own main straight"
 	)
 	assert_eq(
 		int(race.call("jump_pad_count")),
 		0,
-		"no track authors jump pads yet -- Task 3/4 add some"
+		"jump pads stay Temple-Twilight-only per spec -- no track other than Temple authors one"
 	)
 
 
@@ -63,7 +68,13 @@ func test_a_synthetic_boost_pad_under_track_is_discovered_and_configured() -> vo
 	var race: Node = setup.get("race")
 	if race == null:
 		return
-	assert_eq(int(race.call("boost_pad_count")), 1)
+	# Task 4 (CTR R7): the real graybox loop now authors its own one real
+	# boost pad (see test_the_real_graybox_loop_authors_one_boost_pad_and_
+	# zero_jump_pads above) -- this test's own synthetic pad is a SECOND
+	# boost pad discovered on top of that real one, so the expected count
+	# is 2, not 1. The jump pad count stays 1: the real track authors zero,
+	# this test's own synthetic jump pad is the only one.
+	assert_eq(int(race.call("boost_pad_count")), 2)
 	assert_eq(int(race.call("jump_pad_count")), 1)
 
 

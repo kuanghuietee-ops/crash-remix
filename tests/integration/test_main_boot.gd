@@ -808,6 +808,105 @@ func test_real_level_list_opens_racing_sanity_shores_time_trial_solo() -> void:
 	)
 
 
+## Task 4 (CTR R7): Temple Twilight's own two menu entries, added through
+## the new RacingTrackRegistry table (src/racing/track/track_registry.gd)
+## rather than hand-copied consts/signals/handlers -- same real click ->
+## real GameRoot dispatch shape as every racing test above, this time
+## proving the REGISTRY refactor actually wired a brand-new track through,
+## not just preserved the two pre-existing ones.
+func test_real_level_list_opens_racing_temple_twilight_circuit() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTempleTwilight"
+	) as Button
+	assert_true(
+		racing_button.visible,
+		"debug builds must expose the Temple Twilight entry through the real list"
+	)
+
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"level")
+	var race := root.get_node_or_null("Content/RaceTempleTwilight")
+	assert_not_null(
+		race,
+		"the real racing request must instantiate the real race scene"
+	)
+	if race == null:
+		return
+	assert_false(bool(race.call("is_finished")))
+	assert_eq(int(race.call("gate_count")), 12)
+
+	var hud := root.get_node("UI/HUD")
+	assert_true(hud.visible)
+	assert_false(
+		hud.get_node("SafeArea/Stats").visible,
+		"racing entry must not show false platformer CRATES/WUMPA run stats"
+	)
+	assert_true(
+		hud.get_node("SafeArea/Pause").visible,
+		"the racing circuit must retain its touch-reachable escape route"
+	)
+
+
+func test_real_level_list_opens_racing_temple_twilight_time_trial_solo() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTempleTwilightTimeTrial"
+	) as Button
+	assert_true(
+		racing_button.visible,
+		"debug builds must expose the solo time trial entry through the real list"
+	)
+
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_eq(root.call("state_name"), &"level")
+	var race := root.get_node_or_null("Content/RaceTempleTwilightSolo")
+	assert_not_null(
+		race,
+		"the real solo time trial request must instantiate the real solo scene"
+	)
+	if race == null:
+		return
+	assert_false(bool(race.call("is_finished")))
+	assert_eq(int(race.call("gate_count")), 12)
+	assert_eq(
+		int(race.call("ai_kart_count")),
+		0,
+		"the solo time trial entry must never spawn AI karts through the real UI path"
+	)
+
+	var hud := root.get_node("UI/HUD")
+	assert_true(hud.visible)
+	assert_false(
+		hud.get_node("SafeArea/Stats").visible,
+		"racing entry must not show false platformer CRATES/WUMPA run stats"
+	)
+	assert_true(
+		hud.get_node("SafeArea/Pause").visible,
+		"the solo time trial must retain its touch-reachable escape route"
+	)
+
+
 ## M2 (final fix wave): game_root.gd's _refresh_active_level_tuning() used
 ## to only handle the toybox/LevelSession branches -- a race in progress had
 ## no wiring at all, so an on-device tuning edit never reached it. A plain

@@ -36,25 +36,17 @@ const BOOT_ERROR_OVERLAY_SCENE := preload(
 )
 const TOYBOX_SCENE := preload("res://scenes/game.tscn")
 const LOOK_DEV_SCENE := preload("res://scenes/debug/look_dev.tscn")
-const RACE_TIME_TRIAL_SCENE := preload(
-	"res://scenes/racing/race_time_trial.tscn"
-)
-const RACE_SANITY_SHORES_SCENE := preload(
-	"res://scenes/racing/race_sanity_shores.tscn"
-)
-# Fix-wave MEDIUM-5: solo time trial restored (spec: "time trial ships as
-# race-minus-AI") -- thin scenes that instance the two RACE scenes above and
-# override only RaceSession.spawn_opponents = false (see race_session.gd's
-# own doc and these two scene files themselves). The two RACE_*_SCENE
-# consts above keep their pre-existing names/behavior unchanged (AI by
-# default) even though the level list now labels their own menu entries
-# "RACE" rather than "TIME TRIAL" -- see _RACE_SCENES_BY_LEVEL_ID below and
-# level_list_overlay.tscn's own button text.
-const RACE_TIME_TRIAL_SOLO_SCENE := preload(
-	"res://scenes/racing/race_time_trial_solo.tscn"
-)
-const RACE_SANITY_SHORES_SOLO_SCENE := preload(
-	"res://scenes/racing/race_sanity_shores_solo.tscn"
+# Task 4 (CTR R7): every racing track's scene/level-id/display-name wiring
+# now lives in ONE registry table, shared with level_list_overlay.gd --
+# see RacingTrackRegistry's own class doc for the full "why" (this used to
+# be 2 preload consts + 2 debug-level-id consts per track, hand-copied on
+# both sides for every new circuit). Fix-wave MEDIUM-5's own history (solo
+# time trial = spawn_opponents=false wrapper scenes, AI by default on the
+# RACE entries even though the level list labels them "RACE" not "TIME
+# TRIAL") is preserved verbatim inside the registry rows themselves, not
+# restated here.
+const RacingTrackRegistryType := preload(
+	"res://src/racing/track/track_registry.gd"
 )
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
@@ -79,20 +71,6 @@ const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const DEFAULT_SAVE_DIR := "user://save"
 const DEBUG_TOYBOX_LEVEL_ID := &"debug_traversal_toybox"
 const DEBUG_LOOK_DEV_LEVEL_ID := &"debug_look_dev"
-const DEBUG_RACING_LEVEL_ID := &"debug_racing_time_trial"
-const DEBUG_RACING_SANITY_SHORES_LEVEL_ID := &"debug_racing_sanity_shores"
-# Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries. NOTE:
-# DEBUG_RACING_LEVEL_ID/DEBUG_RACING_SANITY_SHORES_LEVEL_ID's own NAMES
-# still say "time trial" even though they now launch the AI-populated RACE
-# scenes (see RACE_TIME_TRIAL_SCENE's own doc) -- kept unrenamed since
-# flow.active_level_id is pure in-memory FSM state (see game_flow.gd, never
-# persisted/saved), so a rename is safe but purely cosmetic and out of
-# scope for this fix; every actual behavior split lives in which scene
-# each id maps to below, not in the id's own spelling.
-const DEBUG_RACING_TIME_TRIAL_LEVEL_ID := &"debug_racing_time_trial_solo"
-const DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID := (
-	&"debug_racing_sanity_shores_time_trial"
-)
 const N_SANITY_BEACH_LEVEL_ID := &"wr1_n_sanity_beach"
 const N_SANITY_BEACH_SCENE_PATH := (
 	"res://scenes/levels/wr1_n_sanity_beach.tscn"
@@ -114,15 +92,6 @@ const _LEVEL_SCENE_PATHS: Dictionary = {
 	BOULDERS_LEVEL_ID: BOULDERS_SCENE_PATH,
 	HOG_WILD_LEVEL_ID: HOG_WILD_SCENE_PATH,
 	PAPU_PAPU_LEVEL_ID: PAPU_PAPU_SCENE_PATH,
-}
-# Task 8 (CTR racing mode, R2): the level list's single racing entry becomes
-# two, one per track -- both take the exact same debug-only render branch
-# (see _render_state() below), keyed by which debug level id was selected.
-const _RACE_SCENES_BY_LEVEL_ID: Dictionary = {
-	DEBUG_RACING_LEVEL_ID: RACE_TIME_TRIAL_SCENE,
-	DEBUG_RACING_SANITY_SHORES_LEVEL_ID: RACE_SANITY_SHORES_SCENE,
-	DEBUG_RACING_TIME_TRIAL_LEVEL_ID: RACE_TIME_TRIAL_SOLO_SCENE,
-	DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID: RACE_SANITY_SHORES_SOLO_SCENE,
 }
 const _PLACEHOLDER_NAMES: Dictionary = {
 	GameFlow.State.WARP_ROOM: &"WarpRoomPlaceholder",
@@ -177,15 +146,43 @@ var _loading_overlay: Label
 var _dynamic_resolution: DynamicResolutionType = DynamicResolutionType.new()
 var _warp_room_instantiate_count: int = 0
 var _suppress_next_warp_room_render: bool = false
+# Task 8 (CTR racing mode, R2): the level list's racing entries all take
+# the exact same debug-only render branch (see _render_state() below),
+# keyed by which debug level id was selected. Task 4 (CTR R7): the
+# dictionary itself is now BUILT in _ready() (see
+# _build_race_scenes_by_level_id()) from RacingTrackRegistryType.TRACKS
+# rather than hand-written per track -- GDScript const initializers can't
+# call functions, so this can't stay a `const` once it's derived; every
+# reader below only ever does .has()/[] lookups, so an instance var built
+# once at boot is behaviorally identical to the old const for the rest of
+# this file.
+var _race_scenes_by_level_id: Dictionary = {}
 
 
 static func should_enable_debug_tools(is_debug_build: bool) -> bool:
 	return is_debug_build
 
 
+## Task 4 (CTR R7): builds the flat level_id->PackedScene lookup every
+## racing call site below reads (_render_state()'s launch branch,
+## _refresh_active_level_tuning()'s live-tuning-refresh branch, _sync_ui_
+## visibility()'s run-display gate) from RacingTrackRegistryType.TRACKS --
+## one RACE + one TIME TRIAL entry per row, same shape the old hand-
+## written _RACE_SCENES_BY_LEVEL_ID const had. Pure (no side effects
+## beyond returning the dict) so it can be called from _ready() without
+## depending on anything else _ready() has or hasn't set up yet.
+static func _build_race_scenes_by_level_id() -> Dictionary:
+	var scenes_by_level_id := {}
+	for track in RacingTrackRegistryType.TRACKS:
+		scenes_by_level_id[track.level_id] = track.race_scene
+		scenes_by_level_id[track.solo_level_id] = track.solo_scene
+	return scenes_by_level_id
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	Input.set_use_accumulated_input(false)
+	_race_scenes_by_level_id = _build_race_scenes_by_level_id()
 	# R5: install the boot-error overlay before anything that can refuse to
 	# boot runs, so every refusal path -- including ones that fire before
 	# tuning even loads -- has somewhere to show the player real text
@@ -703,22 +700,14 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		&"look_dev_requested",
 		_on_look_dev_requested
 	)
+	# Task 4 (CTR R7): one generic signal replaces the old one-signal-per-
+	# track/mode set (racing_time_trial_requested, racing_sanity_shores_
+	# requested, and the two Fix-wave MEDIUM-5 solo counterparts) --
+	# level_list_overlay.gd's own _RACING_BUTTONS table now supplies
+	# (track_id, is_solo) for every racing button, existing and new.
 	_level_list_overlay.connect(
-		&"racing_time_trial_requested",
-		_on_racing_time_trial_requested
-	)
-	_level_list_overlay.connect(
-		&"racing_sanity_shores_requested",
-		_on_racing_sanity_shores_requested
-	)
-	# Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries.
-	_level_list_overlay.connect(
-		&"racing_time_trial_solo_requested",
-		_on_racing_time_trial_solo_requested
-	)
-	_level_list_overlay.connect(
-		&"racing_sanity_shores_time_trial_requested",
-		_on_racing_sanity_shores_time_trial_requested
+		&"racing_track_requested",
+		_on_racing_track_requested
 	)
 	_level_list_overlay.connect(
 		&"closed",
@@ -797,9 +786,9 @@ func _render_state(previous_state: int = flow.state) -> void:
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
-		and _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
+		and _race_scenes_by_level_id.has(flow.active_level_id)
 	):
-		var race_scene: PackedScene = _RACE_SCENES_BY_LEVEL_ID[
+		var race_scene: PackedScene = _race_scenes_by_level_id[
 			flow.active_level_id
 		]
 		var race := race_scene.instantiate()
@@ -1168,7 +1157,7 @@ func _refresh_active_level_tuning() -> void:
 		return
 	if (
 		flow.state == GameFlow.State.LEVEL
-		and _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
+		and _race_scenes_by_level_id.has(flow.active_level_id)
 	):
 		# M2 (final fix wave): a race is never stored on active_level_session
 		# (see set_active_level_session()'s own doc -- only LevelSession
@@ -1473,7 +1462,7 @@ func _sync_ui_visibility() -> void:
 			# own racing branch already keys off of, rather than a second,
 			# separately hand-kept id list -- the two new solo-race ids added
 			# alongside it are automatically covered with no edit needed here.
-			and not _RACE_SCENES_BY_LEVEL_ID.has(flow.active_level_id)
+			and not _race_scenes_by_level_id.has(flow.active_level_id)
 		)
 	)
 	_pause_overlay.visible = (
@@ -1540,12 +1529,14 @@ func _on_pause_retry_requested() -> void:
 ## replaces it never gets configure() called by anyone, since GameRoot was
 ## the only thing that ever called it. RaceSession now emits
 ## retry_requested instead (see its own doc), connected to this handler
-## from the DEBUG_RACING_LEVEL_ID render branch below, one connection per
-## fresh race instance. This reuses the exact same _retry_current_level()
-## round-trip the platformer's own working Pause -> Retry path already
-## proved out -- quit the level, re-enter it -- which lands back in
-## _render_state()'s racing branch and instantiates + configure()s a brand
-## new race scene while GameRoot itself stays alive throughout.
+## from _render_state()'s racing render branch below (Task 4, CTR R7: keyed
+## off _race_scenes_by_level_id, built from RacingTrackRegistryType.TRACKS),
+## one connection per fresh race instance. This reuses the exact same
+## _retry_current_level() round-trip the platformer's own working Pause ->
+## Retry path already proved out -- quit the level, re-enter it -- which
+## lands back in _render_state()'s racing branch and instantiates +
+## configure()s a brand new race scene while GameRoot itself stays alive
+## throughout.
 func _on_racing_retry_requested() -> void:
 	_retry_current_level()
 
@@ -1692,25 +1683,22 @@ func _on_look_dev_requested() -> void:
 		_select_level(DEBUG_LOOK_DEV_LEVEL_ID)
 
 
-func _on_racing_time_trial_requested() -> void:
-	if OS.is_debug_build():
-		_select_level(DEBUG_RACING_LEVEL_ID)
-
-
-func _on_racing_sanity_shores_requested() -> void:
-	if OS.is_debug_build():
-		_select_level(DEBUG_RACING_SANITY_SHORES_LEVEL_ID)
-
-
-## Fix-wave MEDIUM-5: the two solo (spawn_opponents=false) entries.
-func _on_racing_time_trial_solo_requested() -> void:
-	if OS.is_debug_build():
-		_select_level(DEBUG_RACING_TIME_TRIAL_LEVEL_ID)
-
-
-func _on_racing_sanity_shores_time_trial_requested() -> void:
-	if OS.is_debug_build():
-		_select_level(DEBUG_RACING_SANITY_SHORES_TIME_TRIAL_LEVEL_ID)
+## Task 4 (CTR R7): replaces the four near-identical _on_racing_*_requested
+## handlers (one RACE + one TIME TRIAL/solo per track, Fix-wave MEDIUM-5's
+## own copy-paste) with one lookup into RacingTrackRegistryType.TRACKS by
+## track_id, same debug-build gate and _select_level() call every one of
+## the old handlers made.
+func _on_racing_track_requested(
+	track_id: StringName,
+	is_solo: bool
+) -> void:
+	if not OS.is_debug_build():
+		return
+	for track in RacingTrackRegistryType.TRACKS:
+		if track.track_id != track_id:
+			continue
+		_select_level(track.solo_level_id if is_solo else track.level_id)
+		return
 
 
 func _on_level_list_closed() -> void:

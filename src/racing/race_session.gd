@@ -358,19 +358,23 @@ signal race_finished(total_s: float, lap_times: Array)
 ## that replaces it never gets configure() called by anyone, since the only
 ## thing that ever called configure() was GameRoot, and GameRoot is now
 ## gone. RaceHUD now only calls request_retry(), which emits this; GameRoot
-## connects to it (see game_root.gd's DEBUG_RACING_LEVEL_ID render branch)
-## and re-drives the exact same _select_level() round-trip the platformer's
-## own working Pause -> Retry path already uses (quit the level, re-enter
-## it), which re-renders and re-configure()s a fresh race scene while
-## GameRoot itself stays alive the whole time.
+## connects to it (see game_root.gd's _render_state() racing render
+## branch, Task 4 CTR R7: keyed off _race_scenes_by_level_id, built from
+## RacingTrackRegistryType.TRACKS) and re-drives the exact same
+## _select_level() round-trip the platformer's own working Pause -> Retry
+## path already uses (quit the level, re-enter it), which re-renders and
+## re-configure()s a fresh race scene while GameRoot itself stays alive
+## the whole time.
 signal retry_requested
 
 ## Task 9 (CTR racing mode, R2): identifies which track this session's best
 ## times are saved under (SaveModel.racing_record()/improved_racing_record()
 ## are keyed by this, not by the debug level id GameRoot dispatches on --
-## see game_root.gd's own DEBUG_RACING_LEVEL_ID doc for why those two ids
-## are kept separate). Set per scene: race_time_trial.tscn authors
-## &"graybox_loop", race_sanity_shores.tscn authors &"sanity_shores". Left
+## see RacingTrackRegistry's own class doc (src/racing/track/track_
+## registry.gd) for why those two ids are kept separate). Set per scene:
+## race_time_trial.tscn authors &"graybox_loop", race_sanity_shores.tscn
+## authors &"sanity_shores", race_temple_twilight.tscn authors
+## &"temple_twilight" (Task 4, CTR R7). Left
 ## empty ("") on any instance that never sets it (e.g. a bare test fixture),
 ## which GameRoot treats as "nothing to save" rather than guessing.
 @export var track_id: StringName = &""

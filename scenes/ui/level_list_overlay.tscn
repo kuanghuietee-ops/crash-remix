@@ -123,6 +123,18 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "TIME TRIAL — SANITY SHORES  [DEBUG]"
 
+[node name="RacingTempleTwilight" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "RACE — TEMPLE TWILIGHT  [DEBUG]"
+
+[node name="RacingTempleTwilightTimeTrial" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "TIME TRIAL — TEMPLE TWILIGHT  [DEBUG]"
+
 [node name="Close" type="Button" parent="SafeArea/Center/Panel/Margin/Rows"]
 custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
