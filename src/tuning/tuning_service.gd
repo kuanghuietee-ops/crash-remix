@@ -147,6 +147,21 @@ const LEGACY_FIELD_GROUPS_BY_SECTION := {
 			&"personality_aggression_step",
 			&"personality_skill_jitter",
 		],
+		# CTR R7 Task 2b (OPERATOR PRIORITY): recovery fields, added to the
+		# already-shipped ai section as their OWN cohort -- a SEPARATE array
+		# entry from the apex/damping/personality cohort above, not folded
+		# into it, because the two shipped in different tasks: an
+		# override.tres saved after CTR R6 Task 4 but before this task would
+		# already have the apex/damping/personality fields (real, edited
+		# values) and be missing only these three -- migrating them as one
+		# combined group would silently re-stamp the OLDER cohort's already-
+		# migrated values back to authored defaults instead of leaving them
+		# untouched.
+		[
+			&"recovery_heading_error_degrees",
+			&"recovery_trigger_s",
+			&"recovery_max_attempts",
+		],
 	],
 	# CTR R6 Task 5: three new items (bomb, TNT stick, triple turbo) plus
 	# weighted roulette, added to the already-shipped items section as ONE
@@ -710,6 +725,18 @@ func catalog_is_usable(candidate: GameplayTuning = null) -> bool:
 		or ai.personality_aggression_step <= 0.0
 		or ai.personality_skill_jitter <= 0.0
 		or ai.personality_skill_jitter >= 1.0
+		# CTR R7 Task 2b (OPERATOR PRIORITY): recovery_trigger_s/recovery_
+		# max_attempts are plain duration/count fields, same "strictly
+		# positive, no upper bound" shape as respawn_stuck_after_s/
+		# respawn_drop_gap_m above. recovery_heading_error_degrees is
+		# tightened to (0.0, 180.0] -- see ai_tuning.gd's own doc comment:
+		# Vector3.angle_to's own output range is [0, 180] degrees, so a
+		# value above 180 could never be exceeded (silently disabling
+		# recovery, not loosening it).
+		or ai.recovery_heading_error_degrees <= 0.0
+		or ai.recovery_heading_error_degrees > 180.0
+		or ai.recovery_trigger_s <= 0.0
+		or ai.recovery_max_attempts <= 0.0
 	):
 		return false
 

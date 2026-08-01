@@ -1847,6 +1847,158 @@ func test_decide_before_configure_fails_closed_to_a_neutral_output() -> void:
 
 
 # ---------------------------------------------------------------------------
+# CTR R7 Task 2b (OPERATOR PRIORITY): WRONG-WAY RECOVERY. state.recovery_
+# active (bool, owned/timed by AiKartAgent -- see its own WRONG-WAY RECOVERY
+# section for the sustained-trigger/hysteresis contract that sets this bit;
+# this driver only ever consumes it, the same "AiKartAgent owns real timers,
+# this driver is pure per-tick logic" split ITEM USE COOLDOWN's own doc
+# already establishes) switches _steer_for onto a dedicated FULL-AUTHORITY
+# path: steer = signf of the pursuit angle to lookahead_point (bang-bang, not
+# the proportional pursuit+lateral+apex formula), slide intent is force-
+# cleared so hop can never fire, and none of lateral_error_m/slot_lateral_
+# target_m/curvature_ahead/steer_damping/the slide floor have any say.
+# ---------------------------------------------------------------------------
+
+
+func test_recovery_active_steers_full_authority_toward_the_lookahead_point() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# lookahead_point to the kart's world-space RIGHT of straight-ahead
+	# forward (0,0,-1) -- pursuit_term's own sign convention (see this
+	# file's class doc / ai_driver.gd's STEERING section) means a target to
+	# the right must steer POSITIVE.
+	var result: Dictionary = driver.call("decide", _state({
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(10.0, 0.0, -10.0),
+		"recovery_active": true,
+		# A huge lateral error / apex-eligible curvature / a fully saturated
+		# prior steer output would all pull the ORDINARY formula toward
+		# different values -- recovery must ignore every one of them.
+		"lateral_error_m": -500.0,
+		"slot_lateral_target_m": 500.0,
+		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+	}))
+
+	assert_eq(
+		float(result.get("steer")),
+		1.0,
+		"recovery must steer FULL positive authority toward a target on the kart's own right, ignoring lateral/apex/curvature"
+	)
+
+
+func test_recovery_active_steers_full_authority_the_other_way_too() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(-10.0, 0.0, -10.0),
+		"recovery_active": true,
+	}))
+
+	assert_eq(
+		float(result.get("steer")),
+		-1.0,
+		"recovery must steer FULL negative authority toward a target on the kart's own left"
+	)
+
+
+func test_recovery_active_returns_zero_steer_once_already_facing_the_target() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	var result: Dictionary = driver.call("decide", _state({
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(0.0, 0.0, -10.0),
+		"recovery_active": true,
+	}))
+
+	assert_eq(
+		float(result.get("steer")),
+		0.0,
+		"already pointing straight at the recovery target needs no steer correction"
+	)
+
+
+func test_recovery_active_suppresses_slide_intent_so_hop_never_fires() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# A hairpin curvature would normally arm slide intent and fire hop on
+	# this very tick (see test_tight_curvature_triggers_hop_edge_exactly_once
+	# above) -- recovery must suppress that unconditionally.
+	var result: Dictionary = driver.call("decide", _state({
+		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+		"recovery_active": true,
+	}))
+
+	assert_eq(bool(result.get("hop")), false, "recovery must suppress slide intent -- hop must never fire")
+	assert_eq(bool(result.get("boost_tap")), false)
+
+
+func test_recovery_active_clearing_lets_a_hairpin_arm_a_slide_on_the_very_next_tick() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# Recovery active this tick -- would otherwise be a hairpin.
+	driver.call("decide", _state({
+		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+		"recovery_active": true,
+	}))
+	# Recovery clears (AiKartAgent's own hysteresis exit) -- the SAME
+	# still-hairpin curvature must now arm intent and fire hop fresh, proving
+	# recovery leaves no residual "already intending" edge memory behind.
+	var result: Dictionary = driver.call("decide", _state({
+		"curvature_ahead": _ai.slide_trigger_curvature * 2.0,
+		"recovery_active": false,
+	}))
+
+	assert_eq(
+		bool(result.get("hop")),
+		true,
+		"a hairpin must arm normally on the first tick after recovery clears"
+	)
+
+
+## Damping continuity (see ai_driver.gd's own STEER DAMPING/_prev_steer_
+## output doc): recovery's own bang-bang output still updates _prev_steer_
+## output/_has_prev_steer_output like any other tick's FINAL returned value
+## -- the tick immediately after recovery clears must damp from the
+## recovery-time steer, not from a stale pre-recovery value or a phantom
+## zero cold-start.
+func test_recovery_active_output_feeds_steer_damping_on_the_next_normal_tick() -> void:
+	var driver := _new_driver()
+	if driver == null:
+		return
+
+	# Recovery ticks full positive authority.
+	driver.call("decide", _state({
+		"forward": Vector3(0.0, 0.0, -1.0),
+		"lookahead_point": Vector3(10.0, 0.0, -10.0),
+		"recovery_active": true,
+	}))
+	# Next tick: recovery clears, ordinary straight-ahead state (raw_steer
+	# would be ~0.0 unfiltered). Damped result must sit strictly between 0.0
+	# and the prior tick's 1.0 -- proof it blended from the recovery output,
+	# not a phantom zero cold-start (which would return raw_steer, i.e.
+	# exactly 0.0) and not a frozen 1.0 (which would mean damping ignored the
+	# new raw value entirely).
+	var result: Dictionary = driver.call("decide", _state({
+		"recovery_active": false,
+	}))
+
+	var steer := float(result.get("steer"))
+	assert_gt(steer, 0.0, "damping must smooth FROM the recovery tick's own 1.0 output, not a phantom zero")
+	assert_lt(steer, 1.0, "damping must blend TOWARD the new tick's own near-zero raw steer, not stay frozen at 1.0")
+
+
+# ---------------------------------------------------------------------------
 # Helpers.
 # ---------------------------------------------------------------------------
 
