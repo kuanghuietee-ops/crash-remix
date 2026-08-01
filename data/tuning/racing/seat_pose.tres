@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SeatPoseTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/seat_pose_tuning.gd" id="1_seat_pose"]
+
+[resource]
+script = ExtResource("1_seat_pose")
+thigh_l_pose = Quaternion(0.752281, 0.412978, 0.054647, 0.510428)
+thigh_r_pose = Quaternion(0.752281, -0.412978, -0.054647, 0.510428)
+shin_l_pose = Quaternion(0.750076, -0.056792, 0.064967, 0.655699)
+shin_r_pose = Quaternion(0.750076, 0.056792, -0.064967, 0.655699)
+upper_arm_l_pose = Quaternion(0.463881, -0.156333, -0.871914, 0.011839)
+upper_arm_r_pose = Quaternion(0.463881, 0.156333, 0.871914, 0.011839)
+forearm_l_pose = Quaternion(0.647023, -0.154826, 0.044953, 0.745231)
+forearm_r_pose = Quaternion(0.647023, 0.154826, -0.044953, 0.745231)
+pelvis_drop_m = 0.9

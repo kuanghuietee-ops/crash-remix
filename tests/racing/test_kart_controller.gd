@@ -812,6 +812,7 @@ func test_kart_scene_wires_a_blob_shadow_node() -> void:
 const CRASH_MODEL_PATH := "res://assets/models/characters/SK_crash.glb"
 const LAB_ASSISTANT_MODEL_PATH := "res://assets/models/enemies/SK_lab_assistant.glb"
 const SEAT_ANIMATION_CLIP := &"A_crash_hog_ride"
+const SEAT_POSE_TUNING_PATH := "res://data/tuning/racing/seat_pose.tres"
 
 
 func test_kart_scene_has_the_real_mesh_and_no_character_by_default() -> void:
@@ -915,9 +916,11 @@ func test_mount_character_plays_the_seated_ride_clip_when_the_model_has_one() ->
 
 ## The lab assistant model has no seated-riding clip of its own (its only
 ## animation is a walk cycle) -- mount_character() must still succeed and
-## must not error or fight a nonexistent clip; it simply leaves the model at
-## whatever pose it imports with. See kart_controller.gd's own SEAT_
-## ANIMATION_CLIP doc for why this is a documented, acceptable R6 gap.
+## must not error or fight a nonexistent clip. R6 device-test fix ("the
+## opponent character should sit down just like Crash, not standing on the
+## car"): it no longer leaves the model at its imported standing rest pose
+## -- see _apply_static_seat_pose()'s own doc and the dedicated tests below
+## for the actual seated-pose assertions this comment used to wave off.
 func test_mount_character_on_a_model_without_a_seated_clip_does_not_error() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:
@@ -939,6 +942,175 @@ func test_mount_character_on_a_model_without_a_seated_clip_does_not_error() -> v
 			animation_player.has_animation(SEAT_ANIMATION_CLIP),
 			"fixture sanity: the lab assistant must genuinely lack the seated clip"
 		)
+
+
+## R6 device-test fix (operator: "the opponent character should sit down
+## just like Crash, not standing on the car"). The lab assistant glb has no
+## seated clip (see the test immediately above), so mount_character() now
+## falls back to a static Skeleton3D bone-pose override -- see kart_
+## controller.gd's own _apply_static_seat_pose() and data/tuning/racing/
+## seat_pose.tres's own SeatPoseTuning doc for where the pose values come
+## from. This pins the hip and knee bones actually landing away from their
+## imported rest rotation -- the minimum bar for "seated, not standing".
+func test_mount_character_on_a_model_without_a_seated_clip_bends_hips_and_knees() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var lab_assistant_scene := load(LAB_ASSISTANT_MODEL_PATH) as PackedScene
+	assert_not_null(lab_assistant_scene)
+	if lab_assistant_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", lab_assistant_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+
+	var skeleton := _find_skeleton(mounted)
+	assert_not_null(skeleton, "fixture setup: the lab assistant must carry a Skeleton3D")
+	if skeleton == null:
+		return
+
+	for bone_name in [
+		"DEF-thigh.L", "DEF-thigh.R", "DEF-shin.L", "DEF-shin.R"
+	]:
+		var bone_index := skeleton.find_bone(bone_name)
+		assert_ne(bone_index, -1, "fixture setup: %s must exist on the rig" % bone_name)
+		if bone_index == -1:
+			continue
+		var rest_rotation := skeleton.get_bone_rest(bone_index).basis.get_rotation_quaternion()
+		var pose_rotation := skeleton.get_bone_pose_rotation(bone_index)
+		assert_false(
+			pose_rotation.is_equal_approx(rest_rotation),
+			(
+				"%s must be posed away from its imported rest rotation -- "
+				+ "got rest=%s pose=%s"
+			) % [bone_name, rest_rotation, pose_rotation]
+		)
+
+
+## Same fixture as above, but pins the exact pose values against the real
+## data/tuning/racing/seat_pose.tres -- not just "different from rest", the
+## real authored seated-pose data actually reached the skeleton.
+func test_mount_character_on_a_model_without_a_seated_clip_applies_the_tuned_pose_values() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var lab_assistant_scene := load(LAB_ASSISTANT_MODEL_PATH) as PackedScene
+	assert_not_null(lab_assistant_scene)
+	if lab_assistant_scene == null:
+		return
+	var seat_pose: Resource = load(SEAT_POSE_TUNING_PATH)
+	assert_not_null(seat_pose, "fixture setup: seat_pose.tres must load")
+	if seat_pose == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", lab_assistant_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+	var skeleton := _find_skeleton(mounted)
+	assert_not_null(skeleton)
+	if skeleton == null:
+		return
+
+	var expected_by_bone := {
+		"DEF-thigh.L": seat_pose.thigh_l_pose,
+		"DEF-thigh.R": seat_pose.thigh_r_pose,
+		"DEF-shin.L": seat_pose.shin_l_pose,
+		"DEF-shin.R": seat_pose.shin_r_pose,
+		"DEF-upper_arm.L": seat_pose.upper_arm_l_pose,
+		"DEF-upper_arm.R": seat_pose.upper_arm_r_pose,
+		"DEF-forearm.L": seat_pose.forearm_l_pose,
+		"DEF-forearm.R": seat_pose.forearm_r_pose,
+	}
+	for bone_name: String in expected_by_bone:
+		var bone_index := skeleton.find_bone(bone_name)
+		assert_ne(bone_index, -1, "fixture setup: %s must exist on the rig" % bone_name)
+		if bone_index == -1:
+			continue
+		var expected: Quaternion = expected_by_bone[bone_name]
+		var actual := skeleton.get_bone_pose_rotation(bone_index)
+		assert_true(
+			actual.is_equal_approx(expected),
+			(
+				"%s pose must match seat_pose.tres -- expected=%s got=%s"
+			) % [bone_name, expected, actual]
+		)
+
+
+## R6 device-test fix: "lower the model so the pelvis sits on the
+## SeatMount" -- see _apply_static_seat_pose()'s own doc. Bounded, not
+## pinned to one exact value: the check that matters here is "near the
+## seat", not a specific millimeter (that's what the tuned-pose-values test
+## above is for on the rotations; pelvis_drop_m is comparatively coarse
+## visual data by its own doc).
+func test_mount_character_on_a_model_without_a_seated_clip_lowers_the_pelvis_to_seat_height() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var lab_assistant_scene := load(LAB_ASSISTANT_MODEL_PATH) as PackedScene
+	assert_not_null(lab_assistant_scene)
+	if lab_assistant_scene == null:
+		return
+	var seat_mount := kart.get_node("SeatMount") as Node3D
+	assert_not_null(seat_mount)
+	if seat_mount == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", lab_assistant_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+	var skeleton := _find_skeleton(mounted)
+	assert_not_null(skeleton)
+	if skeleton == null:
+		return
+
+	var pelvis_index := skeleton.find_bone("DEF-spine")
+	assert_ne(pelvis_index, -1, "fixture setup: DEF-spine (pelvis proxy) must exist on the rig")
+	if pelvis_index == -1:
+		return
+	var pelvis_global_y := (
+		skeleton.global_transform * skeleton.get_bone_global_pose(pelvis_index)
+	).origin.y
+	var seat_y := seat_mount.global_position.y
+	var height_above_seat := pelvis_global_y - seat_y
+	assert_true(
+		height_above_seat > -0.1 and height_above_seat < 0.75,
+		(
+			"the mounted assistant's pelvis must land close to seat height, "
+			+ "not floating at full standing hip height nor sunk through the "
+			+ "kart -- seat_y=%s pelvis_y=%s (height_above_seat=%s)"
+		) % [seat_y, pelvis_global_y, height_above_seat]
+	)
+
+
+## Binding contract: the static seat-pose fallback is for models with NO
+## seated clip only -- Crash keeps his existing A_crash_hog_ride animation
+## path completely untouched (own doc: "Crash keeps his existing seated
+## animation, untouched"). mount_character() never lowers Crash's own
+## position.y or overrides his skeleton's bone poses; the animation player
+## owns his pose entirely, the same as before this fix wave.
+func test_mount_character_on_crash_never_applies_the_static_seat_pose_fallback() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+
+	assert_eq(
+		mounted.position.y,
+		0.0,
+		"Crash's own path must never apply the lab-assistant-only pelvis_drop_m offset"
+	)
 
 
 func test_mount_character_replaces_a_previously_mounted_character() -> void:
@@ -1265,6 +1437,20 @@ func test_refresh_tuning_reaches_the_real_item_slot() -> void:
 ## kart with no item tuning, exactly the same "an omitted item_tuning is a
 ## documented no-op" contract kart_controller.gd's own configure() itself
 ## establishes.
+## Shared lookup for the mount_character() seat-pose tests above: every
+## character glb (SK_crash.glb, SK_lab_assistant.glb) wraps its Skeleton3D
+## one level under the mounted root (RIG_*/Skeleton3D -- see this file's own
+## dump of both rigs during the R6 fix wave), so a plain find_children scan
+## is enough; returns null (with no assertion of its own) if the fixture
+## itself is broken, matching this file's existing "if x == null: return"
+## early-out shape at every call site.
+func _find_skeleton(mounted: Node3D) -> Skeleton3D:
+	var skeletons := mounted.find_children("*", "Skeleton3D", true, false)
+	if skeletons.size() != 1:
+		return null
+	return skeletons[0] as Skeleton3D
+
+
 func _spawn_kart_on_floor(
 	origin: Vector3 = Vector3.ZERO, item_tuning: ItemTuning = null
 ) -> CharacterBody3D:

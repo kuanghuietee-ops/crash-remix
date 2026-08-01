@@ -114,11 +114,34 @@ const ItemSlotType := preload("res://src/racing/items/item_slot.gd")
 ## same StringName, reused verbatim, not re-authored). The lab assistant
 ## model has no such clip (its only animation is A_lab_assistant_walk, an
 ## on-foot patrol cycle with no seated pose) -- _play_seat_pose() below
-## checks has_animation() before playing, so mounting the lab assistant is a
-## silent, documented no-op here: it sits at whatever rest/bind pose its own
-## rig imports with, not a fought or broken animation. Static seated pose is
-## an explicitly acceptable R6 stand-in per this task's own brief.
+## checks has_animation() before playing and reports back whether it
+## actually found and played one; mount_character() falls back to
+## _apply_static_seat_pose() when it did not (R6 fix wave, operator device
+## test: "the opponent character should sit down just like Crash, not
+## standing on the car" -- see that method's own doc for the fallback).
 const SEAT_ANIMATION_CLIP := &"A_crash_hog_ride"
+
+## R6 fix wave: static seated-pose data for a mounted character with no
+## seated clip of its own -- see SeatPoseTuning's own class doc (data/
+## tuning/racing/seat_pose.tres) for where the values come from and why
+## this lives outside GameplayTuning/TuningService's live-fingerprint
+## catalog. A plain preload(), the same shape as KartMotorType/
+## DriftStateMachineType above -- this is visual rig data, not a per-race
+## config a caller ever needs to swap.
+const SeatPoseTuningType := preload("res://data/tuning/racing/seat_pose.tres")
+
+## Skeleton3D bone names (both character rigs share this exact DEF-* naming
+## -- see _apply_static_seat_pose()'s own doc) that _apply_static_seat_pose()
+## overrides. String constants, never numeric literals, so this table lives
+## safely in src/racing/** without tripping scripts/lint_gameplay_numbers.py.
+const SEAT_POSE_BONE_THIGH_L := "DEF-thigh.L"
+const SEAT_POSE_BONE_THIGH_R := "DEF-thigh.R"
+const SEAT_POSE_BONE_SHIN_L := "DEF-shin.L"
+const SEAT_POSE_BONE_SHIN_R := "DEF-shin.R"
+const SEAT_POSE_BONE_UPPER_ARM_L := "DEF-upper_arm.L"
+const SEAT_POSE_BONE_UPPER_ARM_R := "DEF-upper_arm.R"
+const SEAT_POSE_BONE_FOREARM_L := "DEF-forearm.L"
+const SEAT_POSE_BONE_FOREARM_R := "DEF-forearm.R"
 
 var _tuning: KartTuning
 var _motor: KartMotorType = KartMotorType.new()
@@ -517,7 +540,8 @@ func mount_character(character_scene: PackedScene) -> Node3D:
 	_seat_mount.add_child(character)
 	character.rotation.y = PI
 	_mounted_character = character
-	_play_seat_pose(character)
+	if not _play_seat_pose(character):
+		_apply_static_seat_pose(character)
 	return character
 
 
@@ -563,7 +587,11 @@ func apply_body_tint(tint: Color) -> void:
 		mesh_instance.material_override = tint_material
 
 
-func _play_seat_pose(character: Node3D) -> void:
+## Returns true when a real seated-riding clip was found and started (Crash's
+## own path); false when the model has no such clip, telling mount_character()
+## to fall back to _apply_static_seat_pose() instead. Never both -- see that
+## method's own doc for why the fallback must never touch Crash.
+func _play_seat_pose(character: Node3D) -> bool:
 	var animation_players := character.find_children(
 		"*",
 		"AnimationPlayer",
@@ -571,10 +599,71 @@ func _play_seat_pose(character: Node3D) -> void:
 		false
 	)
 	if animation_players.size() != 1:
-		return
+		return false
 	var animation_player := animation_players[0] as AnimationPlayer
-	if animation_player.has_animation(SEAT_ANIMATION_CLIP):
-		animation_player.play(SEAT_ANIMATION_CLIP)
+	if not animation_player.has_animation(SEAT_ANIMATION_CLIP):
+		return false
+	animation_player.play(SEAT_ANIMATION_CLIP)
+	return true
+
+
+## R6 fix wave (operator device test: "the opponent character should sit
+## down just like Crash, not standing on the car"). Called only when _play_
+## seat_pose() found no real seated clip to play (the lab assistant's own
+## case today -- its only animation is a walk cycle, see SEAT_ANIMATION_
+## CLIP's own doc) -- Crash always takes the animation path above and never
+## reaches here.
+##
+## Bends the hip/knee/arm bones into a fixed seated silhouette via
+## Skeleton3D.set_bone_pose_rotation() -- a STATIC pose override, no
+## AnimationPlayer involved, applied once at mount time and left alone
+## (nothing re-applies it per tick, so it costs nothing beyond this one
+## call). set_bone_pose_rotation() writes an ABSOLUTE rotation in the
+## bone's own parent-relative space, the same space animation rotation
+## tracks target, which is exactly what SeatPoseTuningType's own fields
+## carry -- see that Resource's class doc for where the numbers come from
+## and why a lab-assistant-only fallback can safely reuse them.
+##
+## Only bone ROTATIONS are overridden here -- never bone positions -- so
+## the character's own skeleton-local bone anchors (hip/knee/shoulder pivot
+## points) stay exactly where the rig was authored; the fold into a seated
+## silhouette comes entirely from rotating around those fixed pivots, the
+## same forward-kinematics shape a real seated animation uses.
+##
+## pelvis_drop_m then lowers the WHOLE mounted character's own local Y
+## position (SeatMount-relative) by a fixed amount: bending the hip/knee
+## alone does not move the character's own root down to seat height (the
+## rig's hip-height anchor bones do not move when only rotated around their
+## own pivot), so without this the model would still float at its full
+## standing hip height above the seat, arguably still reading as
+## "hovering" rather than "sitting". This is a coarse, whole-character
+## offset, not a second bone override -- see SeatPoseTuningType's own
+## pelvis_drop_m doc for the value's derivation.
+func _apply_static_seat_pose(character: Node3D) -> void:
+	var skeletons := character.find_children("*", "Skeleton3D", true, false)
+	if skeletons.size() != 1:
+		return
+	var skeleton := skeletons[0] as Skeleton3D
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_THIGH_L, SeatPoseTuningType.thigh_l_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_THIGH_R, SeatPoseTuningType.thigh_r_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_SHIN_L, SeatPoseTuningType.shin_l_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_SHIN_R, SeatPoseTuningType.shin_r_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_UPPER_ARM_L, SeatPoseTuningType.upper_arm_l_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_UPPER_ARM_R, SeatPoseTuningType.upper_arm_r_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_FOREARM_L, SeatPoseTuningType.forearm_l_pose)
+	_set_bone_pose(skeleton, SEAT_POSE_BONE_FOREARM_R, SeatPoseTuningType.forearm_r_pose)
+	character.position.y -= SeatPoseTuningType.pelvis_drop_m
+
+
+## Fail-closed like every other GridSlotN/marker lookup in this codebase
+## (e.g. race_session.gd's own _spawn_ai_karts() doc): a rig that is ever
+## reauthored without one of these DEF-* bone names simply skips that one
+## override instead of crashing the mount.
+func _set_bone_pose(skeleton: Skeleton3D, bone_name: String, pose: Quaternion) -> void:
+	var bone_index := skeleton.find_bone(bone_name)
+	if bone_index == -1:
+		return
+	skeleton.set_bone_pose_rotation(bone_index, pose)
 
 
 ## Root-or-descendant MeshInstance3D collection -- mirrors scripts/godot/
