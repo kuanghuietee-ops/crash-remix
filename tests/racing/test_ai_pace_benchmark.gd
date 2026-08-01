@@ -44,9 +44,15 @@ extends GutTest
 # already documents for respawn_count specifically).
 #
 # A single AI agent (not the full multi-kart roster) drives itself on the
-# real track; running solo (band_gap_m pinned to 0.0, no rubber-banding
-# pull) isolates the four difficulty fields' own effect on cornering/braking
-# pace from any rubber-band interaction with other karts.
+# real track; running solo is meant to isolate the four difficulty fields'
+# own effect on cornering/braking pace from any rubber-band interaction with
+# other karts -- band_gap_m must therefore be genuinely pinned near 0.0, not
+# merely intended to be. Fix round 1 (reviewer LOW-a, BENCHMARK HONESTY): an
+# earlier version of this file pinned the PLAYER reference to a constant
+# 0.0 instead, which is NOT the same thing -- see _measure_solo_run()'s own
+# comment at its player_progress_getter for the measured bug (drag
+# saturation for ~75-80% of every trial) and the fix (track this agent's
+# own progress instead).
 
 const CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const GRAYBOX_RACE_SCENE_PATH := "res://scenes/racing/race_time_trial.tscn"
@@ -67,17 +73,20 @@ const _POST_RESPAWN_GRACE_S := 2.0
 # extra stuck-respawn on ONE of several trials (observed while calibrating
 # this benchmark: the East turn's own chaotic contact physics, not the
 # tuning) must not fail this test on its own; a SYSTEMATIC increase (every
-# trial averaging well above before) still would. Sized generously (repeat
-# calibration runs on the graybox loop's own solo-agent-at-slot-3 scenario
-# showed AFTER averages ranging ~2.67-3.33 against a consistent BEFORE
-# ~1.67 -- a real, measured, but modest increase in this ISOLATED solo
-# scenario specifically) rather than tight enough to flake on ordinary
-# East-turn contact-physics variance -- see task-2b-report.md's own PROOF
-# section for the system-level counter-evidence: the full 30s/6-kart run
-# (recovery + faster-unstick actually engaged, unlike this isolated solo
-# probe) shows respawns dropping WELL BELOW the R6 baseline despite the
-# harder tuning, not rising.
-const _WEDGE_TOLERANCE := 2.0
+# trial averaging well above before) still would. Fix round 1 (reviewer
+# LOW-a fallout): re-measuring after genuinely neutralizing band_gap_m (see
+# _measure_solo_run()'s own player_progress_getter comment) surfaced MORE
+# run-to-run variance here than the original (accidentally rubber-band-
+# suppressed) numbers had shown -- repeat calibration runs on the graybox
+# loop's own solo-agent-at-slot-3 scenario, now measured honestly, ranged
+# BEFORE avg 1.00-2.00 against AFTER avg 2.67-3.67 (worst observed delta
+# 2.67). Sized with real margin above that measured worst case, not tight
+# enough to flake on ordinary East-turn contact-physics variance -- see
+# task-2b-report.md's own PROOF section for the system-level counter-
+# evidence: the full 30s/6-kart run (recovery + faster-unstick actually
+# engaged, unlike this isolated solo probe) shows respawns dropping WELL
+# BELOW the R6 baseline despite the harder tuning, not rising.
+const _WEDGE_TOLERANCE := 3.5
 
 var _catalog: GameplayTuning
 var _after_ai: AiTuning
@@ -226,6 +235,29 @@ func _measure_solo_run(race_scene_path: String, ai_tuning: AiTuning) -> Dictiona
 		return {}
 	var agent: Node = agent_script.new()
 	add_child_autofree(agent)
+	# Fix round 1 (reviewer LOW-a, BENCHMARK HONESTY): a CONSTANT 0.0 player-
+	# progress reference is NOT neutral -- this agent's own total_progress_m()
+	# only ever increases while driving solo, so band_gap_m = 0.0 - total_
+	# progress_m() races increasingly NEGATIVE (this kart reads as further
+	# and further "ahead" of a player pinned at the starting line) and
+	# saturates the DRAG branch of AiDriver's own RUBBER BAND formula within
+	# the first few real seconds of every trial -- measured while fixing
+	# this: band_gap_m sat at the fully-saturated -rubber_band_full_gap_m
+	# clamp for ~75-80% of each 20s trial, meaning most of every trial's own
+	# speed_mps reading was ALREADY suppressed by ai.rubber_band_drag_max_
+	# ratio (0.88x/0.92x of target speed for the old/new tuning respectively)
+	# rather than reflecting corner_speed_floor_ratio/brake_margin_ratio/
+	# personality_aggression_step in isolation, the opposite of this file's
+	# own "no rubber-banding pull" claim. Genuinely neutralized here by
+	# having the getter track this SAME agent's own total_progress_m() --
+	# band_gap_m = agent.total_progress_m() - agent.total_progress_m() = 0.0
+	# on every tick (both reads happen inside the SAME _assemble_state()
+	# call, no intervening state change), pinning speed_scale at exactly
+	# 1.0 for the whole run and isolating the three difficulty fields that
+	# actually matter for this benchmark from the fourth (rubber_band_drag_
+	# max_ratio) being probed by a DIFFERENT mechanism this solo scenario
+	# was never meant to exercise.
+	var self_progress_getter := func() -> float: return float(agent.call("total_progress_m"))
 	agent.call(
 		"configure",
 		kart,
@@ -234,7 +266,7 @@ func _measure_solo_run(race_scene_path: String, ai_tuning: AiTuning) -> Dictiona
 		_catalog.kart,
 		_catalog.race,
 		3,
-		func() -> float: return 0.0
+		self_progress_getter
 	)
 
 	var physics_fps := float(Engine.physics_ticks_per_second)

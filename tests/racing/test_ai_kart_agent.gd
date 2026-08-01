@@ -1692,6 +1692,86 @@ func test_recovery_max_attempts_bounds_stuck_and_wrong_facing_retries_before_res
 	)
 
 
+## Task 2b fix round 1 (reviewer MEDIUM -- SAFETY-NET STARVATION). The
+## original recovery-clear handler unconditionally re-anchored the stuck
+## window AND zeroed _recovery_attempts the instant heading error dropped
+## below half the trigger threshold -- correct for a kart that genuinely
+## realigned and resumed driving, but exploitable by a kart whose yaw
+## oscillates across the 60/120-degree hysteresis band FASTER than the
+## stuck-window's own halved period: every spurious clear re-anchors the
+## window before it can ever naturally close, so _check_stuck_and_respawn's
+## own stuck-check never even runs -- the safety net is starved
+## indefinitely. Reproduced here with the reviewer's own scripted repro
+## shape: yaw held at 180 degrees (comfortably past ai.recovery_heading_
+## error_degrees) for long enough to arm (recovery_trigger_s), then
+## snapped to 0 degrees (the spine's own tangent -- comfortably below half
+## the trigger threshold) just long enough to clear, repeating on an 0.85s
+## cycle -- SHORTER than the stuck window's own halved period
+## (respawn_stuck_after_s * 0.5 = 1.5s) -- while the kart (frozen physics)
+## never actually moves. Pre-fix, this reproducibly ran the reviewer's own
+## measured 20.4s with 0 respawns and progress pinned at its start value.
+## The fix (see ai_kart_agent.gd's own _update_recovery_state doc): a clear
+## only re-anchors the window/resets attempts if REAL progress was made
+## since recovery armed (>= the same speed x half-period product the stuck
+## check itself uses) -- a spurious clear with zero progress leaves the
+## window/attempts alone, so the window's own natural close (unmodified by
+## the oscillation) still fires within a bounded time.
+func test_yaw_oscillation_faster_than_the_stuck_window_period_still_respawns_within_a_bounded_time() -> void:
+	var spine := _new_l_shaped_spine()
+	var kart := _spawn_kart_on_floor(Vector3(0.0, 0.2, -30.0))
+	if kart == null:
+		return
+	kart.set_physics_process(false)
+
+	var agent := _new_agent()
+	agent.call(
+		"configure",
+		kart,
+		spine,
+		_ai_tuning,
+		_kart_tuning,
+		_race_tuning,
+		1,
+		func() -> float: return 0.0
+	)
+
+	var physics_fps := float(Engine.physics_ticks_per_second)
+	# high_phase_s must clear recovery_trigger_s so recovery actually arms
+	# each cycle (matching the reviewer's own repro, not a degenerate
+	# "recovery never arms at all" case); high_phase_s + low_phase_s = the
+	# reviewer's own 0.85s cycle.
+	var high_phase_s := 0.65
+	var low_phase_s := 0.20
+	assert_gt(high_phase_s, _ai_tuning.recovery_trigger_s, "fixture sanity: the high phase must clear recovery_trigger_s so recovery actually arms each cycle")
+	var high_frames := int(round(high_phase_s * physics_fps))
+	var low_frames := int(round(low_phase_s * physics_fps))
+	var total_seconds := 20.4
+	var elapsed_s := 0.0
+	while elapsed_s < total_seconds:
+		kart.call("set_yaw_degrees", 180.0)
+		await wait_physics_frames(high_frames)
+		elapsed_s += float(high_frames) / physics_fps
+		if int(agent.call("respawn_count")) > 0:
+			break
+		kart.call("set_yaw_degrees", 0.0)
+		await wait_physics_frames(low_frames)
+		elapsed_s += float(low_frames) / physics_fps
+		if int(agent.call("respawn_count")) > 0:
+			break
+
+	assert_gt(
+		int(agent.call("respawn_count")),
+		0,
+		(
+			"a kart whose yaw oscillates across the recovery hysteresis "
+			+ "band faster than the stuck-window's own period must still "
+			+ "respawn within a bounded time (%ss) -- the safety net must "
+			+ "never be starved by repeated spurious heading-clears (fix "
+			+ "round 1, reviewer MEDIUM)"
+		) % total_seconds
+	)
+
+
 # ---------------------------------------------------------------------------
 # Helpers.
 # ---------------------------------------------------------------------------

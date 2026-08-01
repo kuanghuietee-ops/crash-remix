@@ -271,23 +271,28 @@ extends Node
 ## the same hysteresis-band shape ai_driver.gd's own SLIDE (hop) COUPLING
 ## uses (a lower exit threshold than the arm threshold, so a kart hovering
 ## right at the boundary cannot chatter the bit on and off every tick).
-## Clearing also resets both the elapsed timer AND _recovery_attempts (see
-## FASTER UNSTICK below) to zero -- a genuinely realigned kart gets a fully
-## fresh slate, never "half-remembered" retry pressure from an episode it
-## already recovered from on its own. Clearing ALSO re-anchors the stuck
-## window (_stuck_window_anchor_total_progress_m/_stuck_window_elapsed_s) --
-## a real bug found proving this feature on the real graybox spine: a
-## recovery episode's own NECESSARY backward dip (see BRAKE, FORCED TRUE
-## WHILE RECOVERING in ai_driver.gd's own class doc for why the arc is tight
-## but still real distance) can, if the episode is short enough to fit
-## inside one stuck-window period, poison that SAME window's own net-
-## progress reading moments after the kart has ALREADY realigned and
-## resumed healthy driving -- firing a false-positive safety-net respawn on
-## a kart that no longer needs it. Re-anchoring on clear judges the window
-## from THIS moment forward only, the same "fresh, un-poisoned window"
-## guarantee _check_stuck_and_respawn's own genuinely-progressing branch and
-## the RUN-ACTIVE GATE's reactivation branch already give in their own
-## analogous cases.
+## Clearing also resets the elapsed ARM timer (_recovery_heading_error_
+## elapsed_s) to zero, so re-arming from a fresh clear always needs its own
+## full recovery_trigger_s of sustained heading error again.
+##
+## Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION) -- clearing does
+## NOT touch the stuck window or _recovery_attempts. An earlier version of
+## this design DID unconditionally re-anchor the window and zero attempts
+## on every clear (to stop a recovery episode's own necessary backward
+## dip -- see BRAKE, FORCED TRUE WHILE RECOVERING in ai_driver.gd's own
+## class doc -- from poisoning a window that closed moments after a
+## genuine realignment); that in turn let a kart whose yaw oscillates
+## across the hysteresis band faster than the stuck window's own period
+## re-anchor the window on every spurious clear, so it could never
+## naturally close at all -- the safety net starved indefinitely. See
+## _update_recovery_state()'s own doc for the actual fix: this agent marks
+## _recovery_was_active_this_window true every tick recovery is active and
+## leaves the window's own reset cadence COMPLETELY UNTOUCHED by arm/clear
+## events, so it always closes on schedule regardless of oscillation --
+## still granting a genuinely-recovering kart the SAME retry-leniency
+## (see BOUNDED RECOVERY RETRIES below), just decided by "was recovery
+## active at any point in this window", not "did clearing itself happen
+## recently enough to still be sitting in this exact tick's memory".
 ##
 ## STEERING WHILE ACTIVE. This agent's own _assemble_state() substitutes a
 ## much NEARER lookahead_point while _recovery_active is true -- own progress
@@ -323,22 +328,25 @@ extends Node
 ##
 ## BOUNDED RECOVERY RETRIES. A window that closes stuck (net progress below
 ## the half-period threshold) no longer respawns UNCONDITIONALLY: if
-## _recovery_active is ALSO true this tick (this agent's own current
-## wrong-facing state, not a fresh re-check -- recovery is already actively
-## steering to fix exactly this) AND _recovery_attempts is still below
-## ai.recovery_max_attempts, this window's closure is treated as ONE
-## recovery attempt -- incremented, then re-anchored and given another
-## half-period to work, rather than teleporting the kart away mid-recovery.
-## Once _recovery_attempts reaches ai.recovery_max_attempts, the NEXT
-## closing-while-stuck-and-recovering window respawns like any other -- so a
-## kart that stays both stuck AND wrong-facing for more than
-## (recovery_max_attempts + 1) half-periods still gets the safety net, never
-## an infinite retry loop. A window that closes stuck WITHOUT _recovery_
-## active (the ORIGINAL "wall-stuck, correctly facing" case fix-wave HIGH-1
-## already handled) is completely UNCHANGED: it respawns on its very first
-## closing window, exactly as before this task -- the retry leniency applies
-## ONLY to the new wrong-facing-and-stuck combination this task adds
-## handling for.
+## _recovery_was_active_this_window is ALSO true (recovery was actively
+## steering to fix a wrong-facing kart at SOME point during the window now
+## closing -- see the fix-round-1 doc above for why this, not the
+## instantaneous _recovery_active, is the correct signal) AND _recovery_
+## attempts is still below ai.recovery_max_attempts, this window's closure
+## is treated as ONE recovery attempt -- incremented, the window re-
+## anchored and given another half-period to work, and the flag cleared
+## (so the NEXT window starts with a clean slate, not carrying forward
+## "recovery was active" from an episode already accounted for), rather
+## than teleporting the kart away mid-recovery. Once _recovery_attempts
+## reaches ai.recovery_max_attempts, the NEXT closing-while-stuck-and-
+## recovery-touched window respawns like any other -- so a kart that stays
+## both stuck AND wrong-facing for more than (recovery_max_attempts + 1)
+## half-periods still gets the safety net, never an infinite retry loop.
+## A window that closes stuck WITHOUT recovery ever having been active
+## during it (the ORIGINAL "wall-stuck, correctly facing" case fix-wave
+## HIGH-1 already handled) is completely UNCHANGED: it respawns on its
+## very first closing window, exactly as before this task -- the retry
+## leniency applies ONLY to windows recovery actually touched.
 ##
 ## is_recovering() exposes _recovery_active for the identical "observe the
 ## safety net precisely, don't infer it from noisy progress deltas" reason
@@ -456,6 +464,13 @@ var _hop_release_pending: bool
 var _recovery_active: bool
 var _recovery_heading_error_elapsed_s: float
 var _recovery_attempts: int
+# Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION) -- true whenever
+# recovery was active at ANY point during the stuck window currently
+# accumulating (set every tick _recovery_active is true, cleared only
+# where the stuck window itself resets -- see _check_stuck_and_respawn's
+# own doc for why this, not the instantaneous _recovery_active, is what
+# gates a window's retry-leniency).
+var _recovery_was_active_this_window: bool
 # Task 5: real wall-clock timer this agent owns for AiDriver's own
 # item_cooldown_ready input -- see the class doc's ITEM WIRING section for
 # why the timer lives here and not in the (delta_s-less) driver.
@@ -566,6 +581,7 @@ func configure(
 	_recovery_active = false
 	_recovery_heading_error_elapsed_s = 0.0
 	_recovery_attempts = 0
+	_recovery_was_active_this_window = false
 	# Task 5: already-ready at configure() time -- see the class doc's ITEM
 	# WIRING section for why this seeds from the cooldown duration itself
 	# (no new literal) rather than starting the very first pickup out on an
@@ -620,6 +636,7 @@ func _physics_process(delta_s: float) -> void:
 		_recovery_active = false
 		_recovery_heading_error_elapsed_s = 0.0
 		_recovery_attempts = 0
+		_recovery_was_active_this_window = false
 		_was_run_active = true
 
 	if _hop_release_pending:
@@ -808,27 +825,45 @@ func _max_follower_step_m(delta_s: float) -> float:
 ## the kart's position/the follower's own total out from under it.
 func _check_stuck_and_respawn(delta_s: float) -> bool:
 	_stuck_window_elapsed_s += delta_s
-	var window_period_s := _ai_tuning.respawn_stuck_after_s * ScalarMathType.HALF
+	var window_period_s := _stuck_window_period_s()
 	if _stuck_window_elapsed_s < window_period_s:
 		return false
 
 	var net_progress_m: float = (
 		float(_follower.total_progress_m()) - _stuck_window_anchor_total_progress_m
 	)
-	var stuck_threshold_m := _ai_tuning.respawn_stuck_speed_mps * window_period_s
+	var stuck_threshold_m := _stuck_progress_threshold_m(window_period_s)
 	if net_progress_m < stuck_threshold_m:
 		# Task 2b (CTR R7, OPERATOR PRIORITY): BOUNDED RECOVERY RETRIES -- see
 		# the class doc's own section by that name. A window closing stuck
-		# WHILE recovery is actively armed gets up to recovery_max_attempts
-		# retries (re-anchored, not respawned) before falling through to the
-		# unconditional respawn below; a window closing stuck WITHOUT
-		# recovery armed (the original "wall-stuck, correctly facing" case)
-		# is completely unchanged -- it respawns on this very first check,
-		# exactly as before this task.
-		if _recovery_active and _recovery_attempts < int(_ai_tuning.recovery_max_attempts):
+		# WHILE recovery was active AT ANY POINT during it gets up to
+		# recovery_max_attempts retries (re-anchored, not respawned) before
+		# falling through to the unconditional respawn below; a window
+		# closing stuck WITHOUT recovery ever having been active during it
+		# (the original "wall-stuck, correctly facing" case) is completely
+		# unchanged -- it respawns on this very first check, exactly as
+		# before this task.
+		#
+		# Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION):
+		# _recovery_was_active_this_window, NOT the instantaneous _recovery_
+		# active, is what gates this -- see that field's own doc and _update_
+		# recovery_state()'s doc for why checking only "is recovery active
+		# RIGHT NOW" was exploitable (recovery can clear moments before this
+		# exact tick even after being active for most of the window) and why
+		# resetting the window on every heading-clear (the original,
+		# replaced design) was ALSO exploitable the other way (a kart whose
+		# yaw oscillates across the hysteresis band faster than window_
+		# period_s never lets the window close at all). This flag is set
+		# once per tick recovery is active (see _update_recovery_state) and
+		# cleared only here and in the "not stuck" branch below -- i.e.
+		# exactly when the window itself resets -- so it accurately answers
+		# "was this window's own dip touched by a recovery episode" without
+		# depending on exact arm/clear timing relative to this tick.
+		if _recovery_was_active_this_window and _recovery_attempts < int(_ai_tuning.recovery_max_attempts):
 			_recovery_attempts += 1
 			_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 			_stuck_window_elapsed_s = 0.0
+			_recovery_was_active_this_window = false
 			return false
 		_respawn()
 		return true
@@ -836,7 +871,23 @@ func _check_stuck_and_respawn(delta_s: float) -> bool:
 	_recovery_attempts = 0
 	_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
 	_stuck_window_elapsed_s = 0.0
+	_recovery_was_active_this_window = false
 	return false
+
+
+## The stuck-window's own halved anchor period -- see the class doc's
+## FASTER UNSTICK section. Factored out so _check_stuck_and_respawn's own
+## two call sites (period and the threshold derived from it) never risk
+## drifting apart.
+func _stuck_window_period_s() -> float:
+	return _ai_tuning.respawn_stuck_after_s * ScalarMathType.HALF
+
+
+## The minimum net progress (m) that period_s seconds at ai.respawn_stuck_
+## speed_mps represents -- the "stuck" bar _check_stuck_and_respawn checks
+## net progress against.
+func _stuck_progress_threshold_m(period_s: float) -> float:
+	return _ai_tuning.respawn_stuck_speed_mps * period_s
 
 
 ## See the class doc's WRONG-WAY RECOVERY section for the full sustained-
@@ -844,37 +895,56 @@ func _check_stuck_and_respawn(delta_s: float) -> bool:
 ## only while already armed) so the elapsed-time accumulation itself is
 ## real wall-clock time, matching every other timer this agent owns (item
 ## cooldown, the stuck window).
+##
+## Fix round 1 (reviewer MEDIUM, SAFETY-NET STARVATION). The original
+## version of this function unconditionally re-anchored the stuck window
+## and zeroed _recovery_attempts on EVERY heading-based clear -- correct
+## for a kart that genuinely realigned, but exploitable by a kart whose own
+## yaw oscillates across the 60/120-degree hysteresis band FASTER than the
+## stuck window's own halved period (_stuck_window_period_s()): every
+## spurious clear re-anchored the window before it could ever naturally
+## close, so _check_stuck_and_respawn's own stuck-check never even ran --
+## the safety net was starved indefinitely (reviewer's own scripted repro:
+## an 0.85s arm/clear cycle, 20.4s, 0 respawns, progress pinned; see
+## test_ai_kart_agent.gd's own test_yaw_oscillation_faster_than_the_stuck_
+## window_period_still_respawns_within_a_bounded_time, which pins this
+## exact scenario). A first attempted fix (gating the reset on "real
+## progress made since recovery armed") turned out to be WRONG in a
+## different way: the hysteresis EXIT is a pure heading check, so a
+## genuine recovery typically clears within a fraction of a second of
+## arming, long before enough real distance has accumulated to clear any
+## meaningful progress bar measured AT the clear instant -- that gate
+## reintroduced the ORIGINAL false-positive bug for the very case it most
+## needed to protect (see git history / this task's own report for the
+## measured trace).
+##
+## THE ACTUAL FIX: this function no longer touches the stuck window OR
+## _recovery_attempts AT ALL, on either arm or clear -- it owns ONLY the
+## heading-based arm/clear state machine (_recovery_active) and, while
+## active, marks _recovery_was_active_this_window true. The stuck window's
+## own reset cadence is therefore COMPLETELY DECOUPLED from recovery arm/
+## clear events: it always closes on its own unmodified schedule (see
+## _check_stuck_and_respawn), which both (a) bounds the starvation case (an
+## oscillating kart can no longer prevent the window from ever closing) and
+## (b) still correctly grants a genuinely-recovering kart leniency (the
+## window that happens to close WHILE OR SHORTLY AFTER a recovery episode
+## ran sees _recovery_was_active_this_window true and gets a retry rather
+## than an immediate respawn, giving the kart a full additional window
+## period to build up real, unambiguous progress before being judged again).
 func _update_recovery_state(delta_s: float, raw_progress: float) -> void:
 	var heading_error_degrees := _heading_error_degrees(raw_progress)
 	if _recovery_active:
+		_recovery_was_active_this_window = true
 		if heading_error_degrees < _ai_tuning.recovery_heading_error_degrees * ScalarMathType.HALF:
 			_recovery_active = false
 			_recovery_heading_error_elapsed_s = 0.0
-			_recovery_attempts = 0
-			# Fix (found while proving Task 2b point 1 on the real graybox
-			# spine): a stuck-window anchor set BEFORE this recovery episode
-			# started still carries the NEGATIVE net progress the episode's
-			# own necessary backward dip produced (see the class doc's own
-			# BRAKE/full-authority-arc doc for why that dip is expected, not
-			# a bug) -- without re-anchoring here, that stale window can
-			# still close "stuck" moments after a kart has ALREADY
-			# genuinely realigned and resumed healthy forward driving,
-			# firing a false-positive safety-net respawn on a kart that no
-			# longer needs it. A kart coming OFF a just-cleared recovery
-			# episode deserves the exact same fresh start the stuck window
-			# already gives a kart coming OFF a freeze (see the RUN-ACTIVE
-			# GATE reactivation branch above) or a genuinely-progressing
-			# window close (_check_stuck_and_respawn's own "not stuck"
-			# branch) -- judged from THIS moment forward, never re-litigating
-			# ground already covered by the recovery steering itself.
-			_stuck_window_anchor_total_progress_m = _follower.total_progress_m()
-			_stuck_window_elapsed_s = 0.0
 		return
 
 	if heading_error_degrees > _ai_tuning.recovery_heading_error_degrees:
 		_recovery_heading_error_elapsed_s += delta_s
 		if _recovery_heading_error_elapsed_s >= _ai_tuning.recovery_trigger_s:
 			_recovery_active = true
+			_recovery_was_active_this_window = true
 	else:
 		_recovery_heading_error_elapsed_s = 0.0
 
@@ -943,6 +1013,7 @@ func _respawn() -> void:
 	_recovery_active = false
 	_recovery_heading_error_elapsed_s = 0.0
 	_recovery_attempts = 0
+	_recovery_was_active_this_window = false
 
 
 ## See the class doc's RESPAWN-ONTO-PLAYER AVOIDANCE section. Returns the
