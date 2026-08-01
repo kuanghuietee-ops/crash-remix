@@ -41,3 +41,12 @@ Same as R6's (literals 0/1/-1 in `src/racing/**`; tuning provably live; TDD; sui
 
 ## Self-Review
 - Spec coverage: A→T1+T4, B→T2, C→T3, D→T5, E→T6, verification→T7. Menu registry folded into T4 where the 6-entry pain actually lands. Save v3 rigor named. No placeholders; defaults stated; tests per task.
+
+### Task 2b (OPERATOR PRIORITY, inserted 2026-08-01): AI recovery + difficulty pass
+Operator device report on R6: "AI keep driving back the wrong way and stuck at the side. Make the AI smarter and harder."
+**Files:** `src/racing/ai/ai_driver.gd`, `src/racing/ai/ai_kart_agent.gd`, `src/tuning/ai_tuning.gd` + ai.tres, tests.
+1. WRONG-WAY RECOVERY (the bug): the driver gains a recovery intent — when the kart's facing opposes the spine tangent (dot < 0, or heading error beyond a tuning threshold `recovery_heading_error_degrees=120`) sustained for `recovery_trigger_s=0.6`: suppress slide intent, steer full-authority toward a near lookahead at own progress + a short forward distance until realigned (error below half the trigger threshold — hysteresis); document + TDD (a kart placed facing backwards on the real graybox spine realigns within a bounded sim time WITHOUT a respawn).
+2. FASTER UNSTICK: the tumbling stuck window's worst-case 2× latency (~6s visible on device) shrinks — switch to a sliding window (ring of recent progress samples) OR halve the anchor period with the same product bound — design cleanly, document; wall-stuck + wrong-facing combined → immediate respawn after `recovery_trigger_s` if recovery makes no progress (bounded: recovery attempts capped by `recovery_max_attempts=2` per window before respawning).
+3. HARDER: a difficulty pass on ai.tres defaults — corner_speed_floor_ratio up (0.45→0.55), brake_margin_ratio up (1.12→1.18), apex_entry_lookahead tuned per measurement, personality_aggression_step up (0.15→0.2), rubber_band_drag_max_ratio down (0.12→0.08 — leaders pull away less so the pack stays on the player). Justify each with a measured lap-time delta (seeded solo-AI lap benchmark before/after in the report; target: clean-lap pace up ≥8% without new wedges).
+4. THE PROOF: both tracks, 30s 6-kart real-physics runs — zero sustained wrong-way stretches (no kart's progress net-negative over any 5s window — script the assertion), respawns ≤ R6 baseline, lap pace measurably up. The graybox East-turn invariant stays green (≤2 bound).
+- [ ] TDD → suites → commit.
