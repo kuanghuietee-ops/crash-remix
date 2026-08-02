@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="DriverClass" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/tuning/driver_class.gd" id="1_accel"]
+
+[resource]
+script = ExtResource("1_accel")
+top_speed_mult = 0.98
+accel_mult = 1.12
+steer_rate_mult = 1.02

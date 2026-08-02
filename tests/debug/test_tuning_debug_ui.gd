@@ -4,6 +4,7 @@ const SERVICE_SCRIPT_PATH := "res://src/tuning/tuning_service.gd"
 const DEBUG_SCENE_PATH := "res://scenes/debug/tuning_debug_ui.tscn"
 const BASE_TUNING_PATH := "res://data/tuning/gameplay.tres"
 const LEVEL_META_PATH := "res://data/tuning/levels/n_sanity_beach.tres"
+const SPEED_CLASS_PATH := "res://data/tuning/racing/classes/speed.tres"
 const TEST_OVERRIDE_PATH := "user://test_sandbox/debug_ui_override.tres"
 
 
@@ -162,6 +163,66 @@ func test_hud_reports_loaded_level_meta() -> void:
 	assert_string_contains(
 		ui.call("summary_text"),
 		String(meta.call("fingerprint")).left(12)
+	)
+
+
+## CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): the DriverClass
+## counterpart to test_hud_reports_loaded_level_meta above -- see
+## TuningDebugUI.report_driver_classes()'s own doc for why this is the
+## operator-visible half of DriverClass.fingerprint() (a unit test on the
+## resource alone proves the hash CAN move, not that an operator editing a
+## class .tres on-device would ever SEE it move -- this test proves the
+## latter).
+func test_hud_reports_loaded_driver_classes() -> void:
+	var setup := _new_ui()
+	if setup.is_empty():
+		return
+	var ui: Control = setup["ui"]
+	var speed_class := load(SPEED_CLASS_PATH) as DriverClass
+	assert_not_null(speed_class)
+	if speed_class == null:
+		return
+	var driver_classes: Array[DriverClass] = [speed_class]
+
+	ui.call("report_driver_classes", driver_classes)
+
+	assert_string_contains(ui.call("summary_text"), SPEED_CLASS_PATH)
+	assert_string_contains(
+		ui.call("summary_text"),
+		speed_class.fingerprint().left(12)
+	)
+
+
+## The literal "fingerprint moves when a class value changes" checklist
+## item, proven at the debug-HUD boundary rather than only on the bare
+## resource (test_driver_class.gd's own test_driver_class_fingerprint_
+## moves_when_a_multiplier_changes already proves the bare-resource half).
+func test_hud_driver_class_report_moves_when_a_multiplier_changes() -> void:
+	var setup := _new_ui()
+	if setup.is_empty():
+		return
+	var ui: Control = setup["ui"]
+	var loaded := load(SPEED_CLASS_PATH) as DriverClass
+	assert_not_null(loaded)
+	if loaded == null:
+		return
+	var driver_class := loaded.duplicate() as DriverClass
+	var driver_classes: Array[DriverClass] = [driver_class]
+
+	ui.call("report_driver_classes", driver_classes)
+	var before: String = ui.call("summary_text")
+
+	driver_class.top_speed_mult = 1.5
+	ui.call("report_driver_classes", driver_classes)
+
+	assert_ne(
+		ui.call("summary_text"),
+		before,
+		"an edited driver class's own fingerprint never reaches the debug HUD summary"
+	)
+	assert_string_contains(
+		ui.call("summary_text"),
+		driver_class.fingerprint().left(12)
 	)
 
 

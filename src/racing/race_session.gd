@@ -382,17 +382,16 @@ const CountdownTimerType := preload("res://src/racing/flow/countdown_timer.gd")
 const StartBoostJudgeType := preload(
 	"res://src/racing/flow/start_boost_judge.gd"
 )
-# Task 3 (CTR R6, circuit polish): the ONLY two character sources this
-# session ever mounts onto a kart -- the same existing, hand-made,
-# likeness-gated models scenes/player/player.tscn's own CrashModel and any
-# future lab-assistant enemy scene already reference. See KartController.
-# mount_character()'s own doc for the mount API these are handed to.
-const CrashCharacterSceneType := preload(
-	"res://assets/models/characters/SK_crash.glb"
-)
-const LabAssistantCharacterSceneType := preload(
-	"res://assets/models/enemies/SK_lab_assistant.glb"
-)
+# CTR R8 Task 2 (characters/select/classes): supersedes the two hardcoded
+# character consts this block used to declare (CrashCharacterSceneType /
+# LabAssistantCharacterSceneType, R6 Task 3) -- every kart's mount now
+# resolves through DriverRegistry by driver id (the player's own _selected_
+# driver_id, each AI slot's own roster id -- see configure()'s and _spawn_
+# ai_karts()'s own doc) instead of two fixed scene references. See driver_
+# registry.gd's own class doc for the six-driver roster table and its
+# FALLBACK rule (an unfinished/missing face silently seats the lab
+# assistant, never a crash or a loud error).
+const DriverRegistryType := preload("res://src/racing/roster/driver_registry.gd")
 # Task 6 (CTR R7, stretch: time-trial ghost): see the class doc's own GHOST
 # WIRING section below for how these two are actually driven.
 const GhostRecorderType := preload("res://src/racing/flow/ghost_recorder.gd")
@@ -450,6 +449,16 @@ signal retry_requested
 ## reproducible item-roll sequence.
 @export var item_rng_seed: int = 0
 
+## CTR R8 Task 2 (characters/select/classes): which of DriverRegistry's six
+## roster ids the PLAYER'S OWN kart mounts and composes -- see configure_
+## selected_driver()'s own doc for the one way this ever changes. Defaults
+## to &"crash" (existing R6/R7 behavior, unchanged for every scene/test that
+## never calls the setter): the exact driver CrashCharacterSceneType used to
+## hardcode. Not an @export -- the pick is programmatic/save-driven (Task
+## 3's racing.selected_driver, Task 4's select screen), never hand-authored
+## per scene the way track_id/spawn_opponents/item_rng_seed above are.
+var _selected_driver_id: StringName = &"crash"
+
 var _kart: CharacterBody3D
 var _camera: KartCamera
 var _track: Node3D
@@ -469,6 +478,20 @@ var _boost_pads: Array[BoostPad] = []
 var _jump_pads: Array[JumpPad] = []
 
 var _kart_tuning: KartTuning
+# CTR R8 Task 2 (characters/select/classes): the PLAYER kart's own composed
+# tuning -- catalog.kart.composed_with(DriverRegistry.driver_class(_selected_
+# driver_id)), recomputed in both configure() and refresh_tuning() (see each
+# one's own doc). Every consumer that reasons about how fast/how sharply the
+# PLAYER's own kart can actually move (KartController itself, KartCamera's
+# speed-ratio read, this session's own _update_player_follower() distance
+# clamp) reads THIS, never the shared _kart_tuning above directly -- a
+# classed player kart's real top_speed_mps/accel_mps2/steer_rate_degrees_
+# per_s can differ from the shared catalog value the moment _selected_driver_
+# id resolves to a non-balanced class. Consumers that only ever touch a
+# field composed_with() never multiplies (kart_tint_player, gravity_mps2,
+# boost_duration_s) keep reading the shared _kart_tuning directly -- see each
+# such call site's own comment for why that stays correct.
+var _player_kart_tuning: KartTuning
 var _race_tuning: RaceTuning
 var _input_tuning: InputTuning
 var _ai_tuning: AiTuning
@@ -560,6 +583,26 @@ var _next_finish_order: int = 1
 var _current_rank_order: Array = []
 
 
+## CTR R8 Task 2 (characters/select/classes): the ONE way anything outside
+## this class ever changes which roster driver the player's own kart mounts
+## -- Task 4's select screen calls this (with the save-persisted racing.
+## selected_driver id, once Task 3 lands it) BEFORE configure(), the same
+## "set the field, THEN configure() reads it" ordering track_id/spawn_
+## opponents/item_rng_seed already use via @export. Not itself an @export
+## (see _selected_driver_id's own doc) but otherwise the same contract:
+## configure() and refresh_tuning() are the only readers, both reading
+## _selected_driver_id fresh (never caching a resolved DriverEntry/Driver
+## Class/PackedScene of their own), so a pick set before configure() is
+## honored from the very first mount. id is stored as-is, unvalidated --
+## DriverRegistry.character_scene()/driver_class() already degrade an
+## unknown id gracefully (fallback mesh / null class), so a second
+## validation layer here would only duplicate that contract, not strengthen
+## it (Task 3's own save-load validation is the real gate against a
+## corrupt/unknown save value ever reaching this setter).
+func configure_selected_driver(id: StringName) -> void:
+	_selected_driver_id = id
+
+
 func configure(catalog: GameplayTuning) -> void:
 	# M1 fix-wave: without this, process_mode stays at the INHERIT default
 	# and silently picks up GameRoot's own PROCESS_MODE_ALWAYS (see
@@ -583,6 +626,17 @@ func configure(catalog: GameplayTuning) -> void:
 	# for the ghost feature, nothing further downstream needs its own copy
 	# of that check.
 	_ghost_recorder.configure(_race_tuning)
+	# CTR R8 Task 3 (save v3->v4 + ghost v2): threads the player's own pick
+	# into the recording this session is about to make -- called AFTER
+	# configure() (which always resets _ghost_recorder's own driver id back
+	# to its "crash" default, see GhostRecorder.configure()'s own doc) and
+	# BEFORE _start_race()/start() so a solo run's ghost is saved under the
+	# id it was actually raced with, not the default every recording used to
+	# imply. _selected_driver_id is already set by now -- configure_
+	# selected_driver() must be called before THIS configure(), see its own
+	# doc. Recorded for forward use only this round -- see GhostPlayer's own
+	# GHOST MODEL doc for why nothing mounts a character on the ghost yet.
+	_ghost_recorder.set_driver_id(_selected_driver_id)
 	var ghost_player := _ensure_ghost_player()
 	ghost_player.configure_visual(catalog.phase)
 	if spawn_opponents:
@@ -619,7 +673,20 @@ func configure(catalog: GameplayTuning) -> void:
 		[_hud.get_node("SafeArea/FinishPanel/Margin/Rows/Retry")]
 	)
 
-	_kart.call("configure", _kart_tuning, _item_tuning)
+	# CTR R8 Task 2 (characters/select/classes): every kart -- player and AI
+	# alike, see _spawn_ai_karts()'s own identical shape -- receives its own
+	# catalog.kart.composed_with(its_driver_class) duplicate instead of the
+	# shared _kart_tuning resource directly, so a driver's own class
+	# multipliers (top_speed_mps/accel_mps2/steer_rate_degrees_per_s) never
+	# leak across karts. The player's own composed instance is cached on
+	# _player_kart_tuning (see that field's own doc) -- every OTHER consumer
+	# below that cares how fast/how sharply the player's kart can actually
+	# move (the camera's own configure() call, _update_player_follower()'s
+	# distance clamp) reads that same instance, never recomposes its own.
+	_player_kart_tuning = _kart_tuning.composed_with(
+		DriverRegistryType.driver_class(_selected_driver_id)
+	)
+	_kart.call("configure", _player_kart_tuning, _item_tuning)
 	# Task 1 (CTR R6, circuit polish): wires the player kart's own Fx child
 	# (kart.tscn always carries one, see kart_fx.gd's own class doc) with a
 	# reference back to this kart and the fresh catalog.fx -- same "pass the
@@ -627,15 +694,45 @@ func configure(catalog: GameplayTuning) -> void:
 	# already get one line above.
 	_fx_tuning = catalog.fx
 	_kart.get_node("Fx").call("configure", _kart, _fx_tuning)
-	# Task 3 (CTR R6, circuit polish): the player kart always seats the
-	# likeness-gated Crash model -- see KartController.mount_character()'s
-	# own doc for why this is safe to call before add_child() (kart.tscn's
-	# SeatMount marker is an authored scene child, resolved via get_node_or_
-	# null() the same NODE LOOKUP NOT @onready way the Fx wiring above
-	# already relies on). apply_body_tint() gives the player kart its own
-	# fixed identity colour -- every kart gets a tint, there is no untinted
-	# kart (see kart_tuning.gd's own Visual-category doc).
-	_kart.call("mount_character", CrashCharacterSceneType)
+	# CTR R8 Task 2 (characters/select/classes): the player kart seats
+	# whichever roster driver _selected_driver_id names -- DriverRegistry.
+	# character_scene() resolves the real likeness-gated model for a gated
+	# driver (still Crash by default, unchanged from R6 Task 3's own
+	# CrashCharacterSceneType) or silently falls back to the lab assistant
+	# for an ungated one (see that method's own FALLBACK doc). See
+	# KartController.mount_character()'s own doc for why this is safe to
+	# call before add_child() (kart.tscn's SeatMount marker is an authored
+	# scene child, resolved via get_node_or_null() the same NODE LOOKUP NOT
+	# @onready way the Fx wiring above already relies on). apply_body_tint()
+	# gives the player kart its own fixed identity colour -- every kart gets
+	# a tint, there is no untinted kart (see kart_tuning.gd's own Visual-
+	# category doc); tints are a SLOT/seat trait, not a driver trait, so this
+	# keeps reading the shared _kart_tuning.kart_tint_player directly,
+	# unaffected by which driver is mounted (composed_with() never touches
+	# the Visual category -- see KartTuning.composed_with()'s own doc).
+	_kart.call("mount_character", DriverRegistryType.character_scene(_selected_driver_id))
+	# CTR R8 Task 5 (characters/select/classes): the player's own authored
+	# seat fit -- DriverEntry.seat_scale/seat_offset (driver_entry.gd's own
+	# doc) -- applied right after mount_character() the same "mount, then
+	# adjust" two-call shape apply_body_tint() below already establishes.
+	# entry() (DriverRegistry's own null-safe-for-CALLERS lookup, not
+	# character_scene()/driver_class()'s own internally-null-safe shape --
+	# see that method's own doc) returns null only for an id absent from
+	# the roster; _selected_driver_id is always one of the six roster ids
+	# by construction (configure_selected_driver()'s own doc, Task 3's save
+	# v4 migration fails closed to Crash for a corrupt/unknown id), so this
+	# is defensive, not a real path -- the 1.0/ZERO fallback matches every
+	# driver's own authored neutral value today regardless.
+	var selected_driver_entry := DriverRegistryType.entry(_selected_driver_id)
+	_kart.call(
+		"apply_seat_fit",
+		selected_driver_entry.seat_scale if selected_driver_entry != null else 1.0,
+		(
+			selected_driver_entry.seat_offset
+			if selected_driver_entry != null
+			else Vector3.ZERO
+		)
+	)
 	_kart.call("apply_body_tint", _kart_tuning.kart_tint_player)
 	# R5 Task 1: KartController.configure() always ends by reactivating
 	# itself (set_run_active(true), see its own doc) -- immediately undone
@@ -667,12 +764,18 @@ func configure(catalog: GameplayTuning) -> void:
 		# a future track's spawn marker sits under a rotated parent.
 		_seed_kart_transform(_kart, spawn)
 
+	# CTR R8 Task 2 (characters/select/classes): KartCamera reads top_speed_
+	# mps off whatever KartTuning it is handed (its own speed-ratio zoom/FOV
+	# read, see kart_camera.gd) -- must be the player's own COMPOSED tuning,
+	# not the shared base, or a classed player kart's camera feel would
+	# quietly desync from its real top speed the moment _selected_driver_id
+	# resolves to a non-balanced class.
 	_camera.call(
 		"configure",
 		_kart,
 		_camera.get_node("Camera3D"),
 		_race_tuning,
-		_kart_tuning
+		_player_kart_tuning
 	)
 	_spine.call("configure", catalog.camera)
 
@@ -1113,21 +1216,35 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	_input_tuning = catalog.input
 	_item_tuning = catalog.items
 	_fx_tuning = catalog.fx
+	# CTR R8 Task 2 (characters/select/classes): recomputed unconditionally
+	# (mirrors _kart_tuning's own unconditional reassign a few lines up),
+	# not only inside the `if _kart != null` branch below -- the camera
+	# refresh a few lines further down also needs the player's own fresh
+	# composed instance, and both must read the SAME recompose rather than
+	# each calling composed_with() a second time on their own.
+	_player_kart_tuning = _kart_tuning.composed_with(
+		DriverRegistryType.driver_class(_selected_driver_id)
+	)
 	if _kart != null and is_instance_valid(_kart):
-		_kart.call("refresh_tuning", _kart_tuning, _item_tuning)
+		# See _player_kart_tuning's own field doc -- a live tuning edit must
+		# reach a classed kart RECOMPOSED, not as the raw, just-reloaded
+		# catalog.kart reference.
+		_kart.call("refresh_tuning", _player_kart_tuning, _item_tuning)
 		_kart.get_node("Fx").call("refresh_tuning", _fx_tuning)
-		# Task 3 (CTR R6, circuit polish): kart_tint_player lives on the same
-		# KartTuning section refresh_tuning() above already re-applies to the
-		# motor/drift -- re-applying the tint here too keeps it live for the
-		# same reason the box loop below re-applies fx_tuning, matching this
-		# method's own established "provably live" contract. AI karts are
-		# deliberately NOT touched here -- this method has never refreshed
-		# _ai_karts at all (only _kart/_camera/_item_boxes), a pre-existing
-		# scope this task does not change; see the class doc's own tuning-
-		# refresh precedent.
+		# Task 3 (CTR R6, circuit polish): kart_tint_player lives on the
+		# shared _kart_tuning, unaffected by driver class (composed_with()
+		# never touches the Visual category) -- re-applying the tint here
+		# too keeps it live for the same reason the box loop below re-
+		# applies fx_tuning, matching this method's own established
+		# "provably live" contract. AI karts are deliberately NOT touched
+		# here -- this method has never refreshed _ai_karts at all (only
+		# _kart/_camera/_item_boxes), a pre-existing scope this task does
+		# not change; see the class doc's own tuning-refresh precedent.
 		_kart.call("apply_body_tint", _kart_tuning.kart_tint_player)
 	if _camera != null and is_instance_valid(_camera):
-		_camera.call("refresh_tuning", _race_tuning, _kart_tuning)
+		# See the identical camera-configure() comment above for why this
+		# must be the player's own composed instance, not the shared base.
+		_camera.call("refresh_tuning", _race_tuning, _player_kart_tuning)
 	# Task 1 fix round 1 (CTR R6, circuit polish reviewer [MEDIUM]): every
 	# discovered box needs a live fx (and item) tuning refresh too, the same
 	# "the tuning loop must be provably live" contract every other consumer
@@ -1314,6 +1431,12 @@ func _spawn_beaker(launcher: CharacterBody3D) -> void:
 ## fraction of a second regardless of where exactly it started. kart_tuning
 ## is threaded through as bomb.gd's one extra configure() parameter (gravity
 ## for the real ballistic arc -- see that file's own LAUNCH GEOMETRY doc).
+## CTR R8 Task 2 audit: gravity_mps2 is not one of the three fields composed_
+## with() ever multiplies, so it is IDENTICAL on every kart's own composed
+## tuning and on the shared _kart_tuning below -- reading the shared
+## reference here (rather than looking up which kart's own composed
+## instance the launcher owns) is exactly as correct and avoids a lookup
+## this call has no other reason to make.
 func _spawn_bomb(launcher: CharacterBody3D) -> void:
 	var bomb := BombSceneType.instantiate()
 	_ensure_hazards_root().add_child(bomb)
@@ -1468,6 +1591,12 @@ func _start_race() -> void:
 			_bog_remaining_s = _race_tuning.start_bog_penalty_s
 		&"boost":
 			_kart.call("set_run_active", true)
+			# CTR R8 Task 2 audit: boost_duration_s is not one of the three
+			# fields composed_with() ever multiplies (top_speed_mps/accel_
+			# mps2/steer_rate_degrees_per_s only -- see KartTuning.composed_
+			# with()'s own doc), so reading it off the shared _kart_tuning
+			# here is exactly equal to reading it off _player_kart_tuning --
+			# left as the shared reference rather than churning this line.
 			_kart.call("apply_boost", _kart_tuning.boost_duration_s)
 		_:
 			_kart.call("set_run_active", true)
@@ -1561,9 +1690,21 @@ func _update_wrong_way(delta_s: float, progress: float) -> void:
 ## _update_wrong_way() rather than each calling _spine.progress_for_position()
 ## independently -- same projection, same result, computed once instead of
 ## twice a tick.
+##
+## CTR R8 Task 2 (characters/select/classes) CARRIED-FORWARD RISK, resolved:
+## reads _player_kart_tuning (the player's own composed instance), not the
+## shared _kart_tuning -- a speed-class player kart's real top_speed_mps
+## exceeds the shared catalog value, and this clamp existing on the
+## UNCLASSED value would under-clamp the follower's max step every tick,
+## the exact "reasons off the unclassed base while the kart actually races
+## at the classed value" hazard Task 1's reviewer carried forward onto this
+## task.
 func _update_player_follower(raw_progress: float, delta_s: float) -> void:
 	var max_step_m := (
-		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps) * delta_s
+		(
+			_player_kart_tuning.top_speed_mps
+			+ _player_kart_tuning.boost_speed_bonus_mps
+		) * delta_s
 	)
 	_player_follower.update(raw_progress, max_step_m)
 
@@ -2005,6 +2146,31 @@ func _other_kart_positions(requesting_kart: CharacterBody3D) -> Array:
 ## pickup/trigger against that one-frame flash. Locked with a regression
 ## test (test_race_session.gd's test_spawning_ai_karts_does_not_flash_a_
 ## kart_through_the_track_origin).
+## CTR R8 Task 2 (characters/select/classes): the 5 AI karts seat the 5
+## drivers the player did NOT pick, in DriverRegistry's own fixed roster
+## order -- see driver_registry.gd's own ROSTER ORDER doc. A plain filter,
+## not a DriverRegistry method of its own (the brief's own public registry
+## surface is entries()/entry()/character_scene()/driver_class() only) --
+## "which driver did the PLAYER pick" stays a RaceSession-only concern, the
+## same way spawn_opponents/track_id/_selected_driver_id already are.
+## Exposed as its own method (not inlined into _spawn_ai_karts()'s loop) so
+## it is directly, precisely testable: the roster has exactly 6 ids and
+## exactly 3 of them (crash/cortex/lab_assistant) share the identical
+## Balanced class AND -- for the 4 still fallback-active drivers -- the
+## identical mounted mesh, so "5 distinct, deterministic, no duplicates,
+## excludes the pick" cannot be proven from a spawned kart's own external
+## state (mesh/tuning) alone; this helper is what a test calls directly
+## instead. Deterministic and duplicate-free by construction: ENTRIES has
+## exactly 6 unique ids, so filtering out exactly one always leaves the
+## other 5, in their existing relative order.
+func _ai_fill_driver_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for candidate: DriverEntry in DriverRegistryType.entries():
+		if candidate.id != _selected_driver_id:
+			ids.append(candidate.id)
+	return ids
+
+
 func _spawn_ai_karts() -> void:
 	if _ai_root == null:
 		_ai_root = Node3D.new()
@@ -2021,6 +2187,14 @@ func _spawn_ai_karts() -> void:
 	# Fix-wave MEDIUM-5: spawn_opponents owns solo-ness, not opponent_count
 	# itself -- see the exported field's own doc.
 	var opponent_count := int(_ai_tuning.opponent_count) if spawn_opponents else 0
+	# CTR R8 Task 2: see _ai_fill_driver_ids()'s own doc. The roster is sized
+	# for exactly the 6-kart grid (1 player + 5 AI) the design spec fixes --
+	# ai_driver_ids always has exactly 5 entries in ordinary play. A slot
+	# beyond that (opponent_count tuned above the roster's own AI-fill size,
+	# never true of ai.tres's shipped 5.0 default) falls back to the roster's
+	# own fallback id rather than an out-of-range read, the same fail-closed
+	# spirit as the missing-GridSlotN branch below.
+	var ai_driver_ids := _ai_fill_driver_ids()
 	for slot_index in range(1, opponent_count + 1):
 		var marker := _track.get_node_or_null("GridSlot%d" % slot_index) as Marker3D
 		if marker == null:
@@ -2033,12 +2207,34 @@ func _spawn_ai_karts() -> void:
 			)
 			continue
 
+		var driver_id: StringName = (
+			ai_driver_ids[slot_index - 1]
+			if slot_index - 1 < ai_driver_ids.size()
+			else DriverRegistryType.LAB_ASSISTANT.id
+		)
+		# CTR R8 Task 2 (characters/select/classes): this slot's own composed
+		# tuning -- computed ONCE here and threaded through both this kart's
+		# own configure() below and its AiKartAgent's configure() further
+		# down, so both sides of this kart ALWAYS agree on how fast/how
+		# sharply it can actually move. This resolves Task 1's reviewer-
+		# carried-forward risk: before this task, AiKartAgent.configure() (and
+		# through it, AiDriver's own target-speed read and this kart's own
+		# _max_follower_step_m() stuck-recovery clamp) read the shared,
+		# UNCLASSED _kart_tuning directly -- harmless while every kart
+		# composed with null, but wrong the moment a real class multiplies
+		# top_speed_mps: an AI's own driving decisions and its stuck-recovery
+		# distance clamp would have reasoned off the base value while the kart
+		# it actually controls raced at the classed one.
+		var ai_kart_tuning := _kart_tuning.composed_with(
+			DriverRegistryType.driver_class(driver_id)
+		)
+
 		var ai_kart := KartSceneType.instantiate() as CharacterBody3D
 		# See this function's own SPAWN-TRANSFORM ORDERING doc: configure()
 		# and the transform seed both happen BEFORE add_child(), so the
 		# kart's very first physics-server registration already carries its
 		# real GridSlotN position -- never a one-frame flash at the origin.
-		ai_kart.call("configure", _kart_tuning, _item_tuning)
+		ai_kart.call("configure", ai_kart_tuning, _item_tuning)
 		# Task 1 (CTR R6, circuit polish): see the player's own identical
 		# wiring in configure() above -- every AI kart shares the same
 		# kart.tscn packed scene, so it carries the same Fx child. Safe to
@@ -2047,15 +2243,37 @@ func _spawn_ai_karts() -> void:
 		# or_null() instead of trusting @onready, which would not have fired
 		# yet on this still-detached subtree.
 		ai_kart.get_node("Fx").call("configure", ai_kart, _fx_tuning)
-		# Task 3 (CTR R6, circuit polish): every AI kart seats the OTHER
-		# likeness-gated model (the lab assistant, never Crash -- see the
-		# design doc's own "lab assistant models drive AI karts" line) and
-		# gets a per-slot body tint from the same KartTuning the player's own
-		# kart_tint_player line above reads. tint_for_slot() is 1-based and
-		# wraps deterministically past 5 slots (see kart_tuning.gd's own
-		# doc) -- slot_index here is this loop's own 1-based GridSlot number,
-		# never re-derived.
-		ai_kart.call("mount_character", LabAssistantCharacterSceneType)
+		# CTR R8 Task 2 (characters/select/classes): this slot's own roster
+		# driver -- DriverRegistry.character_scene() resolves the real model
+		# for a gated driver or silently falls back to the lab assistant for
+		# an ungated one (see that method's own FALLBACK doc; every AI driver
+		# except crash and lab_assistant is fallback-active today, so most
+		# slots resolve to the same lab-assistant mesh R6 Task 3 always
+		# mounted, unchanged visually). Body tint stays a SLOT trait, exactly
+		# tint_for_slot(slot_index) off the shared _kart_tuning -- see that
+		# call's own doc immediately below and the design spec's own "per-
+		# slot personalities and tints stay slot traits, untouched" ruling
+		# (brief pin: tints must never become a per-driver trait).
+		ai_kart.call("mount_character", DriverRegistryType.character_scene(driver_id))
+		# CTR R8 Task 5 (characters/select/classes): this slot's own driver
+		# seat fit -- see the player's own identical wiring in configure()
+		# above for the full doc (entry()'s own null-safety-for-callers
+		# shape, why the 1.0/ZERO fallback is defensive not a real path).
+		var slot_driver_entry := DriverRegistryType.entry(driver_id)
+		ai_kart.call(
+			"apply_seat_fit",
+			slot_driver_entry.seat_scale if slot_driver_entry != null else 1.0,
+			(
+				slot_driver_entry.seat_offset
+				if slot_driver_entry != null
+				else Vector3.ZERO
+			)
+		)
+		# Task 3 (CTR R6, circuit polish): every AI kart gets a per-slot body
+		# tint from the same KartTuning the player's own kart_tint_player line
+		# above reads. tint_for_slot() is 1-based and wraps deterministically
+		# past 5 slots (see kart_tuning.gd's own doc) -- slot_index here is
+		# this loop's own 1-based GridSlot number, never re-derived.
 		ai_kart.call("apply_body_tint", _kart_tuning.tint_for_slot(slot_index))
 		# R5 Task 1: see the player's own identical call in configure() for
 		# why this immediately undoes configure()'s own set_run_active(true)
@@ -2074,7 +2292,10 @@ func _spawn_ai_karts() -> void:
 			ai_kart,
 			_spine,
 			_ai_tuning,
-			_kart_tuning,
+			# CTR R8 Task 2 CARRIED-FORWARD RISK, resolved: this slot's own
+			# composed ai_kart_tuning, not the shared _kart_tuning -- see this
+			# loop's own comment above ai_kart_tuning's declaration.
+			ai_kart_tuning,
 			_race_tuning,
 			slot_index,
 			Callable(self, "player_total_progress_m"),

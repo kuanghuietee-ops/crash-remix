@@ -117,6 +117,31 @@ func test_round_trip_persists_and_loads_the_exact_same_keyframes() -> void:
 		)
 
 
+## CTR R8 Task 3 (save v3->v4 + ghost v2): a driver id round trip with a
+## NON-default id (crash is also the DEFAULT, so a round trip using it alone
+## could never distinguish "the pascal string round-tripped" from "the field
+## just never left its own default") -- proves save_to_file() really writes
+## whatever set_driver_id() was given, and load_for_track() decodes that
+## exact value back, independent of the default-fallback paths every other
+## test in this file exercises.
+func test_round_trip_persists_and_loads_the_recorded_driver_id() -> void:
+	var tuning := _tuning()
+	var recorder := GhostRecorderType.new() as GhostRecorderType
+	recorder.configure(tuning)
+	recorder.set_driver_id(&"papu")
+	recorder.start()
+	recorder.sample(0.0, Vector3.ZERO, 0.0)
+	recorder.stop()
+	assert_eq(recorder.save_to_file(_ghost_path), OK)
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, tuning)
+
+	assert_true(loaded)
+	assert_eq(player.driver_id(), &"papu")
+
+
 func test_round_trip_survives_a_solo_track_id_with_no_recorded_keyframes_by_never_writing() -> void:
 	var tuning := _tuning()
 	var recorder := GhostRecorderType.new() as GhostRecorderType
@@ -212,8 +237,12 @@ func test_a_declared_keyframe_count_above_the_tuned_cap_loads_as_no_ghost() -> v
 	# A hostile/garbage header claiming an absurd keyframe count must never
 	# make the reader loop that many times -- bounded against the CURRENT
 	# ghost_max_keyframes ceiling instead (see _load_from_path()'s own doc).
+	# The driver id pascal string must still be present and well-formed here
+	# (CTR R8 Task 3) -- otherwise this would accidentally prove the id-
+	# corruption path instead of the keyframe-count-cap path it names.
 	var file := FileAccess.open(_ghost_path, FileAccess.WRITE)
 	file.store_32(GhostRecorderType.FILE_VERSION)
+	file.store_pascal_string("crash")
 	file.store_float(0.1)
 	file.store_32(1000000)
 	file.close()
@@ -221,6 +250,127 @@ func test_a_declared_keyframe_count_above_the_tuned_cap_loads_as_no_ghost() -> v
 	var player := GhostPlayerType.new()
 	add_child_autofree(player)
 	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning(0.1, 3600.0))
+
+	assert_false(loaded)
+	assert_false(player.has_ghost())
+
+
+# ---------------------------------------------------------------------------
+# CTR R8 Task 3 (save v3->v4 + ghost v2): legacy v1 compatibility + the
+# driver id's own dedicated corruption shape.
+# ---------------------------------------------------------------------------
+
+
+## A genuine legacy file (version word 1, no pascal string at all -- the
+## exact shape every real .ghost file on disk predating this task has) must
+## still load successfully, with its implied driver resolved to the
+## registry's own "crash" default -- the brief's own "loader accepts v1
+## (driver = crash)" contract, proven against real bytes laid out by hand
+## (not through GhostRecorder, which never writes this legacy shape again).
+func test_a_legacy_v1_ghost_file_loads_with_the_crash_driver_id() -> void:
+	var file := FileAccess.open(_ghost_path, FileAccess.WRITE)
+	file.store_32(GhostRecorderType.FILE_VERSION_V1)
+	file.store_float(0.1)
+	file.store_32(1)
+	file.store_float(0.0)
+	file.store_float(1.0)
+	file.store_float(2.0)
+	file.store_float(3.0)
+	file.store_float(45.0)
+	file.close()
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
+
+	assert_true(loaded)
+	assert_true(player.has_ghost())
+	assert_eq(player.driver_id(), &"crash")
+	var read: Array[Dictionary] = player._keyframes
+	assert_eq(read.size(), 1)
+	assert_eq((read[0]["position"] as Vector3), Vector3(1.0, 2.0, 3.0))
+
+
+## The driver id's own corruption shape, isolated from every other field: a
+## v2 header whose pascal string declares a length with no bytes actually
+## following it (the exact truncation-mid-record shape test_a_truncated_
+## ghost_file_loads_as_no_ghost above already covers for the KEYFRAME
+## payload) -- must resolve to the same "whole file treated as absent"
+## outcome as every other corruption shape in this file, never a partial
+## load with a garbage/truncated id.
+func test_a_ghost_file_with_a_truncated_driver_id_loads_as_no_ghost() -> void:
+	var file := FileAccess.open(_ghost_path, FileAccess.WRITE)
+	file.store_32(GhostRecorderType.FILE_VERSION)
+	# A declared pascal-string length with nothing following it at all --
+	# get_pascal_string() attempts to read past EOF, which sets get_error()
+	# the same way get_32()/get_float() reading past EOF already do
+	# elsewhere in this file (verified against Godot's own FileAccess
+	# behavior for this exact scenario, not assumed).
+	file.store_32(1000000)
+	file.close()
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
+
+	assert_false(loaded)
+	assert_false(player.has_ghost())
+
+
+## Writes a fully well-formed body (one real keyframe) after whatever
+## driver id string the caller supplies -- shared by the two "semantic"
+## corruption tests below, so each proves the id itself is the ONLY reason
+## the file is rejected. Neither an empty keyframe_count (which the
+## existing `keyframes.is_empty() -> return false` check further down
+## _load_from_path() would ALSO reject, regardless of the id) nor a missing
+## interval_s/keyframe_count tail (which the pre-existing EOF check would
+## ALSO reject) can be used here -- either would prove nothing about the
+## id-membership gate specifically.
+func _write_ghost_file_with_driver_id(driver_id: String) -> void:
+	var file := FileAccess.open(_ghost_path, FileAccess.WRITE)
+	file.store_32(GhostRecorderType.FILE_VERSION)
+	file.store_pascal_string(driver_id)
+	file.store_float(0.1)
+	file.store_32(1)
+	file.store_float(0.0)
+	file.store_float(1.0)
+	file.store_float(2.0)
+	file.store_float(3.0)
+	file.store_float(45.0)
+	file.close()
+
+
+## Fix round 1 (task review): the SEMANTIC half of driver id corruption --
+## the pascal string decodes cleanly (no I/O error at all), but names no
+## real DriverRegistry row. DriverRegistry.entry()'s own doc explicitly
+## names "a stale ghost id" as a case it exists to catch (driver_registry.
+## gd) -- the loader must gate on it, not just on structural truncation
+## (test_a_ghost_file_with_a_truncated_driver_id_loads_as_no_ghost above).
+## Must resolve to the SAME "whole file treated as absent" outcome as every
+## other corruption shape in this file, never a partial load carrying a
+## driver_id() no registry row actually owns.
+func test_a_ghost_file_with_a_well_formed_but_unknown_driver_id_loads_as_no_ghost() -> void:
+	_write_ghost_file_with_driver_id("totally_not_a_real_driver")
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
+
+	assert_false(loaded)
+	assert_false(player.has_ghost())
+
+
+## An empty pascal string decodes without any I/O error too (a genuine
+## zero-length string is a valid, well-formed pascal string) -- no real
+## DriverRegistry row ever has an empty id, so this folds into the SAME
+## registry-membership gate as the unknown-id case immediately above,
+## without needing its own special-cased emptiness check.
+func test_a_ghost_file_with_an_empty_driver_id_loads_as_no_ghost() -> void:
+	_write_ghost_file_with_driver_id("")
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
 
 	assert_false(loaded)
 	assert_false(player.has_ghost())

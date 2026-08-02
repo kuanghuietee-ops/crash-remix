@@ -56,8 +56,10 @@ extends Node3D
 ## LOAD, NOT DECODE-ON-EVERY-FRAME. load_for_track() (called once, from
 ## RaceSession.configure(), solo sessions only -- see race_session.gd's own
 ## GHOST WIRING section) reads and decodes the whole .ghost file for a
-## track up front into _keyframes/_interval_s and returns whether a usable
-## ghost was found. Absent (no such file -- by far the common case, since a
+## track up front into _keyframes/_interval_s/_driver_id (CTR R8 Task 3 --
+## the recorded driver id, see that field's own doc; not used to mount
+## anything this round, recorded for forward use only) and returns whether a
+## usable ghost was found. Absent (no such file -- by far the common case, since a
 ## first-ever solo run has no prior best to ghost against), corrupt
 ## (truncated mid-record), a version mismatch, or a declared keyframe count
 ## above the currently-tuned ghost_max_keyframes ceiling (a defensive bound
@@ -95,12 +97,25 @@ extends Node3D
 const GhostRecorderType := preload("res://src/racing/flow/ghost_recorder.gd")
 const KartModelSceneType := preload("res://assets/models/karts/SM_kart.glb")
 const GhostShaderType := preload("res://assets/shaders/phase_ghost.gdshader")
+## CTR R8 Task 3 (save v3->v4 + ghost v2), fix round 1: the READ-side gate on
+## a decoded driver id -- see _load_from_path()'s own doc for why this is
+## checked here (unlike GhostRecorder.set_driver_id(), the WRITE side, which
+## stays deliberately unvalidated).
+const DriverRegistryType := preload("res://src/racing/roster/driver_registry.gd")
 
 const GHOST_DIRECTORY := "user://ghosts"
 const GHOST_FILE_EXTENSION := ".ghost"
 
 var _keyframes: Array[Dictionary] = []
 var _interval_s: float = 0.0
+## CTR R8 Task 3 (save v3->v4 + ghost v2): the driver id load_for_track()
+## decoded off the .ghost file's own pascal string (or GhostRecorderType.
+## DEFAULT_DRIVER_ID for a legacy v1 file, which predates the field
+## entirely) -- see _load_from_path()'s own doc. Nothing in this class reads
+## it back yet (the ghost stays a palette kart this round, per the class doc's
+## GHOST MODEL section); it is recorded here purely for forward use by a
+## future task, exposed read-only via driver_id() below.
+var _driver_id: StringName = GhostRecorderType.DEFAULT_DRIVER_ID
 var _active: bool = false
 var _visual: Node3D
 var _ghost_material := ShaderMaterial.new()
@@ -218,6 +233,7 @@ func configure_visual(phase_tuning: PhaseTuning) -> void:
 func clear() -> void:
 	_keyframes = []
 	_interval_s = 0.0
+	_driver_id = GhostRecorderType.DEFAULT_DRIVER_ID
 	_active = false
 	visible = false
 
@@ -248,10 +264,56 @@ func _load_from_path(path: String, race_tuning: RaceTuning) -> bool:
 		return false
 
 	var version := file.get_32()
-	if file.get_error() != OK or version != GhostRecorderType.FILE_VERSION:
+	if file.get_error() != OK:
+		push_warning("Ghost file is corrupt, ignoring: %s" % path)
+		file.close()
+		return false
+	# CTR R8 Task 3 (save v3->v4 + ghost v2): two accepted version words, not
+	# one -- a genuine legacy FILE_VERSION_V1 file (no driver id pascal
+	# string at all, see GhostRecorder's own FILE FORMAT doc) still loads;
+	# anything else (a real version mismatch, or garbage bytes that happen
+	# to land on neither) still rejects, unchanged from before this task.
+	var is_legacy_v1 := version == GhostRecorderType.FILE_VERSION_V1
+	if not is_legacy_v1 and version != GhostRecorderType.FILE_VERSION:
 		push_warning("Ghost file version mismatch, ignoring: %s" % path)
 		file.close()
 		return false
+
+	# A legacy v1 file has no pascal string to read here at all -- its
+	# implied driver is always DEFAULT_DRIVER_ID (see FILE_VERSION_V1's own
+	# doc on GhostRecorder). A v2+ file's id is read fresh off the file
+	# itself, then checked TWO ways, either of which folds into the SAME
+	# "corrupt -> no ghost" outcome every other corruption shape in this
+	# function already produces -- never a partial load with a garbage or
+	# unrecognized id:
+	#   1. STRUCTURAL: get_pascal_string() reading past a truncated/garbage-
+	#      length declaration sets get_error() the same way get_32()/
+	#      get_float() do elsewhere in this function (verified against
+	#      Godot's own FileAccess behavior, not assumed).
+	#   2. SEMANTIC (fix round 1): a pascal string that decodes CLEANLY but
+	#      names no real roster row (DriverRegistry.entry() == null -- see
+	#      that function's own doc, which explicitly names "a stale ghost
+	#      id" as a case it exists to catch) is corrupt for THIS file's own
+	#      purposes just the same, even though nothing reads driver_id()
+	#      back to mount a mesh yet -- the brief's own "corrupt id -> whole
+	#      file treated as absent" contract does not carve out an exception
+	#      for "well-formed but unrecognized", and an empty string (a
+	#      zero-length pascal string, which decodes without error) is
+	#      already caught here too, since no real DriverRegistry row ever
+	#      has an empty id.
+	var driver_id := GhostRecorderType.DEFAULT_DRIVER_ID
+	if not is_legacy_v1:
+		var raw_driver_id := file.get_pascal_string()
+		if file.get_error() != OK:
+			push_warning("Ghost file is corrupt, ignoring: %s" % path)
+			file.close()
+			return false
+		var candidate_driver_id := StringName(raw_driver_id)
+		if DriverRegistryType.entry(candidate_driver_id) == null:
+			push_warning("Ghost file is corrupt, ignoring: %s" % path)
+			file.close()
+			return false
+		driver_id = candidate_driver_id
 
 	var interval_s := file.get_float()
 	var keyframe_count := file.get_32()
@@ -287,6 +349,7 @@ func _load_from_path(path: String, race_tuning: RaceTuning) -> bool:
 
 	_keyframes = keyframes
 	_interval_s = interval_s
+	_driver_id = driver_id
 	return true
 
 
@@ -296,6 +359,14 @@ func has_ghost() -> bool:
 
 func interval_s() -> float:
 	return _interval_s
+
+
+## CTR R8 Task 3 (save v3->v4 + ghost v2): the id load_for_track() decoded
+## off the loaded ghost file -- GhostRecorderType.DEFAULT_DRIVER_ID
+## (&"crash") both before any ghost is loaded and for a genuine legacy v1
+## file, which predates the field entirely. See _driver_id's own field doc.
+func driver_id() -> StringName:
+	return _driver_id
 
 
 ## Reveals the visual and begins replaying from the ghost's own first

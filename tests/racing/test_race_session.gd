@@ -220,6 +220,40 @@ func test_configure_mounts_crash_on_the_player_kart_with_its_own_tint() -> void:
 	)
 
 
+## CTR R8 Task 1 (characters/select/classes): configure() now hands the
+## player kart catalog.kart.composed_with(its_driver_class) instead of the
+## shared catalog.kart resource directly -- see race_session.gd's own kart-
+## configure-path doc and KartTuning.composed_with()'s own doc. Task 1 has
+## no per-driver class assignment yet (Task 2's job), so every kart composes
+## with null -- identical VALUES to the shared resource, but the kart's own
+## _tuning must already be its own distinct instance, never catalog.kart
+## itself, so a later per-kart mutation (e.g. a future spin-out/boost tweak)
+## could never leak into another kart's tuning or the shared .tres-backed
+## original.
+func test_configure_gives_the_player_kart_its_own_composed_kart_tuning_not_the_shared_resource() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+	var configured_tuning: KartTuning = kart.get("_tuning")
+	assert_not_null(configured_tuning, "the player kart must own a configured KartTuning")
+	if configured_tuning == null:
+		return
+	assert_ne(
+		configured_tuning.get_instance_id(),
+		_catalog.kart.get_instance_id(),
+		(
+			"every kart must receive its own catalog.kart.composed_with() "
+			+ "duplicate, never the shared catalog.kart resource directly"
+		)
+	)
+	assert_eq(
+		configured_tuning.top_speed_mps,
+		_catalog.kart.top_speed_mps,
+		"with driver_class still null in R8 Task 1, composed values must equal the shared base exactly"
+	)
+
+
 func test_spawn_ai_karts_mounts_lab_assistants_with_distinct_deterministic_tints() -> void:
 	var race := _boot_race()
 	if race == null:
@@ -792,6 +826,53 @@ func test_refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_motor() -> vo
 	)
 
 
+## CTR R8 Task 1 (characters/select/classes): refresh_tuning() must recompose
+## base x class on every live tuning edit, not just reassign the raw catalog
+## reference the way it did before this task -- see race_session.gd's own
+## refresh_tuning() doc for the recompose call this pins, mirroring the
+## configure()-path proofs above but through the LIVE-REFRESH path (the same
+## one that re-applies kart_tint_player, see race_session.gd:1119 at the time
+## this task was written).
+func test_refresh_tuning_recomposes_into_a_fresh_duplicate_not_the_live_reloaded_resource() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var kart := race.get_node("Kart") as CharacterBody3D
+
+	# See test_refresh_tuning_reapplies_a_live_kart_tuning_value_to_the_
+	# motor's own comment on why duplicate_deep(DEEP_DUPLICATE_ALL) is used
+	# here instead of a bare duplicate(true).
+	var tuning_variant: GameplayTuning = _catalog.duplicate_deep(
+		Resource.DEEP_DUPLICATE_ALL
+	)
+	tuning_variant.kart.top_speed_mps = _catalog.kart.top_speed_mps * 3.0
+
+	race.call("refresh_tuning", tuning_variant)
+
+	var configured_tuning: KartTuning = kart.get("_tuning")
+	assert_not_null(configured_tuning, "the player kart must still own a configured KartTuning after refresh")
+	if configured_tuning == null:
+		return
+	assert_ne(
+		configured_tuning.get_instance_id(),
+		tuning_variant.kart.get_instance_id(),
+		(
+			"refresh_tuning() must recompose base x class into a fresh "
+			+ "duplicate, never hand the live-reloaded catalog.kart "
+			+ "resource straight to the kart"
+		)
+	)
+	assert_eq(
+		configured_tuning.top_speed_mps,
+		tuning_variant.kart.top_speed_mps,
+		(
+			"with driver_class still null in R8 Task 1, the recomposed "
+			+ "value must equal the live-refreshed base value exactly -- "
+			+ "a mid-race tuning edit must still reach a classed kart"
+		)
+	)
+
+
 # ---------------------------------------------------------------------------
 # Task 5 (CTR R3 integration): opponent_count AI karts now spawn alongside
 # the player by default (ai.tres's own opponent_count=5.0 -- this IS the R3
@@ -838,6 +919,32 @@ func test_ai_karts_spawn_at_their_grid_slots_with_seeded_position_and_yaw() -> v
 				"AI kart at slot %d must spawn facing its GridSlot marker's "
 				+ "own authored yaw -- got %s, expected %s"
 			) % [slot_index, actual_forward, expected_forward]
+		)
+
+
+## CTR R8 Task 1 (characters/select/classes): the SAME composed_with()
+## wiring test_configure_gives_the_player_kart_its_own_composed_kart_
+## tuning_not_the_shared_resource proves for the player above, applied to
+## every AI kart's own _spawn_ai_karts() configure() call.
+func test_spawn_ai_karts_gives_each_ai_kart_its_own_composed_kart_tuning_not_the_shared_resource() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var opponent_count := int(race.call("ai_kart_count"))
+	assert_gt(opponent_count, 0, "fixture sanity: at least one AI kart must spawn by default")
+	for slot_index in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		assert_not_null(ai_kart, "an AI kart must exist at slot %d" % slot_index)
+		if ai_kart == null:
+			continue
+		var configured_tuning: KartTuning = ai_kart.get("_tuning")
+		assert_not_null(configured_tuning, "AI kart slot %d must own a configured KartTuning" % slot_index)
+		if configured_tuning == null:
+			continue
+		assert_ne(
+			configured_tuning.get_instance_id(),
+			_catalog.kart.get_instance_id(),
+			"AI kart slot %d must receive its own composed KartTuning, never the shared resource" % slot_index
 		)
 
 
@@ -1350,8 +1457,30 @@ func test_a_real_player_finish_freezes_every_ai_kart_for_several_more_real_secon
 	)
 
 	# Stage 3: let every AI kart actually finish decelerating.
+	#
+	# CTR R8 Task 2 (characters/select/classes): _kart_tuning.top_speed_mps
+	# alone is no longer a safe stand-in for "the fastest any kart in this
+	# race can go" -- driver classes are ACTIVE now (RaceSession composes
+	# each kart's own class onto its own KartTuning, see race_session.gd's
+	# own _spawn_ai_karts() doc), and this file's own default field mix
+	# (player defaults to &"crash", so the AI fill includes papu -- the
+	# Speed class, top_speed_mult 1.06) can genuinely exceed the shared
+	# catalog's base top_speed_mps. Reading the real per-kart composed
+	# value (the same "_tuning" reflection test_configure_gives_the_player_
+	# kart_its_own_composed_kart_tuning_not_the_shared_resource already
+	# uses above) keeps this worst-case bound honest instead of silently
+	# under-estimating a classed kart's real settle time.
+	var worst_case_top_speed_mps := _kart_tuning.top_speed_mps
+	var player_tuning: KartTuning = kart.get("_tuning")
+	if player_tuning != null:
+		worst_case_top_speed_mps = maxf(worst_case_top_speed_mps, player_tuning.top_speed_mps)
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		var ai_tuning: KartTuning = ai_kart.get("_tuning") if ai_kart != null else null
+		if ai_tuning != null:
+			worst_case_top_speed_mps = maxf(worst_case_top_speed_mps, ai_tuning.top_speed_mps)
 	var worst_case_speed_mps := (
-		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps)
+		(worst_case_top_speed_mps + _kart_tuning.boost_speed_bonus_mps)
 		* (1.0 + _catalog.ai.rubber_band_boost_max_ratio)
 	)
 	var settle_time_s: float = worst_case_speed_mps / _kart_tuning.brake_mps2

@@ -382,7 +382,7 @@ func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
 
 	assert_true(SaveModel.validate(loaded))
 	assert_eq(loaded.get("schema_version"), SaveModel.SCHEMA_VERSION)
-	assert_eq(loaded.get("racing"), {"cups": {}})
+	assert_eq(loaded.get("racing"), {"cups": {}, "selected_driver": "crash"})
 	assert_eq(
 		SaveModel.racing_record(loaded, &"graybox_loop"),
 		{
@@ -404,27 +404,29 @@ func test_pre_racing_v1_profile_migrates_with_empty_racing_section() -> void:
 # ---------------------------------------------------------------------------
 
 
-## The FULL v1->v3 chain (both migration steps in one real load), on a
+## The FULL v1->v4 chain (all three migration steps in one real load), on a
 ## fixture that carries real platformer progress predating racing entirely
 ## (VALID_FIXTURE, same fixture the test above uses) -- proves platformer
-## data survives the whole trip AND racing.cups lands empty, exactly the two
-## things CLAUDE.md's "the v1 file must still load through BOTH migrations"
-## instruction calls for.
-func test_pre_racing_v1_profile_migrates_through_the_full_v1_to_v3_chain() -> void:
+## data survives the whole trip AND racing.cups/racing.selected_driver both
+## land at their defaults, the same "the v1 file must still load through
+## EVERY migration" instruction CLAUDE.md's compatibility rule calls for.
+## CTR R8 Task 3 (save v3->v4): renamed from its original "...to_v3..." name
+## -- see test_save_model.gd's own identically-renamed sibling for why.
+func test_pre_racing_v1_profile_migrates_through_the_full_v1_to_v4_chain() -> void:
 	var service := SaveService.new()
 	_write_fixture(VALID_FIXTURE, _save_path("profile.json"))
 
 	var loaded := service.load_profile(TEST_SAVE_DIR)
 
 	assert_true(SaveModel.validate(loaded))
-	assert_eq(loaded.get("schema_version"), 3)
+	assert_eq(loaded.get("schema_version"), 4)
 	assert_eq(loaded.get("lifetime_wumpa"), 17)
 	assert_true(
 		SaveModel.level_record(
 			loaded,
 			&"wr1_n_sanity_beach"
 		).get("completed"),
-		"pre-racing platformer progress must survive the full v1->v3 chain"
+		"pre-racing platformer progress must survive the full v1->v4 chain"
 	)
 	assert_true(
 		SaveModel.level_record(
@@ -434,21 +436,23 @@ func test_pre_racing_v1_profile_migrates_through_the_full_v1_to_v3_chain() -> vo
 	)
 	assert_eq(
 		loaded.get("racing"),
-		{"cups": {}},
-		"a v1 profile predates racing AND the cup -- both must land empty"
+		{"cups": {}, "selected_driver": "crash"},
+		"a v1 profile predates racing, the cup, AND the driver roster -- all three must land at their defaults"
 	)
 	assert_eq(
 		SaveModel.cup_record(loaded, &"island_cup"),
 		{"best_placement": 0}
 	)
+	assert_eq(SaveModel.selected_driver(loaded), &"crash")
 	assert_false(service.recovered_from_backup)
 	assert_false(service.refused_future_version)
 
 
 ## A v2 profile that already carries a real per-track best time (post-R2,
-## pre-Cup) -- the v2->v3 step alone, proving the existing racing best
-## SURVIVES migration untouched while cups backfills empty alongside it.
-func test_v2_profile_with_racing_bests_migrates_to_v3_and_gains_empty_cups() -> void:
+## pre-Cup, pre-driver-roster) -- proves the existing racing best SURVIVES
+## the full v2->v4 chain untouched while cups and selected_driver both
+## backfill to their own defaults alongside it.
+func test_v2_profile_with_racing_bests_migrates_to_v4_and_gains_empty_cups_and_default_driver() -> void:
 	var service := SaveService.new()
 	_write_fixture(
 		"res://tests/fixtures/saves/profile_v2_with_racing.json",
@@ -458,22 +462,94 @@ func test_v2_profile_with_racing_bests_migrates_to_v3_and_gains_empty_cups() -> 
 	var loaded := service.load_profile(TEST_SAVE_DIR)
 
 	assert_true(SaveModel.validate(loaded))
-	assert_eq(loaded.get("schema_version"), 3)
+	assert_eq(loaded.get("schema_version"), 4)
 	assert_eq(
 		SaveModel.racing_record(loaded, &"sanity_shores"),
 		{
 			"best_total_time_ms": 92500,
 			"best_lap_time_ms": 30100,
 		},
-		"an existing v2 racing best must survive the v2->v3 migration untouched"
+		"an existing v2 racing best must survive the v2->v4 migration untouched"
 	)
 	assert_eq(
 		SaveModel.cup_record(loaded, &"island_cup"),
 		{"best_placement": 0},
 		"a v2 profile has never played a cup -- cups must backfill empty"
 	)
+	assert_eq(
+		SaveModel.selected_driver(loaded),
+		&"crash",
+		"a v2 profile predates the driver roster entirely -- selected_driver must backfill to crash"
+	)
 	assert_false(service.recovered_from_backup)
 	assert_false(service.refused_future_version)
+
+
+## The v3->v4 step alone, on a fixture that already carries a real cup
+## placement AND a real racing best (post-Cup, pre-driver-roster) -- proves
+## BOTH existing reserved/per-track values survive untouched while
+## selected_driver backfills to crash alongside them.
+func test_v3_profile_with_racing_and_cups_migrates_to_v4_and_gains_the_default_driver() -> void:
+	var service := SaveService.new()
+	_write_fixture(
+		"res://tests/fixtures/saves/profile_v3_with_racing.json",
+		_save_path("profile.json")
+	)
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(loaded.get("schema_version"), 4)
+	assert_eq(
+		SaveModel.racing_record(loaded, &"sanity_shores"),
+		{
+			"best_total_time_ms": 88000,
+			"best_lap_time_ms": 29000,
+		},
+		"an existing v3 racing best must survive the v3->v4 migration untouched"
+	)
+	assert_eq(
+		SaveModel.cup_record(loaded, &"island_cup"),
+		{"best_placement": 2},
+		"an existing v3 cup placement must survive the v3->v4 migration untouched"
+	)
+	assert_eq(SaveModel.selected_driver(loaded), &"crash")
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
+
+
+## The brief's own "corrupt/unknown driver -> crash, never an error" contract,
+## driven through the REAL on-disk load path (not SaveModel.migrate() in
+## isolation -- that half is test_save_model.gd's job): a v4 primary whose
+## selected_driver names no real DriverRegistry id must still load as _VALID
+## (self-healed to crash inside migrate(), see save_model.gd's own
+## _normalize_selected_driver() doc) -- UNLIKE a malformed "cups" shape
+## (test_corrupt_cups_without_a_good_backup_fails_closed_to_fresh below),
+## this must never fall through to _INVALID/evidence-preservation/backup-or-
+## fresh, and the rest of an otherwise-valid profile (lifetime_wumpa here)
+## must survive untouched.
+func test_unknown_selected_driver_self_heals_to_crash_through_the_real_load_path_without_losing_the_rest_of_the_profile() -> void:
+	var service := SaveService.new()
+	_write_fixture(
+		"res://tests/fixtures/saves/profile_v4_corrupt_driver.json",
+		_save_path("profile.json")
+	)
+
+	var loaded := service.load_profile(TEST_SAVE_DIR)
+
+	assert_true(SaveModel.validate(loaded))
+	assert_eq(SaveModel.selected_driver(loaded), &"crash")
+	assert_eq(
+		loaded.get("lifetime_wumpa"),
+		15,
+		"a corrupt driver pick must not sacrifice the rest of an otherwise-valid profile"
+	)
+	assert_false(service.recovered_from_backup)
+	assert_false(service.refused_future_version)
+	assert_false(
+		FileAccess.file_exists(_save_path("profile.json.corrupt")),
+		"a self-healing driver id is not save-file corruption -- no evidence should be preserved"
+	)
 
 
 ## Corrupt cups -> fail-closed to fresh(), the established path (see

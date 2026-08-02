@@ -13,7 +13,7 @@ func test_fresh_profile_is_valid_schema_one() -> void:
 	# a required, reserved "cups" key alongside its (still empty on a fresh
 	# profile) per-track best-time entries. See _fresh_racing_record()'s own
 	# sibling assertion below for the per-track shape, unchanged.
-	assert_eq(profile.get("racing"), {"cups": {}})
+	assert_eq(profile.get("racing"), {"cups": {}, "selected_driver": "crash"})
 
 
 func test_migration_identity_preserves_unknown_fields() -> void:
@@ -91,7 +91,7 @@ func test_racing_record_supplies_defaults_without_mutating_profile() -> void:
 			"best_lap_time_ms": 0,
 		}
 	)
-	assert_eq(profile.get("racing"), {"cups": {}})
+	assert_eq(profile.get("racing"), {"cups": {}, "selected_driver": "crash"})
 
 
 func test_improved_racing_record_stores_first_total_and_lap_time() -> void:
@@ -174,7 +174,7 @@ func test_cup_record_supplies_defaults_without_mutating_profile() -> void:
 	var record := SaveModel.cup_record(profile, &"island_cup")
 
 	assert_eq(record, {"best_placement": 0})
-	assert_eq(profile.get("racing"), {"cups": {}})
+	assert_eq(profile.get("racing"), {"cups": {}, "selected_driver": "crash"})
 
 
 func test_improved_cup_record_stores_first_placement() -> void:
@@ -234,7 +234,13 @@ func test_improved_cup_record_rejects_invalid_input() -> void:
 # ---------------------------------------------------------------------------
 
 
-func test_migrate_v2_to_v3_backfills_empty_cups_without_touching_existing_racing_bests() -> void:
+## CTR R8 Task 3 (save v3->v4): renamed from its original "...to_v3..." name
+## now that SCHEMA_VERSION is 4 -- migrate() always chains a v2 input all the
+## way to the CURRENT schema in one call (see migrate()'s own while-loop), so
+## this test's real behavior was always "v2 input, current-schema output";
+## only the number in the name (and the assertions below) needed updating,
+## the same maintenance every prior version bump's own tests already needed.
+func test_migrate_v2_to_v4_backfills_empty_cups_and_default_driver_without_touching_existing_racing_bests() -> void:
 	var v2_profile := {
 		"schema_version": 2,
 		"levels": {},
@@ -251,23 +257,28 @@ func test_migrate_v2_to_v3_backfills_empty_cups_without_touching_existing_racing
 	var migrated := SaveModel.migrate(v2_profile)
 
 	assert_true(SaveModel.validate(migrated))
-	assert_eq(migrated.get("schema_version"), 3)
+	assert_eq(migrated.get("schema_version"), 4)
 	assert_eq(
 		SaveModel.racing_record(migrated, &"graybox_loop"),
 		{
 			"best_total_time_ms": 61234,
 			"best_lap_time_ms": 30234,
 		},
-		"an existing per-track best must survive the v2->v3 migration untouched"
+		"an existing per-track best must survive the v2->v4 migration untouched"
 	)
 	assert_eq(
 		SaveModel.cup_record(migrated, &"island_cup"),
 		{"best_placement": 0},
 		"a v2 profile has never played a cup -- cups must backfill empty"
 	)
+	assert_eq(
+		SaveModel.selected_driver(migrated),
+		&"crash",
+		"a v2 profile predates the driver roster entirely -- selected_driver must backfill to crash"
+	)
 
 
-func test_migrate_v1_to_v3_full_chain_preserves_platformer_data_and_backfills_empty_cups() -> void:
+func test_migrate_v1_to_v4_full_chain_preserves_platformer_data_and_backfills_empty_cups_and_default_driver() -> void:
 	var v1_profile := {
 		"schema_version": 1,
 		"levels": {
@@ -286,24 +297,158 @@ func test_migrate_v1_to_v3_full_chain_preserves_platformer_data_and_backfills_em
 	var migrated := SaveModel.migrate(v1_profile)
 
 	assert_true(SaveModel.validate(migrated))
-	assert_eq(migrated.get("schema_version"), 3)
+	assert_eq(migrated.get("schema_version"), 4)
 	assert_eq(
 		migrated.get("lifetime_wumpa"),
 		17,
-		"platformer progress must survive the full v1->v3 chain"
+		"platformer progress must survive the full v1->v4 chain"
 	)
 	assert_true(
 		SaveModel.level_record(
 			migrated,
 			&"wr1_n_sanity_beach"
 		).get("completed"),
-		"pre-racing level progress must survive the full v1->v3 chain"
+		"pre-racing level progress must survive the full v1->v4 chain"
 	)
 	assert_eq(
 		migrated.get("racing"),
-		{"cups": {}},
-		"a v1 profile predates racing entirely -- racing.cups must land empty"
+		{"cups": {}, "selected_driver": "crash"},
+		"a v1 profile predates racing/cups/the driver roster entirely -- all three must land at their defaults"
 	)
+	assert_eq(SaveModel.selected_driver(migrated), &"crash")
+
+
+# ---------------------------------------------------------------------------
+# CTR R8 Task 3 (save v3->v4): the driver roster's own migration proofs --
+# same shape/rigor the cup's own v2->v3 block above already established, one
+# version later. See test_save_service.gd for the same proofs driven through
+# the real on-disk SaveService load path (the v1->v4/v2->v4/v3->v4 FULL
+# chains and the self-heals-without-losing-the-rest-of-the-profile behavior).
+# ---------------------------------------------------------------------------
+
+
+func test_migrate_v3_to_v4_backfills_the_default_driver_without_touching_existing_cups_or_racing_bests() -> void:
+	var v3_profile := {
+		"schema_version": 3,
+		"levels": {},
+		"lifetime_wumpa": 21,
+		"boss_defeated": {"papu_papu": false},
+		"racing": {
+			"cups": {"island_cup": {"best_placement": 2}},
+			"graybox_loop": {
+				"best_total_time_ms": 61234,
+				"best_lap_time_ms": 30234,
+			},
+		},
+	}
+
+	var migrated := SaveModel.migrate(v3_profile)
+
+	assert_true(SaveModel.validate(migrated))
+	assert_eq(migrated.get("schema_version"), 4)
+	assert_eq(SaveModel.selected_driver(migrated), &"crash")
+	assert_eq(
+		SaveModel.cup_record(migrated, &"island_cup"),
+		{"best_placement": 2},
+		"an existing v3 cup placement must survive the v3->v4 migration untouched"
+	)
+	assert_eq(
+		SaveModel.racing_record(migrated, &"graybox_loop"),
+		{
+			"best_total_time_ms": 61234,
+			"best_lap_time_ms": 30234,
+		},
+		"an existing v3 racing best must survive the v3->v4 migration untouched"
+	)
+
+
+func test_selected_driver_getter_reads_a_real_pick_off_a_valid_profile() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"]["selected_driver"] = "papu"
+
+	assert_eq(SaveModel.selected_driver(profile), &"papu")
+
+
+func test_selected_driver_getter_defaults_to_crash_for_every_malformed_shape() -> void:
+	assert_eq(SaveModel.selected_driver({}), &"crash", "no racing section at all")
+	assert_eq(SaveModel.selected_driver({"racing": {}}), &"crash", "no selected_driver key")
+	assert_eq(
+		SaveModel.selected_driver({"racing": {"selected_driver": 42}}),
+		&"crash",
+		"a non-String value"
+	)
+	assert_eq(
+		SaveModel.selected_driver({"racing": {"selected_driver": "not_a_real_driver"}}),
+		&"crash",
+		"a well-formed but unknown id"
+	)
+
+
+## validate() itself stays STRICT for a caller handing it raw, never-migrated
+## data directly (store_profile()'s own contract -- see selected_driver()'s
+## own class doc) -- only migrate() self-heals a bad pick, via _normalize_
+## selected_driver() running before validate() ever sees it (see the tests
+## below this one for that self-healing behavior through migrate() itself).
+func test_validate_rejects_a_profile_whose_selected_driver_is_unknown_to_the_registry() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"]["selected_driver"] = "not_a_real_driver"
+
+	assert_false(SaveModel.validate(profile))
+
+
+func test_validate_rejects_a_profile_whose_selected_driver_is_not_a_string() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"]["selected_driver"] = 42
+
+	assert_false(SaveModel.validate(profile))
+
+
+func test_validate_rejects_a_profile_missing_the_selected_driver_key_entirely() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"].erase("selected_driver")
+
+	assert_false(SaveModel.validate(profile))
+
+
+## The brief's own "corrupt/unknown driver -> crash, never an error" contract
+## -- migrate() (the real load path's own choke point, see SaveService's own
+## _read_candidate()) must NEVER reject the whole profile merely because the
+## stored driver pick is corrupt/unknown; it must repair the ONE field and
+## keep everything else (here: lifetime_wumpa, an unrelated field) intact.
+func test_corrupt_unknown_selected_driver_fails_closed_to_crash_through_migrate_without_losing_the_rest_of_the_profile() -> void:
+	var profile := SaveModel.fresh()
+	profile["lifetime_wumpa"] = 42
+	profile["racing"]["selected_driver"] = "not_a_real_driver"
+
+	var migrated := SaveModel.migrate(profile)
+
+	assert_true(SaveModel.validate(migrated), "migrate() must never reject the whole profile over a corrupt driver pick")
+	assert_eq(SaveModel.selected_driver(migrated), &"crash")
+	assert_eq(
+		migrated.get("lifetime_wumpa"),
+		42,
+		"an unrelated field must survive the self-heal untouched"
+	)
+
+
+func test_wrong_typed_selected_driver_fails_closed_to_crash_through_migrate() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"]["selected_driver"] = 42
+
+	var migrated := SaveModel.migrate(profile)
+
+	assert_true(SaveModel.validate(migrated))
+	assert_eq(SaveModel.selected_driver(migrated), &"crash")
+
+
+func test_missing_selected_driver_key_fails_closed_to_crash_through_migrate() -> void:
+	var profile := SaveModel.fresh()
+	profile["racing"].erase("selected_driver")
+
+	var migrated := SaveModel.migrate(profile)
+
+	assert_true(SaveModel.validate(migrated))
+	assert_eq(SaveModel.selected_driver(migrated), &"crash")
 
 
 func test_corrupt_cups_fails_validation_and_migration_closed() -> void:

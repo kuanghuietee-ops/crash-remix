@@ -1,0 +1,12 @@
+{
+  "schema_version": 4,
+  "levels": {},
+  "lifetime_wumpa": 15,
+  "boss_defeated": {
+    "papu_papu": false
+  },
+  "racing": {
+    "cups": {},
+    "selected_driver": "totally_not_a_real_driver"
+  }
+}

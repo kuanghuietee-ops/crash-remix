@@ -57,6 +57,7 @@ func test_cup_menu_entry_plays_both_races_and_shows_the_final_podium() -> void:
 	)
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
@@ -164,6 +165,7 @@ func test_retrying_race_one_inside_a_cup_does_not_corrupt_the_running_total() ->
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race1_first := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(race1_first)
@@ -226,6 +228,7 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(race1)
 	if race1 == null:
@@ -242,6 +245,7 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	) as Button
 	ordinary_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var ordinary_race := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(ordinary_race)
@@ -253,6 +257,104 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	assert_false(
 		cup_overlay.visible,
 		"an ordinarily-launched race finish must never be mistaken for cup progress"
+	)
+
+
+## CTR R8 Task 4 fix round 2 (whole-branch reviewer [IMPORTANT]): backing out
+## of CHOOSE DRIVER, reached mid-cup through the ordinary RACE menu entry,
+## must never destroy the active cup -- game_root.gd's own _on_racing_track_
+## requested() used to call _abandon_active_cup() unconditionally, BEFORE the
+## select screen ever confirmed a pick, so merely BROWSING the RACE menu
+## (never actually launching a race) already killed the cup out from under
+## the player. Drives the real hardware/OS back button (synthetic ui_cancel
+## InputEventAction, same technique test_main_boot.gd's own test_choose_
+## driver_screen_back_out_restores_pause_and_abandons_the_pending_launch()
+## uses) so this proves the actual wiring, not just a handler called in
+## isolation. Reached mid-race (paused, not quit to hub) so the SAME cup race
+## 1 instance survives the back-out and can be resumed and finished for real
+## -- proving not just "the cup object wasn't nulled" but the stronger, more
+## dangerous variant the review named: resuming and finishing that race must
+## still take the CUP path (between-race interstitial), never silently fall
+## through to the ordinary-race path with _cup_session already null.
+func test_backing_out_of_choose_driver_via_the_race_menu_mid_cup_leaves_the_cup_intact() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	var cup_overlay := root.get_node("UI/CupStandingsOverlay")
+	var overlay := await _open_level_list_and_get_overlay(root)
+	var cup_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingCup"
+	) as Button
+	cup_button.pressed.emit()
+	await wait_process_frames(1)
+	await _skip_driver_select(root)
+
+	var race1 := root.get_node_or_null("Content/RaceSanityShores")
+	assert_not_null(
+		race1,
+		"fixture setup: the cup must launch race 1 through the real registered scene"
+	)
+	if race1 == null:
+		return
+
+	# Pause mid-race (race 1 of the cup, never finished) and reach CHOOSE
+	# DRIVER through the ordinary "RACE — SANITY SHORES" menu entry -- exactly
+	# the "tap RACE, browse" half of the review's own repro.
+	assert_eq(root.call("dispatch", {"type": &"pause"}), OK)
+	var pause_overlay := root.get_node("UI/PauseOverlay")
+	pause_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/LevelList"
+	).emit_signal(&"pressed")
+	var overlay_mid_race := root.get_node("UI/LevelListOverlay")
+	var ordinary_button := overlay_mid_race.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingSanityShores"
+	) as Button
+	ordinary_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(driver_overlay.visible, "fixture sanity: CHOOSE DRIVER is up")
+
+	# "back out" -- never confirm, never SKIP. The real back button, not a
+	# direct handler call.
+	var cancel_event := InputEventAction.new()
+	cancel_event.action = &"ui_cancel"
+	cancel_event.pressed = true
+	root.call("_unhandled_input", cancel_event)
+	await wait_process_frames(1)
+
+	assert_false(driver_overlay.visible, "the back button must dismiss CHOOSE DRIVER")
+	assert_true(
+		pause_overlay.visible,
+		"backing out mid-race must restore the bare Pause overlay"
+	)
+	assert_same(
+		root.get_node_or_null("Content/RaceSanityShores"),
+		race1,
+		"back-out must never replace the cup's own in-progress race scene"
+	)
+
+	# Resume and finish the SAME race the cup was running. If the cup
+	# survived the back-out, the finish must take the CUP path (the
+	# between-race interstitial) exactly as an uninterrupted run would --
+	# not the ordinary-race path a nulled _cup_session would silently fall
+	# through to.
+	assert_eq(root.call("dispatch", {"type": &"resume"}), OK)
+	await wait_process_frames(1)
+	await _finish_race(race1)
+	await wait_process_frames(1)
+	assert_true(bool(race1.call("is_finished")))
+
+	assert_true(
+		cup_overlay.visible,
+		"the cup must survive a Driver-Select back-out reached via the ordinary RACE menu: resuming and finishing race 1 must still advance cup standings, not evaporate"
+	)
+	var row1 := cup_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Row1"
+	) as Label
+	assert_true(
+		row1.text.begins_with("> 1. YOU"),
+		"the cup's own race 1 result must be recorded: got '%s'" % row1.text
 	)
 
 
@@ -289,6 +391,7 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(
@@ -441,11 +544,159 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 
 	# ------------------------------------------------------------------
 	# 5. NO ERROR SPAM across the whole real countdown+pad+bump+cup run.
+	#
+	# CTR R8 Task 2 (characters/select/classes): see test_race_flow_r6_e2e.
+	# gd's identical comment on its own matching assertion -- this cup run's
+	# two real races (player defaults to &"crash") each spawn still-
+	# fallback-active AI drivers (cortex/coco/ripper_roo; papu's own Task 5
+	# flip moved him out of this set), each producing exactly one expected,
+	# documented push_warning() from DriverRegistry.character_scene()'s own
+	# FALLBACK path. get_errors().size() does not consult `handled` (that
+	# flag only gates GUT's own auto-fail check, not a plain .size() read),
+	# so these expected warnings are excluded from the count below instead.
+	#
+	# Fix round 2 (reviewer [IMPORTANT]): bounded two ways, not a blanket
+	# "any DriverRegistry.character_scene warning" match -- see test_race_
+	# flow_r6_e2e.gd's identical fix-round-2 comment for the full "why" (a
+	# generic match would also swallow a future regression where crash or
+	# lab_assistant, which must NEVER fall back, started falling back, since
+	# the warning text is identical either way). (1) the match string pins
+	# the exact driver id right after "driver " for each of the STILL-
+	# fallback-active ids only. (2) a second assertion pins the exact
+	# expected COUNT -- one warning per fallback-active driver, per race,
+	# TWO races here (Sanity Shores + Temple Twilight).
+	#
+	# Task 5 (characters/select/classes): papu REMOVED -- see test_race_
+	# flow_r6_e2e.gd's identical Task 5 comment; his DriverEntry now
+	# resolves a real gated scene, so he never reaches _fallback_scene()
+	# and this count tightens from 8 to 6 (3 still-fallback drivers x 2
+	# races), not weakened.
 	# ------------------------------------------------------------------
+	const _EXPECTED_FALLBACK_DRIVER_IDS := ["cortex", "coco", "ripper_roo"]
+	var unexpected_errors: Array = []
+	var expected_fallback_warning_count := 0
+	for tracked_error: GutTrackedError in get_errors():
+		var matched_expected_fallback := false
+		if tracked_error.is_push_warning():
+			for expected_id: String in _EXPECTED_FALLBACK_DRIVER_IDS:
+				if tracked_error.contains_text(
+					"DriverRegistry.character_scene: driver %s " % expected_id
+				):
+					matched_expected_fallback = true
+					break
+		if matched_expected_fallback:
+			expected_fallback_warning_count += 1
+		else:
+			unexpected_errors.append(tracked_error)
 	assert_eq(
-		get_errors().size(),
+		unexpected_errors.size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole real R7 cup run"
+	)
+	assert_eq(
+		expected_fallback_warning_count,
+		6,
+		(
+			"exactly one fallback push_warning per still-fallback-active AI "
+			+ "driver (cortex/coco/ripper_roo), per race, for this "
+			+ "test's two real races -- a different count means either a "
+			+ "fallback-active driver went real (update this bound) or a "
+			+ "NEW driver started falling back unexpectedly (a real "
+			+ "regression)"
+		)
+	)
+
+
+## CTR R8 Task 4 (characters/select/classes): the plan's own pin -- the CUP
+## picks a driver ONCE, at cup start, and BOTH races (two entirely separate
+## RaceSession instances, see cup_session.gd's own OWNERSHIP doc on why
+## nothing Node-shaped survives the scene swap between them) must mount that
+## SAME driver, not silently reset back to RaceSession's own "crash" default
+## for race 2. The AI field's own continuity already falls out for free from
+## the fixed grid-slot scheme (cup_session.gd's own STABLE PARTICIPANT
+## IDENTITY doc) -- this proves it stays true even once a NON-default driver
+## is picked at cup start, since _ai_fill_driver_ids() (race_session.gd)
+## excludes whichever id the player picked: a pick that silently reverted
+## for race 2 would also silently change race 2's own AI fill, which the
+## direct field-equality assertion below would catch.
+func test_cup_holds_the_selected_driver_across_both_races_and_the_ai_field_matches() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	var cup_overlay := root.get_node("UI/CupStandingsOverlay")
+	var overlay := await _open_level_list_and_get_overlay(root)
+	var cup_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingCup"
+	) as Button
+	cup_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"the CUP entry must route through CHOOSE DRIVER before race 1 launches"
+	)
+	var coco_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Coco"
+	) as Button
+	coco_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race1 := root.get_node_or_null("Content/RaceSanityShores")
+	assert_not_null(
+		race1,
+		"picking a driver must still launch race 1 through the real registered scene"
+	)
+	if race1 == null:
+		return
+	var recorder1: Object = race1.get("_ghost_recorder")
+	assert_not_null(recorder1)
+	if recorder1 != null:
+		assert_eq(
+			recorder1.call("driver_id"),
+			&"coco",
+			"race 1 must mount the driver actually picked on the select screen, not the crash default"
+		)
+	var ai_field_race1: Array = race1.call("_ai_fill_driver_ids")
+	assert_eq(
+		ai_field_race1,
+		[&"crash", &"papu", &"cortex", &"ripper_roo", &"lab_assistant"],
+		"picking coco must fill AI with the other 5, in registry order"
+	)
+
+	await _finish_race(race1)
+	await wait_process_frames(1)
+	assert_true(cup_overlay.visible)
+	var continue_button := cup_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Continue"
+	) as Button
+	continue_button.pressed.emit()
+	await wait_process_frames(1)
+
+	# CONTINUE must NOT reopen the select screen -- the cup already holds the
+	# pick from race 1 (see cup_session.gd's own selected_driver_id() doc);
+	# re-asking would defeat "picks ONCE at cup start".
+	assert_false(
+		driver_overlay.visible,
+		"race 2 must launch directly off the cup's own held pick, without asking again"
+	)
+	var race2 := root.get_node_or_null("Content/RaceTempleTwilight")
+	assert_not_null(race2)
+	if race2 == null:
+		return
+	var recorder2: Object = race2.get("_ghost_recorder")
+	assert_not_null(recorder2)
+	if recorder2 != null:
+		assert_eq(
+			recorder2.call("driver_id"),
+			&"coco",
+			"race 2 must mount the SAME driver the cup was started with, not reset to crash"
+		)
+	var ai_field_race2: Array = race2.call("_ai_fill_driver_ids")
+	assert_eq(
+		ai_field_race2,
+		ai_field_race1,
+		"the cup's AI field must be identical across both races -- same pick, same fixed roster order"
 	)
 
 
@@ -465,6 +716,29 @@ func _wait_until_race_started(race: Node) -> void:
 		bool(race.call("is_race_started")),
 		"fixture setup: the real countdown must reach GO within a generous bound"
 	)
+
+
+## CTR R8 Task 4 (characters/select/classes): every RACE/TIME TRIAL/CUP menu
+## entry, the CUP included, now opens the CHOOSE DRIVER screen before a race
+## actually launches (see game_root.gd's own _open_driver_select_overlay()
+## doc) -- every button press in this file that used to launch a race/cup
+## directly now calls this right after, to press through with SKIP (keep
+## the last pick, default crash) and reach the exact same "everyone races as
+## crash" outcome this file's own tests already established before this
+## task. The one test that picks a REAL non-default driver on purpose
+## (test_cup_holds_the_selected_driver_across_both_races_and_the_ai_field_
+## matches below) does not call this -- it drives the select screen directly.
+func _skip_driver_select(root: Node) -> void:
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"the CUP/ordinary racing entry must route through CHOOSE DRIVER first"
+	)
+	var skip_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Skip"
+	) as Button
+	skip_button.pressed.emit()
+	await wait_process_frames(1)
 
 
 func _open_level_list_and_get_overlay(root: Node) -> Node:

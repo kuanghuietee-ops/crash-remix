@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .grid { stroke: #263247; stroke-width: 1; }
+      .axis { stroke: #6ec5d7; stroke-width: 2; stroke-dasharray: 8 8; }
+      .outline { fill: #cc5d18; stroke: #edf3fa; stroke-width: 3; }
+      .outlinedark { fill: #7a3810; stroke: #edf3fa; stroke-width: 3; }
+      .muzzle { fill: #edb36b; stroke: #edf3fa; stroke-width: 3; }
+      .top { fill: #cc186b; stroke: #edf3fa; stroke-width: 3; }
+      .topdark { fill: #800f43; stroke: #edf3fa; stroke-width: 3; }
+      .shorts { fill: #998b53; stroke: #edf3fa; stroke-width: 3; }
+      .hair { fill: #e6b444; stroke: #edf3fa; stroke-width: 3; }
+      .shoe { fill: #f0efe8; stroke: #edf3fa; stroke-width: 3; }
+      .dark { fill: #1c2230; stroke: #edf3fa; stroke-width: 3; }
+      .detail { fill: none; stroke: #344257; stroke-width: 3; }
+      .measure { fill: none; stroke: #f0b64a; stroke-width: 2; }
+      .label { fill: #dce8f4; font: 22px sans-serif; }
+      .small { fill: #aebed0; font: 17px sans-serif; }
+      .title { fill: #ffffff; font: 700 31px sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#111725"/>
+  <g opacity="0.75">
+    <path class="grid" d="M50 120H1350 M50 220H1350 M50 320H1350 M50 420H1350
+      M50 520H1350 M50 620H1350 M50 720H1350"/>
+    <path class="grid" d="M100 90V780 M200 90V780 M300 90V780 M400 90V780
+      M500 90V780 M600 90V780 M700 90V780 M800 90V780 M900 90V780
+      M1000 90V780 M1100 90V780 M1200 90V780 M1300 90V780"/>
+  </g>
+
+  <text x="50" y="50" class="title">Coco Bandicoot candidate — original proportion plan</text>
+  <text x="50" y="78" class="small">Vertex-colour silhouette only • ≈1.16 m unscaled rig • kart-racer chibi massing, smaller/slighter than Crash and Cortex • no extracted geometry or texture</text>
+
+  <!-- Front view: round compact skull, forward muzzle, rounded ears, thin
+       limbs, tank top + shorts. The ponytail lives behind the head (see
+       SIDE view for its own read) but the hair-tie + a sliver of it peek
+       past the right ear here, the same way Cortex's own temple-hair
+       wisps read from the front. -->
+  <g id="front">
+    <path class="axis" d="M330 100V775"/>
+
+    <!-- compact rounded cranium -->
+    <ellipse class="outline" cx="330" cy="270" rx="128" ry="122"/>
+    <!-- ears -->
+    <path class="outline" d="M212 200 L172 128 L232 172 Z"/>
+    <path class="outline" d="M448 200 L488 128 L428 172 Z"/>
+    <!-- hair-tie sliver peeking past the right ear -->
+    <path class="hair" d="M448 210 L486 222 L470 260 L438 246 Z"/>
+    <!-- brows / eyes -->
+    <path class="detail" d="M270 258 Q296 240 320 258 M340 258 Q364 240 390 258"/>
+    <ellipse class="outline" cx="294" cy="284" rx="28" ry="22"/>
+    <ellipse class="outline" cx="366" cy="284" rx="28" ry="22"/>
+    <ellipse class="dark" cx="294" cy="288" rx="11" ry="10"/>
+    <ellipse class="dark" cx="366" cy="288" rx="11" ry="10"/>
+    <!-- forward muzzle, below and in front of the eyes -->
+    <ellipse class="muzzle" cx="330" cy="360" rx="84" ry="66"/>
+    <ellipse class="dark" cx="330" cy="352" rx="14" ry="12"/>
+    <path class="detail" d="M292 396 Q330 412 368 396"/>
+
+    <!-- tank top + straps -->
+    <path class="topdark" d="M262 448 L280 410 L330 428 L380 410 L398 448 L390 466 L330 452 L270 466 Z"/>
+    <path class="top" d="M270 466 Q330 442 390 466 L404 596 Q330 626 256 596 Z"/>
+    <!-- shorts hem -->
+    <path class="shorts" d="M258 596 Q330 618 402 596 L410 654 Q330 674 250 654 Z"/>
+
+    <!-- arms -->
+    <path class="outline" d="M262 470 L206 528 L214 592 L262 570 Z"/>
+    <path class="outline" d="M398 470 L454 528 L446 592 L398 570 Z"/>
+    <rect class="topdark" x="200" y="588" width="30" height="20" rx="6"/>
+    <rect class="topdark" x="430" y="588" width="30" height="20" rx="6"/>
+    <circle class="outline" cx="208" cy="628" r="30"/>
+    <circle class="outline" cx="452" cy="628" r="30"/>
+
+    <!-- thin legs + sneakers -->
+    <path class="outline" d="M292 652 L324 652 L320 726 L288 726 Z"/>
+    <path class="outline" d="M368 652 L400 652 L404 726 L372 726 Z"/>
+    <ellipse class="shoe" cx="298" cy="752" rx="38" ry="24"/>
+    <ellipse class="shoe" cx="394" cy="752" rx="38" ry="24"/>
+
+    <text x="274" y="810" class="label">FRONT</text>
+  </g>
+
+  <!-- Side view, facing left: the ponytail is the likeness anchor from
+       this angle -- two tapered segments sweeping back and down off the
+       back of the skull, tied with a band right at the skull. -->
+  <g id="side">
+    <ellipse class="outline" cx="806" cy="270" rx="122" ry="122"/>
+    <path class="outline" d="M700 202 L668 130 L722 178 Z"/>
+    <!-- ponytail: hair-tie band then two tapered flowing segments -->
+    <path class="hair" d="M898 212 L928 222 L916 254 L888 246 Z"/>
+    <path class="hair" d="M912 224 Q984 268 968 350 L924 336 Q938 276 892 244 Z"/>
+    <path class="hair" d="M968 350 Q984 420 940 476 L916 458 Q948 408 934 356 Z"/>
+
+    <path class="detail" d="M732 254 Q756 238 778 254"/>
+    <ellipse class="outline" cx="748" cy="280" rx="26" ry="22"/>
+    <ellipse class="dark" cx="740" cy="284" rx="10" ry="9"/>
+    <!-- forward muzzle -->
+    <ellipse class="muzzle" cx="688" cy="358" rx="70" ry="60"/>
+    <ellipse class="dark" cx="640" cy="352" rx="12" ry="11"/>
+    <path class="detail" d="M660 400 Q690 414 720 400"/>
+
+    <path class="topdark" d="M756 448 L774 410 L806 424 L838 410 L858 448 L848 466 L806 452 L764 466 Z"/>
+    <path class="top" d="M764 466 Q806 442 848 466 L862 596 Q806 624 750 596 Z"/>
+    <path class="shorts" d="M752 596 Q806 616 860 596 L868 652 Q806 672 744 652 Z"/>
+
+    <path class="outline" d="M756 470 L812 542 L800 600 L750 578 Z"/>
+    <rect class="topdark" x="744" y="592" width="30" height="20" rx="6"/>
+    <circle class="outline" cx="758" cy="632" r="28"/>
+
+    <path class="outline" d="M786 652 L818 652 L814 726 L782 726 Z"/>
+    <ellipse class="shoe" cx="796" cy="752" rx="40" ry="24"/>
+
+    <text x="760" y="810" class="label">SIDE</text>
+  </g>
+
+  <!-- Top view: round cranium against narrow shoulders, and the ponytail
+       trailing straight back off the crown. -->
+  <g id="top">
+    <path class="hair" d="M1140 168 L1160 300 L1120 300 Z"/>
+    <ellipse class="outline" cx="1140" cy="250" rx="128" ry="112"/>
+    <path class="top" d="M1058 366 Q1140 340 1222 366 L1204 452 Q1140 476 1076 452 Z"/>
+    <path class="outline" d="M1058 372 L1002 422 L1016 458 Q1044 440 1064 412 Z"/>
+    <path class="outline" d="M1222 372 L1278 422 L1264 458 Q1236 440 1216 412 Z"/>
+    <circle class="outline" cx="1008" cy="470" r="30"/>
+    <circle class="outline" cx="1272" cy="470" r="30"/>
+
+    <text x="1114" y="650" class="label">TOP</text>
+  </g>
+
+  <!-- Measurements and modelling constraints. -->
+  <path class="measure" d="M75 106V722 M65 106H85 M65 722H85"/>
+  <text x="92" y="430" class="label" transform="rotate(-90 92 430)">≈1.16 m total (unscaled rig)</text>
+  <path class="measure" d="M182 106H478 M182 96V116 M478 96V116"/>
+  <text x="222" y="103" class="small">cranium width ≈ shoulder span, narrower than Cortex's own</text>
+
+  <g transform="translate(52 838)">
+    <text class="small">Silhouette anchors: blonde ponytail (authored geometry, not a texture) • smaller/slighter frame than Crash and Cortex</text>
+    <text y="24" class="small">• magenta racing tank top + khaki shorts + white sneakers • warm fur/tan-muzzle read in the same bandicoot family as Crash's own</text>
+  </g>
+</svg>

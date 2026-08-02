@@ -141,6 +141,22 @@ const TRACK_IDS: Array[StringName] = [
 ## re-derived, so the two can never silently drift apart.
 const LABEL_PLAYER: String = "YOU"
 
+## CTR R8 Task 4 (characters/select/classes): the player's own driver pick,
+## chosen ONCE at cup start (the CHOOSE DRIVER select screen, before this
+## session's own configure() ever runs -- see game_root.gd's own _launch_
+## pending_race()/_advance_cup() docs) and held here for BOTH races. The AI
+## field's own continuity across race 1/race 2 already falls out for free
+## from the fixed grid-slot scheme (see this class's own STABLE PARTICIPANT
+## IDENTITY doc above); this field is what gives the PLAYER'S OWN kart the
+## identical continuity -- without it, _advance_cup() would have nothing but
+## RaceSession's own "crash" default to fall back to for race 2, silently
+## re-picking crash out from under whatever the player actually chose at cup
+## start. Defaults to &"crash" the same way RaceSession's own _selected_
+## driver_id does, so a CupSession that is never configure()d with a second
+## argument at all (every pre-Task-4 call site) races exactly as it always
+## has.
+var _selected_driver_id: StringName = &"crash"
+
 ## place1..place6, read once at configure() time -- see RaceTuning's own
 ## Cup category doc for why these are 6 scalar fields rather than one array
 ## field.
@@ -155,7 +171,10 @@ var _points_table: Array[float] = []
 var _results: Array[Dictionary] = []
 
 
-func configure(race_tuning: RaceTuning) -> void:
+func configure(
+	race_tuning: RaceTuning,
+	selected_driver_id: StringName = &"crash"
+) -> void:
 	_points_table = [
 		race_tuning.cup_points_place1,
 		race_tuning.cup_points_place2,
@@ -167,10 +186,21 @@ func configure(race_tuning: RaceTuning) -> void:
 	_results.clear()
 	for _race_index: int in range(TRACK_IDS.size()):
 		_results.append({})
+	_selected_driver_id = selected_driver_id
 
 
 func race_count() -> int:
 	return TRACK_IDS.size()
+
+
+## CTR R8 Task 4 (characters/select/classes): THE surface _advance_cup()
+## (game_root.gd) reads before EVERY race launch this session drives, race 1
+## and race 2 alike -- see _selected_driver_id's own field doc for why this
+## is the one source of truth for "which driver both of this cup's races
+## mount", not whatever GameRoot's own transient _active_driver_id last
+## happened to hold.
+func selected_driver_id() -> StringName:
+	return _selected_driver_id
 
 
 ## -1 if race_index is out of range -- the same "not a valid index" sentinel

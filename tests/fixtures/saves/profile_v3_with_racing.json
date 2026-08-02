@@ -1,0 +1,19 @@
+{
+  "schema_version": 3,
+  "levels": {},
+  "lifetime_wumpa": 8,
+  "boss_defeated": {
+    "papu_papu": false
+  },
+  "racing": {
+    "cups": {
+      "island_cup": {
+        "best_placement": 2
+      }
+    },
+    "sanity_shores": {
+      "best_total_time_ms": 88000,
+      "best_lap_time_ms": 29000
+    }
+  }
+}

@@ -48,20 +48,34 @@ extends RefCounted
 ##   from the kart's real global_transform.basis -- the same forward-vector
 ##   idiom _seed_kart_transform() already uses for spawn placement).
 ##
-## FILE FORMAT (version header + interval + keyframe array, per the task
-## brief), written by save_to_file() and read back by ghost_player.gd's
-## load_for_track(): a flat, versioned binary stream via FileAccess's own
-## typed store_32/store_float methods (never JSON -- a compact per-tick
-## sample stream has no need for SaveService's text/dictionary shape, and
-## this is a disposable derived artifact outside the profile, not save
-## data that ever needs hand-editing or cross-version diffing):
-##   store_32   FILE_VERSION
-##   store_float interval_s
-##   store_32   keyframe_count
+## FILE FORMAT (version header + driver id + interval + keyframe array, per
+## the task brief), written by save_to_file() and read back by ghost_player.
+## gd's load_for_track(): a flat, versioned binary stream via FileAccess's
+## own typed store_32/store_pascal_string/store_float methods (never JSON --
+## a compact per-tick sample stream has no need for SaveService's text/
+## dictionary shape, and this is a disposable derived artifact outside the
+## profile, not save data that ever needs hand-editing or cross-version
+## diffing):
+##   store_32            FILE_VERSION
+##   store_pascal_string  driver_id
+##   store_float          interval_s
+##   store_32             keyframe_count
 ##   keyframe_count times: store_float t, x, y, z, yaw_degrees
 ## ghost_player.gd's own load_for_track() is the one place that decodes
 ## this back -- see its class doc for the corruption/version-mismatch
 ## handling, which never touches this class.
+##
+## CTR R8 Task 3 (save v3->v4 + ghost v2): FILE_VERSION 1 -> 2 -- every file
+## through v1 predates the driver id entirely (there is no pascal string
+## between the version word and interval_s at all); ghost_player.gd's own
+## loader still accepts a genuine v1 file (see FILE_VERSION_V1 below and
+## that class's own doc), it just never writes one again. driver_id defaults
+## to DEFAULT_DRIVER_ID and is stored as-is, unvalidated -- the identical
+## "no second validation layer" reasoning race_session.gd's own configure_
+## selected_driver() doc gives for _selected_driver_id: nothing reads this
+## id back yet to seat a mesh (the ghost stays a palette kart this round --
+## the design ruling this task brief names), so there is nothing here for a
+## DriverRegistry lookup to guard against.
 ##
 ## ATOMIC WRITE. save_to_file() mirrors SaveService's own temp-file-then-
 ## rename pattern (write to "<path>.tmp", flush, check the write actually
@@ -77,10 +91,24 @@ extends RefCounted
 ## GHOST WIRING section), never a loud error that could look like the run
 ## itself failed.
 
-const FILE_VERSION := 1
+const FILE_VERSION := 1 + 1
+## CTR R8 Task 3 (save v3->v4 + ghost v2): the file version every ghost on
+## disk before this task was written with -- see FILE_VERSION's own doc one
+## section up. save_to_file() below never writes this again; it exists so
+## ghost_player.gd's own loader has a named constant for "the legacy shape
+## with no driver id" rather than a bare magic number.
+const FILE_VERSION_V1 := 1
+## The id every pre-Task-2 recording (and every FILE_VERSION_V1 file on
+## disk, which predates the driver id field entirely) is treated as having
+## raced under -- RaceSession's own _selected_driver_id default (race_
+## session.gd) and SaveModel's own selected_driver default (save_model.gd),
+## so a legacy ghost's implied driver can never disagree with what that same
+## era's save file already assumed every racer was.
+const DEFAULT_DRIVER_ID := &"crash"
 
 var _interval_s: float
 var _max_keyframes: int
+var _driver_id: StringName = DEFAULT_DRIVER_ID
 var _keyframes: Array[Dictionary] = []
 var _next_sample_s: float
 var _recording: bool = false
@@ -97,6 +125,16 @@ var _capped: bool = false
 func configure(race_tuning: RaceTuning) -> void:
 	_interval_s = race_tuning.ghost_keyframe_interval_s
 	_max_keyframes = int(race_tuning.ghost_max_keyframes)
+	# CTR R8 Task 3 (save v3->v4 + ghost v2): reset to the default here (NOT
+	# inside reset() below) -- reset() also runs from start() at every GO
+	# (see its own doc), and a caller is expected to call set_driver_id()
+	# AFTER configure() but BEFORE start() (mirroring _selected_driver_id's
+	# own "set the field, then configure()/downstream reads it" ordering,
+	# race_session.gd), so start()'s own reset() must never wipe out a real
+	# id set in between. _interval_s/_max_keyframes one section up follow
+	# the identical "set once by configure(), untouched by reset()" shape
+	# already.
+	_driver_id = DEFAULT_DRIVER_ID
 	reset()
 
 
@@ -127,6 +165,24 @@ func start() -> void:
 ## recording afterward for save_to_file() to persist.
 func stop() -> void:
 	_recording = false
+
+
+## CTR R8 Task 3 (save v3->v4 + ghost v2): overrides the driver id this
+## recording's own save_to_file() writes immediately after the version word
+## (see the class doc's FILE FORMAT section) -- called by a caller
+## (RaceSession) AFTER configure() (which always resets this back to
+## DEFAULT_DRIVER_ID fresh, see configure()'s own doc), the same "set the
+## field, then configure()/downstream reads it" ordering RaceSession's own
+## configure_selected_driver() already establishes for _selected_driver_id.
+## Stored as-is, unvalidated -- see the class doc's FILE FORMAT section for
+## why a second validation layer here would guard nothing that reads this id
+## back yet.
+func set_driver_id(id: StringName) -> void:
+	_driver_id = id
+
+
+func driver_id() -> StringName:
+	return _driver_id
 
 
 func is_recording() -> bool:
@@ -195,6 +251,7 @@ func save_to_file(path: String) -> Error:
 		return FileAccess.get_open_error()
 
 	file.store_32(FILE_VERSION)
+	file.store_pascal_string(String(_driver_id))
 	file.store_float(_interval_s)
 	file.store_32(_keyframes.size())
 	for keyframe: Dictionary in _keyframes:
