@@ -29,6 +29,15 @@ var _summary := ""
 var _last_fingerprint := ""
 var _level_meta_path := ""
 var _level_meta_fingerprint := ""
+## CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): see report_driver_
+## classes()'s own doc. Parallel arrays (index i's path pairs with index i's
+## fingerprint), the same shape _controls below already avoids by using a
+## Dictionary instead -- kept as two PackedStringArrays rather than an
+## Array[Dictionary] because every other multi-value HUD field here
+## (_loaded_resource_paths on TuningService, _controls's own component
+## lists) already prefers the plainest container that fits, not a novel one.
+var _driver_class_paths: PackedStringArray = PackedStringArray()
+var _driver_class_fingerprints: PackedStringArray = PackedStringArray()
 var _property_count: int
 var _controls: Dictionary = {}
 
@@ -65,6 +74,33 @@ func report_level_meta(meta: LevelMeta) -> void:
 	else:
 		_level_meta_path = meta.resource_path
 		_level_meta_fingerprint = meta.fingerprint()
+	_refresh_summary(true)
+
+
+## CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): the DriverClass
+## counterpart to report_level_meta() immediately above -- see DriverClass.
+## fingerprint()'s own class doc for why that resource carries its own
+## per-instance fingerprint instead of joining TuningService's whole-catalog
+## one. A unit test on DriverClass.fingerprint() alone proves the hash CAN
+## move; this method is what makes that move OPERATOR-VISIBLE, the same
+## "edit, redeploy, hash moves" proof CLAUDE.md rule 2 demands and LEVEL
+## META already delivers for LevelMeta. Called from game_root.gd's own boot
+## (see GameRoot.DRIVER_CLASS_PATHS's own doc) with every known class
+## resource, ahead of Task 2's per-driver assignment -- there is no "the
+## active driver's class" yet, so every known class is reported at once,
+## the plural counterpart to report_level_meta(meta)'s single active level.
+## An empty (or all-null) array clears the section the same way report_
+## level_meta(null) clears LEVEL META -- null entries are skipped rather
+## than rejected outright, so a caller can pass a load() result straight
+## through without pre-filtering it first.
+func report_driver_classes(driver_classes: Array[DriverClass]) -> void:
+	_driver_class_paths.clear()
+	_driver_class_fingerprints.clear()
+	for driver_class: DriverClass in driver_classes:
+		if driver_class == null:
+			continue
+		_driver_class_paths.append(driver_class.resource_path)
+		_driver_class_fingerprints.append(driver_class.fingerprint())
 	_refresh_summary(true)
 
 
@@ -500,6 +536,17 @@ func _refresh_summary(force_log: bool = false) -> void:
 		lines.append("LEVEL META")
 		lines.append(_level_meta_path)
 		lines.append("FINGERPRINT " + _level_meta_fingerprint.left(12))
+	# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): one "DRIVER CLASSES"
+	# header followed by a path+fingerprint pair per known class -- the
+	# plural counterpart to LEVEL META's own single path+fingerprint pair
+	# immediately above (see report_driver_classes()'s own doc for why this
+	# is plural: there is no single "active" class yet, ahead of Task 2's
+	# per-driver assignment).
+	if not _driver_class_paths.is_empty():
+		lines.append("DRIVER CLASSES")
+		for index in range(_driver_class_paths.size()):
+			lines.append(_driver_class_paths[index])
+			lines.append("FINGERPRINT " + _driver_class_fingerprints[index].left(12))
 	_summary = "\n".join(lines)
 	_summary_label.text = _summary
 	_override_label.visible = (

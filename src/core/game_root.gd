@@ -71,6 +71,35 @@ const HOG_WILD_META := preload(
 const PAPU_PAPU_META := preload(
 	"res://data/tuning/levels/papu_papu.tres"
 )
+# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): the four shipped driver
+# classes, preloaded the same way N_SANITY_BEACH_META/BOULDERS_META/etc.
+# above are -- known ahead of Task 2's DriverRegistry (which will supersede
+# this list with a per-driver-entry lookup, see driver_class.gd's own class
+# doc), listed here only so _ready() below has real resources to hand
+# TuningDebugUI.report_driver_classes() at boot. This is the operator-
+# visible half of DriverClass.fingerprint(): a unit test on the bare
+# resource proves the hash CAN move, this wiring is what lets an operator
+# editing a class .tres on-device actually SEE it move in the live-tuning
+# HUD, the same "edit, redeploy, hash moves" proof LEVEL META already
+# delivers via report_level_meta() below.
+const BALANCED_DRIVER_CLASS := preload(
+	"res://data/tuning/racing/classes/balanced.tres"
+)
+const SPEED_DRIVER_CLASS := preload(
+	"res://data/tuning/racing/classes/speed.tres"
+)
+const ACCEL_DRIVER_CLASS := preload(
+	"res://data/tuning/racing/classes/accel.tres"
+)
+const TURNING_DRIVER_CLASS := preload(
+	"res://data/tuning/racing/classes/turning.tres"
+)
+const DRIVER_CLASSES: Array[DriverClass] = [
+	BALANCED_DRIVER_CLASS,
+	SPEED_DRIVER_CLASS,
+	ACCEL_DRIVER_CLASS,
+	TURNING_DRIVER_CLASS,
+]
 const MISSED_CRATE_OUTLINE_SHADER := preload(
 	"res://assets/shaders/missed_crate_outline.gdshader"
 )
@@ -251,6 +280,13 @@ func _ready() -> void:
 	if debug_tools_enabled:
 		_tuning_debug.configure(tuning_service, override_path)
 		_tuning_debug.tuning_changed.connect(_on_tuning_changed)
+		# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): see DRIVER_
+		# CLASSES's own doc above and TuningDebugUI.report_driver_classes()'s
+		# own doc -- every known class .tres reaches the live-tuning HUD at
+		# boot, the same moment LEVEL META's own report_level_meta() call
+		# would be reachable once a level is active (see set_active_level_
+		# session() further down).
+		_tuning_debug.report_driver_classes(DRIVER_CLASSES)
 	_install_task11_ui(debug_tools_enabled)
 
 	profile = save_service.load_profile(save_dir)

@@ -14,6 +14,11 @@ const FUTURE_SAVE_FIXTURE := (
 const N_SANITY_META_PATH := (
 	"res://data/tuning/levels/n_sanity_beach.tres"
 )
+# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): one of the four known
+# driver classes GameRoot.DRIVER_CLASS_PATHS reports to the live tuning HUD
+# at boot -- see that const's own doc and test_main_scene_reports_driver_
+# classes_to_live_tuning_hud below.
+const SPEED_CLASS_PATH := "res://data/tuning/racing/classes/speed.tres"
 # Task 6 (CTR R7, stretch: time-trial ghost): the real, fixed directory
 # RaceSession.save_ghost()/GhostPlayer.path_for_track() write/read through
 # (see race_session.gd's own WRITE HOOK doc) -- there is no sandboxed/
@@ -451,6 +456,37 @@ func test_main_scene_owns_live_tuning_fingerprint_contract() -> void:
 	assert_not_null(service.get("catalog"))
 	assert_string_contains(summary, service.call("fingerprint"))
 	assert_string_contains(summary, "res://data/tuning/gameplay.tres")
+
+
+## CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): the DriverClass
+## counterpart to this test's own LEVEL META assertions above -- every
+## known driver class .tres must reach the SAME live-tuning HUD summary at
+## boot, ahead of Task 2's per-driver assignment (there is no race/level to
+## enter yet that would trigger it the way test_real_level_entry_reports_
+## level_meta_to_live_tuning_hud's own portal crossing does), so this
+## asserts straight off the real boot, mirroring this test's own shape
+## rather than that one's.
+func test_main_scene_reports_driver_classes_to_live_tuning_hud() -> void:
+	if not ResourceLoader.exists(MAIN_SCENE_PATH):
+		assert_true(false, "Phase 1 main scene must exist")
+		return
+	var packed := load(MAIN_SCENE_PATH) as PackedScene
+	var root := packed.instantiate()
+	root.set("save_dir", TEST_SAVE_DIR)
+	add_child_autofree(root)
+	await wait_process_frames(1)
+
+	var speed_class := load(SPEED_CLASS_PATH) as Resource
+	assert_not_null(speed_class)
+	if speed_class == null:
+		return
+	var summary: String = root.get_node("UI/TuningDebug").call("summary_text")
+
+	assert_string_contains(summary, SPEED_CLASS_PATH)
+	assert_string_contains(
+		summary,
+		String(speed_class.call("fingerprint")).left(12)
+	)
 
 
 func test_main_boot_reads_only_the_injected_tuning_override() -> void:
