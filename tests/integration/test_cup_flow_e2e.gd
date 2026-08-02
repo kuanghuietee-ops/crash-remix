@@ -449,21 +449,51 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	# documented push_warning() from DriverRegistry.character_scene()'s own
 	# FALLBACK path. get_errors().size() does not consult `handled` (that
 	# flag only gates GUT's own auto-fail check, not a plain .size() read),
-	# so these expected warnings are excluded by a plain filter instead --
-	# stays fully sensitive to any real/unexpected error, not to a
-	# documented in-progress roster state.
+	# so these expected warnings are excluded from the count below instead.
+	#
+	# Fix round 2 (reviewer [IMPORTANT]): bounded two ways, not a blanket
+	# "any DriverRegistry.character_scene warning" match -- see test_race_
+	# flow_r6_e2e.gd's identical fix-round-2 comment for the full "why" (a
+	# generic match would also swallow a future regression where crash or
+	# lab_assistant, which must NEVER fall back, started falling back, since
+	# the warning text is identical either way). (1) the match string pins
+	# the exact driver id right after "driver " for each of the four STILL-
+	# fallback-active ids only. (2) a second assertion pins the exact
+	# expected COUNT -- one warning per fallback-active driver, per race,
+	# TWO races here (Sanity Shores + Temple Twilight) -- 8.
 	# ------------------------------------------------------------------
-	var unexpected_errors := get_errors().filter(
-		func(tracked_error: GutTrackedError) -> bool:
-			return not (
-				tracked_error.is_push_warning()
-				and tracked_error.contains_text("DriverRegistry.character_scene")
-			)
-	)
+	const _EXPECTED_FALLBACK_DRIVER_IDS := ["papu", "cortex", "coco", "ripper_roo"]
+	var unexpected_errors: Array = []
+	var expected_fallback_warning_count := 0
+	for tracked_error: GutTrackedError in get_errors():
+		var matched_expected_fallback := false
+		if tracked_error.is_push_warning():
+			for expected_id: String in _EXPECTED_FALLBACK_DRIVER_IDS:
+				if tracked_error.contains_text(
+					"DriverRegistry.character_scene: driver %s " % expected_id
+				):
+					matched_expected_fallback = true
+					break
+		if matched_expected_fallback:
+			expected_fallback_warning_count += 1
+		else:
+			unexpected_errors.append(tracked_error)
 	assert_eq(
 		unexpected_errors.size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole real R7 cup run"
+	)
+	assert_eq(
+		expected_fallback_warning_count,
+		8,
+		(
+			"exactly one fallback push_warning per still-fallback-active AI "
+			+ "driver (papu/cortex/coco/ripper_roo), per race, for this "
+			+ "test's two real races -- a different count means either a "
+			+ "fallback-active driver went real (update this bound) or a "
+			+ "NEW driver started falling back unexpectedly (a real "
+			+ "regression)"
+		)
 	)
 
 

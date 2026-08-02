@@ -432,20 +432,52 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 	# get_errors().size() itself does not consult `handled` at all (that flag
 	# only gates GUT's OWN auto-fail check, should_test_fail_from_errors() --
 	# a plain .size() on the raw list counts every tracked error regardless),
-	# so these expected warnings are excluded by a plain filter instead,
-	# keeping this assertion fully sensitive to any REAL/unexpected error
-	# (a genuine push_error, engine error, or any OTHER push_warning) while
-	# no longer tripping on a documented, in-progress roster state.
+	# so these expected warnings are excluded from the count below instead.
+	#
+	# Fix round 2 (reviewer [IMPORTANT]): the exclusion is bounded two ways,
+	# not a blanket "any DriverRegistry.character_scene warning" match --
+	# that generic match would ALSO have swallowed a future regression where
+	# crash or lab_assistant (which must NEVER fall back -- both ship real,
+	# gated paths) started falling back, since the warning text is identical
+	# regardless of which driver id triggered it. (1) the match string pins
+	# the exact driver id right after "driver " for each of the four STILL-
+	# fallback-active ids only -- a crash/lab_assistant fallback produces a
+	# warning that matches NONE of these four strings, so it lands in
+	# unexpected_errors and fails the assertion below. (2) a second
+	# assertion pins the exact expected COUNT (one warning per fallback-
+	# active driver for this test's own single race -- 4), so losing or
+	# gaining a warning among the same four ids is caught too, not only an
+	# id outside the set.
 	# ------------------------------------------------------------------
-	var unexpected_errors := get_errors().filter(
-		func(tracked_error: GutTrackedError) -> bool:
-			return not (
-				tracked_error.is_push_warning()
-				and tracked_error.contains_text("DriverRegistry.character_scene")
-			)
-	)
+	const _EXPECTED_FALLBACK_DRIVER_IDS := ["papu", "cortex", "coco", "ripper_roo"]
+	var unexpected_errors: Array = []
+	var expected_fallback_warning_count := 0
+	for tracked_error: GutTrackedError in get_errors():
+		var matched_expected_fallback := false
+		if tracked_error.is_push_warning():
+			for expected_id: String in _EXPECTED_FALLBACK_DRIVER_IDS:
+				if tracked_error.contains_text(
+					"DriverRegistry.character_scene: driver %s " % expected_id
+				):
+					matched_expected_fallback = true
+					break
+		if matched_expected_fallback:
+			expected_fallback_warning_count += 1
+		else:
+			unexpected_errors.append(tracked_error)
 	assert_eq(
 		unexpected_errors.size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole seeded R6 run"
+	)
+	assert_eq(
+		expected_fallback_warning_count,
+		4,
+		(
+			"exactly one fallback push_warning per still-fallback-active AI "
+			+ "driver (papu/cortex/coco/ripper_roo) for this test's single "
+			+ "race -- a different count means either a fallback-active "
+			+ "driver went real (update this bound) or a NEW driver started "
+			+ "falling back unexpectedly (a real regression)"
+		)
 	)
