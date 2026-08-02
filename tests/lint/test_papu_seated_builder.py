@@ -16,6 +16,7 @@ Two kinds of check live here, deliberately separated by cost:
 from __future__ import annotations
 
 import json
+import re
 import struct
 import subprocess
 import tempfile
@@ -82,6 +83,65 @@ class SeatedBuilderSourceTests(unittest.TestCase):
         self.assertIn("papu_base.build_parts(material)", builder_source)
         self.assertNotIn("def build_rig", builder_source)
         self.assertNotIn("def build_parts", builder_source)
+
+    def test_seated_action_only_poses_the_allowlisted_bones(self) -> None:
+        # Enforces the module's own SEATED_POSE comment (this task's whole
+        # FLIP decision rests on the seated pose staying face/torso-inert):
+        # the ONLY bones ever given a non-identity rotation anywhere in the
+        # seated action are the limb/staff bones plus the single documented
+        # frame-13 "chest" breathing exception. This is derived from the
+        # SAME two source locations key_pose() actually reads at build
+        # time (the SEATED_POSE dict literal and create_seated()'s own
+        # mid_pose[...] overrides), not a hand-maintained duplicate list
+        # that could silently drift out of sync with the real behaviour --
+        # exactly the class of bug (a doc claim the code didn't actually
+        # match) this test exists to catch a second time.
+        builder_source = BUILDER_SCRIPT.read_text(encoding="utf-8")
+
+        seated_pose_match = re.search(
+            r"SEATED_POSE = \{(.*?)\n\}", builder_source, re.DOTALL
+        )
+        self.assertIsNotNone(seated_pose_match, "SEATED_POSE dict literal not found")
+        seated_pose_bones = set(
+            re.findall(r'"([\w.]+)":\s*\(', seated_pose_match.group(1))
+        )
+
+        create_seated_match = re.search(
+            r"def create_seated\(.*?return finish_action", builder_source, re.DOTALL
+        )
+        self.assertIsNotNone(create_seated_match, "create_seated() body not found")
+        mid_pose_override_bones = set(
+            re.findall(r'mid_pose\["([\w.]+)"\]\s*=', create_seated_match.group(0))
+        )
+
+        posed_bones = seated_pose_bones | mid_pose_override_bones
+        allowlist = {
+            "thigh.L",
+            "thigh.R",
+            "shin.L",
+            "shin.R",
+            "upper_arm.L",
+            "upper_arm.R",
+            "forearm.L",
+            "forearm.R",
+            "staff",
+            "chest",
+        }
+        self.assertEqual(
+            posed_bones,
+            allowlist,
+            "the set of bones ever given a non-identity rotation in the "
+            "seated action drifted from the allowlist -- update BOTH this "
+            "allowlist and the SEATED_POSE doc comment together, and "
+            "re-confirm the likeness read if a face/torso bone was added",
+        )
+        never_posed = {"head", "jaw", "neck", "spine", "pelvis"}
+        self.assertFalse(
+            posed_bones & never_posed,
+            "a face/torso bone was given a non-identity rotation -- this "
+            "would silently reopen the likeness gate this task's FLIP "
+            "decision relies on staying closed",
+        )
 
 
 def _build_once(output_dir: Path) -> Path:
@@ -150,6 +210,34 @@ def _attribute_bytes(document: dict, binary: bytes, attribute_name: str) -> byte
 def _attribute_floats(document: dict, binary: bytes, attribute_name: str) -> tuple[float, ...]:
     raw = _attribute_bytes(document, binary, attribute_name)
     return struct.unpack("<%df" % (len(raw) // 4), raw)
+
+
+def _animation_sampler_accessor_bytes(document: dict, binary: bytes) -> dict[str, bytes]:
+    """Every animation sampler's input (keyframe TIME) and output
+    (keyframe VALUE -- rotation/location/scale) accessor bytes, keyed by a
+    stable ``"{animation_index}:{sampler_index}:{input|output}"`` id.
+
+    This is the seated action's sole new deliverable -- the actual
+    per-keyframe numbers create_seated()'s key_pose() calls bake in (see
+    SEATED_POSE and the frame-13 mid_pose overrides in create_papu_
+    seated.py). Comparing the full glTF JSON document (as the two-builds
+    test below already does) only proves the animation's METADATA matches
+    between two builds -- accessor count/componentType/min/max, sampler
+    interpolation mode, channel target paths -- not that the actual
+    keyframe bytes in the BINARY chunk are the same. This function reads
+    those bytes directly so the determinism test can assert on them
+    explicitly instead of relying on JSON min/max fields to happen to
+    catch a divergence.
+    """
+    result: dict[str, bytes] = {}
+    for animation_index, animation in enumerate(document.get("animations", [])):
+        for sampler_index, sampler in enumerate(animation.get("samplers", [])):
+            for key in ("input", "output"):
+                accessor_index = sampler[key]
+                result[f"{animation_index}:{sampler_index}:{key}"] = _accessor_bytes(
+                    document, binary, accessor_index
+                )
+    return result
 
 
 ## Two consecutive real builds, traced attribute-by-attribute (scratch
@@ -225,14 +313,21 @@ class SeatedBuilderDeterminismTests(unittest.TestCase):
     So "deterministic" is pinned at exactly the granularity that is both
     TRUE and the granularity that matters for a shipped, likeness-gated
     character: the whole glTF JSON scene graph (topology, skeleton,
-    animation-keyframe structure, materials) byte-identical; POSITION,
+    animation SAMPLER/CHANNEL metadata, materials) byte-identical; POSITION,
     COLOR_0, JOINTS_0, WEIGHTS_0 -- the buffers a real geometry or skinning
-    regression would actually move -- byte-identical; NORMAL within
-    NORMAL_TOLERANCE (a real shading-direction bug would blow past it, see
-    that constant's own doc); and the triangle SET (not its serialization)
-    unchanged. Only TEXCOORD_0 and raw index-buffer ORDER are left
-    unpinned, and only because they are provably inert, not because this
-    test gave up on them.
+    regression would actually move -- byte-identical; every animation
+    sampler's input (keyframe TIME) and output (keyframe VALUE) accessor
+    BYTES -- not just their JSON metadata, which the whole-document
+    comparison above already covers but which would not by itself catch a
+    divergence confined to the binary keyframe data -- also byte-identical
+    (these are authored Python constants from SEATED_POSE and the frame-13
+    mid_pose overrides in create_papu_seated.py, not Blender-computed
+    geometry, so no jitter tolerance applies to them the way it does to
+    NORMAL); NORMAL within NORMAL_TOLERANCE (a real shading-direction bug
+    would blow past it, see that constant's own doc); and the triangle SET
+    (not its serialization) unchanged. Only TEXCOORD_0 and raw index-buffer
+    ORDER are left unpinned, and only because they are provably inert, not
+    because this test gave up on them.
     """
 
     def test_two_builds_are_geometrically_identical(self) -> None:
@@ -251,6 +346,31 @@ class SeatedBuilderDeterminismTests(unittest.TestCase):
                     "skeleton, animation metadata, materials) must be "
                     "identical between two builds of the same source",
                 )
+                animation_bytes_a = _animation_sampler_accessor_bytes(document_a, binary_a)
+                animation_bytes_b = _animation_sampler_accessor_bytes(document_b, binary_b)
+                self.assertTrue(
+                    animation_bytes_a,
+                    "expected at least one animation sampler in the "
+                    "exported GLB -- the seated action is this builder's "
+                    "whole reason to exist",
+                )
+                self.assertEqual(
+                    animation_bytes_a.keys(),
+                    animation_bytes_b.keys(),
+                    "the two builds must carry the same set of animation "
+                    "samplers",
+                )
+                for sampler_key in animation_bytes_a:
+                    self.assertEqual(
+                        animation_bytes_a[sampler_key],
+                        animation_bytes_b[sampler_key],
+                        f"animation sampler accessor {sampler_key} "
+                        "(keyframe time/value bytes) must be byte-identical "
+                        "between two builds -- these are authored Python "
+                        "constants (SEATED_POSE / mid_pose in create_papu_"
+                        "seated.py), not Blender-computed geometry, so "
+                        "unlike NORMAL no jitter tolerance applies",
+                    )
                 for attribute_name in ("POSITION", "COLOR_0", "JOINTS_0", "WEIGHTS_0"):
                     self.assertEqual(
                         _attribute_bytes(document_a, binary_a, attribute_name),

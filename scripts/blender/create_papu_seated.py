@@ -131,11 +131,20 @@ def load_papu_base():
     return module
 
 
-## Seated-in-kart bend for legs/arms/staff only -- head, jaw, neck, spine,
-## and chest are left at their platformer bind-pose rotation (never keyed
-## below) so his face and torso silhouette stay pixel-for-pixel the
-## likeness the operator already accepted; only the limbs a kart's own
-## seat physically bends are touched. Every keyframe below re-states this
+## Seated-in-kart bend for legs/arms/staff only -- head, jaw, neck, and
+## spine are left at their platformer bind-pose rotation (never keyed to
+## a non-identity value anywhere in this action) so his face and torso
+## silhouette stay pixel-for-pixel the likeness the operator already
+## accepted. ONE exception, and it is deliberate, not an oversight:
+## "chest" gets a single barely-perceptible +1.5-degree X-axis tilt at
+## frame 13 only (create_seated()'s own mid_pose override below), back to
+## 0 at frames 1 and 25 -- part of the mid-cycle breathing lift alongside
+## the small upper_arm adjustment and root lift there. 1.5 degrees on one
+## axis, held for one frame of a 25-frame loop, was visually confirmed at
+## frame 13 not to move the torso silhouette during this task's likeness
+## review (see task-5-report.md's "Likeness judgment" section) -- every
+## OTHER bone not listed in SEATED_POSE keeps the strict never-keyed
+## discipline this comment describes. Every keyframe below re-states this
 ## FULL dict rather than a per-frame delta: key_pose() zeroes any bone
 ## omitted from its own rotations argument at THAT call (see its own doc
 ## in character_asset_common.py), so a frame that only listed what changed
