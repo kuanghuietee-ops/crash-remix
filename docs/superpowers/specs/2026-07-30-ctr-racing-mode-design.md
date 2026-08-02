@@ -565,6 +565,77 @@ start.
     `_on_racing_track_requested()` (`RacingTrackRegistry`). Comment-only,
     no behavior implication; left as a one-line text fix for a future pass
     per this task's own bookkeeping-not-fixing scope.
+20. **New (R8 Task 7, confirmed R8 Task 9): the Cortex/Coco gate renders
+    read washed-out — fur/skin tones near-white against the authored warm
+    reference palette.** Pre-existing trait of the shared render/lighting
+    setup each builder's own `create_gate_renders()` function uses
+    (`create_cortex.py:660`/`create_coco.py:688`) to produce the
+    front/three-quarter/seated-on-kart PNGs under `docs/art/gates/`, not
+    something specific to either character's own model or materials —
+    confirmed present on both Cortex (Task 6) and Coco (Task 7). The
+    operator was told about this before judging either gate, so it should
+    not itself sink an otherwise-correct likeness verdict; still worth a
+    lighting fix if a future gate gets declined on color/tone grounds
+    rather than shape/proportion.
+21. **New (R8 Task 8, confirmed R8 Task 9): `coco-likeness-proportions.svg`
+    is not well-formed XML.** `xml.dom.minidom.parse()` fails at line 85
+    ("not well-formed (invalid token)") — an authored HTML/XML comment in
+    the side-view group contains a bare `--` ("...this angle -- two
+    tapered..."), which the XML comment grammar forbids anywhere inside a
+    comment body, not just at its boundaries. Task 8 found and fixed the
+    identical mistake in its own Ripper Roo sheet mid-build but explicitly
+    left Coco's pre-existing copy of the same mistake out of scope. Purely
+    a documentation-tooling gap today (nothing in the shipped pipeline
+    parses these reference SVGs as XML — they are Blender/human visual
+    references only) but will bite the first script that ever does.
+22. **New (R8 Tasks 6-7, confirmed R8 Task 9): per-driver seat-fit
+    constants (`seat_scale`/`seat_offset`) are authored twice, with no
+    single source.** The real values live in each `DriverEntry` resource
+    (`data/racing/drivers/*.tres`, read by `KartController.mount_
+    character()` at runtime) and are duplicated by hand into each
+    Blender builder script's own illustrative seated-on-kart render
+    (`create_cortex.py`/`create_coco.py`/`create_ripper_roo.py`, editor-
+    only preview, never read by the shipped game). A future seat-fit
+    tweak to the `.tres` side that forgets its Python twin would silently
+    desync the builder's own preview render from what actually ships —
+    inherited pattern since Task 6's own Cortex builder, not introduced
+    fresh by any one task.
+23. **New (R8 Task 4, confirmed by code read R8 Task 9, real behavior
+    change, untriaged): picking an ordinary RACE/TIME TRIAL menu entry
+    abandons an in-progress Cup up front, even if the player then backs
+    out of Driver Select without launching anything.** `_on_racing_track_
+    requested()` (`game_root.gd`) calls `_abandon_active_cup()`
+    UNCONDITIONALLY before it ever opens `DriverSelectOverlay` — a
+    deliberate, correct R7 rule on its own (an ordinary race must never be
+    mistaken for cup progress, see that call's own doc). R8 Task 4 then
+    inserted the CHOOSE DRIVER screen between that click and the actual
+    race launch (`_open_driver_select_overlay()` -> tile tap/SKIP/back-out
+    -> `_launch_pending_race()`), so the cup is now abandoned at the FIRST
+    click, before the player has confirmed anything. Backing out via
+    `_on_driver_select_back_out()` afterward only clears the still-pending
+    launch and resumes the pause menu/hub — it does not and cannot restore
+    the cup that was already cleared by the click that opened this screen.
+    Net effect: tapping RACE, looking at the driver tiles, and backing out
+    with no intent to actually race now costs the player their active cup
+    silently, whereas pre-Task-4 the abandon and the launch were the same
+    atomic click. Flagged at Task 4 time, not fixed; still not triaged as
+    of Task 9 whether `_on_racing_track_requested()` should defer its
+    `_abandon_active_cup()` call until `_launch_pending_race()` actually
+    resolves a pick (restoring the old atomicity) rather than firing on
+    the initial click.
+24. **New (R8 Task 5, confirmed R8 Task 9): `test_ai_pace_benchmark.gd::
+    test_graybox_loop_clean_lap_pace_improves_at_least_eight_percent` is a
+    fourth flaky suite, alongside the three already-documented ones
+    (`test_island_slice.gd`/camera-archetype suites/`test_main_boot.gd`).**
+    First observed failing under full-suite load during R8 Task 5 (2/2
+    green when re-run isolated immediately after); the failure mode is
+    consistent with the benchmark's own documented East-turn contact-
+    physics noise (see that file's own METHOD doc on why it measures
+    clean-lap SPEED rather than distance-over-time, precisely to filter
+    out this kind of noise) rather than a real regression. Re-run isolated
+    whenever it fails inside a full-suite run, the same triage step the
+    three pre-existing documented flakes already get; not yet promoted
+    into any repo-wide flake list beyond this spec's own record of it.
 
 Final-review residual minors (follow-ups, none gate R2): GameRoot's
 same-frame content swap briefly leaves two children so a tuning edit in that
@@ -638,3 +709,52 @@ scenes, the between-race interstitial and final podium, and a real save
 write verified against a fresh disk load — all in one run with zero
 unhandled push_error/engine-error calls. New debts recorded above as
 #14-#19.
+
+R8 polish-wave notes (2026-08-02, characters/select/classes — see
+`2026-08-02-ctr-r8-characters-design.md` for the full per-workstream spec):
+a six-driver roster (`DriverRegistry`, one `DriverEntry` row per driver, a
+fixed load-bearing order every AI-fill/select-screen consumer walks
+identically) composed onto kart tuning through four `DriverClass`
+resources (Balanced/Speed/Acceleration/Turning — the same three
+multiplier fields, top_speed/accel/steer_rate, `KartTuning.composed_
+with()` already touched); a CHOOSE DRIVER select screen every RACE/TIME
+TRIAL/CUP menu entry now routes through first (tap a tile = confirm and
+persist, SKIP = keep the last save pick unchanged), with the CUP picking
+exactly once at cup start and holding that same pick across both races;
+AI fill excludes whichever id the player picked, deterministic registry
+order, never a duplicate; save v3→v4 for `racing.selected_driver` and
+ghost format v1→v2 for the recorded driver id, both carrying the same
+scratch-verified migration rigor as every earlier version bump. Papu's
+own seated-pose variant **shipped LIVE** — a pose-only reuse of his
+already-operator-accepted platformer mesh, not a new likeness gate — and
+now mounts for real in every race instead of falling back.
+
+**Three likeness gates remain PENDING OPERATOR, honestly recorded as
+such, never as passed:** Cortex, Coco, and Ripper Roo each got a real,
+code-complete, byte-deterministic Blender builder (`create_cortex.py`/
+`create_coco.py`/`create_ripper_roo.py`) and real gate renders delivered
+to the operator, but all three `DriverEntry` rows still ship an EMPTY
+`character_scene_path` — every race featuring any of the three seats the
+lab assistant instead (`DriverRegistry`'s own FALLBACK contract), exactly
+as the plan required until an explicit operator likeness acceptance
+lands. No `.tres` file for any of the three was touched by this task.
+
+Task 9's own end-to-end coverage
+(`tests/integration/test_r8_papu_cup_reload_e2e.gd::test_papu_picked_
+through_the_real_select_screen_races_a_full_cup_and_survives_a_fresh_
+reload`) chains a real Driver Select tile tap (Papu, not SKIP), a real
+3-2-1-GO countdown for race 1, both races teleport-finishing through the
+real registered scenes with papu's own seated GLB actually mounted
+mid-race both times, the between-race interstitial and final podium, a
+real save write verified against a fresh disk load — and, new for R8, a
+SECOND, brand-new `GameRoot` boot off the same `save_dir` (standing in
+for relaunching the app) that reads the persisted pick back off disk and
+mounts the same real model again on the very first race it launches, with
+no re-pick — all with zero unhandled push_error/engine-error calls (six
+expected, bounded `push_warning` fallback calls for the still-gated trio,
+one per driver per race, two races). Task 2's own per-class Temple
+Twilight health-race battery (three tests: Speed/papu, Acceleration/coco,
+Turning/ripper_roo) and Task 3's own ghost v1-compat/v2-round-trip/
+corrupt-driver-id suite were both re-run in full on the merged, post-
+Papu-flip tree and remain green (see `task-9-report.md` for the exact
+counts). New debts recorded above as #20-#24.

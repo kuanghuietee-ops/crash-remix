@@ -106,3 +106,29 @@ integration/verification → R8 APK.
 Audio, new tracks, adventure mode, multiplayer, per-character animations
 beyond the seated idle, class-specific AI personality changes, per-class
 best-time boards.
+
+## Status (Task 9, 2026-08-02)
+
+Shipped and verified on the merged tree: `DriverRegistry` (six-driver
+roster, fixed order) + four `DriverClass` resources composed onto kart
+tuning for player and AI alike; the CHOOSE DRIVER select screen in front
+of every RACE/TIME TRIAL/CUP entry, cup pick-once held across both races;
+AI fill excluding the player's own pick, deterministic and duplicate-free;
+save v3→v4 (`racing.selected_driver`) and ghost v1→v2 (recorded driver
+id), both scratch-verified; Papu's seated variant LIVE (real gated scene,
+no longer fallback). End-to-end proof: `tests/integration/test_r8_papu_
+cup_reload_e2e.gd` — real Driver Select tap, real countdown, a full 2-race
+cup, a real save write, and a fresh app-relaunch-style reload that mounts
+the persisted pick again with no re-pick. Task 2's per-class Temple
+Twilight health-race battery and Task 3's ghost-compat suite both re-run
+green post-Papu-flip.
+
+**Gates pending, not passed:** Cortex, Coco, and Ripper Roo are each
+code-complete (builder + gate renders delivered to the operator) but all
+three remain fallback-active — `character_scene_path` is still empty on
+each of their `DriverEntry` rows, so every race seats the lab assistant
+in their place until an explicit operator likeness acceptance flips each
+one individually. On-device class feel is likewise still an open operator
+gate, same as every R1-R7 feel gate before it. See `task-9-report.md` and
+the base spec's own Recorded-debts section (#20-#24) for the full sweep
+results and newly recorded debts.
