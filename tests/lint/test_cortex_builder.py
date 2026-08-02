@@ -103,14 +103,64 @@ class CortexBuilderSourceTests(unittest.TestCase):
         self.assertNotIn("def create_rig(", builder_source)
         self.assertNotIn("def validate_asset", builder_source)
 
-    def test_cortex_driver_entry_stays_fallback(self) -> None:
+    def test_driver_entry_flip_matches_this_builders_own_authored_seat_fit(self) -> None:
         # The gate is human-only (repo rule 3 / this plan's own Global
-        # Constraints) -- this builder must never be the thing that flips
-        # cortex.tres. Reading it here pins the current, correct state and
-        # would catch an accidental flip landing in the SAME commit as this
-        # builder.
+        # Constraints) -- this builder must never be the thing that
+        # performs an operator likeness acceptance itself. It never
+        # references data/racing/drivers/ anywhere in its own source
+        # (checked below), so it structurally cannot be the commit that
+        # flips cortex.tres.
+        #
+        # R8 gate flip 2026-08-02: the operator accepted the face in
+        # conversation (docs/art/gates/2026-08-02-cortex/gate-record.md's
+        # own "Result" line) and a separate flip commit set cortex.tres'
+        # own character_scene_path/seat_scale/seat_offset. This test now
+        # pins that the flipped values are EXACTLY this script's own
+        # already-authored GATE_SEAT_SCALE/GATE_SEAT_OFFSET_GODOT constants
+        # -- parsed statically out of the real builder source, not a hand-
+        # copied duplicate that could drift -- so a flip that used the
+        # wrong numbers, or a future edit to one side that forgot the
+        # other, both fail loudly here.
+        builder_source = BUILDER_SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn(
+            "data/racing/drivers",
+            builder_source,
+            "this builder must never itself touch the driver roster data "
+            "-- the flip is a separate, human-gated commit, never this script",
+        )
+        scale_match = re.search(r"^GATE_SEAT_SCALE\s*=\s*([-\d.]+)", builder_source, re.MULTILINE)
+        offset_match = re.search(
+            r"^GATE_SEAT_OFFSET_GODOT\s*=\s*\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)",
+            builder_source,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(scale_match, "fixture sanity: GATE_SEAT_SCALE must be a plain literal")
+        self.assertIsNotNone(offset_match, "fixture sanity: GATE_SEAT_OFFSET_GODOT must be a plain literal")
+        if scale_match is None or offset_match is None:
+            return
+        expected_scale = float(scale_match.group(1))
+        expected_offset = tuple(float(g) for g in offset_match.groups())
+
         entry_source = DRIVER_ENTRY_PATH.read_text(encoding="utf-8")
-        self.assertIn('character_scene_path = ""', entry_source)
+        entry_scale_match = re.search(r"^seat_scale\s*=\s*([-\d.]+)", entry_source, re.MULTILINE)
+        entry_offset_match = re.search(
+            r"^seat_offset\s*=\s*Vector3\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)",
+            entry_source,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(entry_scale_match, "cortex.tres must ship a plain seat_scale literal")
+        self.assertIsNotNone(entry_offset_match, "cortex.tres must ship a plain seat_offset literal")
+        if entry_scale_match is None or entry_offset_match is None:
+            return
+        self.assertAlmostEqual(float(entry_scale_match.group(1)), expected_scale)
+        entry_offset = tuple(float(g) for g in entry_offset_match.groups())
+        for actual, expected in zip(entry_offset, expected_offset):
+            self.assertAlmostEqual(actual, expected)
+        self.assertIn(
+            'character_scene_path = "res://assets/models/characters/SK_cortex.glb"',
+            entry_source,
+            "the operator-accepted flip must point at this script's own exported GLB",
+        )
 
     def test_seated_action_only_poses_the_allowlisted_bones(self) -> None:
         # Same static-source derivation test_papu_seated_builder.py's own

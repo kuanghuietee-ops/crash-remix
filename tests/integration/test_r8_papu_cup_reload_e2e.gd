@@ -202,44 +202,20 @@ func test_papu_picked_through_the_real_select_screen_races_a_full_cup_and_surviv
 	assert_false(cup_overlay.visible, "CLOSE must dismiss the final podium")
 
 	# ------------------------------------------------------------------
-	# 5. Zero unexpected errors; exactly 6 fallback warnings (cortex/coco/
-	# ripper_roo, once per race, two races) -- same bounded-filter shape
-	# test_cup_flow_e2e.gd's own R7 Task 7 test uses. Papu is excluded from
-	# the AI field entirely this run (he is the PLAYER's own pick, not an
-	# AI slot occupant), so the bound is unchanged from that test's own 6.
+	# 5. Zero unexpected errors across the whole real run.
+	#
+	# R8 gate flip 2026-08-02: cortex/coco/ripper_roo (the last three
+	# fallback-active drivers) are now all operator-accepted -- see test_
+	# cup_flow_e2e.gd's identical comment for the full history. Papu was
+	# already excluded from this run's AI field (he is the PLAYER's own
+	# pick, not an AI slot occupant) and every roster id now ships a real
+	# gated scene, so this run never reaches DriverRegistry._fallback_
+	# scene() for anyone -- reverted to a bare zero-errors check.
 	# ------------------------------------------------------------------
-	const _EXPECTED_FALLBACK_DRIVER_IDS := ["cortex", "coco", "ripper_roo"]
-	var unexpected_errors: Array = []
-	var expected_fallback_warning_count := 0
-	for tracked_error: GutTrackedError in get_errors():
-		var matched_expected_fallback := false
-		if tracked_error.is_push_warning():
-			for expected_id: String in _EXPECTED_FALLBACK_DRIVER_IDS:
-				if tracked_error.contains_text(
-					"DriverRegistry.character_scene: driver %s " % expected_id
-				):
-					matched_expected_fallback = true
-					break
-		if matched_expected_fallback:
-			expected_fallback_warning_count += 1
-		else:
-			unexpected_errors.append(tracked_error)
 	assert_eq(
-		unexpected_errors.size(),
+		get_errors().size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole real run"
-	)
-	assert_eq(
-		expected_fallback_warning_count,
-		6,
-		(
-			"exactly one fallback push_warning per still-fallback-active AI "
-			+ "driver (cortex/coco/ripper_roo), per race, for this test's "
-			+ "two real races -- a different count means either a "
-			+ "fallback-active driver went real (update this bound) or a "
-			+ "NEW driver started falling back unexpectedly (a real "
-			+ "regression)"
-		)
 	)
 
 	# ------------------------------------------------------------------

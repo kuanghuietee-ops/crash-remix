@@ -43,15 +43,16 @@ seated action uses and for the same reason: a static pose still satisfies
 pose()``), and skipping any mid-frame exception avoids the doc/behaviour
 drift Papu's own fix-round-1 review caught.
 
-GATE. coco.tres' own ``character_scene_path`` stays "" (fallback-active) --
-this script builds and exports a gate-ready asset, it does not and must
-never flip that field. Per the plan's own Global Constraints: "an agent
-NEVER marks a face accepted, flips a fallback to a real scene without an
-explicit operator acceptance in the conversation, or describes a gate as
-passed." See docs/art/gates/2026-08-02-coco/gate-record.md for the PENDING
-OPERATOR record and this task's own authored seat_scale/seat_offset values
-(kept out of coco.tres for the same reason -- the flip is a one-line data
-change the operator authorizes, not this script).
+GATE. coco.tres' own ``character_scene_path`` was fallback-active until the
+operator accepted the face in conversation 2026-08-02 -- this script builds
+and exports a gate-ready asset; it did not and does not perform that flip
+itself. Per the plan's own Global Constraints: "an agent NEVER marks a face
+accepted, flips a fallback to a real scene without an explicit operator
+acceptance in the conversation, or describes a gate as passed." See docs/
+art/gates/2026-08-02-coco/gate-record.md for the ACCEPTED record (the
+"Result" line, transcribed into a separate flip commit -- not this script)
+and this task's own authored seat_scale/seat_offset values, now live in
+coco.tres unchanged from what this script always exported.
 
 Run from the repository root:
 

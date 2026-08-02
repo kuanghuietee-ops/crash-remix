@@ -193,8 +193,10 @@ func test_player_kart_tint_is_unaffected_by_which_driver_is_picked() -> void:
 ## test_race_session.gd's own _tick_countdown()/_on_gate_body_entered()
 ## calls). See that helper's own doc for why a spawned kart's external state
 ## (mesh/tuning) alone cannot prove this: 3 of the 6 roster ids share the
-## identical Balanced class, and 4 of the 6 currently share the identical
-## fallback mesh.
+## identical Balanced class. R8 gate flip 2026-08-02: cortex/coco/
+## ripper_roo's own likeness gates are now operator-accepted, same as
+## papu's earlier Task 5 flip, so this bar no longer applies to the mounted
+## mesh -- every roster id now ships its own distinct real scene.
 func test_ai_fill_excludes_the_pick_no_duplicates_deterministic_order() -> void:
 	var race := RaceSession.new()
 	add_child_autofree(race)

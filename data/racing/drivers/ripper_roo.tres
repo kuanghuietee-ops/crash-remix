@@ -6,7 +6,7 @@
 script = ExtResource("1_ripper_roo")
 id = &"ripper_roo"
 display_name = "Ripper Roo"
-character_scene_path = ""
+character_scene_path = "res://assets/models/characters/SK_ripper_roo.glb"
 driver_class_path = "res://data/tuning/racing/classes/turning.tres"
-seat_scale = 1.0
-seat_offset = Vector3(0, 0, 0)
+seat_scale = 0.85
+seat_offset = Vector3(0, -0.08, 0)

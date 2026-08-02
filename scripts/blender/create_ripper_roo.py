@@ -71,15 +71,17 @@ the exact same eight-bone allowlist (``thigh.L/R``, ``shin.L/R``,
 established and this file's own lint test re-derives live from the
 ``SEATED_POSE`` dict literal.
 
-GATE. ripper_roo.tres' own ``character_scene_path`` stays "" (fallback-
-active) -- this script builds and exports a gate-ready asset, it does not
-and must never flip that field. Per the plan's own Global Constraints: "an
-agent NEVER marks a face accepted, flips a fallback to a real scene without
-an explicit operator acceptance in the conversation, or describes a gate as
+GATE. ripper_roo.tres' own ``character_scene_path`` was fallback-active
+until the operator accepted the face in conversation 2026-08-02 -- this
+script builds and exports a gate-ready asset; it did not and does not
+perform that flip itself. Per the plan's own Global Constraints: "an agent
+NEVER marks a face accepted, flips a fallback to a real scene without an
+explicit operator acceptance in the conversation, or describes a gate as
 passed." See docs/art/gates/2026-08-02-ripper-roo/gate-record.md for the
-PENDING OPERATOR record and this task's own authored seat_scale/seat_offset
-values (kept out of ripper_roo.tres for the same reason -- the flip is a
-one-line data change the operator authorizes, not this script).
+ACCEPTED record (the "Result" line, transcribed into a separate flip
+commit -- not this script) and this task's own authored seat_scale/
+seat_offset values, now live in ripper_roo.tres unchanged from what this
+script always exported.
 
 Run from the repository root:
 

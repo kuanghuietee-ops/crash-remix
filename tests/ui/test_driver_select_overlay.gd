@@ -39,36 +39,24 @@ func test_lists_six_tiles_in_registry_order_with_display_name_and_class_chip() -
 		)
 
 
-## cortex/coco/ripper_roo ship an empty character_scene_path (Tasks 6-8
-## have not landed, see driver_registry.gd's own FALLBACK doc) -- every one
-## of them is fallback-active from the moment the registry exists, and this
-## screen must say so on the tile itself rather than pretending they have
-## their own likeness.
-##
-## Task 5 (characters/select/classes): papu MOVED to the never-fallback
-## list below -- his DriverEntry now ships a real, loadable character_
-## scene_path (data/racing/drivers/papu.tres), so driver_select_overlay.gd's
-## own _is_fallback_active() (character_scene_path.is_empty() or a load
-## failure -- that method's own doc) now returns false for him, same as
-## crash/lab_assistant.
+## R8 gate flip 2026-08-02: cortex/coco/ripper_roo -- the last three
+## fallback-active drivers -- are now operator-accepted (docs/art/gates/
+## 2026-08-02-{cortex,coco,ripper-roo}/gate-record.md's own "Result"
+## lines), joining papu's earlier Task 5 flip. All six roster ids now ship
+## a real, loadable character_scene_path, so driver_select_overlay.gd's own
+## _is_fallback_active() (character_scene_path.is_empty() or a load
+## failure -- that method's own doc) returns false for every tile: no
+## driver is fallback-active any more, and this screen must never claim
+## otherwise.
 func test_fallback_active_drivers_render_the_fallback_never_lie() -> void:
-	for id: StringName in [&"cortex", &"coco", &"ripper_roo"]:
-		var button := _tile_button(id)
-		assert_not_null(button)
-		if button == null:
-			continue
-		assert_true(
-			button.text.contains("FALLBACK"),
-			"a fallback-active driver's tile must say so: got '%s'" % button.text
-		)
-	for id: StringName in [&"crash", &"papu", &"lab_assistant"]:
+	for id: StringName in [&"crash", &"papu", &"cortex", &"coco", &"ripper_roo", &"lab_assistant"]:
 		var button := _tile_button(id)
 		assert_not_null(button)
 		if button == null:
 			continue
 		assert_false(
 			button.text.contains("FALLBACK"),
-			"crash/papu/lab_assistant ship a real character scene -- must never claim a fallback: got '%s'" % button.text
+			"every roster driver now ships a real character scene -- must never claim a fallback: got '%s'" % button.text
 		)
 
 

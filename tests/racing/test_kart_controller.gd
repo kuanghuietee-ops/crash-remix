@@ -846,42 +846,41 @@ const SEAT_ANIMATION_CLIP := &"A_crash_hog_ride"
 const SEAT_POSE_TUNING_PATH := "res://data/tuning/racing/seat_pose.tres"
 
 ## R8 Task 6 (characters/select/classes): cortex.tres' own character_scene_
-## path stays "" (fallback-active, PENDING OPERATOR -- see docs/art/gates/
-## 2026-08-02-cortex/gate-record.md) until the operator accepts the face in
-## conversation, so this mounted-fit test deliberately does NOT go through
-## DriverRegistry/cortex.tres (that would just resolve to the lab-assistant
-## fallback, per driver_registry.gd's own fallback rule, and prove nothing
-## about the real SK_cortex.glb). It loads the built GLB directly and
-## carries its own authored fit constants -- the SAME values recorded in
-## the gate doc for the operator's eventual flip -- so the asset's real fit
-## is proven without touching the registry or the DriverEntry .tres at all.
+## path was fallback-active until the operator accepted the face in
+## conversation 2026-08-02 (docs/art/gates/2026-08-02-cortex/gate-record.md
+## -- Result now ACCEPTED, and cortex.tres carries this same real path
+## live). This mounted-fit test still deliberately does NOT go through
+## DriverRegistry/cortex.tres -- it loads the built GLB directly and
+## carries its own authored fit constants -- the SAME values now live in
+## the flipped DriverEntry -- so the asset's real fit is proven in
+## isolation, independent of the registry or the DriverEntry .tres.
 const CORTEX_MODEL_PATH := "res://assets/models/characters/SK_cortex.glb"
 const CORTEX_SEAT_SCALE := 0.90
 const CORTEX_SEAT_OFFSET := Vector3(0.0, -0.05, 0.0)
 
 ## R8 Task 7 (characters/select/classes): coco.tres' own character_scene_
-## path stays "" (fallback-active, PENDING OPERATOR -- see docs/art/gates/
-## 2026-08-02-coco/gate-record.md) until the operator accepts the face in
-## conversation, so this mounted-fit test deliberately does NOT go through
+## path was fallback-active until the operator accepted the face in
+## conversation 2026-08-02 (docs/art/gates/2026-08-02-coco/gate-record.md
+## -- Result now ACCEPTED, and coco.tres carries this same real path live).
+## This mounted-fit test still deliberately does NOT go through
 ## DriverRegistry/coco.tres, for the exact same reason CORTEX_MODEL_PATH's
 ## own doc above gives. It loads the built GLB directly and carries its own
-## authored fit constants -- the SAME values recorded in the gate doc for
-## the operator's eventual flip -- so the asset's real fit is proven
-## without touching the registry or the DriverEntry .tres at all.
+## authored fit constants -- the SAME values now live in the flipped
+## DriverEntry -- so the asset's real fit is proven in isolation.
 const COCO_MODEL_PATH := "res://assets/models/characters/SK_coco.glb"
 const COCO_SEAT_SCALE := 1.0
 const COCO_SEAT_OFFSET := Vector3(0.0, -0.03, 0.0)
 
 ## R8 Task 8 (characters/select/classes): ripper_roo.tres' own character_
-## scene_path stays "" (fallback-active, PENDING OPERATOR -- see docs/art/
-## gates/2026-08-02-ripper-roo/gate-record.md) until the operator accepts
-## the face in conversation, so this mounted-fit test deliberately does NOT
-## go through DriverRegistry/ripper_roo.tres, for the exact same reason
+## scene_path was fallback-active until the operator accepted the face in
+## conversation 2026-08-02 (docs/art/gates/2026-08-02-ripper-roo/gate-
+## record.md -- Result now ACCEPTED, and ripper_roo.tres carries this same
+## real path live). This mounted-fit test still deliberately does NOT go
+## through DriverRegistry/ripper_roo.tres, for the exact same reason
 ## CORTEX_MODEL_PATH's/COCO_MODEL_PATH's own doc above gives. It loads the
 ## built GLB directly and carries its own authored fit constants -- the
-## SAME values recorded in the gate doc for the operator's eventual flip --
-## so the asset's real fit is proven without touching the registry or
-## flipping anything.
+## SAME values now live in the flipped DriverEntry -- so the asset's real
+## fit is proven in isolation.
 const RIPPER_ROO_MODEL_PATH := "res://assets/models/characters/SK_ripper_roo.glb"
 const RIPPER_ROO_SEAT_SCALE := 0.85
 const RIPPER_ROO_SEAT_OFFSET := Vector3(0.0, -0.08, 0.0)

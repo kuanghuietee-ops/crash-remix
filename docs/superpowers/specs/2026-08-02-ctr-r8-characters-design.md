@@ -133,3 +133,12 @@ one individually. On-device class feel is likewise still an open operator
 gate, same as every R1-R7 feel gate before it. See `task-9-report.md` and
 the base spec's own Recorded-debts section (#20-#24) for the full sweep
 results and newly recorded debts.
+
+**2026-08-02, later same day:** all three gates above — Cortex, Coco, and
+Ripper Roo — were operator-accepted in conversation ("flip all 3", after
+review of the delivered render sets; see each gate's own now-updated
+`docs/art/gates/2026-08-02-{cortex,coco,ripper-roo}/gate-record.md`
+"Result" line). The three flips are live: each `DriverEntry` now carries
+its real `character_scene_path`/`seat_scale`/`seat_offset`, and no roster
+driver ships an empty path any more. On-device class feel remains the one
+still-open operator gate.

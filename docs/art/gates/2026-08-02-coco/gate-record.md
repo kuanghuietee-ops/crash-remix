@@ -6,7 +6,10 @@
 > flips a fallback to a real scene without an explicit operator acceptance
 > in the conversation, or describes a gate as passed."
 
-**Result: PENDING OPERATOR.**
+**Result: ACCEPTED BY OPERATOR, 2026-08-02** (explicit conversation
+directive: "flip all 3", after reviewing the three delivered render sets).
+Transcribed by agent per the human-only gate rule — the judgment is the
+operator's.
 
 ## What this gate blocks
 

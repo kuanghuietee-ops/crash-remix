@@ -2156,13 +2156,21 @@ func _other_kart_positions(requesting_kart: CharacterBody3D) -> Array:
 ## Exposed as its own method (not inlined into _spawn_ai_karts()'s loop) so
 ## it is directly, precisely testable: the roster has exactly 6 ids and
 ## exactly 3 of them (crash/cortex/lab_assistant) share the identical
-## Balanced class AND -- for the 4 still fallback-active drivers -- the
-## identical mounted mesh, so "5 distinct, deterministic, no duplicates,
-## excludes the pick" cannot be proven from a spawned kart's own external
-## state (mesh/tuning) alone; this helper is what a test calls directly
-## instead. Deterministic and duplicate-free by construction: ENTRIES has
-## exactly 6 unique ids, so filtering out exactly one always leaves the
-## other 5, in their existing relative order.
+## Balanced class, so "5 distinct, deterministic, no duplicates, excludes
+## the pick" cannot be proven from a spawned kart's own tuning alone; this
+## helper is what a test calls directly instead. Deterministic and
+## duplicate-free by construction: ENTRIES has exactly 6 unique ids, so
+## filtering out exactly one always leaves the other 5, in their existing
+## relative order.
+##
+## R8 gate flip 2026-08-02: this doc used to also note that 4 of the 6
+## roster ids shared an identical fallback mounted mesh (cortex/coco/
+## ripper_roo falling back to the same lab-assistant scene lab_assistant
+## itself ships for real) -- with cortex/coco/ripper_roo's own likeness
+## gates now operator-accepted (docs/art/gates/2026-08-02-{cortex,coco,
+## ripper-roo}/gate-record.md), that is no longer true: every roster id
+## mounts its own distinct real scene, and only the shared Balanced class
+## above still makes tuning-alone insufficient proof.
 func _ai_fill_driver_ids() -> Array[StringName]:
 	var ids: Array[StringName] = []
 	for candidate: DriverEntry in DriverRegistryType.entries():

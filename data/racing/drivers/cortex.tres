@@ -6,7 +6,7 @@
 script = ExtResource("1_cortex")
 id = &"cortex"
 display_name = "Dr. Neo Cortex"
-character_scene_path = ""
+character_scene_path = "res://assets/models/characters/SK_cortex.glb"
 driver_class_path = "res://data/tuning/racing/classes/balanced.tres"
-seat_scale = 1.0
-seat_offset = Vector3(0, 0, 0)
+seat_scale = 0.90
+seat_offset = Vector3(0, -0.05, 0)

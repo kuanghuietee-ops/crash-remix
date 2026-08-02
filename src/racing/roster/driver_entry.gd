@@ -30,8 +30,11 @@ extends Resource
 ## "" (Tasks 5-8 land their real builds); crash/lab_assistant shipped their
 ## existing real paths. Task 5 flipped papu's own to a real path (posing an
 ## already operator-accepted mesh, not a new likeness gate -- see data/
-## racing/drivers/papu.tres and create_papu_seated.py's own module doc);
-## cortex/coco/ripper_roo remain "" pending their own Tasks 6-8 gates.
+## racing/drivers/papu.tres and create_papu_seated.py's own module doc).
+## R8 gate flip 2026-08-02: cortex/coco/ripper_roo's own likeness gates
+## (docs/art/gates/2026-08-02-{cortex,coco,ripper-roo}/gate-record.md) were
+## operator-accepted the same day, so all six roster rows now ship a real
+## path -- no driver in the fixed roster ships "" any more.
 @export var character_scene_path: String
 ## res:// path to one of data/tuning/racing/classes/{balanced,speed,accel,
 ## turning}.tres -- see driver_class.gd's own class doc for why these four

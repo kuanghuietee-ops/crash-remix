@@ -6,7 +6,7 @@
 script = ExtResource("1_coco")
 id = &"coco"
 display_name = "Coco Bandicoot"
-character_scene_path = ""
+character_scene_path = "res://assets/models/characters/SK_coco.glb"
 driver_class_path = "res://data/tuning/racing/classes/accel.tres"
 seat_scale = 1.0
-seat_offset = Vector3(0, 0, 0)
+seat_offset = Vector3(0, -0.03, 0)

@@ -37,15 +37,17 @@ the exact doc/behaviour drift Papu's own fix-round-1 review caught (a
 "never keyed" comment that stopped matching the code) -- there is nothing
 here that CAN drift, because nothing but the seat pose itself is ever keyed.
 
-GATE. cortex.tres' own ``character_scene_path`` stays "" (fallback-active)
--- this script builds and exports a gate-ready asset, it does not and must
-never flip that field. Per the plan's own Global Constraints: "an agent
-NEVER marks a face accepted, flips a fallback to a real scene without an
+GATE. cortex.tres' own ``character_scene_path`` was fallback-active until
+the operator accepted the face in conversation 2026-08-02 -- this script
+builds and exports a gate-ready asset; it did not and does not perform
+that flip itself. Per the plan's own Global Constraints: "an agent NEVER
+marks a face accepted, flips a fallback to a real scene without an
 explicit operator acceptance in the conversation, or describes a gate as
 passed." See docs/art/gates/2026-08-02-cortex/gate-record.md for the
-PENDING OPERATOR record and this task's own authored seat_scale/seat_offset
-values (kept out of cortex.tres for the same reason -- the flip is a
-one-line data change the operator authorizes, not this script).
+ACCEPTED record (the "Result" line, transcribed into a separate flip
+commit -- not this script) and this task's own authored seat_scale/
+seat_offset values, now live in cortex.tres unchanged from what this
+script always exported.
 
 Run from the repository root:
 

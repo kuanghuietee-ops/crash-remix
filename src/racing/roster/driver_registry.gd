@@ -22,20 +22,26 @@ extends RefCounted
 ## FALLBACK. A driver whose character_scene_path is empty, or whose path
 ## fails to resolve to a real PackedScene, races with the lab-assistant
 ## mesh instead -- the spec's own "an unfinished face can never break a
-## race or block the round" rule. cortex/coco/ripper_roo currently ship an
-## EMPTY character_scene_path (their own likeness gates have not landed --
-## Tasks 6-8), so each of them is fallback-active from the moment this
-## registry exists, proven by this task's own tests rather than assumed.
-## papu shipped empty at Task 2 time too but Task 5 flipped him to a real
-## path (data/racing/drivers/papu.tres) -- posing his already operator-
-## accepted platformer mesh, not a new likeness gate, so he never reaches
-## _fallback_scene() below. Exactly one push_warning() fires per fallback
-## resolution --
-## never push_error() -- so an unfinished face is loud enough to show up in
-## a diagnostic sweep but never loud enough to look like a real failure (GUT
-## only auto-fails a test on an unhandled push_error/engine error, never an
-## unhandled push_warning -- see addons/gut/error_tracker.gd's own _is_
-## error_failable(), which has no push_warning branch at all).
+## race or block the round" rule. Exactly one push_warning() fires per
+## fallback resolution -- never push_error() -- so an unfinished face is
+## loud enough to show up in a diagnostic sweep but never loud enough to
+## look like a real failure (GUT only auto-fails a test on an unhandled
+## push_error/engine error, never an unhandled push_warning -- see addons/
+## gut/error_tracker.gd's own _is_error_failable(), which has no push_
+## warning branch at all).
+##
+## R8 gate flip 2026-08-02: at Task 2 time, papu/cortex/coco/ripper_roo all
+## shipped an EMPTY character_scene_path pending their own likeness gates
+## (Tasks 5-8), so every one of them was fallback-active from the moment
+## this registry existed, proven by that task's own tests rather than
+## assumed. Task 5 flipped papu to a real path first (posing his already
+## operator-accepted platformer mesh, not a new likeness gate); cortex/coco/
+## ripper_roo's own gates (docs/art/gates/2026-08-02-{cortex,coco,ripper-
+## roo}/gate-record.md) were operator-accepted the same day this comment
+## was last touched. No driver in ENTRIES ships an empty path any more, so
+## _fallback_scene() below is no longer reachable from a live roster row --
+## see test_driver_registry.gd's own synthetic-DriverEntry test for how its
+## coverage is kept regardless.
 const CRASH := preload("res://data/racing/drivers/crash.tres")
 const PAPU := preload("res://data/racing/drivers/papu.tres")
 const CORTEX := preload("res://data/racing/drivers/cortex.tres")

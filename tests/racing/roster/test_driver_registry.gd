@@ -9,6 +9,12 @@ extends GutTest
 const _FALLBACK_PATH := "res://assets/models/enemies/SK_lab_assistant.glb"
 const _CRASH_PATH := "res://assets/models/characters/SK_crash.glb"
 const _PAPU_SEATED_PATH := "res://assets/models/bosses/SK_papu_seated.glb"
+## R8 gate flip: cortex/coco/ripper_roo all operator-accepted 2026-08-02
+## (see docs/art/gates/2026-08-02-{cortex,coco,ripper-roo}/gate-record.md's
+## own "Result" lines) -- same shape as _PAPU_SEATED_PATH above.
+const _CORTEX_PATH := "res://assets/models/characters/SK_cortex.glb"
+const _COCO_PATH := "res://assets/models/characters/SK_coco.glb"
+const _RIPPER_ROO_PATH := "res://assets/models/characters/SK_ripper_roo.glb"
 
 
 func test_entries_returns_the_six_roster_ids_in_fixed_order() -> void:
@@ -72,27 +78,79 @@ func test_character_scene_resolves_papu_to_the_real_seated_model() -> void:
 	assert_push_warning_count(0, "a gated driver must never push a fallback warning")
 
 
-## The spec's own fallback rule: an unfinished driver's empty character_
-## scene_path silently seats the lab assistant instead -- no push_error, no
-## null return, exactly one push_warning (see driver_registry.gd's own
-## _fallback_scene() doc). papu REMOVED from this list (Task 5's own flip,
-## see test_character_scene_resolves_papu_to_the_real_seated_model() above)
-## -- he ships a real path now, so he no longer belongs among the drivers
-## still proving the FALLBACK path.
-func test_character_scene_falls_back_to_lab_assistant_for_an_empty_path() -> void:
-	for fallback_id: StringName in [&"cortex", &"coco", &"ripper_roo"]:
-		var scene := DriverRegistry.character_scene(fallback_id)
-		assert_not_null(scene, "%s must still resolve to a real PackedScene" % fallback_id)
-		if scene == null:
-			continue
-		var instance := scene.instantiate()
-		add_child_autofree(instance)
-		assert_eq(
-			instance.scene_file_path,
-			_FALLBACK_PATH,
-			"%s has no character scene yet -- must silently seat the lab assistant" % fallback_id
-		)
-		assert_push_warning(str(fallback_id))
+## R8 gate flip 2026-08-02: mirrors test_character_scene_resolves_papu_to_
+## the_real_seated_model() above -- cortex's own likeness gate is operator-
+## accepted (docs/art/gates/2026-08-02-cortex/gate-record.md's own "Result"
+## line), so character_scene_path is no longer empty and this must resolve
+## for real, with zero fallback warnings.
+func test_character_scene_resolves_cortex_to_the_real_model() -> void:
+	var scene := DriverRegistry.character_scene(&"cortex")
+	assert_not_null(scene, "cortex must resolve to a real PackedScene")
+	if scene == null:
+		return
+	var instance := scene.instantiate()
+	add_child_autofree(instance)
+	assert_eq(instance.scene_file_path, _CORTEX_PATH)
+	assert_push_warning_count(0, "a gated driver must never push a fallback warning")
+
+
+## R8 gate flip 2026-08-02: mirrors test_character_scene_resolves_papu_to_
+## the_real_seated_model() above -- coco's own likeness gate is operator-
+## accepted (docs/art/gates/2026-08-02-coco/gate-record.md's own "Result"
+## line), so character_scene_path is no longer empty and this must resolve
+## for real, with zero fallback warnings.
+func test_character_scene_resolves_coco_to_the_real_model() -> void:
+	var scene := DriverRegistry.character_scene(&"coco")
+	assert_not_null(scene, "coco must resolve to a real PackedScene")
+	if scene == null:
+		return
+	var instance := scene.instantiate()
+	add_child_autofree(instance)
+	assert_eq(instance.scene_file_path, _COCO_PATH)
+	assert_push_warning_count(0, "a gated driver must never push a fallback warning")
+
+
+## R8 gate flip 2026-08-02: mirrors test_character_scene_resolves_papu_to_
+## the_real_seated_model() above -- ripper_roo's own likeness gate is
+## operator-accepted (docs/art/gates/2026-08-02-ripper-roo/gate-record.md's
+## own "Result" line), so character_scene_path is no longer empty and this
+## must resolve for real, with zero fallback warnings.
+func test_character_scene_resolves_ripper_roo_to_the_real_model() -> void:
+	var scene := DriverRegistry.character_scene(&"ripper_roo")
+	assert_not_null(scene, "ripper_roo must resolve to a real PackedScene")
+	if scene == null:
+		return
+	var instance := scene.instantiate()
+	add_child_autofree(instance)
+	assert_eq(instance.scene_file_path, _RIPPER_ROO_PATH)
+	assert_push_warning_count(0, "a gated driver must never push a fallback warning")
+
+
+## R8 gate flip 2026-08-02: cortex/coco/ripper_roo were the last roster ids
+## with an empty character_scene_path -- now that all three are operator-
+## accepted (see the three tests directly above), no live roster row can
+## exercise character_scene()'s own "found != null but path.is_empty()"
+## branch any more (every DriverEntry in ENTRIES now ships a real path).
+## Rather than drop coverage of that branch entirely, this constructs a
+## synthetic DriverEntry with an empty path -- the same shape a future
+## not-yet-gated driver would ship -- and drives _fallback_scene() (the
+## function character_scene() itself calls on that branch) directly with
+## its id/path, so the fallback CODE path stays proven even though the real
+## roster can no longer trigger it. test_character_scene_falls_back_to_lab_
+## assistant_for_an_unknown_id() below separately covers the OTHER way in
+## (found == null, an id absent from the roster entirely).
+func test_fallback_scene_seats_the_lab_assistant_for_a_synthetic_empty_path_entry() -> void:
+	var synthetic := DriverEntry.new()
+	synthetic.id = &"synthetic_ungated_driver"
+	synthetic.character_scene_path = ""
+	var scene := DriverRegistry._fallback_scene(synthetic.id, synthetic.character_scene_path)
+	assert_not_null(scene, "a synthetic empty-path entry must still resolve to the lab assistant")
+	if scene == null:
+		return
+	var instance := scene.instantiate()
+	add_child_autofree(instance)
+	assert_eq(instance.scene_file_path, _FALLBACK_PATH)
+	assert_push_warning(str(synthetic.id))
 	assert_push_error_count(0, "a fallback-active driver must never push_error")
 
 
