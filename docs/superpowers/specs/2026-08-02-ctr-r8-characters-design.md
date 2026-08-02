@@ -70,7 +70,8 @@ class-agnostic (operator ruling: class choice is strategy, CTR-style).
 
 ## G. Faces pipeline (async, non-blocking)
 
-Three new byte-deterministic Blender builders sharing
+Three new Blender builders, deterministic (semantic-equality + pinned
+sampler bytes; see tests), sharing
 `character_asset_common.py`: `create_cortex.py`, `create_coco.py`
 (reuses Crash's proportion scaffolding), `create_ripper_roo.py`
 (distinct body plan — most builder work). Each goes to the operator's

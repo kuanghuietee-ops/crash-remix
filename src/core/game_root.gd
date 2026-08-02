@@ -79,16 +79,22 @@ const HOG_WILD_META := preload(
 const PAPU_PAPU_META := preload(
 	"res://data/tuning/levels/papu_papu.tres"
 )
-# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]): the four shipped driver
-# classes, preloaded the same way N_SANITY_BEACH_META/BOULDERS_META/etc.
-# above are -- known ahead of Task 2's DriverRegistry (which will supersede
-# this list with a per-driver-entry lookup, see driver_class.gd's own class
-# doc), listed here only so _ready() below has real resources to hand
-# TuningDebugUI.report_driver_classes() at boot. This is the operator-
-# visible half of DriverClass.fingerprint(): a unit test on the bare
-# resource proves the hash CAN move, this wiring is what lets an operator
-# editing a class .tres on-device actually SEE it move in the live-tuning
-# HUD, the same "edit, redeploy, hash moves" proof LEVEL META already
+# CTR R8 Task 1 fix round 1 (reviewer [IMPORTANT]); corrected in the final-
+# review fix wave (whole-branch reviewer [MINOR], stale claim): the four
+# shipped driver classes, preloaded the same way N_SANITY_BEACH_META/
+# BOULDERS_META/etc. above are. Task 2's DriverRegistry.driver_class(id)
+# (see driver_registry.gd) is a SEPARATE, per-driver-entry lookup used at
+# race/kart mount time -- it never touched and was never going to supersede
+# this list; the two coexist for good, each doing its own job. This const
+# array's own, narrower job: hand-kept here only so _ready() below has real
+# resources to hand TuningDebugUI.report_driver_classes() at boot -- a new
+# class .tres ships a new preload const and a new DRIVER_CLASSES entry here
+# too, same as a new racing track needs its own *_META preload above. This is
+# the operator-visible half of DriverClass.fingerprint(): a unit test on the
+# bare resource proves the hash CAN move, this wiring is what lets an
+# operator editing a class .tres on-device actually SEE it move in the
+# live-tuning HUD, the same "edit, redeploy, hash moves" proof LEVEL META
+# already
 # delivers via report_level_meta() below.
 const BALANCED_DRIVER_CLASS := preload(
 	"res://data/tuning/racing/classes/balanced.tres"
@@ -2193,10 +2199,9 @@ func _on_look_dev_requested() -> void:
 ## track_id, same debug-build gate and _select_level() call every one of
 ## the old handlers made.
 ##
-## Task 5 (CTR R7, the Cup): abandons any active cup first -- see _abandon_
-## active_cup()'s own doc for why an ordinary racing-menu pick must never be
+## Task 5 (CTR R7, the Cup): an ordinary racing-menu pick must never be
 ## mistaken for continuing a cup, even when it happens to land on the exact
-## track the cup was still waiting on.
+## track the cup was still waiting on -- see _abandon_active_cup()'s own doc.
 ##
 ## CTR R8 Task 4 (characters/select/classes): no longer calls _select_level()
 ## directly -- RACE/TIME TRIAL entries now route through the CHOOSE DRIVER
@@ -2204,13 +2209,26 @@ func _on_look_dev_requested() -> void:
 ## track lookup + _select_level() call this used to make here moved into
 ## _launch_pending_race(), which runs once that screen actually resolves
 ## (a tile tap or SKIP).
+##
+## CTR R8 Task 4 fix round 2 (whole-branch reviewer [IMPORTANT]): the
+## _abandon_active_cup() call that used to sit right here moved down into
+## _launch_pending_race()'s own track branch too -- this handler only
+## RECORDS the pick and opens CHOOSE DRIVER, it does not commit to anything
+## yet. Abandoning here, before the select screen ever confirmed, meant
+## merely tapping RACE and backing out (never actually launching a race)
+## already killed an active cup out from under the player; worse, doing this
+## mid-cup-race (pause -> level list -> RACE -> back out) left _cup_session
+## null while the cup's own still-running race scene sat underneath, so
+## resuming and finishing it silently took the ordinary-race path instead of
+## scoring the cup. See _launch_pending_race()'s own doc for where the
+## abandon now happens -- only once a track race is genuinely about to
+## launch.
 func _on_racing_track_requested(
 	track_id: StringName,
 	is_solo: bool
 ) -> void:
 	if not OS.is_debug_build():
 		return
-	_abandon_active_cup()
 	_pending_race_launch = {
 		"kind": &"track",
 		"track_id": track_id,
@@ -2304,6 +2322,16 @@ func _persist_selected_driver(id: StringName) -> void:
 ## _active_driver_id fresh on every race (_advance_cup() re-reads it from
 ## CupSession every time it launches either race, not from whatever
 ## _active_driver_id last happened to hold here).
+##
+## CTR R8 Task 4 fix round 2 (whole-branch reviewer [IMPORTANT]): the track
+## branch below abandons any active cup HERE, right before the real track
+## launch, not back in _on_racing_track_requested() -- see that handler's own
+## doc for why an earlier abandon was a live bug: a RACE/TIME TRIAL pick that
+## never actually resolves (Driver Select backed out of, never confirmed or
+## SKIPped) must never touch the cup at all. This mirrors the CUP branch just
+## above, which has always deferred creating/touching cup state until this
+## same "the pick actually resolved" point -- see _on_cup_requested()'s own
+## doc.
 func _launch_pending_race(id: StringName) -> void:
 	_hide_driver_select_overlay()
 	var pending := _pending_race_launch
@@ -2316,6 +2344,7 @@ func _launch_pending_race(id: StringName) -> void:
 		return
 	if pending.get("kind") != &"track":
 		return
+	_abandon_active_cup()
 	var track_id := StringName(pending.get("track_id", &""))
 	var is_solo := bool(pending.get("is_solo", false))
 	for track in RacingTrackRegistryType.TRACKS:

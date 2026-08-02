@@ -731,8 +731,9 @@ now mounts for real in every race instead of falling back.
 
 **Three likeness gates remain PENDING OPERATOR, honestly recorded as
 such, never as passed:** Cortex, Coco, and Ripper Roo each got a real,
-code-complete, byte-deterministic Blender builder (`create_cortex.py`/
-`create_coco.py`/`create_ripper_roo.py`) and real gate renders delivered
+code-complete Blender builder (`create_cortex.py`/`create_coco.py`/
+`create_ripper_roo.py`), deterministic (semantic-equality + pinned
+sampler bytes; see tests), and real gate renders delivered
 to the operator, but all three `DriverEntry` rows still ship an EMPTY
 `character_scene_path` — every race featuring any of the three seats the
 lab assistant instead (`DriverRegistry`'s own FALLBACK contract), exactly

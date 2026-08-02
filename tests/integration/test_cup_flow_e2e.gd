@@ -260,6 +260,104 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	)
 
 
+## CTR R8 Task 4 fix round 2 (whole-branch reviewer [IMPORTANT]): backing out
+## of CHOOSE DRIVER, reached mid-cup through the ordinary RACE menu entry,
+## must never destroy the active cup -- game_root.gd's own _on_racing_track_
+## requested() used to call _abandon_active_cup() unconditionally, BEFORE the
+## select screen ever confirmed a pick, so merely BROWSING the RACE menu
+## (never actually launching a race) already killed the cup out from under
+## the player. Drives the real hardware/OS back button (synthetic ui_cancel
+## InputEventAction, same technique test_main_boot.gd's own test_choose_
+## driver_screen_back_out_restores_pause_and_abandons_the_pending_launch()
+## uses) so this proves the actual wiring, not just a handler called in
+## isolation. Reached mid-race (paused, not quit to hub) so the SAME cup race
+## 1 instance survives the back-out and can be resumed and finished for real
+## -- proving not just "the cup object wasn't nulled" but the stronger, more
+## dangerous variant the review named: resuming and finishing that race must
+## still take the CUP path (between-race interstitial), never silently fall
+## through to the ordinary-race path with _cup_session already null.
+func test_backing_out_of_choose_driver_via_the_race_menu_mid_cup_leaves_the_cup_intact() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	var cup_overlay := root.get_node("UI/CupStandingsOverlay")
+	var overlay := await _open_level_list_and_get_overlay(root)
+	var cup_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingCup"
+	) as Button
+	cup_button.pressed.emit()
+	await wait_process_frames(1)
+	await _skip_driver_select(root)
+
+	var race1 := root.get_node_or_null("Content/RaceSanityShores")
+	assert_not_null(
+		race1,
+		"fixture setup: the cup must launch race 1 through the real registered scene"
+	)
+	if race1 == null:
+		return
+
+	# Pause mid-race (race 1 of the cup, never finished) and reach CHOOSE
+	# DRIVER through the ordinary "RACE — SANITY SHORES" menu entry -- exactly
+	# the "tap RACE, browse" half of the review's own repro.
+	assert_eq(root.call("dispatch", {"type": &"pause"}), OK)
+	var pause_overlay := root.get_node("UI/PauseOverlay")
+	pause_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/LevelList"
+	).emit_signal(&"pressed")
+	var overlay_mid_race := root.get_node("UI/LevelListOverlay")
+	var ordinary_button := overlay_mid_race.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingSanityShores"
+	) as Button
+	ordinary_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(driver_overlay.visible, "fixture sanity: CHOOSE DRIVER is up")
+
+	# "back out" -- never confirm, never SKIP. The real back button, not a
+	# direct handler call.
+	var cancel_event := InputEventAction.new()
+	cancel_event.action = &"ui_cancel"
+	cancel_event.pressed = true
+	root.call("_unhandled_input", cancel_event)
+	await wait_process_frames(1)
+
+	assert_false(driver_overlay.visible, "the back button must dismiss CHOOSE DRIVER")
+	assert_true(
+		pause_overlay.visible,
+		"backing out mid-race must restore the bare Pause overlay"
+	)
+	assert_same(
+		root.get_node_or_null("Content/RaceSanityShores"),
+		race1,
+		"back-out must never replace the cup's own in-progress race scene"
+	)
+
+	# Resume and finish the SAME race the cup was running. If the cup
+	# survived the back-out, the finish must take the CUP path (the
+	# between-race interstitial) exactly as an uninterrupted run would --
+	# not the ordinary-race path a nulled _cup_session would silently fall
+	# through to.
+	assert_eq(root.call("dispatch", {"type": &"resume"}), OK)
+	await wait_process_frames(1)
+	await _finish_race(race1)
+	await wait_process_frames(1)
+	assert_true(bool(race1.call("is_finished")))
+
+	assert_true(
+		cup_overlay.visible,
+		"the cup must survive a Driver-Select back-out reached via the ordinary RACE menu: resuming and finishing race 1 must still advance cup standings, not evaporate"
+	)
+	var row1 := cup_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Row1"
+	) as Label
+	assert_true(
+		row1.text.begins_with("> 1. YOU"),
+		"the cup's own race 1 result must be recorded: got '%s'" % row1.text
+	)
+
+
 ## Task 7 (CTR R7, integration + verification): the REAL whole-Cup story,
 ## through the REAL 3-2-1-GO countdown (not the `_tick_countdown(1000.0)`
 ## skip every other test in this file uses) for race 1, proving two of this

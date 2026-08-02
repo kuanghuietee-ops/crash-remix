@@ -155,4 +155,61 @@ update this record) without blocking Cortex, Coco, or anything else in the
 roster — the fallback rule means an unfinished face never breaks a race or
 blocks the round.
 
+## Flip checklist (once accepted)
+
+CTR R8 final-review fix wave (whole-branch reviewer [IMPORTANT], docs-only):
+each gate record above describes the flip as "a one-line data change," but
+flipping ANY of cortex/coco/ripper_roo also breaks five test files that
+hardcode which driver ids are still fallback-active. Papu's own flip
+(commits `0b7945a` / `709ec70`) is the worked template for both halves of
+this — follow the same shape here.
+
+**1. The data change** (mirrors papu's own diff in `0b7945a`, the exact
+`data/racing/drivers/papu.tres` before/after):
+
+`data/racing/drivers/ripper_roo.tres` — set:
+```
+character_scene_path = "res://assets/models/characters/SK_ripper_roo.glb"
+seat_scale = 0.85
+seat_offset = Vector3(0, -0.08, 0)
+```
+(the same values already recorded above under "Authored fit values",
+proven against the real mounted scene by
+`test_ripper_roo_seated_fit_clears_the_kart_cowl_and_stays_within_the_body_width`).
+
+**2. The five test files that must be updated in the same commit** (each
+still hard-codes ripper_roo as fallback-active; the driver id count/list is
+not derived at runtime):
+
+- `tests/integration/test_race_flow_r6_e2e.gd` — remove `"ripper_roo"` from
+  the `_EXPECTED_FALLBACK_DRIVER_IDS` array and decrement the
+  `expected_fallback_warning_count` assertion from 3 to 2 (one warning per
+  fallback driver, one race).
+- `tests/integration/test_cup_flow_e2e.gd` — remove `"ripper_roo"` from its
+  own `_EXPECTED_FALLBACK_DRIVER_IDS` array and decrement the count
+  assertion from 6 to 4 (two remaining fallback drivers × two races).
+- `tests/integration/test_r8_papu_cup_reload_e2e.gd` — same shape: remove
+  `"ripper_roo"` from `_EXPECTED_FALLBACK_DRIVER_IDS`, decrement the count
+  assertion from 6 to 4.
+- `tests/ui/test_driver_select_overlay.gd` — in
+  `test_fallback_active_drivers_render_the_fallback_never_lie()`: remove
+  `"ripper_roo"` from the "must show FALLBACK" id list and add it to the
+  "must NOT show FALLBACK" id list (the same list papu's own id moved into
+  on his flip).
+- `tests/racing/roster/test_driver_registry.gd` — remove `"ripper_roo"`
+  from the fallback-id loop in
+  `test_character_scene_falls_back_to_lab_assistant_for_an_empty_path()`,
+  and add a dedicated
+  `test_character_scene_resolves_ripper_roo_to_the_real_...` test mirroring
+  the existing `test_character_scene_resolves_papu_to_the_real_seated_model`
+  case.
+
+**3. Full-suite green requirement.** As with papu's own flip: rebuild the
+GLB if anything in `create_ripper_roo.py` changed, re-run the GLB-dependent
+GUT tests, then run the FULL suite (`bash scripts/run_gut.sh`) foreground
+and confirm it is fully green (baseline GUT count at the time of this
+checklist: 1555; grep raw GUT output for `Parse Error` and confirm zero)
+before treating the flip as done — never partial-suite or a single-file
+run.
+
 Operator name / date:
