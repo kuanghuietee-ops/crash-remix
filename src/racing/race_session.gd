@@ -619,7 +619,16 @@ func configure(catalog: GameplayTuning) -> void:
 		[_hud.get_node("SafeArea/FinishPanel/Margin/Rows/Retry")]
 	)
 
-	_kart.call("configure", _kart_tuning, _item_tuning)
+	# CTR R8 Task 1 (characters/select/classes): every kart -- player and AI
+	# alike, see _spawn_ai_karts()'s own identical call -- receives its own
+	# catalog.kart.composed_with(its_driver_class) duplicate instead of the
+	# shared _kart_tuning resource directly, so a driver's own class
+	# multipliers (top_speed_mps/accel_mps2/steer_rate_degrees_per_s) never
+	# leak across karts. No per-driver assignment exists yet (Task 2's
+	# DriverRegistry), so every kart composes with null here -- see
+	# KartTuning.composed_with()'s own doc: identical values to the shared
+	# resource, just its own instance.
+	_kart.call("configure", _kart_tuning.composed_with(null), _item_tuning)
 	# Task 1 (CTR R6, circuit polish): wires the player kart's own Fx child
 	# (kart.tscn always carries one, see kart_fx.gd's own class doc) with a
 	# reference back to this kart and the fresh catalog.fx -- same "pass the
@@ -1114,7 +1123,13 @@ func refresh_tuning(catalog: GameplayTuning) -> void:
 	_item_tuning = catalog.items
 	_fx_tuning = catalog.fx
 	if _kart != null and is_instance_valid(_kart):
-		_kart.call("refresh_tuning", _kart_tuning, _item_tuning)
+		# CTR R8 Task 1 (characters/select/classes): a live tuning edit must
+		# reach a classed kart RECOMPOSED, not as the raw, just-reloaded
+		# catalog.kart reference -- see configure()'s own identical
+		# composed_with(null) wiring above and KartTuning.composed_with()'s
+		# own doc. _kart_tuning was just reassigned from the fresh catalog a
+		# few lines up, so this recomputes base x class fresh on every call.
+		_kart.call("refresh_tuning", _kart_tuning.composed_with(null), _item_tuning)
 		_kart.get_node("Fx").call("refresh_tuning", _fx_tuning)
 		# Task 3 (CTR R6, circuit polish): kart_tint_player lives on the same
 		# KartTuning section refresh_tuning() above already re-applies to the
@@ -2038,7 +2053,9 @@ func _spawn_ai_karts() -> void:
 		# and the transform seed both happen BEFORE add_child(), so the
 		# kart's very first physics-server registration already carries its
 		# real GridSlotN position -- never a one-frame flash at the origin.
-		ai_kart.call("configure", _kart_tuning, _item_tuning)
+		# CTR R8 Task 1 (characters/select/classes): see the player's own
+		# identical composed_with(null) wiring in configure() above.
+		ai_kart.call("configure", _kart_tuning.composed_with(null), _item_tuning)
 		# Task 1 (CTR R6, circuit polish): see the player's own identical
 		# wiring in configure() above -- every AI kart shares the same
 		# kart.tscn packed scene, so it carries the same Fx child. Safe to

@@ -93,3 +93,37 @@ func tint_for_slot(slot_index: int) -> Color:
 	if zero_based < 0:
 		zero_based += slots.size()
 	return slots[zero_based]
+
+
+## CTR R8 Task 1 (characters/select/classes): produces an independent
+## per-kart copy of this tuning with driver_class's own three multipliers
+## applied to EXACTLY top_speed_mps, accel_mps2, and steer_rate_degrees_
+## per_s -- nothing else, including every field in the Visual category
+## above (tints are a slot trait, not a class trait -- see race_session.gd's
+## own kart-configure-path doc). See driver_class.gd's own class doc for why
+## DriverClass carries only these three fields and why it lives outside
+## GameplayTuning/TuningService's own SECTION_NAMES catalog.
+##
+## duplicate() runs FIRST, unconditionally, even for a null driver_class --
+## every kart (player and every AI kart alike, see race_session.gd's own
+## configure()/refresh_tuning()/_spawn_ai_karts()) receives its OWN
+## KartTuning instance from this call, never the shared catalog.kart
+## resource itself, so a per-kart multiply here can never leak into another
+## kart's tuning or mutate the shared .tres-backed original. KartTuning
+## carries no nested Resource-typed export (every field above is a plain
+## scalar or Color), so the default shallow duplicate(subresources=false)
+## is already a complete, fully independent copy -- duplicate(true) would
+## buy nothing extra here.
+##
+## driver_class == null (RaceSession's own R8 Task 1 wiring: no per-driver
+## class assignment exists yet, that is Task 2's DriverRegistry) returns
+## that plain duplicate unmultiplied -- identical values to the shared
+## resource, just its own distinct instance.
+func composed_with(driver_class: DriverClass) -> KartTuning:
+	var composed := duplicate() as KartTuning
+	if driver_class == null:
+		return composed
+	composed.top_speed_mps *= driver_class.top_speed_mult
+	composed.accel_mps2 *= driver_class.accel_mult
+	composed.steer_rate_degrees_per_s *= driver_class.steer_rate_mult
+	return composed
