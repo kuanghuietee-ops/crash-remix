@@ -675,6 +675,7 @@ func test_real_level_list_opens_racing_time_trial_prototype() -> void:
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceTimeTrial")
@@ -724,6 +725,7 @@ func test_real_level_list_opens_racing_sanity_shores_circuit() -> void:
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceSanityShores")
@@ -777,6 +779,7 @@ func test_real_level_list_opens_racing_time_trial_solo() -> void:
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
@@ -826,6 +829,7 @@ func test_real_level_list_opens_racing_sanity_shores_time_trial_solo() -> void:
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceSanityShoresSolo")
@@ -881,6 +885,7 @@ func test_real_level_list_opens_racing_temple_twilight_circuit() -> void:
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceTempleTwilight")
@@ -925,6 +930,7 @@ func test_real_level_list_opens_racing_temple_twilight_time_trial_solo() -> void
 
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race := root.get_node_or_null("Content/RaceTempleTwilightSolo")
@@ -951,6 +957,177 @@ func test_real_level_list_opens_racing_temple_twilight_time_trial_solo() -> void
 	assert_true(
 		hud.get_node("SafeArea/Pause").visible,
 		"the solo time trial must retain its touch-reachable escape route"
+	)
+
+
+## CTR R8 Task 4 (characters/select/classes): the plan's own "overlay lists
+## six in registry order" pin, proven through the REAL menu wiring (not just
+## the standalone Control-level proof in tests/ui/test_driver_select_
+## overlay.gd) -- every RACE/TIME TRIAL/CUP entry opens the SAME real
+## DriverSelectOverlay instance GameRoot installed at boot.
+func test_choose_driver_screen_opens_from_the_real_menu_with_six_tiles() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"the RACE entry must open CHOOSE DRIVER before the race itself launches"
+	)
+	assert_null(
+		root.get_node_or_null("Content/RaceTimeTrial"),
+		"the race must NOT launch until the select screen resolves"
+	)
+	for node_name: String in ["Crash", "Papu", "Cortex", "Coco", "RipperRoo", "LabAssistant"]:
+		assert_not_null(
+			driver_overlay.get_node_or_null(
+				"SafeArea/Center/Panel/Margin/Rows/%s" % node_name
+			),
+			"missing driver tile %s" % node_name
+		)
+
+
+## The plan's own "confirm persists + reload shows the pick" pin -- a tile
+## tap writes racing.selected_driver through the exact save-write shape
+## _on_racing_finished()'s/_persist_cup_result_if_improved() already use
+## (game_root.gd's own _persist_selected_driver() doc), and that write
+## actually reaches disk, not just the in-memory profile.
+func test_choose_driver_screen_confirm_persists_the_pick_and_reload_shows_it() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(driver_overlay.visible)
+	var papu_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Papu"
+	) as Button
+	papu_button.pressed.emit()
+	await wait_process_frames(1)
+
+	assert_false(
+		driver_overlay.visible,
+		"a tile tap must dismiss the select screen and let the race launch"
+	)
+	var profile: Dictionary = root.get("profile")
+	assert_eq(
+		SaveModel.selected_driver(profile),
+		&"papu",
+		"the tapped pick must reach the in-memory profile"
+	)
+	var stored := SaveService.new().load_profile(TEST_SAVE_DIR)
+	assert_eq(
+		SaveModel.selected_driver(stored),
+		&"papu",
+		"the pick must actually reach disk, not just memory"
+	)
+
+
+## The plan's own "race spawns the picked driver" pin -- proves the tapped
+## id actually reached RaceSession.configure_selected_driver() (game_root.
+## gd's own _render_state() racing branch), not merely that SOMETHING got
+## saved. Reads _ghost_recorder.driver_id() the same way tests/racing/
+## test_race_session_driver_roster.gd's own test_configure_threads_the_
+## selected_driver_into_the_ghost_recorder already proves RaceSession
+## threads a pick through -- _ghost_recorder.set_driver_id() runs
+## unconditionally in configure(), for both RACE and TIME TRIAL alike, so
+## this is a reliable observable regardless of which entry launched it.
+func test_choose_driver_screen_pick_reaches_the_real_race_session() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	var papu_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Papu"
+	) as Button
+	papu_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race, "the pick must still let the real race scene launch")
+	if race == null:
+		return
+	var recorder: Object = race.get("_ghost_recorder")
+	assert_not_null(recorder)
+	if recorder != null:
+		assert_eq(
+			recorder.call("driver_id"),
+			&"papu",
+			"the real race session must have been configured with the tapped pick"
+		)
+
+
+## The plan's own "skip = keep last pick, default crash" pin.
+func test_choose_driver_screen_skip_keeps_the_last_pick_default_crash() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	var room := root.get_node("Content/WarpRoom1")
+	var level_list_button := room.get_node("UI/LevelList") as Button
+	level_list_button.pressed.emit()
+	await wait_process_frames(1)
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+	await _skip_driver_select(root)
+
+	var race := root.get_node_or_null("Content/RaceTimeTrial")
+	assert_not_null(race)
+	if race == null:
+		return
+	var recorder: Object = race.get("_ghost_recorder")
+	assert_not_null(recorder)
+	if recorder != null:
+		assert_eq(
+			recorder.call("driver_id"),
+			&"crash",
+			"SKIP on a fresh profile must race as crash, the registry's own default"
+		)
+	assert_false(
+		DirAccess.dir_exists_absolute(
+			ProjectSettings.globalize_path(TEST_SAVE_DIR)
+		),
+		"SKIP must never write a save -- a fresh profile has nothing persisted yet"
 	)
 
 
@@ -981,6 +1158,7 @@ func test_racing_session_receives_live_tuning_refresh_after_a_reset_to_authored(
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrial")
 	assert_not_null(race, "the real racing request must instantiate the real race scene")
@@ -1056,6 +1234,7 @@ func test_racing_retry_reinstantiates_and_reconfigures_a_fresh_race_scene() -> v
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race_before := root.get_node_or_null("Content/RaceTimeTrial")
 	assert_not_null(race_before, "sanity: the racing entry must already be open")
@@ -1149,6 +1328,7 @@ func test_racing_finish_persists_a_new_best_time_and_marks_the_hud() -> void:
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
@@ -1250,6 +1430,7 @@ func test_racing_finish_does_not_overwrite_a_faster_seeded_best_time() -> void:
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
@@ -1350,6 +1531,7 @@ func test_racing_finish_in_a_real_race_never_persists_a_faster_time() -> void:
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrial")
 	assert_not_null(race)
@@ -1419,6 +1601,7 @@ func test_racing_finish_in_a_real_race_shows_no_tt_best_reference_when_none_exis
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrial")
 	assert_not_null(race)
@@ -1481,6 +1664,7 @@ func test_racing_finish_persists_a_ghost_file_on_a_new_best_total_time() -> void
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
@@ -1543,6 +1727,7 @@ func test_racing_finish_does_not_persist_a_ghost_file_when_the_seeded_best_is_fa
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrialSolo")
 	assert_not_null(race)
@@ -1597,6 +1782,7 @@ func test_racing_finish_in_a_real_race_never_persists_a_ghost_file() -> void:
 	) as Button
 	racing_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race := root.get_node_or_null("Content/RaceTimeTrial")
 	assert_not_null(race)
@@ -2960,6 +3146,31 @@ func test_level_touch_exclusions_include_the_perf_readout() -> void:
 			+ "(§5.2 occlusion rule)"
 		)
 	)
+
+
+## CTR R8 Task 4 (characters/select/classes): every RACE/TIME TRIAL/CUP menu
+## entry now opens the CHOOSE DRIVER screen before a race actually launches
+## (see game_root.gd's own _open_driver_select_overlay() doc) -- every
+## racing test in this file that presses one of those buttons calls this
+## right after, to press through with SKIP (keep the last pick, default
+## crash -- see driver_select_overlay.gd's own SKIP doc) and reach the exact
+## same "player raced as crash" outcome these tests already asserted on
+## before this task. Dedicated select-screen behavior (a tile pick actually
+## persisting/reaching the race, SKIP's own default) has its own tests --
+## see test_choose_driver_screen_confirm_persists_the_pick_and_reload_shows_
+## it()/test_choose_driver_screen_pick_reaches_the_real_race_session()/
+## test_choose_driver_screen_skip_keeps_the_last_pick_default_crash() below.
+func _skip_driver_select(root: Node) -> void:
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"RACE/TIME TRIAL/CUP must route through the CHOOSE DRIVER screen first"
+	)
+	var skip_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Skip"
+	) as Button
+	skip_button.pressed.emit()
+	await wait_process_frames(1)
 
 
 func _instantiate_main() -> Node:

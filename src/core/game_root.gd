@@ -56,6 +56,14 @@ const CupSessionType := preload("res://src/racing/flow/cup_session.gd")
 const CUP_STANDINGS_OVERLAY_SCENE := preload(
 	"res://scenes/racing/cup_standings_overlay.tscn"
 )
+# CTR R8 Task 4 (characters/select/classes): the CHOOSE DRIVER screen every
+# RACE/TIME TRIAL/CUP menu entry now routes through before a race actually
+# launches -- see _open_driver_select_overlay()'s own doc for the full
+# routing and driver_select_overlay.gd's own class doc for the screen
+# itself.
+const DRIVER_SELECT_OVERLAY_SCENE := preload(
+	"res://scenes/ui/driver_select_overlay.tscn"
+)
 const WARP_ROOM_SCENE := preload(
 	"res://scenes/levels/warp_room_1.tscn"
 )
@@ -190,6 +198,32 @@ var _cup_standings_overlay: Control
 # is actually in flight right now", independent of what CupSession has or
 # hasn't recorded yet.
 var _cup_active_race_index: int = -1
+# CTR R8 Task 4 (characters/select/classes): _driver_select_overlay is a
+# GameRoot-level overlay, imperatively shown/hidden (see _open_driver_
+# select_overlay()/_launch_pending_race()'s own docs) rather than driven by
+# _sync_ui_visibility()'s state table -- the exact same ownership shape
+# _cup_standings_overlay already establishes (see its own class doc), since
+# this screen's own visible window is bounded by "until the player taps a
+# tile or SKIP", not by flow.state alone.
+var _driver_select_overlay: Control
+# Which racing menu action is waiting on the CHOOSE DRIVER screen to
+# resolve -- {} when none is pending. Set by _on_racing_track_requested()/
+# _on_cup_requested() (BEFORE the select overlay ever shows) and consumed
+# exactly once by _launch_pending_race(), which clears it back to {}
+# immediately. {"kind": &"track", "track_id": ..., "is_solo": ...} or
+# {"kind": &"cup"} -- the only two racing menu actions that ever open this
+# screen.
+var _pending_race_launch: Dictionary = {}
+# CTR R8 Task 4 (characters/select/classes): the driver id every racing
+# branch of _render_state() mounts the player's own kart under -- set
+# immediately before every _select_level() call that can land on a racing
+# level id (see _launch_pending_race()/_advance_cup()'s own docs), read
+# fresh by _render_state()'s own racing instantiate branch. Defaults to
+# &"crash" only for defensive safety before any real racing launch has ever
+# happened; every real path sets it before use, including a retry (which
+# re-enters _render_state()'s racing branch without touching this at all,
+# correctly keeping the same driver the original attempt raced with).
+var _active_driver_id: StringName = &"crash"
 var _level_list_open: bool = false
 var _owns_tree_pause: bool = false
 var _threaded_level_path: String = ""
@@ -705,12 +739,21 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 	_cup_standings_overlay = (
 		CUP_STANDINGS_OVERLAY_SCENE.instantiate() as Control
 	)
+	# CTR R8 Task 4 (characters/select/classes): same "GameRoot-owned,
+	# installed once here" shape as _cup_standings_overlay immediately
+	# above -- see this overlay's own field doc for why its own visibility
+	# is imperatively driven rather than part of _sync_ui_visibility()'s
+	# state table.
+	_driver_select_overlay = (
+		DRIVER_SELECT_OVERLAY_SCENE.instantiate() as Control
+	)
 	for screen: Control in [
 		_hud,
 		_results_screen,
 		_pause_overlay,
 		_level_list_overlay,
 		_cup_standings_overlay,
+		_driver_select_overlay,
 	]:
 		_ui.add_child(screen)
 		var safe_area := screen.get_node_or_null("SafeArea")
@@ -802,6 +845,18 @@ func _install_task11_ui(debug_tools_enabled: bool) -> void:
 		&"closed",
 		_on_cup_standings_closed
 	)
+	# CTR R8 Task 4 (characters/select/classes): see driver_select_overlay.
+	# gd's own class doc for what each signal means -- a tile tap
+	# (driver_selected) vs. SKIP (skipped), the two ways this screen ever
+	# resolves.
+	_driver_select_overlay.connect(
+		&"driver_selected",
+		_on_driver_select_confirmed
+	)
+	_driver_select_overlay.connect(
+		&"skipped",
+		_on_driver_select_skipped
+	)
 	_loading_overlay = Label.new()
 	_loading_overlay.name = &"LoadingOverlay"
 	_loading_overlay.text = "LOADING..."
@@ -833,10 +888,15 @@ func _render_state(previous_state: int = flow.state) -> void:
 		# cup interstitial/podium visibly stuck on top of the Pause overlay --
 		# see _hide_cup_standings_overlay()'s own doc.
 		_hide_cup_standings_overlay()
+		# CTR R8 Task 4: same defensive belt-and-suspenders as the cup
+		# standings hide immediately above -- see _hide_driver_select_
+		# overlay()'s own doc.
+		_hide_driver_select_overlay()
 		_sync_ui_visibility()
 		return
 	if previous_state == GameFlow.State.PAUSED:
 		_level_list_open = false
+		_hide_driver_select_overlay()
 		_sync_ui_visibility()
 		return
 
@@ -856,6 +916,13 @@ func _render_state(previous_state: int = flow.state) -> void:
 	# RETRY SEMANTICS doc -- the active CupSession itself is untouched here,
 	# only this transient screen hides).
 	_hide_cup_standings_overlay()
+	# CTR R8 Task 4: same defensive belt-and-suspenders as the cup standings
+	# hide immediately above -- by the time this line runs on the real
+	# tile-tap/SKIP path, _launch_pending_race() has already hidden this
+	# overlay directly; this only guards a path that reaches here some other
+	# way (e.g. the hardware back button resuming out of a still-open select
+	# screen, see _unhandled_input()'s own PAUSED/_level_list_open branch).
+	_hide_driver_select_overlay()
 
 	if not _PLACEHOLDER_NAMES.has(flow.state):
 		return
@@ -894,6 +961,19 @@ func _render_state(previous_state: int = flow.state) -> void:
 		]
 		var race := race_scene.instantiate()
 		_content.add_child(race)
+		# CTR R8 Task 4 (characters/select/classes): the CHOOSE DRIVER
+		# screen's own pick (or the last saved one, on SKIP) reaches the
+		# player's own kart HERE, before configure() ever runs -- see
+		# configure_selected_driver()'s own doc on race_session.gd for why
+		# the ordering matters (configure() reads it once, at mount time).
+		# _active_driver_id is set immediately before every _select_level()
+		# call that can land on a racing level id (see _launch_pending_
+		# race()/_advance_cup()'s own docs), so it is always current by the
+		# time THIS instantiate runs, including for a retry (which re-enters
+		# this exact branch without touching _active_driver_id at all,
+		# correctly keeping the same driver the original attempt raced
+		# with).
+		race.call("configure_selected_driver", _active_driver_id)
 		race.call("configure", tuning_service.catalog)
 		if race.has_signal(&"retry_requested"):
 			race.connect(&"retry_requested", _on_racing_retry_requested)
@@ -927,6 +1007,22 @@ func _hide_cup_standings_overlay() -> void:
 		and is_instance_valid(_cup_standings_overlay)
 	):
 		_cup_standings_overlay.visible = false
+
+
+## CTR R8 Task 4 (characters/select/classes): the driver-select counterpart
+## to _hide_cup_standings_overlay() immediately above -- same null/freed-safe
+## shape, same "only ever hides the transient screen" contract. _pending_
+## race_launch is deliberately NOT cleared here: this can run defensively on
+## a path that never resolved the pending action (see the hardware-back-
+## button call site above), and leaving it populated is harmless -- it is
+## only ever consumed once, by _launch_pending_race(), and every real path
+## that opens this overlay again first overwrites it fresh.
+func _hide_driver_select_overlay() -> void:
+	if (
+		_driver_select_overlay != null
+		and is_instance_valid(_driver_select_overlay)
+	):
+		_driver_select_overlay.visible = false
 
 
 func threaded_level_path() -> String:
@@ -1547,7 +1643,11 @@ func _warp_room_touch_exclusions() -> Array:
 	# top of the hub (I15's second half): without this, a tap aimed at
 	# the overlay also lands on WarpRoom's own TouchControls underneath,
 	# doubling as hub movement/jump input.
-	var controls: Array = [_level_list_overlay]
+	#
+	# CTR R8 Task 4: the CHOOSE DRIVER screen can ALSO sit on top of the hub
+	# this same way (opened straight off a WarpRoom-hosted level list racing
+	# button) -- same exclusion, same reason.
+	var controls: Array = [_level_list_overlay, _driver_select_overlay]
 	controls.append_array(_debug_touch_exclusions())
 	return controls
 
@@ -1893,15 +1993,22 @@ func _track_display_name(track_id: StringName) -> String:
 
 
 ## Task 5 (CTR R7, the Cup): the CUP menu entry (level_list_overlay.gd's own
-## cup_requested signal) -- creates a fresh CupSession and starts race 1,
-## the same real _select_level() round-trip every ordinary racing menu pick
-## already uses (see _advance_cup() below).
+## cup_requested signal) -- starts race 1 the same real _select_level()
+## round-trip every ordinary racing menu pick already uses (see _advance_
+## cup() below).
+##
+## CTR R8 Task 4 (characters/select/classes): no longer creates the fresh
+## CupSession here -- the CUP now picks its driver ONCE, on the CHOOSE
+## DRIVER screen, BEFORE race 1 exists at all (see _open_driver_select_
+## overlay()'s own doc), so the session itself is created and configure()d
+## in _launch_pending_race() instead, once that pick actually resolves.
+## This handler's own job shrinks to "remember a cup was asked for" and open
+## that screen.
 func _on_cup_requested() -> void:
 	if not OS.is_debug_build():
 		return
-	_cup_session = CupSessionType.new()
-	_cup_session.configure(tuning_service.catalog.race)
-	_advance_cup()
+	_pending_race_launch = {"kind": &"cup"}
+	_open_driver_select_overlay()
 
 
 ## The cup interstitial's own CONTINUE button.
@@ -1944,6 +2051,15 @@ func _advance_cup() -> void:
 	for track in RacingTrackRegistryType.TRACKS:
 		if track.track_id == track_id:
 			_cup_active_race_index = race_index
+			# CTR R8 Task 4 (characters/select/classes): re-read fresh from
+			# CupSession every time this runs -- race 1's own initial launch
+			# (from _launch_pending_race()) AND race 2's own CONTINUE advance
+			# (_on_cup_continue_requested()) both funnel through here. See
+			# CupSession.selected_driver_id()'s own doc for why the CUP,
+			# not whatever _active_driver_id last happened to hold, is the
+			# one source of truth for "which driver both of this cup's
+			# races mount".
+			_active_driver_id = _cup_session.selected_driver_id()
 			_select_level(track.level_id)
 			return
 
@@ -2023,6 +2139,13 @@ func _on_look_dev_requested() -> void:
 ## active_cup()'s own doc for why an ordinary racing-menu pick must never be
 ## mistaken for continuing a cup, even when it happens to land on the exact
 ## track the cup was still waiting on.
+##
+## CTR R8 Task 4 (characters/select/classes): no longer calls _select_level()
+## directly -- RACE/TIME TRIAL entries now route through the CHOOSE DRIVER
+## screen first (see _open_driver_select_overlay()'s own doc). The real
+## track lookup + _select_level() call this used to make here moved into
+## _launch_pending_race(), which runs once that screen actually resolves
+## (a tile tap or SKIP).
 func _on_racing_track_requested(
 	track_id: StringName,
 	is_solo: bool
@@ -2030,6 +2153,115 @@ func _on_racing_track_requested(
 	if not OS.is_debug_build():
 		return
 	_abandon_active_cup()
+	_pending_race_launch = {
+		"kind": &"track",
+		"track_id": track_id,
+		"is_solo": is_solo,
+	}
+	_open_driver_select_overlay()
+
+
+## CTR R8 Task 4 (characters/select/classes): shown while STILL paused, in
+## place of the level list (see the level_list_open=false line below) --
+## same "GameRoot-level overlay imperatively shown/hidden, not driven by
+## _sync_ui_visibility()'s state table" ownership _cup_standings_overlay
+## already establishes (see its own OWNERSHIP class doc), since this
+## screen's own visible window is bounded by "until the player taps a tile
+## or SKIP", not by flow.state. Reads the profile's own last-persisted pick
+## (SaveModel.selected_driver(), always a real id -- see that getter's own
+## doc) to mark the current tile, so a returning player sees what they
+## raced as last time rather than a screen that always looks freshly reset
+## to Crash. Both real callers (_on_racing_track_requested()/_on_cup_
+## requested()) already populated _pending_race_launch before calling this.
+func _open_driver_select_overlay() -> void:
+	_level_list_open = false
+	_sync_ui_visibility()
+	_driver_select_overlay.call(
+		"configure",
+		SaveModel.selected_driver(profile)
+	)
+	_driver_select_overlay.visible = true
+
+
+## The CHOOSE DRIVER screen's own tile tap -- persists the pick (see
+## _persist_selected_driver()'s own doc) and lets the pending launch proceed
+## with it.
+func _on_driver_select_confirmed(id: StringName) -> void:
+	_persist_selected_driver(id)
+	_launch_pending_race(id)
+
+
+## The CHOOSE DRIVER screen's own SKIP button -- the plan's own "skip = keep
+## last pick, default crash": changes nothing on disk and lets the pending
+## launch proceed with whatever racing.selected_driver already holds
+## (SaveModel.selected_driver()'s own "always a real id, self-heals to
+## crash" contract).
+func _on_driver_select_skipped() -> void:
+	_launch_pending_race(SaveModel.selected_driver(profile))
+
+
+## CTR R8 Task 4 (characters/select/classes): THE write -- mirrors _on_
+## racing_finished()'s/_persist_cup_result_if_improved()'s own "duplicate
+## racing, set the one key this call owns, validate the WHOLE profile, then
+## store_profile()" shape verbatim (see SaveModel.selected_driver()'s own
+## doc, "THE SURFACE TASK 4 WRITES", for why there is no dedicated setter on
+## SaveModel for this to call instead). id is already a real DriverRegistry
+## id by construction -- DriverSelectOverlay's own tile buttons are built
+## off DriverRegistry.entries() (see that overlay's own class doc) -- so
+## this never needs its own validation beyond the same whole-profile
+## validate() every other write site here already runs.
+func _persist_selected_driver(id: StringName) -> void:
+	var updated_profile := profile.duplicate(true)
+	var racing_value: Variant = updated_profile.get("racing")
+	var racing: Dictionary = (
+		(racing_value as Dictionary).duplicate(true)
+		if racing_value is Dictionary
+		else {}
+	)
+	racing["selected_driver"] = String(id)
+	updated_profile["racing"] = racing
+	if not SaveModel.validate(updated_profile):
+		push_error("Driver pick failed validation.")
+		return
+	var save_error := save_service.store_profile(save_dir, updated_profile)
+	if save_error != OK:
+		last_save_error = save_error
+		push_error(
+			"Driver pick was not saved: " + error_string(save_error)
+		)
+		return
+	last_save_error = OK
+	profile = updated_profile
+
+
+## CTR R8 Task 4 (characters/select/classes): the one place a pending RACE/
+## TIME TRIAL/CUP launch (stored by _on_racing_track_requested()/_on_cup_
+## requested() BEFORE the select overlay ever showed, see _pending_race_
+## launch's own field doc) actually proceeds, once the player has either
+## tapped a tile (id = that pick) or SKIPped (id = SaveModel.selected_
+## driver(profile), the last real save value). For an ordinary track this is
+## the exact _select_level() round-trip _on_racing_track_requested() used to
+## make directly, pre-Task-4; for the CUP, this is where the fresh
+## CupSession is actually created and configure()d with id -- see cup_
+## session.gd's own configure()/selected_driver_id() doc for why the CUP
+## holds its own copy rather than _advance_cup() reading GameRoot's
+## _active_driver_id fresh on every race (_advance_cup() re-reads it from
+## CupSession every time it launches either race, not from whatever
+## _active_driver_id last happened to hold here).
+func _launch_pending_race(id: StringName) -> void:
+	_driver_select_overlay.visible = false
+	var pending := _pending_race_launch
+	_pending_race_launch = {}
+	_active_driver_id = id
+	if pending.get("kind") == &"cup":
+		_cup_session = CupSessionType.new()
+		_cup_session.configure(tuning_service.catalog.race, id)
+		_advance_cup()
+		return
+	if pending.get("kind") != &"track":
+		return
+	var track_id := StringName(pending.get("track_id", &""))
+	var is_solo := bool(pending.get("is_solo", false))
 	for track in RacingTrackRegistryType.TRACKS:
 		if track.track_id != track_id:
 			continue

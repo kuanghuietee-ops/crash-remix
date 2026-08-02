@@ -68,6 +68,43 @@ func test_track_order_matches_the_registry_sanity_shores_then_temple_twilight() 
 	assert_eq(cup.track_id_for_race(-1), &"")
 
 
+## CTR R8 Task 4 (characters/select/classes): the CUP picks a driver ONCE,
+## at cup start, and holds it here for both races (see cup_session.gd's own
+## selected_driver_id() doc for why GameRoot's _advance_cup() must re-read
+## THIS, not its own transient _active_driver_id, before every race launch).
+## A CupSession that is never configure()d at all (defensive only -- no real
+## call site skips configure(), see game_root.gd's own _launch_pending_
+## race()) still reads back a real registry id rather than an empty/garbage
+## StringName.
+func test_selected_driver_id_defaults_to_crash_before_any_configure_call() -> void:
+	var cup := CupSessionType.new()
+	assert_eq(cup.selected_driver_id(), &"crash")
+
+
+func test_configure_with_no_driver_argument_keeps_the_crash_default() -> void:
+	var cup := CupSessionType.new()
+	cup.configure(_points_tuning(8.0, 6.0, 5.0, 4.0, 3.0, 2.0))
+	assert_eq(
+		cup.selected_driver_id(),
+		&"crash",
+		"every pre-Task-4 configure() call site omits the new argument -- must keep racing as crash, unchanged"
+	)
+
+
+func test_configure_stores_the_selected_driver_id_for_the_whole_session_life() -> void:
+	var cup := CupSessionType.new()
+	cup.configure(_points_tuning(8.0, 6.0, 5.0, 4.0, 3.0, 2.0), &"coco")
+	assert_eq(cup.selected_driver_id(), &"coco")
+
+	# Nothing about playing the cup out changes the held pick -- it is set
+	# once, at configure() time, and never touched again (see this class's
+	# own selected_driver_id() doc).
+	cup.record_race_result(0, [_standings_row(1, "YOU")])
+	assert_eq(cup.selected_driver_id(), &"coco")
+	cup.record_race_result(1, [_standings_row(1, "YOU")])
+	assert_eq(cup.selected_driver_id(), &"coco")
+
+
 func test_points_for_placement_reads_the_configured_table_and_clamps_outside_it() -> void:
 	var cup := CupSessionType.new()
 	cup.configure(_points_tuning(8.0, 6.0, 5.0, 4.0, 3.0, 2.0))

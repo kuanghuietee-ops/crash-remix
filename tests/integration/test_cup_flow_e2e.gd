@@ -57,6 +57,7 @@ func test_cup_menu_entry_plays_both_races_and_shows_the_final_podium() -> void:
 	)
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	assert_eq(root.call("state_name"), &"level")
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
@@ -164,6 +165,7 @@ func test_retrying_race_one_inside_a_cup_does_not_corrupt_the_running_total() ->
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race1_first := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(race1_first)
@@ -226,6 +228,7 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(race1)
 	if race1 == null:
@@ -242,6 +245,7 @@ func test_picking_an_ordinary_race_from_the_menu_abandons_an_active_cup() -> voi
 	) as Button
 	ordinary_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var ordinary_race := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(ordinary_race)
@@ -289,6 +293,7 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	) as Button
 	cup_button.pressed.emit()
 	await wait_process_frames(1)
+	await _skip_driver_select(root)
 
 	var race1 := root.get_node_or_null("Content/RaceSanityShores")
 	assert_not_null(
@@ -497,6 +502,99 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	)
 
 
+## CTR R8 Task 4 (characters/select/classes): the plan's own pin -- the CUP
+## picks a driver ONCE, at cup start, and BOTH races (two entirely separate
+## RaceSession instances, see cup_session.gd's own OWNERSHIP doc on why
+## nothing Node-shaped survives the scene swap between them) must mount that
+## SAME driver, not silently reset back to RaceSession's own "crash" default
+## for race 2. The AI field's own continuity already falls out for free from
+## the fixed grid-slot scheme (cup_session.gd's own STABLE PARTICIPANT
+## IDENTITY doc) -- this proves it stays true even once a NON-default driver
+## is picked at cup start, since _ai_fill_driver_ids() (race_session.gd)
+## excludes whichever id the player picked: a pick that silently reverted
+## for race 2 would also silently change race 2's own AI fill, which the
+## direct field-equality assertion below would catch.
+func test_cup_holds_the_selected_driver_across_both_races_and_the_ai_field_matches() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	var cup_overlay := root.get_node("UI/CupStandingsOverlay")
+	var overlay := await _open_level_list_and_get_overlay(root)
+	var cup_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingCup"
+	) as Button
+	cup_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"the CUP entry must route through CHOOSE DRIVER before race 1 launches"
+	)
+	var coco_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Coco"
+	) as Button
+	coco_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var race1 := root.get_node_or_null("Content/RaceSanityShores")
+	assert_not_null(
+		race1,
+		"picking a driver must still launch race 1 through the real registered scene"
+	)
+	if race1 == null:
+		return
+	var recorder1: Object = race1.get("_ghost_recorder")
+	assert_not_null(recorder1)
+	if recorder1 != null:
+		assert_eq(
+			recorder1.call("driver_id"),
+			&"coco",
+			"race 1 must mount the driver actually picked on the select screen, not the crash default"
+		)
+	var ai_field_race1: Array = race1.call("_ai_fill_driver_ids")
+	assert_eq(
+		ai_field_race1,
+		[&"crash", &"papu", &"cortex", &"ripper_roo", &"lab_assistant"],
+		"picking coco must fill AI with the other 5, in registry order"
+	)
+
+	await _finish_race(race1)
+	await wait_process_frames(1)
+	assert_true(cup_overlay.visible)
+	var continue_button := cup_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Continue"
+	) as Button
+	continue_button.pressed.emit()
+	await wait_process_frames(1)
+
+	# CONTINUE must NOT reopen the select screen -- the cup already holds the
+	# pick from race 1 (see cup_session.gd's own selected_driver_id() doc);
+	# re-asking would defeat "picks ONCE at cup start".
+	assert_false(
+		driver_overlay.visible,
+		"race 2 must launch directly off the cup's own held pick, without asking again"
+	)
+	var race2 := root.get_node_or_null("Content/RaceTempleTwilight")
+	assert_not_null(race2)
+	if race2 == null:
+		return
+	var recorder2: Object = race2.get("_ghost_recorder")
+	assert_not_null(recorder2)
+	if recorder2 != null:
+		assert_eq(
+			recorder2.call("driver_id"),
+			&"coco",
+			"race 2 must mount the SAME driver the cup was started with, not reset to crash"
+		)
+	var ai_field_race2: Array = race2.call("_ai_fill_driver_ids")
+	assert_eq(
+		ai_field_race2,
+		ai_field_race1,
+		"the cup's AI field must be identical across both races -- same pick, same fixed roster order"
+	)
+
+
 ## Frame-exact "wait for real GO" -- the same shape test_race_flow_r6_e2e.gd's
 ## own copy establishes (itself mirroring test_race_start_flow.gd's own
 ## _wait_until_race_started()); GUT test scripts don't share private helpers
@@ -513,6 +611,29 @@ func _wait_until_race_started(race: Node) -> void:
 		bool(race.call("is_race_started")),
 		"fixture setup: the real countdown must reach GO within a generous bound"
 	)
+
+
+## CTR R8 Task 4 (characters/select/classes): every RACE/TIME TRIAL/CUP menu
+## entry, the CUP included, now opens the CHOOSE DRIVER screen before a race
+## actually launches (see game_root.gd's own _open_driver_select_overlay()
+## doc) -- every button press in this file that used to launch a race/cup
+## directly now calls this right after, to press through with SKIP (keep
+## the last pick, default crash) and reach the exact same "everyone races as
+## crash" outcome this file's own tests already established before this
+## task. The one test that picks a REAL non-default driver on purpose
+## (test_cup_holds_the_selected_driver_across_both_races_and_the_ai_field_
+## matches below) does not call this -- it drives the select screen directly.
+func _skip_driver_select(root: Node) -> void:
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(
+		driver_overlay.visible,
+		"the CUP/ordinary racing entry must route through CHOOSE DRIVER first"
+	)
+	var skip_button := driver_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/Skip"
+	) as Button
+	skip_button.pressed.emit()
+	await wait_process_frames(1)
 
 
 func _open_level_list_and_get_overlay(root: Node) -> Node:
