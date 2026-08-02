@@ -987,6 +987,16 @@ func test_choose_driver_screen_opens_from_the_real_menu_with_six_tiles() -> void
 		driver_overlay.visible,
 		"the RACE entry must open CHOOSE DRIVER before the race itself launches"
 	)
+	# CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): the Pause overlay's
+	# own visibility formula (_sync_ui_visibility()) must know about THIS
+	# screen too, the same way it already knows about the level list --
+	# without this, Pause stayed visible=true underneath Driver Select on
+	# every single RACE/TIME TRIAL/CUP menu entry (see game_root.gd's own
+	# _driver_select_open field doc).
+	assert_false(
+		root.get_node("UI/PauseOverlay").visible,
+		"the Pause overlay must not sit visible underneath CHOOSE DRIVER"
+	)
 	assert_null(
 		root.get_node_or_null("Content/RaceTimeTrial"),
 		"the race must NOT launch until the select screen resolves"
@@ -1128,6 +1138,120 @@ func test_choose_driver_screen_skip_keeps_the_last_pick_default_crash() -> void:
 			ProjectSettings.globalize_path(TEST_SAVE_DIR)
 		),
 		"SKIP must never write a save -- a fresh profile has nothing persisted yet"
+	)
+
+
+## CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): opening CHOOSE DRIVER
+## from the in-race Pause menu (Pause -> LEVEL LIST -> a racing entry) is a
+## DIFFERENT reachable path than the WarpRoom-hub one every other driver-
+## select test above drives -- both must leave the Pause overlay hidden
+## while the select screen is up, which is what this proves alongside the
+## simpler hub-path assertion in test_choose_driver_screen_opens_from_the_
+## real_menu_with_six_tiles above. Reaches PAUSED-with-an-active-level the
+## same minimal way test_pause_overlay_level_list_button_opens_the_level_
+## list already does (dispatch portal_enter into the placeholder level id,
+## then dispatch pause) -- no real race scene needed, this is purely a
+## visibility-bookkeeping proof.
+func test_choose_driver_screen_hides_the_pause_overlay_when_opened_mid_level() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{"type": &"portal_enter", "level_id": PLACEHOLDER_LEVEL_ID}
+		),
+		OK
+	)
+	assert_eq(root.call("dispatch", {"type": &"pause"}), OK)
+	var pause_overlay := root.get_node("UI/PauseOverlay")
+	assert_true(pause_overlay.visible, "fixture sanity: bare pause shows the Pause overlay")
+
+	pause_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/LevelList"
+	).emit_signal(&"pressed")
+	var overlay := root.get_node("UI/LevelListOverlay")
+	assert_true(overlay.visible)
+	assert_false(pause_overlay.visible, "fixture sanity: opening the level list hides Pause")
+
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(driver_overlay.visible)
+	assert_false(
+		pause_overlay.visible,
+		"the Pause overlay must stay hidden underneath CHOOSE DRIVER, reached from the in-race Pause menu too"
+	)
+	assert_false(overlay.visible)
+
+
+## CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): the hardware/OS back
+## button's own way out of CHOOSE DRIVER -- previously untested (the review
+## finding: "the hardware-back path only works by accident"). Drives the
+## REAL _unhandled_input() dispatch with a synthetic ui_cancel InputEvent-
+## Action (InputEventAction.is_action_pressed() matches on the event's own
+## action field directly, no InputMap binding needed in this headless
+## suite), not a direct call into the handler, so this proves the actual
+## wiring, not just the handler's own logic in isolation. Reached mid-level
+## (see the sibling test above for why: only that entry point can prove the
+## Pause overlay is genuinely RESTORED, since backing out of a hub-opened
+## screen resumes past Pause entirely -- see _on_driver_select_back_out()'s
+## own doc, mirroring _on_level_list_closed()'s identical shape).
+func test_choose_driver_screen_back_out_restores_pause_and_abandons_the_pending_launch() -> void:
+	var root := _instantiate_main()
+	if root == null:
+		return
+	await wait_process_frames(1)
+	assert_eq(
+		root.call(
+			"dispatch",
+			{"type": &"portal_enter", "level_id": PLACEHOLDER_LEVEL_ID}
+		),
+		OK
+	)
+	assert_eq(root.call("dispatch", {"type": &"pause"}), OK)
+	var pause_overlay := root.get_node("UI/PauseOverlay")
+	pause_overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/LevelList"
+	).emit_signal(&"pressed")
+	var overlay := root.get_node("UI/LevelListOverlay")
+	var racing_button := overlay.get_node(
+		"SafeArea/Center/Panel/Margin/Rows/RacingTimeTrial"
+	) as Button
+	racing_button.pressed.emit()
+	await wait_process_frames(1)
+
+	var driver_overlay := root.get_node("UI/DriverSelectOverlay")
+	assert_true(driver_overlay.visible, "fixture sanity: CHOOSE DRIVER is up")
+
+	var cancel_event := InputEventAction.new()
+	cancel_event.action = &"ui_cancel"
+	cancel_event.pressed = true
+	root.call("_unhandled_input", cancel_event)
+	await wait_process_frames(1)
+
+	assert_false(
+		driver_overlay.visible,
+		"the back button must dismiss CHOOSE DRIVER"
+	)
+	assert_true(
+		pause_overlay.visible,
+		"backing out mid-level must restore the bare Pause overlay, not skip past it"
+	)
+	assert_false(overlay.visible, "the level list must stay closed, not reopen")
+	assert_eq(
+		root.call("state_name"),
+		&"paused",
+		"backing out mid-level must stay paused, never silently resume gameplay"
+	)
+	assert_null(
+		root.get_node_or_null("Content/RaceTimeTrial"),
+		"back must abandon the pending launch, never fall through to SKIP's own launch-anyway behavior"
 	)
 
 

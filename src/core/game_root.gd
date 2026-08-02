@@ -199,18 +199,42 @@ var _cup_standings_overlay: Control
 # hasn't recorded yet.
 var _cup_active_race_index: int = -1
 # CTR R8 Task 4 (characters/select/classes): _driver_select_overlay is a
-# GameRoot-level overlay, imperatively shown/hidden (see _open_driver_
-# select_overlay()/_launch_pending_race()'s own docs) rather than driven by
-# _sync_ui_visibility()'s state table -- the exact same ownership shape
-# _cup_standings_overlay already establishes (see its own class doc), since
-# this screen's own visible window is bounded by "until the player taps a
-# tile or SKIP", not by flow.state alone.
+# GameRoot-level overlay, installed once alongside every other persistent
+# screen (see _install_task11_ui()) -- the same ownership shape _cup_
+# standings_overlay already establishes.
+#
+# CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): its VISIBILITY, unlike
+# _cup_standings_overlay's, IS now part of _sync_ui_visibility()'s own state
+# table, driven by _driver_select_open immediately below -- exactly the same
+# "a bool this Pause-stack modal is open" shape _level_list_open already
+# establishes for the level list, one field down. The original imperative
+# "just set .visible directly" design left _pause_overlay.visible's own
+# formula (flow.state == PAUSED and not _level_list_open) with no way to
+# know a THIRD modal could also be up: opening this screen left flow.state
+# at PAUSED and flipped _level_list_open to false without ever leaving
+# PAUSED, which _sync_ui_visibility() read as "bare pause, nothing else
+# open" and showed Pause visible=true underneath this screen on every
+# single RACE/TIME TRIAL/CUP menu entry. Folding this screen into the same
+# declarative table _level_list_open already uses is what lets Pause's own
+# formula (see _sync_ui_visibility()) correctly exclude it too.
 var _driver_select_overlay: Control
+# See _driver_select_overlay's own field doc immediately above -- the exact
+# same role _level_list_open plays for the level list, one field down:
+# _sync_ui_visibility() reads this (never a raw .visible flag) to decide
+# whether Pause/Level List/Driver Select show. Set true only by _open_
+# driver_select_overlay(); cleared by _hide_driver_select_overlay() (the
+# ONE place it is ever cleared, called from every real dismiss path -- a
+# tile tap/SKIP via _launch_pending_race(), the hardware back button via
+# _on_driver_select_back_out(), and every defensive _render_state() call
+# site that already hid this screen pre-fix).
+var _driver_select_open: bool = false
 # Which racing menu action is waiting on the CHOOSE DRIVER screen to
 # resolve -- {} when none is pending. Set by _on_racing_track_requested()/
 # _on_cup_requested() (BEFORE the select overlay ever shows) and consumed
 # exactly once by _launch_pending_race(), which clears it back to {}
-# immediately. {"kind": &"track", "track_id": ..., "is_solo": ...} or
+# immediately. Also cleared (abandoned, never consumed) by _on_driver_
+# select_back_out() -- backing out means "I changed my mind", not "SKIP and
+# launch anyway". {"kind": &"track", "track_id": ..., "is_solo": ...} or
 # {"kind": &"cup"} -- the only two racing menu actions that ever open this
 # screen.
 var _pending_race_launch: Dictionary = {}
@@ -430,7 +454,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif flow.state == GameFlow.State.WARP_ROOM:
 		_on_warp_room_level_list_requested()
 	elif flow.state == GameFlow.State.PAUSED:
-		if _level_list_open:
+		# CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): checked before
+		# _level_list_open -- the two are mutually exclusive by construction
+		# (_open_driver_select_overlay() always clears _level_list_open
+		# first), but the CHECK ORDER here is what makes back-out actually
+		# reach _on_driver_select_back_out() instead of silently falling
+		# through to the bare dispatch(RESUME) branch (this screen's own
+		# reachable bug pre-fix -- see that field's own doc).
+		if _driver_select_open:
+			_on_driver_select_back_out()
+		elif _level_list_open:
 			_on_level_list_closed()
 		else:
 			dispatch({"type": GameFlow.EVENT_RESUME})
@@ -919,9 +952,14 @@ func _render_state(previous_state: int = flow.state) -> void:
 	# CTR R8 Task 4: same defensive belt-and-suspenders as the cup standings
 	# hide immediately above -- by the time this line runs on the real
 	# tile-tap/SKIP path, _launch_pending_race() has already hidden this
-	# overlay directly; this only guards a path that reaches here some other
-	# way (e.g. the hardware back button resuming out of a still-open select
-	# screen, see _unhandled_input()'s own PAUSED/_level_list_open branch).
+	# overlay directly, and the real back-out path (_on_driver_select_back_
+	# out(), see _unhandled_input()'s own PAUSED branch) already clears
+	# _driver_select_open itself too; this only guards a path that reaches
+	# here some other way. (flow.state != PAUSED is already true in this
+	# branch, so _driver_select_overlay/_pause_overlay's own _sync_ui_
+	# visibility() formulas read correctly here regardless of ordering --
+	# this call's real job is resetting the _driver_select_open FLAG itself
+	# so it can't leak stale-true into a future re-entry into PAUSED.)
 	_hide_driver_select_overlay()
 
 	if not _PLACEHOLDER_NAMES.has(flow.state):
@@ -1011,13 +1049,21 @@ func _hide_cup_standings_overlay() -> void:
 
 ## CTR R8 Task 4 (characters/select/classes): the driver-select counterpart
 ## to _hide_cup_standings_overlay() immediately above -- same null/freed-safe
-## shape, same "only ever hides the transient screen" contract. _pending_
-## race_launch is deliberately NOT cleared here: this can run defensively on
-## a path that never resolved the pending action (see the hardware-back-
-## button call site above), and leaving it populated is harmless -- it is
-## only ever consumed once, by _launch_pending_race(), and every real path
-## that opens this overlay again first overwrites it fresh.
+## shape, same "only ever hides the transient screen" contract. THE one place
+## _driver_select_open is ever cleared (fix round 1 -- see that field's own
+## doc): clearing the flag AND setting .visible directly, so this is correct
+## regardless of whether a caller follows it with _sync_ui_visibility() or
+## not (every real caller does; this direct set is belt-and-suspenders for
+## any that don't). _pending_race_launch is deliberately NOT cleared here:
+## this can run defensively on a path that never resolved the pending action
+## (e.g. the _render_state() call sites below), and leaving it populated is
+## harmless -- it is only ever consumed once, by _launch_pending_race(), and
+## every real path that opens this overlay again first overwrites it fresh.
+## _on_driver_select_back_out() clears it explicitly itself, since THAT path
+## means "abandon the pending launch", not merely "this screen is hidden for
+## some unrelated reason".
 func _hide_driver_select_overlay() -> void:
+	_driver_select_open = false
 	if (
 		_driver_select_overlay != null
 		and is_instance_valid(_driver_select_overlay)
@@ -1658,6 +1704,7 @@ func _sync_ui_visibility() -> void:
 		or _results_screen == null
 		or _pause_overlay == null
 		or _level_list_overlay == null
+		or _driver_select_overlay == null
 	):
 		return
 	if flow.state != GameFlow.State.PAUSED:
@@ -1679,13 +1726,24 @@ func _sync_ui_visibility() -> void:
 			and not _race_scenes_by_level_id.has(flow.active_level_id)
 		)
 	)
+	# CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): Pause's own formula
+	# must exclude EVERY modal that can sit on top of it while flow.state
+	# stays PAUSED -- _driver_select_open joins _level_list_open here for
+	# exactly the reason that field's own doc gives: leaving this out is
+	# what let Pause stay visible=true underneath Driver Select on every
+	# single RACE/TIME TRIAL/CUP menu entry.
 	_pause_overlay.visible = (
 		flow.state == GameFlow.State.PAUSED
 		and not _level_list_open
+		and not _driver_select_open
 	)
 	_level_list_overlay.visible = (
 		flow.state == GameFlow.State.PAUSED
 		and _level_list_open
+	)
+	_driver_select_overlay.visible = (
+		flow.state == GameFlow.State.PAUSED
+		and _driver_select_open
 	)
 
 
@@ -2162,25 +2220,23 @@ func _on_racing_track_requested(
 
 
 ## CTR R8 Task 4 (characters/select/classes): shown while STILL paused, in
-## place of the level list (see the level_list_open=false line below) --
-## same "GameRoot-level overlay imperatively shown/hidden, not driven by
-## _sync_ui_visibility()'s state table" ownership _cup_standings_overlay
-## already establishes (see its own OWNERSHIP class doc), since this
-## screen's own visible window is bounded by "until the player taps a tile
-## or SKIP", not by flow.state. Reads the profile's own last-persisted pick
-## (SaveModel.selected_driver(), always a real id -- see that getter's own
-## doc) to mark the current tile, so a returning player sees what they
-## raced as last time rather than a screen that always looks freshly reset
-## to Crash. Both real callers (_on_racing_track_requested()/_on_cup_
-## requested()) already populated _pending_race_launch before calling this.
+## place of the level list -- see _driver_select_open's own field doc for
+## why its visibility (like _level_list_open's) is computed by _sync_ui_
+## visibility() rather than set directly here. Reads the profile's own
+## last-persisted pick (SaveModel.selected_driver(), always a real id -- see
+## that getter's own doc) to mark the current tile, so a returning player
+## sees what they raced as last time rather than a screen that always looks
+## freshly reset to Crash. Both real callers (_on_racing_track_requested()/
+## _on_cup_requested()) already populated _pending_race_launch before
+## calling this.
 func _open_driver_select_overlay() -> void:
 	_level_list_open = false
-	_sync_ui_visibility()
+	_driver_select_open = true
 	_driver_select_overlay.call(
 		"configure",
 		SaveModel.selected_driver(profile)
 	)
-	_driver_select_overlay.visible = true
+	_sync_ui_visibility()
 
 
 ## The CHOOSE DRIVER screen's own tile tap -- persists the pick (see
@@ -2249,7 +2305,7 @@ func _persist_selected_driver(id: StringName) -> void:
 ## CupSession every time it launches either race, not from whatever
 ## _active_driver_id last happened to hold here).
 func _launch_pending_race(id: StringName) -> void:
-	_driver_select_overlay.visible = false
+	_hide_driver_select_overlay()
 	var pending := _pending_race_launch
 	_pending_race_launch = {}
 	_active_driver_id = id
@@ -2271,6 +2327,30 @@ func _launch_pending_race(id: StringName) -> void:
 
 func _on_level_list_closed() -> void:
 	_level_list_open = false
+	if (
+		flow.state == GameFlow.State.PAUSED
+		and flow.active_level_id.is_empty()
+	):
+		dispatch({"type": GameFlow.EVENT_RESUME})
+	_sync_ui_visibility()
+
+
+## CTR R8 Task 4 fix round 1 (reviewer [IMPORTANT]): the hardware/OS back
+## button's own way out of CHOOSE DRIVER (see _unhandled_input()'s own
+## PAUSED branch) -- mirrors _on_level_list_closed()'s exact shape
+## immediately above: opened straight from the WarpRoom hub (flow.active_
+## level_id empty) fully resumes back to the hub, same as backing out of
+## the level list does; opened from an in-race Pause menu (flow.active_
+## level_id non-empty, the level/race is still there, still paused,
+## underneath) returns to the bare Pause overlay instead of skipping past
+## it -- _sync_ui_visibility()'s own Pause formula recomputes visible=true
+## the moment _driver_select_open clears, with no further wiring needed
+## here. Abandons the pending launch outright (_pending_race_launch = {}):
+## back means "I changed my mind", never "SKIP and launch anyway" -- that
+## is what the SKIP button itself is for.
+func _on_driver_select_back_out() -> void:
+	_pending_race_launch = {}
+	_hide_driver_select_overlay()
 	if (
 		flow.state == GameFlow.State.PAUSED
 		and flow.active_level_id.is_empty()
