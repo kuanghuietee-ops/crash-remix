@@ -133,6 +133,32 @@ func test_configure_selected_driver_mounts_the_pick_and_composes_its_class() -> 
 		)
 
 
+## CTR R8 Task 3 (save v3->v4 + ghost v2): configure() threads the player's
+## own pick into _ghost_recorder (RaceSession's own GHOST WIRING section) so
+## a solo run's ghost is recorded under the driver it was actually raced
+## with, not always the "crash" default -- see GhostRecorder.set_driver_id()'s
+## own doc and configure()'s own call-site comment for the ordering this
+## relies on.
+func test_configure_threads_the_selected_driver_into_the_ghost_recorder() -> void:
+	var race := _boot_race(&"papu")
+	if race == null:
+		return
+	var recorder: Object = race.get("_ghost_recorder")
+	assert_not_null(recorder)
+	if recorder != null:
+		assert_eq(recorder.call("driver_id"), &"papu")
+
+
+func test_configure_with_no_pick_still_records_the_default_crash_driver() -> void:
+	var race := _boot_race()
+	if race == null:
+		return
+	var recorder: Object = race.get("_ghost_recorder")
+	assert_not_null(recorder)
+	if recorder != null:
+		assert_eq(recorder.call("driver_id"), &"crash")
+
+
 func test_player_kart_tint_is_unaffected_by_which_driver_is_picked() -> void:
 	var default_race := _boot_race()
 	if default_race == null:

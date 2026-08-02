@@ -35,6 +35,59 @@ func test_configure_starts_idle_with_no_keyframes() -> void:
 	assert_eq(recorder.keyframes().size(), 0)
 
 
+# ---------------------------------------------------------------------------
+# CTR R8 Task 3 (save v3->v4 + ghost v2): driver id -- defaults to crash on
+# every fresh configure(), overridable via set_driver_id(), and untouched by
+# reset()/start()/stop() the same way _interval_s/_max_keyframes already are
+# (a caller sets it once, after configure(), before start() -- see set_
+# driver_id()'s own doc).
+# ---------------------------------------------------------------------------
+
+
+func test_configure_defaults_the_driver_id_to_crash() -> void:
+	var recorder := _new_recorder(0.1, 3600.0)
+
+	assert_eq(recorder.driver_id(), GhostRecorderType.DEFAULT_DRIVER_ID)
+	assert_eq(recorder.driver_id(), &"crash")
+
+
+func test_set_driver_id_overrides_the_recorded_id() -> void:
+	var recorder := _new_recorder(0.1, 3600.0)
+
+	recorder.set_driver_id(&"papu")
+
+	assert_eq(recorder.driver_id(), &"papu")
+
+
+func test_start_does_not_reset_a_driver_id_set_after_configure() -> void:
+	var recorder := _new_recorder(0.1, 3600.0)
+	recorder.set_driver_id(&"coco")
+
+	recorder.start()
+
+	assert_eq(
+		recorder.driver_id(),
+		&"coco",
+		"start()'s own reset() must never wipe out a driver id set after configure()"
+	)
+
+
+func test_a_fresh_configure_resets_the_driver_id_to_crash() -> void:
+	var recorder := _new_recorder(0.1, 3600.0)
+	recorder.set_driver_id(&"ripper_roo")
+	var tuning := RaceTuning.new()
+	tuning.ghost_keyframe_interval_s = 0.1
+	tuning.ghost_max_keyframes = 3600.0
+
+	recorder.configure(tuning)
+
+	assert_eq(
+		recorder.driver_id(),
+		&"crash",
+		"a fresh configure() (a new race) must never leak a previous race's driver id"
+	)
+
+
 func test_sample_before_start_is_a_no_op() -> void:
 	var recorder := _new_recorder(0.1, 3600.0)
 

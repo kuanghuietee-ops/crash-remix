@@ -1,13 +1,39 @@
 class_name SaveModel
 extends RefCounted
 
-const SCHEMA_VERSION: int = 3
+## CTR R8 Task 3 (save v3->v4): resolved by StringName the same way race_
+## session.gd's own DriverRegistryType preload already is -- see selected_
+## driver()/validate()/_normalize_selected_driver()'s own docs below for the
+## one place this file leans on the roster to decide "real id" vs "corrupt/
+## unknown, fail closed to crash". src/core depending on src/racing here is
+## one-directional: DriverRegistry (and everything it preloads) has no
+## dependency back on SaveModel.
+const DriverRegistryType := preload("res://src/racing/roster/driver_registry.gd")
+
+const SCHEMA_VERSION: int = 4
 # Task 5 (CTR R7, the Cup): the one reserved key inside the "racing" section
 # that does NOT hold a per-track best-time record -- see fresh()/validate()/
 # _migrate_v2_to_v3()'s own docs for why "cups" lives INSIDE "racing" (not as
 # its own new top-level section) and how the validation/normalization loops
 # below skip it wherever they walk "racing" expecting per-track records.
 const _RACING_CUPS_KEY := "cups"
+## CTR R8 Task 3 (save v3->v4): the driver roster's own reserved key inside
+## "racing", alongside "cups" above -- see validate()'s own doc on this key,
+## _migrate_v3_to_v4()'s own doc for how a legacy profile backfills it, and
+## _normalize_selected_driver()'s own doc for why an invalid STORED value
+## here is repaired rather than rejecting the whole profile the way every
+## other reserved-key/per-record shape in this file does.
+const _RACING_SELECTED_DRIVER_KEY := "selected_driver"
+## The id every profile predating Task 2's driver roster is treated as
+## having raced under -- RaceSession's own pre-Task-2 default (_selected_
+## driver_id, race_session.gd), so a legacy profile's driver pick migrating
+## in for the first time can never look like a surprising change from what
+## that profile already experienced. Also the fail-closed target for a
+## corrupt/unknown stored value (_normalize_selected_driver()) and for a
+## caller reading a profile that never went through SaveService at all
+## (selected_driver()'s own "never hands back a value DriverRegistry does
+## not recognize" contract).
+const _DEFAULT_SELECTED_DRIVER := "crash"
 const _RELIC_TIERS: Array[String] = [
 	"none",
 	"sapphire",
@@ -31,7 +57,13 @@ static func fresh() -> Dictionary:
 		# own doc on that section), so a legacy profile can only ever pass
 		# validate() after actually migrating through _migrate_v2_to_v3
 		# below, which backfills exactly this shape.
-		"racing": {_RACING_CUPS_KEY: {}},
+		# CTR R8 Task 3 (save v3->v4): "selected_driver" joins "cups" as a
+		# second required reserved key inside "racing" from v4 onward -- see
+		# validate()'s own doc on this key.
+		"racing": {
+			_RACING_CUPS_KEY: {},
+			_RACING_SELECTED_DRIVER_KEY: _DEFAULT_SELECTED_DRIVER,
+		},
 	}
 
 
@@ -94,8 +126,38 @@ static func validate(data: Dictionary) -> bool:
 		if not _validate_cup_record(cup_record_value):
 			return false
 
+	# CTR R8 Task 3 (save v3->v4): "selected_driver" is a second RESERVED key
+	# inside "racing", alongside "cups" immediately above -- checked here,
+	# BEFORE the per-track loop below ever sees it, and excluded from that
+	# loop's own per-track record shape check the same way "cups" already
+	# is. Required with the same "not left optional-if-missing" strictness
+	# "racing" and "cups" themselves already carry -- a legacy profile only
+	# ever passes this check after actually migrating through _migrate_v3_
+	# to_v4, which backfills exactly this shape. UNLIKE every other field
+	# this function validates, an invalid value stored on disk is never
+	# allowed to reach THIS check in the first place during a real load --
+	# migrate() always runs _normalize_selected_driver() first (see that
+	# function's own doc), repairing a corrupt/unknown id to the registry's
+	# own "crash" default before validate() ever runs, so a real bad driver
+	# pick on disk fails closed to "crash" rather than losing lifetime_
+	# wumpa/levels/racing bests/cups over one cosmetic field. This check
+	# still exists (and still rejects) so a caller that hands validate()
+	# raw, never-migrated data directly (store_profile()'s own contract --
+	# see its own doc) cannot persist a genuinely malformed pick.
+	var selected_driver_value: Variant = racing.get(_RACING_SELECTED_DRIVER_KEY)
+	if (
+		typeof(selected_driver_value) != TYPE_STRING
+		and typeof(selected_driver_value) != TYPE_STRING_NAME
+	):
+		return false
+	if DriverRegistryType.entry(StringName(selected_driver_value)) == null:
+		return false
+
 	for track_id: Variant in racing:
-		if String(track_id) == _RACING_CUPS_KEY:
+		if (
+			String(track_id) == _RACING_CUPS_KEY
+			or String(track_id) == _RACING_SELECTED_DRIVER_KEY
+		):
 			continue
 		if typeof(track_id) != TYPE_STRING and typeof(track_id) != TYPE_STRING_NAME:
 			return false
@@ -124,6 +186,14 @@ static func migrate(data: Dictionary) -> Dictionary:
 		if next_version != version + 1:
 			return {}
 		version = next_version
+	# CTR R8 Task 3 (save v3->v4): repairs racing.selected_driver BEFORE
+	# validate() ever runs -- see _normalize_selected_driver()'s own doc for
+	# why this is the one field in this file whose invalid stored value
+	# self-heals here instead of failing the whole profile closed through
+	# validate() below. Runs unconditionally on every migrate() call (not
+	# only a profile that just chained through _migrate_v3_to_v4), so an
+	# already-v4 profile hand-corrupted on disk is repaired the same way.
+	_normalize_selected_driver(migrated)
 	if not validate(migrated):
 		return {}
 	_normalize_known_integer_fields(migrated)
@@ -281,6 +351,45 @@ static func cup_record(data: Dictionary, cup_id: StringName) -> Dictionary:
 	return record
 
 
+## CTR R8 Task 3 (save v3->v4): the single-scalar counterpart to level_
+## record()/racing_record()/cup_record() above -- selected_driver is not a
+## per-key record but ONE reserved field inside "racing" (see validate()'s
+## own doc on why it is reserved the same way "cups" is), so this reads it
+## directly instead of merging defaults into an existing Dictionary. Never
+## hands back a value DriverRegistry does not recognize -- an absent,
+## wrong-typed, or unknown value in `data` returns the SAME "crash" default
+## _normalize_selected_driver() already repairs a corrupt on-disk value to
+## during migrate(), so a caller reading ANY profile (one that genuinely
+## came from SaveService, or one hand-built in a test/by a caller that never
+## validated it) gets the identical safe fallback rather than a StringName
+## no DriverRegistry row actually owns.
+##
+## THE SURFACE TASK 4 READS: this getter. THE SURFACE TASK 4 WRITES: there
+## is no dedicated setter here, deliberately -- mirrors racing_record()/cup_
+## record()'s own shape, where the caller (game_root.gd's _on_racing_
+## finished()/_persist_cup_result_if_improved()) duplicates "racing", sets
+## the one key it owns, then calls validate() on the WHOLE updated profile
+## before store_profile(). A driver pick has no "is this better" comparison
+## the way improved_racing_record()/improved_cup_record() have for their own
+## fields, so there is nothing here for a setter to compute -- Task 4 writes
+## `racing[_RACING_SELECTED_DRIVER_KEY] = String(id)` (id already a real
+## DriverRegistry id, e.g. from a select-screen tap) directly, the identical
+## shape those two existing write sites already use for their own reserved/
+## per-key racing fields.
+static func selected_driver(data: Dictionary) -> StringName:
+	var racing_value: Variant = data.get("racing")
+	if not racing_value is Dictionary:
+		return StringName(_DEFAULT_SELECTED_DRIVER)
+	var racing: Dictionary = racing_value
+	var value: Variant = racing.get(_RACING_SELECTED_DRIVER_KEY)
+	if typeof(value) != TYPE_STRING and typeof(value) != TYPE_STRING_NAME:
+		return StringName(_DEFAULT_SELECTED_DRIVER)
+	var candidate := StringName(value)
+	if DriverRegistryType.entry(candidate) == null:
+		return StringName(_DEFAULT_SELECTED_DRIVER)
+	return candidate
+
+
 ## Cup's counterpart to improved_racing_record() above -- same "validate
 ## input, compute a candidate, validate output" shape, but LOWER-is-better
 ## (a finishing placement, 1 = first) instead of faster-is-better times, and
@@ -340,6 +449,8 @@ static func _migration_step(
 			return _migrate_v1_to_v2(data)
 		2:
 			return _migrate_v2_to_v3(data)
+		3:
+			return _migrate_v3_to_v4(data)
 		_:
 			return {}
 
@@ -400,6 +511,71 @@ static func _migrate_v2_to_v3(data: Dictionary) -> Dictionary:
 	return migrated
 
 
+## CTR R8 Task 3 (save v3->v4): the same rigor _migrate_v2_to_v3 above
+## carries -- every save through v3 predates the driver roster entirely
+## (Task 2's DriverRegistry) and has no "selected_driver" key inside
+## "racing" at all. Backfilled to the same "crash" default fresh() now
+## authors, before the version number itself moves, the same "backfill the
+## structural gap, THEN bump schema_version" order _migrate_v1_to_v2/
+## _migrate_v2_to_v3 already established. Existing per-track best-time
+## entries and cups are left completely untouched. This step only
+## guarantees the KEY exists as a String -- it does not need to guarantee
+## that String names a REAL registry id; _normalize_selected_driver() below
+## (run unconditionally at the end of every migrate() call, not only a
+## chain that passed through here) is the one place that also catches an
+## unknown-but-syntactically-String id, so a malformed pre-existing value
+## backfills exactly the same way a missing key does.
+static func _migrate_v3_to_v4(data: Dictionary) -> Dictionary:
+	var migrated := data.duplicate(true)
+	var racing_value: Variant = migrated.get("racing")
+	var racing: Dictionary = (
+		(racing_value as Dictionary).duplicate(true)
+		if racing_value is Dictionary
+		else {}
+	)
+	if not racing.get(_RACING_SELECTED_DRIVER_KEY) is String:
+		racing[_RACING_SELECTED_DRIVER_KEY] = _DEFAULT_SELECTED_DRIVER
+	migrated["racing"] = racing
+	migrated["schema_version"] = 4
+	return migrated
+
+
+## Repairs "racing.selected_driver" to the registry's own "crash" default
+## whenever the value migrate() is about to hand to validate() is not a
+## String/StringName naming a real DriverRegistry id -- called
+## unconditionally on every migrate() call (fresh v4 data that just chained
+## through _migrate_v3_to_v4, OR an already-v4 profile hand-corrupted on
+## disk), BEFORE validate() ever runs. This is the one field in this whole
+## file where an invalid stored value self-heals to a safe default INSIDE
+## migrate() rather than failing the entire profile closed through
+## validate() -- see validate()'s own doc on this key for why: a bad/
+## unknown driver pick is cosmetic (which mesh a race seats), and rejecting
+## the whole save over it would needlessly lose lifetime_wumpa/levels/
+## racing bests/cups that have nothing to do with it. Mutates `data` in
+## place (through the SAME Dictionary reference `racing` shares with
+## data["racing"] -- Godot Dictionaries are reference types, so no
+## reassignment back onto `data` is needed), mirroring _normalize_known_
+## integer_fields()'s own in-place shape below. A no-op whenever "racing"
+## itself is not a Dictionary -- that shape of corruption is NOT this
+## function's concern; validate()'s own "racing" check (independent of
+## selected_driver) is what correctly fails the whole profile closed for
+## that case, the existing "wholesale corruption still rejects" contract
+## every other reserved section in this file already carries.
+static func _normalize_selected_driver(data: Dictionary) -> void:
+	var racing_value: Variant = data.get("racing")
+	if not racing_value is Dictionary:
+		return
+	var racing: Dictionary = racing_value
+	var value: Variant = racing.get(_RACING_SELECTED_DRIVER_KEY)
+	var is_stringlike := (
+		typeof(value) == TYPE_STRING or typeof(value) == TYPE_STRING_NAME
+	)
+	if is_stringlike and DriverRegistryType.entry(StringName(value)) != null:
+		racing[_RACING_SELECTED_DRIVER_KEY] = String(value)
+	else:
+		racing[_RACING_SELECTED_DRIVER_KEY] = _DEFAULT_SELECTED_DRIVER
+
+
 static func _normalize_known_integer_fields(data: Dictionary) -> void:
 	data["schema_version"] = int(data["schema_version"])
 	data["lifetime_wumpa"] = int(data["lifetime_wumpa"])
@@ -423,7 +599,14 @@ static func _normalize_known_integer_fields(data: Dictionary) -> void:
 		# off a real Dictionary, which is a Godot runtime error, not a silent
 		# no-op -- skipped the same way validate()'s own per-track loop skips
 		# it, and normalized separately immediately below instead.
-		if String(track_id) == _RACING_CUPS_KEY:
+		if (
+			String(track_id) == _RACING_CUPS_KEY
+			# CTR R8 Task 3 (save v3->v4): "selected_driver" is a second
+			# reserved key inside "racing" (a String, not a per-track
+			# Dictionary record) -- same skip, same reason, as "cups"
+			# immediately above.
+			or String(track_id) == _RACING_SELECTED_DRIVER_KEY
+		):
 			continue
 		var racing_entry: Dictionary = racing[track_id]
 		racing_entry["best_total_time_ms"] = int(

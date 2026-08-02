@@ -626,6 +626,17 @@ func configure(catalog: GameplayTuning) -> void:
 	# for the ghost feature, nothing further downstream needs its own copy
 	# of that check.
 	_ghost_recorder.configure(_race_tuning)
+	# CTR R8 Task 3 (save v3->v4 + ghost v2): threads the player's own pick
+	# into the recording this session is about to make -- called AFTER
+	# configure() (which always resets _ghost_recorder's own driver id back
+	# to its "crash" default, see GhostRecorder.configure()'s own doc) and
+	# BEFORE _start_race()/start() so a solo run's ghost is saved under the
+	# id it was actually raced with, not the default every recording used to
+	# imply. _selected_driver_id is already set by now -- configure_
+	# selected_driver() must be called before THIS configure(), see its own
+	# doc. Recorded for forward use only this round -- see GhostPlayer's own
+	# GHOST MODEL doc for why nothing mounts a character on the ghost yet.
+	_ghost_recorder.set_driver_id(_selected_driver_id)
 	var ghost_player := _ensure_ghost_player()
 	ghost_player.configure_visual(catalog.phase)
 	if spawn_opponents:

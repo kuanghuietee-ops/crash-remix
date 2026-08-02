@@ -245,3 +245,30 @@ func test_clear_hides_and_forgets_the_loaded_ghost() -> void:
 
 	assert_false(player.visible)
 	assert_false(player.has_ghost())
+
+
+# ---------------------------------------------------------------------------
+# CTR R8 Task 3 (save v3->v4 + ghost v2): driver_id() -- defaults to crash
+# before any ghost is loaded, and clear() resets it back the same way it
+# already resets _keyframes/_interval_s. The real decode-off-a-real-file
+# proofs (legacy v1 -> crash, v2 round trip, corrupt id -> silent) live in
+# test_ghost_file_format.gd (real FileAccess I/O), not here (this file is
+# pure-math/structural, no real ghost files are read).
+# ---------------------------------------------------------------------------
+
+
+func test_driver_id_defaults_to_crash_before_any_ghost_is_loaded() -> void:
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+
+	assert_eq(player.driver_id(), &"crash")
+
+
+func test_clear_resets_the_driver_id_to_crash() -> void:
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	player._driver_id = &"papu"
+
+	player.clear()
+
+	assert_eq(player.driver_id(), &"crash")
