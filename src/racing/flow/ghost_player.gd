@@ -97,6 +97,11 @@ extends Node3D
 const GhostRecorderType := preload("res://src/racing/flow/ghost_recorder.gd")
 const KartModelSceneType := preload("res://assets/models/karts/SM_kart.glb")
 const GhostShaderType := preload("res://assets/shaders/phase_ghost.gdshader")
+## CTR R8 Task 3 (save v3->v4 + ghost v2), fix round 1: the READ-side gate on
+## a decoded driver id -- see _load_from_path()'s own doc for why this is
+## checked here (unlike GhostRecorder.set_driver_id(), the WRITE side, which
+## stays deliberately unvalidated).
+const DriverRegistryType := preload("res://src/racing/roster/driver_registry.gd")
 
 const GHOST_DIRECTORY := "user://ghosts"
 const GHOST_FILE_EXTENSION := ".ghost"
@@ -277,12 +282,25 @@ func _load_from_path(path: String, race_tuning: RaceTuning) -> bool:
 	# A legacy v1 file has no pascal string to read here at all -- its
 	# implied driver is always DEFAULT_DRIVER_ID (see FILE_VERSION_V1's own
 	# doc on GhostRecorder). A v2+ file's id is read fresh off the file
-	# itself; get_pascal_string() reading past a truncated/garbage-length
-	# declaration sets get_error() the same way get_32()/get_float() do
-	# elsewhere in this function (verified against Godot's own FileAccess
-	# behavior, not assumed), so this folds into the SAME "corrupt -> no
-	# ghost" outcome every other structural corruption in this function
-	# already produces -- never a partial load with a garbage id.
+	# itself, then checked TWO ways, either of which folds into the SAME
+	# "corrupt -> no ghost" outcome every other corruption shape in this
+	# function already produces -- never a partial load with a garbage or
+	# unrecognized id:
+	#   1. STRUCTURAL: get_pascal_string() reading past a truncated/garbage-
+	#      length declaration sets get_error() the same way get_32()/
+	#      get_float() do elsewhere in this function (verified against
+	#      Godot's own FileAccess behavior, not assumed).
+	#   2. SEMANTIC (fix round 1): a pascal string that decodes CLEANLY but
+	#      names no real roster row (DriverRegistry.entry() == null -- see
+	#      that function's own doc, which explicitly names "a stale ghost
+	#      id" as a case it exists to catch) is corrupt for THIS file's own
+	#      purposes just the same, even though nothing reads driver_id()
+	#      back to mount a mesh yet -- the brief's own "corrupt id -> whole
+	#      file treated as absent" contract does not carve out an exception
+	#      for "well-formed but unrecognized", and an empty string (a
+	#      zero-length pascal string, which decodes without error) is
+	#      already caught here too, since no real DriverRegistry row ever
+	#      has an empty id.
 	var driver_id := GhostRecorderType.DEFAULT_DRIVER_ID
 	if not is_legacy_v1:
 		var raw_driver_id := file.get_pascal_string()
@@ -290,7 +308,12 @@ func _load_from_path(path: String, race_tuning: RaceTuning) -> bool:
 			push_warning("Ghost file is corrupt, ignoring: %s" % path)
 			file.close()
 			return false
-		driver_id = StringName(raw_driver_id)
+		var candidate_driver_id := StringName(raw_driver_id)
+		if DriverRegistryType.entry(candidate_driver_id) == null:
+			push_warning("Ghost file is corrupt, ignoring: %s" % path)
+			file.close()
+			return false
+		driver_id = candidate_driver_id
 
 	var interval_s := file.get_float()
 	var keyframe_count := file.get_32()

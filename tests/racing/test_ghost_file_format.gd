@@ -317,6 +317,65 @@ func test_a_ghost_file_with_a_truncated_driver_id_loads_as_no_ghost() -> void:
 	assert_false(player.has_ghost())
 
 
+## Writes a fully well-formed body (one real keyframe) after whatever
+## driver id string the caller supplies -- shared by the two "semantic"
+## corruption tests below, so each proves the id itself is the ONLY reason
+## the file is rejected. Neither an empty keyframe_count (which the
+## existing `keyframes.is_empty() -> return false` check further down
+## _load_from_path() would ALSO reject, regardless of the id) nor a missing
+## interval_s/keyframe_count tail (which the pre-existing EOF check would
+## ALSO reject) can be used here -- either would prove nothing about the
+## id-membership gate specifically.
+func _write_ghost_file_with_driver_id(driver_id: String) -> void:
+	var file := FileAccess.open(_ghost_path, FileAccess.WRITE)
+	file.store_32(GhostRecorderType.FILE_VERSION)
+	file.store_pascal_string(driver_id)
+	file.store_float(0.1)
+	file.store_32(1)
+	file.store_float(0.0)
+	file.store_float(1.0)
+	file.store_float(2.0)
+	file.store_float(3.0)
+	file.store_float(45.0)
+	file.close()
+
+
+## Fix round 1 (task review): the SEMANTIC half of driver id corruption --
+## the pascal string decodes cleanly (no I/O error at all), but names no
+## real DriverRegistry row. DriverRegistry.entry()'s own doc explicitly
+## names "a stale ghost id" as a case it exists to catch (driver_registry.
+## gd) -- the loader must gate on it, not just on structural truncation
+## (test_a_ghost_file_with_a_truncated_driver_id_loads_as_no_ghost above).
+## Must resolve to the SAME "whole file treated as absent" outcome as every
+## other corruption shape in this file, never a partial load carrying a
+## driver_id() no registry row actually owns.
+func test_a_ghost_file_with_a_well_formed_but_unknown_driver_id_loads_as_no_ghost() -> void:
+	_write_ghost_file_with_driver_id("totally_not_a_real_driver")
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
+
+	assert_false(loaded)
+	assert_false(player.has_ghost())
+
+
+## An empty pascal string decodes without any I/O error too (a genuine
+## zero-length string is a valid, well-formed pascal string) -- no real
+## DriverRegistry row ever has an empty id, so this folds into the SAME
+## registry-membership gate as the unknown-id case immediately above,
+## without needing its own special-cased emptiness check.
+func test_a_ghost_file_with_an_empty_driver_id_loads_as_no_ghost() -> void:
+	_write_ghost_file_with_driver_id("")
+
+	var player := GhostPlayerType.new()
+	add_child_autofree(player)
+	var loaded := player.load_for_track(GHOST_TRACK_ID, _tuning())
+
+	assert_false(loaded)
+	assert_false(player.has_ghost())
+
+
 func test_writing_over_an_existing_ghost_file_replaces_it_atomically() -> void:
 	var tuning := _tuning()
 	var first := _recorded(tuning, [[0.0, Vector3(1.0, 0.0, 0.0), 0.0]])
