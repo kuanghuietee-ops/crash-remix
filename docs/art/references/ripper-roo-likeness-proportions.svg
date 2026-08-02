@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .grid { stroke: #263247; stroke-width: 1; }
+      .axis { stroke: #6ec5d7; stroke-width: 2; stroke-dasharray: 8 8; }
+      .fur { fill: #2568cb; stroke: #edf3fa; stroke-width: 3; }
+      .furdark { fill: #133a78; stroke: #edf3fa; stroke-width: 3; }
+      .furtoe { fill: #0d224a; stroke: #edf3fa; stroke-width: 3; }
+      .canvas { fill: #d5c7a8; stroke: #edf3fa; stroke-width: 3; }
+      .canvasdark { fill: #8c7f62; stroke: #edf3fa; stroke-width: 3; }
+      .strap { fill: #332619; stroke: #edf3fa; stroke-width: 3; }
+      .cuff { fill: #4d3829; stroke: #edf3fa; stroke-width: 3; }
+      .tongue { fill: #d0334a; stroke: #edf3fa; stroke-width: 3; }
+      .mouth { fill: #1a0a0c; stroke: none; }
+      .eye { fill: #eeeacc; stroke: #edf3fa; stroke-width: 3; }
+      .pupil { fill: #c2c91a; stroke: none; }
+      .detail { fill: none; stroke: #344257; stroke-width: 3; }
+      .measure { fill: none; stroke: #f0b64a; stroke-width: 2; }
+      .label { fill: #dce8f4; font: 22px sans-serif; }
+      .small { fill: #aebed0; font: 17px sans-serif; }
+      .title { fill: #ffffff; font: 700 31px sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#111725"/>
+  <g opacity="0.75">
+    <path class="grid" d="M50 120H1350 M50 220H1350 M50 320H1350 M50 420H1350
+      M50 520H1350 M50 620H1350 M50 720H1350"/>
+    <path class="grid" d="M100 90V780 M200 90V780 M300 90V780 M400 90V780
+      M500 90V780 M600 90V780 M700 90V780 M800 90V780 M900 90V780
+      M1000 90V780 M1100 90V780 M1200 90V780 M1300 90V780"/>
+  </g>
+
+  <text x="50" y="50" class="title">Ripper Roo candidate — original proportion plan</text>
+  <text x="50" y="78" class="small">Vertex-colour silhouette only • ≈1.50 m unscaled rig (ears included) • a DISTINCT body plan, not the Crash family • no extracted geometry or texture</text>
+
+  <!-- Front view: tall thin ears, wide grin with dangling tongue, a single
+       wrapped straitjacket silhouette with three buckle straps and sleeves
+       cinched together in front, bare blue-fur legs ending in oversized
+       kangaroo feet. -->
+  <g id="front">
+    <path class="axis" d="M330 105V775"/>
+
+    <!-- tall ears, well above the cranium apex -->
+    <path class="fur" d="M270 210 L296 70 L330 210 Z"/>
+    <path class="fur" d="M390 210 L364 70 L330 210 Z"/>
+    <!-- cranium -->
+    <ellipse class="fur" cx="330" cy="270" rx="128" ry="118"/>
+    <!-- brows / eyes (heavy-lidded, manic yellow-green pupils) -->
+    <path class="detail" d="M262 250 L308 244 M352 244 L398 250"/>
+    <ellipse class="eye" cx="290" cy="266" rx="26" ry="18"/>
+    <ellipse class="eye" cx="370" cy="266" rx="26" ry="18"/>
+    <ellipse class="pupil" cx="284" cy="270" rx="11" ry="9"/>
+    <ellipse class="pupil" cx="376" cy="270" rx="11" ry="9"/>
+    <!-- snout / nose -->
+    <ellipse class="furdark" cx="330" cy="316" rx="16" ry="14"/>
+    <!-- wide grin, pushed forward of the jaw, with the tongue hanging out
+         of its own front-bottom edge -->
+    <rect class="mouth" x="272" y="336" width="116" height="20" rx="6"/>
+    <path class="tongue" d="M312 356 L348 356 L336 460 L324 460 Z"/>
+
+    <!-- straitjacket: single wrapped canvas silhouette -->
+    <path class="canvasdark" d="M262 388 L330 380 L398 388 L398 412 L330 404 L262 412 Z"/>
+    <path class="canvas" d="M256 400 Q330 372 404 400 L420 560 Q330 592 240 560 Z"/>
+    <!-- three buckle straps -->
+    <rect class="strap" x="262" y="452" width="136" height="16" rx="5"/>
+    <rect class="strap" x="256" y="494" width="148" height="16" rx="5"/>
+    <rect class="strap" x="266" y="536" width="128" height="16" rx="5"/>
+    <!-- sleeves converging and cinched together in front of the belly:
+         "arms bound in the jacket", not free bare arms -->
+    <path class="canvas" d="M256 404 L182 452 L206 512 L268 486 Z"/>
+    <path class="canvas" d="M404 404 L478 452 L454 512 L392 486 Z"/>
+    <rect class="cuff" x="300" y="500" width="60" height="34" rx="8"/>
+
+    <!-- bare blue-fur legs -->
+    <path class="fur" d="M282 560 L322 560 L318 630 L286 630 Z"/>
+    <path class="fur" d="M338 560 L378 560 L374 630 L342 630 Z"/>
+    <!-- oversized kangaroo feet -->
+    <ellipse class="furtoe" cx="292" cy="672" rx="46" ry="30"/>
+    <ellipse class="furtoe" cx="368" cy="672" rx="46" ry="30"/>
+
+    <text x="274" y="810" class="label">FRONT</text>
+  </g>
+
+  <!-- Side view, facing left: the elongated toe and the tall ear are the
+       likeness anchors from this angle. -->
+  <g id="side">
+    <path class="fur" d="M792 210 L818 68 L852 210 Z"/>
+    <ellipse class="fur" cx="806" cy="270" rx="120" ry="118"/>
+    <path class="detail" d="M728 250 Q752 240 774 250"/>
+    <ellipse class="eye" cx="748" cy="266" rx="24" ry="17"/>
+    <ellipse class="pupil" cx="742" cy="270" rx="10" ry="8"/>
+    <ellipse class="furdark" cx="700" cy="318" rx="15" ry="13"/>
+    <rect class="mouth" x="672" y="338" width="72" height="18" rx="6"/>
+    <path class="tongue" d="M694 356 L722 356 L712 452 L704 452 Z"/>
+
+    <path class="canvasdark" d="M738 388 L806 380 L874 388 L874 412 L806 404 L738 412 Z"/>
+    <path class="canvas" d="M732 400 Q806 372 880 400 L896 560 Q806 592 716 560 Z"/>
+    <rect class="strap" x="738" y="452" width="136" height="16" rx="5"/>
+    <rect class="strap" x="732" y="494" width="148" height="16" rx="5"/>
+    <rect class="strap" x="742" y="536" width="128" height="16" rx="5"/>
+    <path class="canvas" d="M732 404 L664 448 L684 508 L742 486 Z"/>
+    <rect class="cuff" x="666" y="498" width="56" height="32" rx="8"/>
+
+    <path class="fur" d="M780 560 L820 560 L816 628 L784 628 Z"/>
+    <!-- elongated forward toe: the oversized kangaroo-foot read from the
+         side, roughly 1.5x a normal boot's own footprint -->
+    <path class="furtoe" d="M760 628 Q680 636 660 660 Q690 682 760 668 Q806 674 828 654 Q806 632 760 628 Z"/>
+
+    <text x="760" y="810" class="label">SIDE</text>
+  </g>
+
+  <!-- Top view: broad tall-ear span against the wrapped straitjacket
+       torso, sleeves visibly cinched together at the front centreline. -->
+  <g id="top">
+    <path class="fur" d="M1080 190 L1050 130 L1108 176 Z"/>
+    <path class="fur" d="M1200 190 L1230 130 L1172 176 Z"/>
+    <ellipse class="fur" cx="1140" cy="250" rx="128" ry="108"/>
+    <path class="canvas" d="M1058 366 Q1140 336 1222 366 L1204 456 Q1140 480 1076 456 Z"/>
+    <path class="canvas" d="M1058 372 L992 424 L1012 462 Q1046 442 1068 412 Z"/>
+    <path class="canvas" d="M1222 372 L1288 424 L1268 462 Q1234 442 1212 412 Z"/>
+    <rect class="cuff" x="1112" y="440" width="56" height="28" rx="8"/>
+
+    <text x="1114" y="650" class="label">TOP</text>
+  </g>
+
+  <!-- Measurements and modelling constraints. -->
+  <path class="measure" d="M75 100V722 M65 100H85 M65 722H85"/>
+  <text x="92" y="430" class="label" transform="rotate(-90 92 430)">≈1.50 m total (unscaled rig, ears included)</text>
+  <path class="measure" d="M180 96H480 M180 86V106 M480 86V106"/>
+  <text x="220" y="93" class="small">ear span reaches well above the cranium apex</text>
+
+  <g transform="translate(52 838)">
+    <text class="small">Silhouette anchors: single wrapped straitjacket torso with 3 buckle straps and cinched-front sleeves • oversized kangaroo feet</text>
+    <text y="24" class="small">• tongue-out head read (wide grin, dangling tongue, tall ears) • blue fur — springy hop idle, seated action tucks the big feet onto the cowl</text>
+  </g>
+</svg>

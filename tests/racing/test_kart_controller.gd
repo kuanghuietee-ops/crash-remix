@@ -872,6 +872,20 @@ const COCO_MODEL_PATH := "res://assets/models/characters/SK_coco.glb"
 const COCO_SEAT_SCALE := 1.0
 const COCO_SEAT_OFFSET := Vector3(0.0, -0.03, 0.0)
 
+## R8 Task 8 (characters/select/classes): ripper_roo.tres' own character_
+## scene_path stays "" (fallback-active, PENDING OPERATOR -- see docs/art/
+## gates/2026-08-02-ripper-roo/gate-record.md) until the operator accepts
+## the face in conversation, so this mounted-fit test deliberately does NOT
+## go through DriverRegistry/ripper_roo.tres, for the exact same reason
+## CORTEX_MODEL_PATH's/COCO_MODEL_PATH's own doc above gives. It loads the
+## built GLB directly and carries its own authored fit constants -- the
+## SAME values recorded in the gate doc for the operator's eventual flip --
+## so the asset's real fit is proven without touching the registry or
+## flipping anything.
+const RIPPER_ROO_MODEL_PATH := "res://assets/models/characters/SK_ripper_roo.glb"
+const RIPPER_ROO_SEAT_SCALE := 0.85
+const RIPPER_ROO_SEAT_OFFSET := Vector3(0.0, -0.08, 0.0)
+
 
 func test_kart_scene_has_the_real_mesh_and_no_character_by_default() -> void:
 	assert_true(ResourceLoader.exists(KART_SCENE_PATH))
@@ -1604,6 +1618,113 @@ func test_coco_seated_fit_clears_the_kart_cowl_and_stays_within_the_body_width()
 			"Coco's own feet must rest somewhere between the kart's own "
 			+ "floor and its cowl top, not sunk through the floor nor "
 			+ "floating above the cowl -- foot_l_y=%s kart_top_y=%s"
+		) % [foot_l_world.y, kart_top_y]
+	)
+
+
+## R8 Task 8 (characters/select/classes): the same "kart visual not
+## clipped, head clears the cowl, feet grounded" fit proof Task 6's/Task
+## 7's own Cortex/Coco tests established, applied to Ripper Roo's own NEW
+## build -- mounted directly off SK_ripper_roo.glb (see RIPPER_ROO_MODEL_
+## PATH's own doc above for why this bypasses the registry/DriverEntry
+## entirely). Reuses this file's own _find_skeleton()/_bone_global_
+## position()/_combined_mesh_aabb_world() helpers verbatim (the same
+## techniques the Papu/Cortex/Coco tests above already proved out for a
+## skinned, posed mount).
+func test_ripper_roo_seated_fit_clears_the_kart_cowl_and_stays_within_the_body_width() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var ripper_roo_scene := load(RIPPER_ROO_MODEL_PATH) as PackedScene
+	assert_not_null(ripper_roo_scene, "fixture setup: SK_ripper_roo.glb must load")
+	if ripper_roo_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", ripper_roo_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+	kart.call("apply_seat_fit", RIPPER_ROO_SEAT_SCALE, RIPPER_ROO_SEAT_OFFSET)
+
+	# Same two-physics-frame margin the Papu/Cortex/Coco tests above
+	# document (AnimationPlayer.play() samples its first frame on the NEXT
+	# process tick, not synchronously).
+	await wait_physics_frames(2)
+
+	var skeleton := _find_skeleton(mounted)
+	assert_not_null(skeleton, "fixture setup: the mounted Ripper Roo model must carry a Skeleton3D")
+	if skeleton == null:
+		return
+
+	var kart_visual := kart.get_node("Visual") as Node3D
+	var kart_body_aabb := _combined_mesh_aabb_world(kart_visual)
+
+	var head_index := skeleton.find_bone("head")
+	var hand_l_index := skeleton.find_bone("hand.L")
+	var hand_r_index := skeleton.find_bone("hand.R")
+	var foot_l_index := skeleton.find_bone("foot.L")
+	assert_ne(head_index, -1, "fixture setup: head bone must exist on Ripper Roo's own rig")
+	assert_ne(hand_l_index, -1, "fixture setup: hand.L bone must exist on Ripper Roo's own rig")
+	assert_ne(hand_r_index, -1, "fixture setup: hand.R bone must exist on Ripper Roo's own rig")
+	assert_ne(foot_l_index, -1, "fixture setup: foot.L bone must exist on Ripper Roo's own rig")
+	if head_index == -1 or hand_l_index == -1 or hand_r_index == -1 or foot_l_index == -1:
+		return
+
+	var head_world := _bone_global_position(skeleton, head_index)
+	var hand_l_world := _bone_global_position(skeleton, hand_l_index)
+	var hand_r_world := _bone_global_position(skeleton, hand_r_index)
+	var foot_l_world := _bone_global_position(skeleton, foot_l_index)
+
+	var kart_top_y := kart_body_aabb.position.y + kart_body_aabb.size.y
+	assert_gt(
+		head_world.y,
+		kart_top_y,
+		(
+			"Ripper Roo's own tall-eared head must clear the kart's own "
+			+ "real Visual-mesh AABB top (the cowl) -- head_y=%s kart_top_y=%s"
+		) % [head_world.y, kart_top_y]
+	)
+	# Bounded above too -- a future scale regression that towers absurdly
+	# high must fail this the same way a clipped one would, not just "more
+	# clearance is always fine". Same +0.9m ceiling as Cortex's/Coco's own.
+	assert_lt(
+		head_world.y,
+		kart_top_y + 0.9,
+		(
+			"Ripper Roo's own head cleared the cowl by more than 0.9m -- "
+			+ "likely an un-authored scale regression -- head_y=%s kart_top_y=%s"
+		) % [head_world.y, kart_top_y]
+	)
+
+	var kart_min_x := kart_body_aabb.position.x
+	var kart_max_x := kart_body_aabb.position.x + kart_body_aabb.size.x
+	assert_true(
+		hand_l_world.x >= kart_min_x and hand_l_world.x <= kart_max_x,
+		(
+			"Ripper Roo's own left hand must stay within the kart's own "
+			+ "real Visual-mesh AABB width, not clipped out past the body "
+			+ "-- hand_l_x=%s kart_x_range=[%s, %s]"
+		) % [hand_l_world.x, kart_min_x, kart_max_x]
+	)
+	assert_true(
+		hand_r_world.x >= kart_min_x and hand_r_world.x <= kart_max_x,
+		(
+			"Ripper Roo's own right hand must stay within the kart's own "
+			+ "real Visual-mesh AABB width, not clipped out past the body "
+			+ "-- hand_r_x=%s kart_x_range=[%s, %s]"
+		) % [hand_r_world.x, kart_min_x, kart_max_x]
+	)
+
+	# Grounded -- the big kangaroo feet tucked onto the cowl by the seated
+	# action's own deeper thigh/shin fold (see create_ripper_roo.py's own
+	# SEATED_POSE doc), not sunk through the kart's own floor nor floating
+	# above the cowl. Same bound shape as the Papu/Cortex/Coco tests above.
+	assert_true(
+		foot_l_world.y > -0.1 and foot_l_world.y < kart_top_y,
+		(
+			"Ripper Roo's own big feet must rest somewhere between the "
+			+ "kart's own floor and its cowl top, not sunk through the "
+			+ "floor nor floating above the cowl -- foot_l_y=%s kart_top_y=%s"
 		) % [foot_l_world.y, kart_top_y]
 	)
 
