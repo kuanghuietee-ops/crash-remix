@@ -1457,8 +1457,30 @@ func test_a_real_player_finish_freezes_every_ai_kart_for_several_more_real_secon
 	)
 
 	# Stage 3: let every AI kart actually finish decelerating.
+	#
+	# CTR R8 Task 2 (characters/select/classes): _kart_tuning.top_speed_mps
+	# alone is no longer a safe stand-in for "the fastest any kart in this
+	# race can go" -- driver classes are ACTIVE now (RaceSession composes
+	# each kart's own class onto its own KartTuning, see race_session.gd's
+	# own _spawn_ai_karts() doc), and this file's own default field mix
+	# (player defaults to &"crash", so the AI fill includes papu -- the
+	# Speed class, top_speed_mult 1.06) can genuinely exceed the shared
+	# catalog's base top_speed_mps. Reading the real per-kart composed
+	# value (the same "_tuning" reflection test_configure_gives_the_player_
+	# kart_its_own_composed_kart_tuning_not_the_shared_resource already
+	# uses above) keeps this worst-case bound honest instead of silently
+	# under-estimating a classed kart's real settle time.
+	var worst_case_top_speed_mps := _kart_tuning.top_speed_mps
+	var player_tuning: KartTuning = kart.get("_tuning")
+	if player_tuning != null:
+		worst_case_top_speed_mps = maxf(worst_case_top_speed_mps, player_tuning.top_speed_mps)
+	for slot_index: int in range(opponent_count):
+		var ai_kart := race.call("ai_kart", slot_index) as CharacterBody3D
+		var ai_tuning: KartTuning = ai_kart.get("_tuning") if ai_kart != null else null
+		if ai_tuning != null:
+			worst_case_top_speed_mps = maxf(worst_case_top_speed_mps, ai_tuning.top_speed_mps)
 	var worst_case_speed_mps := (
-		(_kart_tuning.top_speed_mps + _kart_tuning.boost_speed_bonus_mps)
+		(worst_case_top_speed_mps + _kart_tuning.boost_speed_bonus_mps)
 		* (1.0 + _catalog.ai.rubber_band_boost_max_ratio)
 	)
 	var settle_time_s: float = worst_case_speed_mps / _kart_tuning.brake_mps2

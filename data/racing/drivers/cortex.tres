@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="DriverEntry" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/racing/roster/driver_entry.gd" id="1_cortex"]
+
+[resource]
+script = ExtResource("1_cortex")
+id = &"cortex"
+display_name = "Dr. Neo Cortex"
+character_scene_path = ""
+driver_class_path = "res://data/tuning/racing/classes/balanced.tres"
+seat_scale = 1.0
+seat_offset = Vector3(0, 0, 0)

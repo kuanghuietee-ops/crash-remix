@@ -441,9 +441,27 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 
 	# ------------------------------------------------------------------
 	# 5. NO ERROR SPAM across the whole real countdown+pad+bump+cup run.
+	#
+	# CTR R8 Task 2 (characters/select/classes): see test_race_flow_r6_e2e.
+	# gd's identical comment on its own matching assertion -- this cup run's
+	# two real races (player defaults to &"crash") each spawn 4 still-
+	# fallback-active AI drivers, each producing exactly one expected,
+	# documented push_warning() from DriverRegistry.character_scene()'s own
+	# FALLBACK path. get_errors().size() does not consult `handled` (that
+	# flag only gates GUT's own auto-fail check, not a plain .size() read),
+	# so these expected warnings are excluded by a plain filter instead --
+	# stays fully sensitive to any real/unexpected error, not to a
+	# documented in-progress roster state.
 	# ------------------------------------------------------------------
+	var unexpected_errors := get_errors().filter(
+		func(tracked_error: GutTrackedError) -> bool:
+			return not (
+				tracked_error.is_push_warning()
+				and tracked_error.contains_text("DriverRegistry.character_scene")
+			)
+	)
 	assert_eq(
-		get_errors().size(),
+		unexpected_errors.size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole real R7 cup run"
 	)

@@ -420,9 +420,32 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 	# TREAT_AS.FAILURE, see addons/gut/error_tracker.gd) -- this assertion
 	# makes that contract explicit and visible rather than relying on it
 	# silently, per this task's own "capture push_error count = 0" ask.
+	#
+	# CTR R8 Task 2 (characters/select/classes): the default AI fill (player
+	# defaults to &"crash") now includes 4 still-fallback-active drivers
+	# (papu/cortex/coco/ripper_roo -- their own likeness gates land in Tasks
+	# 5-8), each producing exactly one push_warning() from DriverRegistry.
+	# character_scene()'s own documented FALLBACK path (driver_registry.gd's
+	# own class doc) -- an intentional, harmless diagnostic, never a
+	# push_error/engine error, and never auto-fails a test on its own (GUT's
+	# error_tracker.gd has no push_warning branch in _is_error_failable()).
+	# get_errors().size() itself does not consult `handled` at all (that flag
+	# only gates GUT's OWN auto-fail check, should_test_fail_from_errors() --
+	# a plain .size() on the raw list counts every tracked error regardless),
+	# so these expected warnings are excluded by a plain filter instead,
+	# keeping this assertion fully sensitive to any REAL/unexpected error
+	# (a genuine push_error, engine error, or any OTHER push_warning) while
+	# no longer tripping on a documented, in-progress roster state.
 	# ------------------------------------------------------------------
+	var unexpected_errors := get_errors().filter(
+		func(tracked_error: GutTrackedError) -> bool:
+			return not (
+				tracked_error.is_push_warning()
+				and tracked_error.contains_text("DriverRegistry.character_scene")
+			)
+	)
 	assert_eq(
-		get_errors().size(),
+		unexpected_errors.size(),
 		0,
 		"zero push_error/engine-error calls must occur across the whole seeded R6 run"
 	)
