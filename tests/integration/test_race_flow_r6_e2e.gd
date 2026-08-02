@@ -67,6 +67,10 @@ const RACE_SCENE_PATH := "res://scenes/racing/race_sanity_shores.tscn"
 const CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const CRASH_CHARACTER_SCENE_PATH := "res://assets/models/characters/SK_crash.glb"
 const LAB_ASSISTANT_CHARACTER_SCENE_PATH := "res://assets/models/enemies/SK_lab_assistant.glb"
+## Task 5 (characters/select/classes): papu's own DriverEntry now resolves
+## for real (data/racing/drivers/papu.tres) instead of falling back to the
+## lab assistant like every other still-gated driver below.
+const PAPU_SEATED_CHARACTER_SCENE_PATH := "res://assets/models/bosses/SK_papu_seated.glb"
 
 var _catalog: GameplayTuning
 
@@ -161,6 +165,15 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 			"the player must ride the real likeness-gated Crash model, not a stand-in"
 		)
 
+	# Task 5 (characters/select/classes): AI fill walks DriverRegistry.
+	# entries() in its own fixed ROSTER ORDER minus the player's pick
+	# (_ai_fill_driver_ids()'s own doc) -- with the player defaulting to
+	# crash (this fixture never picks), that order is papu, cortex, coco,
+	# ripper_roo, lab_assistant, so opponent_index 0 is always papu's own
+	# slot. His DriverEntry now resolves for real instead of falling back
+	# to the shared lab-assistant mesh every OTHER still-gated driver here
+	# still does -- see PAPU_SEATED_CHARACTER_SCENE_PATH's own doc.
+	const _PAPU_AI_SLOT := 0
 	for opponent_index in range(opponent_count):
 		var ai_kart := race.call("ai_kart", opponent_index) as CharacterBody3D
 		assert_not_null(ai_kart, "AI kart %d must exist" % opponent_index)
@@ -169,10 +182,19 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 		var ai_mount := ai_kart.call("mounted_character") as Node3D
 		assert_not_null(ai_mount, "AI kart %d must have a real mounted character" % opponent_index)
 		if ai_mount != null:
+			var expected_scene_path := (
+				PAPU_SEATED_CHARACTER_SCENE_PATH
+				if opponent_index == _PAPU_AI_SLOT
+				else LAB_ASSISTANT_CHARACTER_SCENE_PATH
+			)
 			assert_eq(
 				ai_mount.scene_file_path,
-				LAB_ASSISTANT_CHARACTER_SCENE_PATH,
-				"AI kart %d must ride the real lab-assistant model" % opponent_index
+				expected_scene_path,
+				(
+					"AI kart %d must ride the real papu-seated model"
+					if opponent_index == _PAPU_AI_SLOT
+					else "AI kart %d must ride the real lab-assistant model"
+				) % opponent_index
 			)
 
 	# ------------------------------------------------------------------
@@ -422,9 +444,10 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 	# silently, per this task's own "capture push_error count = 0" ask.
 	#
 	# CTR R8 Task 2 (characters/select/classes): the default AI fill (player
-	# defaults to &"crash") now includes 4 still-fallback-active drivers
-	# (papu/cortex/coco/ripper_roo -- their own likeness gates land in Tasks
-	# 5-8), each producing exactly one push_warning() from DriverRegistry.
+	# defaults to &"crash") includes still-fallback-active drivers (cortex/
+	# coco/ripper_roo -- their own likeness gates land in Tasks 6-8; papu's
+	# own Task 5 flip below moved him out of this set), each producing
+	# exactly one push_warning() from DriverRegistry.
 	# character_scene()'s own documented FALLBACK path (driver_registry.gd's
 	# own class doc) -- an intentional, harmless diagnostic, never a
 	# push_error/engine error, and never auto-fails a test on its own (GUT's
@@ -440,16 +463,25 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 	# crash or lab_assistant (which must NEVER fall back -- both ship real,
 	# gated paths) started falling back, since the warning text is identical
 	# regardless of which driver id triggered it. (1) the match string pins
-	# the exact driver id right after "driver " for each of the four STILL-
+	# the exact driver id right after "driver " for each of the STILL-
 	# fallback-active ids only -- a crash/lab_assistant fallback produces a
-	# warning that matches NONE of these four strings, so it lands in
+	# warning that matches NONE of these strings, so it lands in
 	# unexpected_errors and fails the assertion below. (2) a second
 	# assertion pins the exact expected COUNT (one warning per fallback-
-	# active driver for this test's own single race -- 4), so losing or
-	# gaining a warning among the same four ids is caught too, not only an
+	# active driver for this test's own single race), so losing or
+	# gaining a warning among the same ids is caught too, not only an
 	# id outside the set.
+	#
+	# Task 5 (characters/select/classes): papu REMOVED from this list --
+	# his DriverEntry now flips to a real gated scene (data/racing/drivers/
+	# papu.tres, SK_papu_seated.glb), so DriverRegistry.character_scene()
+	# resolves him for real and never reaches _fallback_scene() -- he no
+	# longer produces this warning at all. This is tightening the bound to
+	# the new honest count (4 -> 3), not weakening it: a regression that
+	# made papu fall back again would now show up as an UNEXPECTED warning
+	# (id not in the list below) and fail this test loudly.
 	# ------------------------------------------------------------------
-	const _EXPECTED_FALLBACK_DRIVER_IDS := ["papu", "cortex", "coco", "ripper_roo"]
+	const _EXPECTED_FALLBACK_DRIVER_IDS := ["cortex", "coco", "ripper_roo"]
 	var unexpected_errors: Array = []
 	var expected_fallback_warning_count := 0
 	for tracked_error: GutTrackedError in get_errors():
@@ -472,10 +504,10 @@ func test_r6_seeded_sanity_shores_full_flow_fx_items_characters_apex_ai_and_stan
 	)
 	assert_eq(
 		expected_fallback_warning_count,
-		4,
+		3,
 		(
 			"exactly one fallback push_warning per still-fallback-active AI "
-			+ "driver (papu/cortex/coco/ripper_roo) for this test's single "
+			+ "driver (cortex/coco/ripper_roo) for this test's single "
 			+ "race -- a different count means either a fallback-active "
 			+ "driver went real (update this bound) or a NEW driver started "
 			+ "falling back unexpectedly (a real regression)"

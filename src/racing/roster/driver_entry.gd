@@ -26,9 +26,12 @@ extends Resource
 ## res:// path to this driver's character PackedScene (a .glb import, the
 ## same kind of asset the two hardcoded consts this task deletes from race_
 ## session.gd used to preload directly) -- or "" for a driver whose face is
-## not yet gated. papu/cortex/coco/ripper_roo currently ship "" (Tasks 5-8
-## land their real builds); crash/lab_assistant ship their existing real
-## paths.
+## not yet gated. At Task 2 time, papu/cortex/coco/ripper_roo all shipped
+## "" (Tasks 5-8 land their real builds); crash/lab_assistant shipped their
+## existing real paths. Task 5 flipped papu's own to a real path (posing an
+## already operator-accepted mesh, not a new likeness gate -- see data/
+## racing/drivers/papu.tres and create_papu_seated.py's own module doc);
+## cortex/coco/ripper_roo remain "" pending their own Tasks 6-8 gates.
 @export var character_scene_path: String
 ## res:// path to one of data/tuning/racing/classes/{balanced,speed,accel,
 ## turning}.tres -- see driver_class.gd's own class doc for why these four

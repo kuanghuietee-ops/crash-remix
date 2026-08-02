@@ -449,8 +449,9 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	#
 	# CTR R8 Task 2 (characters/select/classes): see test_race_flow_r6_e2e.
 	# gd's identical comment on its own matching assertion -- this cup run's
-	# two real races (player defaults to &"crash") each spawn 4 still-
-	# fallback-active AI drivers, each producing exactly one expected,
+	# two real races (player defaults to &"crash") each spawn still-
+	# fallback-active AI drivers (cortex/coco/ripper_roo; papu's own Task 5
+	# flip moved him out of this set), each producing exactly one expected,
 	# documented push_warning() from DriverRegistry.character_scene()'s own
 	# FALLBACK path. get_errors().size() does not consult `handled` (that
 	# flag only gates GUT's own auto-fail check, not a plain .size() read),
@@ -462,12 +463,18 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	# generic match would also swallow a future regression where crash or
 	# lab_assistant, which must NEVER fall back, started falling back, since
 	# the warning text is identical either way). (1) the match string pins
-	# the exact driver id right after "driver " for each of the four STILL-
+	# the exact driver id right after "driver " for each of the STILL-
 	# fallback-active ids only. (2) a second assertion pins the exact
 	# expected COUNT -- one warning per fallback-active driver, per race,
-	# TWO races here (Sanity Shores + Temple Twilight) -- 8.
+	# TWO races here (Sanity Shores + Temple Twilight).
+	#
+	# Task 5 (characters/select/classes): papu REMOVED -- see test_race_
+	# flow_r6_e2e.gd's identical Task 5 comment; his DriverEntry now
+	# resolves a real gated scene, so he never reaches _fallback_scene()
+	# and this count tightens from 8 to 6 (3 still-fallback drivers x 2
+	# races), not weakened.
 	# ------------------------------------------------------------------
-	const _EXPECTED_FALLBACK_DRIVER_IDS := ["papu", "cortex", "coco", "ripper_roo"]
+	const _EXPECTED_FALLBACK_DRIVER_IDS := ["cortex", "coco", "ripper_roo"]
 	var unexpected_errors: Array = []
 	var expected_fallback_warning_count := 0
 	for tracked_error: GutTrackedError in get_errors():
@@ -490,10 +497,10 @@ func test_full_r7_cup_run_through_a_real_countdown_fires_a_real_pad_and_exchange
 	)
 	assert_eq(
 		expected_fallback_warning_count,
-		8,
+		6,
 		(
 			"exactly one fallback push_warning per still-fallback-active AI "
-			+ "driver (papu/cortex/coco/ripper_roo), per race, for this "
+			+ "driver (cortex/coco/ripper_roo), per race, for this "
 			+ "test's two real races -- a different count means either a "
 			+ "fallback-active driver went real (update this bound) or a "
 			+ "NEW driver started falling back unexpectedly (a real "

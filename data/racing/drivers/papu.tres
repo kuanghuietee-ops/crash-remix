@@ -6,7 +6,7 @@
 script = ExtResource("1_papu")
 id = &"papu"
 display_name = "Papu Papu"
-character_scene_path = ""
+character_scene_path = "res://assets/models/bosses/SK_papu_seated.glb"
 driver_class_path = "res://data/tuning/racing/classes/speed.tres"
-seat_scale = 1.0
-seat_offset = Vector3(0, 0, 0)
+seat_scale = 0.62
+seat_offset = Vector3(0, -0.35, 0)

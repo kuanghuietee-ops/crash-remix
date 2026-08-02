@@ -15,6 +15,10 @@ const RACE_SCENE_PATH := "res://scenes/racing/race_time_trial.tscn"
 const CATALOG_PATH := "res://data/tuning/gameplay.tres"
 const CRASH_CHARACTER_SCENE_PATH := "res://assets/models/characters/SK_crash.glb"
 const LAB_ASSISTANT_CHARACTER_SCENE_PATH := "res://assets/models/enemies/SK_lab_assistant.glb"
+## Task 5 (characters/select/classes): papu's own DriverEntry now resolves
+## for real instead of falling back to the lab assistant like every other
+## still-gated driver -- see data/racing/drivers/papu.tres.
+const PAPU_SEATED_CHARACTER_SCENE_PATH := "res://assets/models/bosses/SK_papu_seated.glb"
 
 var _catalog: GameplayTuning
 
@@ -108,14 +112,17 @@ func test_configure_selected_driver_mounts_the_pick_and_composes_its_class() -> 
 	if race == null:
 		return
 	var kart := race.get_node("Kart") as CharacterBody3D
-	# Papu ships an empty character_scene_path (Task 5 has not landed) --
-	# DriverRegistry.character_scene() falls back to the lab assistant mesh,
-	# silently, per its own FALLBACK doc. This proves the pick reached the
-	# real mount call, not merely that SOMETHING mounted.
+	# Task 5 (characters/select/classes): papu's own DriverEntry now ships
+	# a real character_scene_path (data/racing/drivers/papu.tres) -- his
+	# pose + seat fit reused his already-operator-accepted platformer mesh,
+	# not a new likeness gate, so DriverRegistry.character_scene() resolves
+	# him for real instead of reaching _fallback_scene(). This proves the
+	# pick reached the real mount call with the real model, not merely that
+	# SOMETHING mounted.
 	assert_eq(
 		_mounted_scene_path(kart),
-		LAB_ASSISTANT_CHARACTER_SCENE_PATH,
-		"papu is fallback-active -- the player must silently seat the lab assistant mesh, never crash"
+		PAPU_SEATED_CHARACTER_SCENE_PATH,
+		"papu is gated for real now -- the player must seat his own seated model, never crash or the lab assistant"
 	)
 	var tuning: KartTuning = kart.get("_tuning")
 	assert_not_null(tuning)

@@ -1196,6 +1196,174 @@ func test_unmount_character_clears_the_seat_and_is_safe_to_call_when_empty() -> 
 	assert_false(is_instance_valid(mounted), "unmount_character() must actually free the node")
 
 
+## R8 Task 5 (characters/select/classes): DriverEntry.seat_scale/seat_
+## offset (driver_entry.gd's own doc) exist to fit an oversized driver like
+## Papu into the kart's own seat -- apply_seat_fit() is the method that
+## actually applies them, called by RaceSession right after mount_
+## character() (the same "mount, then adjust" two-call shape apply_body_
+## tint() already establishes for the tint).
+func test_apply_seat_fit_scales_and_offsets_the_mounted_character() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var crash_scene := load(CRASH_MODEL_PATH) as PackedScene
+	assert_not_null(crash_scene)
+	if crash_scene == null:
+		return
+	var mounted: Node3D = kart.call("mount_character", crash_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+	var position_before_fit := mounted.position
+
+	kart.call("apply_seat_fit", 0.62, Vector3(0.0, -0.3, 0.05))
+
+	assert_eq(
+		mounted.scale,
+		Vector3.ONE * 0.62,
+		"apply_seat_fit() must uniformly scale the mounted character's own Node3D"
+	)
+	assert_eq(
+		mounted.position,
+		position_before_fit + Vector3(0.0, -0.3, 0.05),
+		"apply_seat_fit() must ADD its offset to whatever position mount_character() already set"
+	)
+
+
+func test_apply_seat_fit_is_a_safe_no_op_when_nothing_is_mounted() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+
+	# Must not error with no character mounted -- mirrors unmount_
+	# character()'s own "harmless no-op when nothing is mounted" contract.
+	kart.call("apply_seat_fit", 0.62, Vector3(0.0, -0.3, 0.05))
+
+	assert_null(kart.call("mounted_character"))
+
+
+## R8 Task 5 (characters/select/classes): the fit the brief itself demands
+## proven -- "kart visual not clipped, head above cowl" -- against REAL
+## numbers from the REAL mounted scene using papu.tres's own authored seat_
+## scale/seat_offset, not assumed from the authoring math.
+##
+## Deliberately does NOT read MeshInstance3D.get_aabb() on the mounted
+## Papu -- proven unreliable during authoring: querying it at two different
+## points within the SAME playing animation returned byte-identical AABBs,
+## meaning Godot is not folding the live skeletal pose into that value for
+## this skinned mesh. Bone world positions (skeleton.get_bone_global_pose(),
+## the same technique test_mount_character_on_a_model_without_a_seated_
+## clip_lowers_the_pelvis_to_seat_height already uses for the lab
+## assistant's own fallback pose) DO reflect the live pose, so this test
+## reads those instead: headdress (his tallest silhouette point that is not
+## the fixed-in-place feather ornament) against the kart's own real Visual-
+## mesh AABB for "above the cowl", and hand span against the kart's own
+## real half-width for "not clipped".
+func test_papu_seated_fit_clears_the_kart_cowl_and_stays_within_the_body_width() -> void:
+	var kart := _spawn_kart_on_floor()
+	if kart == null:
+		return
+	var papu_entry: DriverEntry = load("res://data/racing/drivers/papu.tres")
+	assert_not_null(papu_entry, "fixture setup: papu.tres must load")
+	if papu_entry == null:
+		return
+	var papu_scene := load(papu_entry.character_scene_path) as PackedScene
+	assert_not_null(papu_scene, "fixture setup: papu.tres's own character_scene_path must resolve")
+	if papu_scene == null:
+		return
+
+	var mounted: Node3D = kart.call("mount_character", papu_scene)
+	assert_not_null(mounted)
+	if mounted == null:
+		return
+	kart.call("apply_seat_fit", papu_entry.seat_scale, papu_entry.seat_offset)
+
+	# AnimationPlayer.play() (called inside mount_character() above) samples
+	# its first frame on the NEXT process tick, not synchronously -- see
+	# this test's own class doc. Two physics frames is the same margin
+	# test_mount_character_replaces_a_previously_mounted_character's own
+	# queue_free() wait already uses for a different deferred-engine-step
+	# reason.
+	await wait_physics_frames(2)
+
+	var skeleton := _find_skeleton(mounted)
+	assert_not_null(skeleton, "fixture setup: the seated Papu model must carry a Skeleton3D")
+	if skeleton == null:
+		return
+
+	var kart_visual := kart.get_node("Visual") as Node3D
+	var kart_body_aabb := _combined_mesh_aabb_world(kart_visual)
+
+	var headdress_index := skeleton.find_bone("headdress")
+	var hand_l_index := skeleton.find_bone("hand.L")
+	var hand_r_index := skeleton.find_bone("hand.R")
+	var foot_l_index := skeleton.find_bone("foot.L")
+	assert_ne(headdress_index, -1, "fixture setup: headdress bone must exist on Papu's own rig")
+	assert_ne(hand_l_index, -1, "fixture setup: hand.L bone must exist on Papu's own rig")
+	assert_ne(hand_r_index, -1, "fixture setup: hand.R bone must exist on Papu's own rig")
+	assert_ne(foot_l_index, -1, "fixture setup: foot.L bone must exist on Papu's own rig")
+	if headdress_index == -1 or hand_l_index == -1 or hand_r_index == -1 or foot_l_index == -1:
+		return
+
+	var headdress_world := _bone_global_position(skeleton, headdress_index)
+	var hand_l_world := _bone_global_position(skeleton, hand_l_index)
+	var hand_r_world := _bone_global_position(skeleton, hand_r_index)
+	var foot_l_world := _bone_global_position(skeleton, foot_l_index)
+
+	var kart_top_y := kart_body_aabb.position.y + kart_body_aabb.size.y
+	assert_gt(
+		headdress_world.y,
+		kart_top_y,
+		(
+			"Papu's own headdress must clear the kart's own real Visual-mesh "
+			+ "AABB top (the cowl) -- headdress_y=%s kart_top_y=%s"
+		) % [headdress_world.y, kart_top_y]
+	)
+	# Bounded above too -- a future scale regression that towers absurdly
+	# high must fail this the same way a clipped one would, not just "more
+	# clearance is always fine".
+	assert_lt(
+		headdress_world.y,
+		kart_top_y + 1.5,
+		(
+			"Papu's own headdress cleared the cowl by more than 1.5m -- "
+			+ "likely an un-authored scale regression, not a deliberately "
+			+ "huge driver -- headdress_y=%s kart_top_y=%s"
+		) % [headdress_world.y, kart_top_y]
+	)
+
+	var kart_min_x := kart_body_aabb.position.x
+	var kart_max_x := kart_body_aabb.position.x + kart_body_aabb.size.x
+	assert_true(
+		hand_l_world.x >= kart_min_x and hand_l_world.x <= kart_max_x,
+		(
+			"Papu's own left hand must stay within the kart's own real "
+			+ "Visual-mesh AABB width, not clipped out past the body -- "
+			+ "hand_l_x=%s kart_x_range=[%s, %s]"
+		) % [hand_l_world.x, kart_min_x, kart_max_x]
+	)
+	assert_true(
+		hand_r_world.x >= kart_min_x and hand_r_world.x <= kart_max_x,
+		(
+			"Papu's own right hand must stay within the kart's own real "
+			+ "Visual-mesh AABB width, not clipped out past the body -- "
+			+ "hand_r_x=%s kart_x_range=[%s, %s]"
+		) % [hand_r_world.x, kart_min_x, kart_max_x]
+	)
+
+	# Grounded, not floating well above the seat nor sunk through the
+	# kart's own floor (y=0, the same floor _spawn_kart_on_floor()'s own
+	# StaticBody3D sits just under -- see that helper's own doc).
+	assert_true(
+		foot_l_world.y > -0.1 and foot_l_world.y < kart_top_y,
+		(
+			"Papu's own feet must rest somewhere between the kart's own "
+			+ "floor and its cowl top, not sunk through the floor nor "
+			+ "floating above the cowl -- foot_l_y=%s kart_top_y=%s"
+		) % [foot_l_world.y, kart_top_y]
+	)
+
+
 func test_apply_body_tint_overrides_the_visual_meshes_with_the_given_color() -> void:
 	var kart := _spawn_kart_on_floor()
 	if kart == null:
@@ -1901,6 +2069,46 @@ func _find_skeleton(mounted: Node3D) -> Skeleton3D:
 	if skeletons.size() != 1:
 		return null
 	return skeletons[0] as Skeleton3D
+
+
+## R8 Task 5's own mounted-fit test: get_bone_global_pose() returns a
+## transform relative to the Skeleton3D node itself, not the world --
+## composing it with skeleton.global_transform is the documented way to
+## get a real world-space bone position, the same composition test_mount_
+## character_on_a_model_without_a_seated_clip_lowers_the_pelvis_to_seat_
+## height already does inline for a single bone; this is that same one-
+## liner, named, for a test that needs it for four different bones.
+func _bone_global_position(skeleton: Skeleton3D, bone_index: int) -> Vector3:
+	return (skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)).origin
+
+
+## R8 Task 5's own mounted-fit test: a real world-space AABB for the kart's
+## OWN Visual subtree, corner-by-corner through every MeshInstance3D's own
+## global_transform. Safe here specifically because the kart's Visual is a
+## plain STATIC (non-skinned) mesh -- unlike the mounted CHARACTER's own
+## MeshInstance3D.get_aabb() (see the mounted-fit test's own doc for why
+## that one is unreliable for a posed, skinned mesh), a static mesh's
+## get_aabb() genuinely is its real, unchanging local-space bounds, so
+## transforming its 8 corners through the current world transform is exact.
+func _combined_mesh_aabb_world(node: Node3D) -> AABB:
+	var result := AABB()
+	var has_any := false
+	for mesh_instance: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		var local_aabb := mesh_instance.get_aabb()
+		var world_xform := mesh_instance.global_transform
+		for corner_index in range(8):
+			var corner := Vector3(
+				local_aabb.position.x + (local_aabb.size.x if (corner_index & 1) else 0.0),
+				local_aabb.position.y + (local_aabb.size.y if (corner_index & 2) else 0.0),
+				local_aabb.position.z + (local_aabb.size.z if (corner_index & 4) else 0.0)
+			)
+			var world_corner := world_xform * corner
+			if not has_any:
+				result = AABB(world_corner, Vector3.ZERO)
+				has_any = true
+			else:
+				result = result.expand(world_corner)
+	return result
 
 
 func _spawn_kart_on_floor(

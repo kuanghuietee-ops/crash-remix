@@ -814,6 +814,43 @@ func apply_body_tint(tint: Color) -> void:
 		mesh_instance.material_override = tint_material
 
 
+## R8 Task 5 (characters/select/classes): scales and repositions the
+## currently mounted character to fit its own kart seat -- authored per
+## driver on DriverEntry.seat_scale/seat_offset (driver_entry.gd's own
+## doc: "Task 5's own seat-fit authoring target"), read by RaceSession off
+## DriverRegistry.entry(driver_id) and passed straight through here. Same
+## "RaceSession decides, KartController applies" split mount_character()/
+## apply_body_tint() already use for the character scene and the tint, and
+## the same "mount, then adjust" TWO-CALL shape RaceSession already uses
+## for those (mount_character() immediately followed by apply_body_tint()
+## in both configure() and _spawn_ai_karts()) -- this is a third call in
+## that same sequence, not a new pattern.
+##
+## Every driver but Papu ships the neutral no-op authored value today
+## (seat_scale=1.0, seat_offset=ZERO -- driver_entry.gd's own doc), so this
+## call is presently an identity transform for Crash/lab_assistant/every
+## still-fallback-active driver; Papu (data/racing/drivers/papu.tres) is
+## the first real user. MUST be called AFTER mount_character() has already
+## run its own pose logic (_play_seat_pose()/_apply_static_seat_pose()),
+## never before: _apply_static_seat_pose() in particular writes an
+## ABSOLUTE character.position.y, which would silently discard an offset
+## applied first. scale overwrites the character's own Node3D.scale
+## (glTF import already leaves every mounted model at the Blender-authored
+## Vector3.ONE, so this is never fighting a pre-scaled import); offset ADDS
+## to whatever position mount_character() already set, so a driver left
+## already well-placed by mount_character() alone (every non-Papu driver
+## today) passes through a ZERO offset untouched.
+##
+## A safe no-op when nothing is mounted -- mirrors unmount_character()'s
+## own "harmless no-op when nothing is mounted" contract, so RaceSession
+## never has to guard this call on mounted_character() first.
+func apply_seat_fit(scale: float, offset: Vector3) -> void:
+	if _mounted_character == null:
+		return
+	_mounted_character.scale = Vector3.ONE * scale
+	_mounted_character.position += offset
+
+
 ## Returns true when a real seated-riding clip was found and started (Crash's
 ## own path); false when the model has no such clip, telling mount_character()
 ## to fall back to _apply_static_seat_pose() instead. Never both -- see that

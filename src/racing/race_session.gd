@@ -711,6 +711,28 @@ func configure(catalog: GameplayTuning) -> void:
 	# unaffected by which driver is mounted (composed_with() never touches
 	# the Visual category -- see KartTuning.composed_with()'s own doc).
 	_kart.call("mount_character", DriverRegistryType.character_scene(_selected_driver_id))
+	# CTR R8 Task 5 (characters/select/classes): the player's own authored
+	# seat fit -- DriverEntry.seat_scale/seat_offset (driver_entry.gd's own
+	# doc) -- applied right after mount_character() the same "mount, then
+	# adjust" two-call shape apply_body_tint() below already establishes.
+	# entry() (DriverRegistry's own null-safe-for-CALLERS lookup, not
+	# character_scene()/driver_class()'s own internally-null-safe shape --
+	# see that method's own doc) returns null only for an id absent from
+	# the roster; _selected_driver_id is always one of the six roster ids
+	# by construction (configure_selected_driver()'s own doc, Task 3's save
+	# v4 migration fails closed to Crash for a corrupt/unknown id), so this
+	# is defensive, not a real path -- the 1.0/ZERO fallback matches every
+	# driver's own authored neutral value today regardless.
+	var selected_driver_entry := DriverRegistryType.entry(_selected_driver_id)
+	_kart.call(
+		"apply_seat_fit",
+		selected_driver_entry.seat_scale if selected_driver_entry != null else 1.0,
+		(
+			selected_driver_entry.seat_offset
+			if selected_driver_entry != null
+			else Vector3.ZERO
+		)
+	)
 	_kart.call("apply_body_tint", _kart_tuning.kart_tint_player)
 	# R5 Task 1: KartController.configure() always ends by reactivating
 	# itself (set_run_active(true), see its own doc) -- immediately undone
@@ -2233,6 +2255,20 @@ func _spawn_ai_karts() -> void:
 		# slot personalities and tints stay slot traits, untouched" ruling
 		# (brief pin: tints must never become a per-driver trait).
 		ai_kart.call("mount_character", DriverRegistryType.character_scene(driver_id))
+		# CTR R8 Task 5 (characters/select/classes): this slot's own driver
+		# seat fit -- see the player's own identical wiring in configure()
+		# above for the full doc (entry()'s own null-safety-for-callers
+		# shape, why the 1.0/ZERO fallback is defensive not a real path).
+		var slot_driver_entry := DriverRegistryType.entry(driver_id)
+		ai_kart.call(
+			"apply_seat_fit",
+			slot_driver_entry.seat_scale if slot_driver_entry != null else 1.0,
+			(
+				slot_driver_entry.seat_offset
+				if slot_driver_entry != null
+				else Vector3.ZERO
+			)
+		)
 		# Task 3 (CTR R6, circuit polish): every AI kart gets a per-slot body
 		# tint from the same KartTuning the player's own kart_tint_player line
 		# above reads. tint_for_slot() is 1-based and wraps deterministically
