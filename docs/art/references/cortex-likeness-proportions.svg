@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .grid { stroke: #263247; stroke-width: 1; }
+      .axis { stroke: #6ec5d7; stroke-width: 2; stroke-dasharray: 8 8; }
+      .outline { fill: #aeb9c8; stroke: #edf3fa; stroke-width: 3; }
+      .dark { fill: #3a1116; stroke: #edf3fa; stroke-width: 3; }
+      .coat { fill: #85202b; stroke: #edf3fa; stroke-width: 3; }
+      .coatdark { fill: #4a1015; stroke: #edf3fa; stroke-width: 3; }
+      .skin { fill: #a89c72; stroke: #edf3fa; stroke-width: 3; }
+      .detail { fill: none; stroke: #344257; stroke-width: 3; }
+      .mark { fill: #c23347; stroke: none; }
+      .measure { fill: none; stroke: #f0b64a; stroke-width: 2; }
+      .label { fill: #dce8f4; font: 22px sans-serif; }
+      .small { fill: #aebed0; font: 17px sans-serif; }
+      .title { fill: #ffffff; font: 700 31px sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#111725"/>
+  <g opacity="0.75">
+    <path class="grid" d="M50 120H1350 M50 220H1350 M50 320H1350 M50 420H1350
+      M50 520H1350 M50 620H1350 M50 720H1350"/>
+    <path class="grid" d="M100 90V780 M200 90V780 M300 90V780 M400 90V780
+      M500 90V780 M600 90V780 M700 90V780 M800 90V780 M900 90V780
+      M1000 90V780 M1100 90V780 M1200 90V780 M1300 90V780"/>
+  </g>
+
+  <text x="50" y="50" class="title">Dr. Neo Cortex candidate — original proportion plan</text>
+  <text x="50" y="78" class="small">Vertex-colour silhouette only • ≈1.32 m unscaled rig • kart-racer chibi massing • no extracted geometry or texture</text>
+
+  <!-- Front view: bulbous oversized cranium, N forehead mark, small coat
+       body, pointed goatee, thin limbs. All shapes are simple primitives,
+       matching the low-poly primitive-composed mesh this sheet plans. -->
+  <g id="front">
+    <path class="axis" d="M330 100V775"/>
+
+    <!-- cranium + forehead bulge -->
+    <ellipse class="outline" cx="330" cy="300" rx="150" ry="165"/>
+    <ellipse class="outline" cx="330" cy="230" rx="118" ry="95"/>
+    <!-- temple hair wisps -->
+    <path class="dark" d="M182 300 L150 260 L172 340 Z"/>
+    <path class="dark" d="M478 300 L510 260 L488 340 Z"/>
+    <!-- N forehead mark: two verticals, diagonal top-left to bottom-right
+         (a real "N", not its mirror). -->
+    <path class="mark" d="M296 200 L314 200 L314 260 L296 260 Z"/>
+    <path class="mark" d="M346 200 L364 200 L364 260 L346 260 Z"/>
+    <line x1="305" y1="207" x2="355" y2="253" stroke="#c23347" stroke-width="17"/>
+    <!-- brows / eyes / nose / mouth -->
+    <path class="detail" d="M258 350 Q286 330 312 348 M348 348 Q374 330 402 350"/>
+    <ellipse class="outline" cx="288" cy="368" rx="26" ry="22"/>
+    <ellipse class="outline" cx="372" cy="368" rx="26" ry="22"/>
+    <ellipse class="dark" cx="288" cy="372" rx="10" ry="9"/>
+    <ellipse class="dark" cx="372" cy="372" rx="10" ry="9"/>
+    <path class="skin" d="M316 380 Q330 420 344 380 Q330 400 316 380 Z"/>
+    <path class="mark" d="M298 432 L362 432 L362 444 L298 444 Z"/>
+    <!-- pointed goatee -->
+    <path class="dark" d="M300 448 L360 448 L330 520 Z"/>
+
+    <!-- popped coat collar + small body -->
+    <path class="coatdark" d="M255 462 L330 560 L405 462 L378 442 L330 480 L282 442 Z"/>
+    <path class="coat" d="M262 470 Q330 445 398 470 L420 620 Q330 655 240 620 Z"/>
+    <rect class="coatdark" x="322" y="540" width="16" height="60" rx="4"/>
+
+    <!-- arms: shoulder → forearm → glove -->
+    <path class="coat" d="M255 478 L188 540 L200 610 L252 585 Z"/>
+    <path class="coat" d="M405 478 L472 540 L460 610 L408 585 Z"/>
+    <circle class="dark" cx="196" cy="632" r="34"/>
+    <circle class="dark" cx="464" cy="632" r="34"/>
+
+    <!-- small legs + boots -->
+    <path class="outline" d="M290 618 L326 618 L322 700 L288 700 Z"/>
+    <path class="outline" d="M370 618 L406 618 L410 700 L374 700 Z"/>
+    <ellipse class="dark" cx="300" cy="726" rx="40" ry="26"/>
+    <ellipse class="dark" cx="396" cy="726" rx="40" ry="26"/>
+
+    <text x="274" y="810" class="label">FRONT</text>
+  </g>
+
+  <!-- Side view, facing left: the bulbous forehead projection and pointed
+       goatee are the likeness anchors from this angle. -->
+  <g id="side">
+    <ellipse class="outline" cx="806" cy="300" rx="140" ry="165"/>
+    <ellipse class="outline" cx="736" cy="232" rx="108" ry="90"/>
+    <line x1="702" y1="182" x2="734" y2="206" stroke="#c23347" stroke-width="15"/>
+    <path class="detail" d="M668 350 Q690 332 712 350"/>
+    <ellipse class="outline" cx="686" cy="368" rx="24" ry="20"/>
+    <ellipse class="dark" cx="678" cy="372" rx="9" ry="8"/>
+    <path class="skin" d="M652 378 Q634 400 652 420 Q662 400 652 378 Z"/>
+    <path class="mark" d="M660 436 L716 430 L718 442 L662 448 Z"/>
+    <path class="dark" d="M664 452 L714 446 L678 522 Z"/>
+    <ellipse class="outline" cx="900" cy="300" rx="30" ry="46"/>
+
+    <path class="coatdark" d="M760 462 L806 566 L852 460 L826 444 L806 470 L784 444 Z"/>
+    <path class="coat" d="M742 470 Q806 445 866 470 L884 620 Q806 655 730 620 Z"/>
+
+    <path class="coat" d="M742 478 L800 552 L788 612 L738 588 Z"/>
+    <circle class="dark" cx="762" cy="628" r="32"/>
+
+    <path class="outline" d="M770 618 L806 618 L802 700 L766 700 Z"/>
+    <ellipse class="dark" cx="782" cy="726" rx="42" ry="26"/>
+
+    <text x="760" y="810" class="label">SIDE</text>
+  </g>
+
+  <!-- Top view: broad cranium against narrow shoulders, the same
+       silhouette-width contrast the front view's "small body" reads on. -->
+  <g id="top">
+    <ellipse class="outline" cx="1140" cy="260" rx="150" ry="130"/>
+    <path class="mark" d="M1112 250 L1128 250 L1128 300 L1112 300 Z"/>
+    <path class="coat" d="M1055 380 Q1140 350 1225 380 L1205 470 Q1140 495 1075 470 Z"/>
+    <path class="coat" d="M1055 386 L995 440 L1010 480 Q1040 460 1060 430 Z"/>
+    <path class="coat" d="M1225 386 L1285 440 L1270 480 Q1240 460 1220 430 Z"/>
+    <ellipse class="dark" cx="1000" cy="498" rx="34" ry="30"/>
+    <ellipse class="dark" cx="1280" cy="498" rx="34" ry="30"/>
+
+    <text x="1114" y="650" class="label">TOP</text>
+  </g>
+
+  <!-- Measurements and modelling constraints. -->
+  <path class="measure" d="M75 106V742 M65 106H85 M65 742H85"/>
+  <text x="92" y="430" class="label" transform="rotate(-90 92 430)">≈1.32 m total (unscaled rig)</text>
+  <path class="measure" d="M180 135H480 M180 125V145 M480 125V145"/>
+  <text x="230" y="132" class="small">cranium width ≈ shoulder span</text>
+
+  <g transform="translate(52 838)">
+    <text class="small">Silhouette anchors: bulbous oversized cranium • bold "N" forehead mark • pointed goatee (not a round beard)</text>
+    <text y="24" class="small">• popped coat collar • small thin-limbed body • dark gloves/boots</text>
+  </g>
+</svg>
